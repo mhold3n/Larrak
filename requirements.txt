@@ -1,0 +1,14 @@
+casadi>=3.6.0
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+pytest>=7.4.0
+pytest-cov>=4.1.0
+mypy>=1.5.0
+ruff>=0.0.280
+hypothesis>=6.82.0
+
+
+
+
+
