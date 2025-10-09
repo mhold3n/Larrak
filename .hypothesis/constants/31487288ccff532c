@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/tertiary.py
+# hypothesis_version: 6.135.0
+
+[0.0, 5.0, 50.0, 'LinkageParameters', 'TertiaryOptimizer', 'acceleration', 'cam_center_x', 'cam_center_y', 'collocation_info', 'collocation_settings', 'configured', 'context_optimizers', 'control', 'follower_center_x', 'follower_center_y', 'follower_offset', 'follower_radius', 'linkage_angle', 'linkage_length', 'linkage_parameters', 'motion_optimizer', 'name', 'optimization_targets', 'position', 'primary_constraints', 'primary_optimizer_id', 'primary_results', 'primary_rules', 'primary_settings', 'processing_function', 'registry', 'registry_stats', 'secondary_optimizer', 'secondary_results', 'secondary_rules', 'secondary_settings', 'tertiary_constraints', 'time', 'velocity']

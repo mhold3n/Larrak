@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/geometry/curves.py
+# hypothesis_version: 6.135.0
+
+['Invalid inputs', 'base_radius', 'contact_radius', 'max_radius', 'min_radius', 'num_points', 'pitch_radius', 'profile_radius', 'radius_range', 'theta', 'x_theta']

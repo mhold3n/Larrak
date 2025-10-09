@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/base.py
+# hypothesis_version: 6.135.0
+
+['BaseOptimizer', 'avg_objective_value', 'avg_solve_time', 'converged', 'failed', 'infeasible', 'max', 'max_objective_value', 'max_solve_time', 'mean', 'min', 'min_objective_value', 'min_solve_time', 'pending', 'running', 'shape', 'std', 'success_rate', 'timeout', 'total_optimizations', 'unbounded']

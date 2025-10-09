@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/mechanics/side_loading.py
+# hypothesis_version: 6.135.0
+
+[0.0, 0.01, 0.1, 1.0, 1.2, 1.5, 1000.0, 'SideLoadAnalyzer', 'acceleration', 'avg_side_load', 'bore_diameter', 'combustion_penalty', 'combustion_phases', 'compression_penalty', 'compression_phases', 'crank_angles', 'crank_center_offset', 'crank_radius', 'displacement', 'load_profile', 'max_side_load', 'motion_law_data', 'piston_clearance', 'piston_geometry', 'rod_length', 'side_load_profile', 'side_load_result', 'side_load_ripple', 'theta', 'total_penalty', 'velocity']

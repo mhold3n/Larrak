@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/constraints/base.py
+# hypothesis_version: 6.135.0
+
+[1e-06, 'acceleration', 'control', 'custom', 'final_state', 'initial_state', 'jerk', 'position', 'velocity']

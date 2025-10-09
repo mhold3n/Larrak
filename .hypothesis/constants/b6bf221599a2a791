@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/base/model.py
+# hypothesis_version: 6.135.0
+
+['BasePhysicsModel', 'avg_simulation_time', 'max_simulation_time', 'min_simulation_time', 'success_rate', 'total_simulations']

@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/base/result.py
+# hypothesis_version: 6.135.0
+
+['PhysicsResult', 'cancelled', 'completed', 'data_info', 'data_keys', 'dtype', 'error_message', 'failed', 'invalid', 'max', 'mean', 'metadata', 'min', 'pending', 'running', 'shape', 'status', 'warnings']

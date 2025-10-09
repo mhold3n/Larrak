@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/CamPro_OptimalMotion.py
+# hypothesis_version: 6.135.0
+
+[0.0, 1e-12, 1e-09, 0.001, 0.1, 0.2, 0.3, 0.4, 0.45, 0.5, 0.6, 0.7, 0.98, 1.0, 1.875, 2.0, 5.0, 5.766, 6.0, 10.0, 15.0, 20.0, 30.0, 50.0, 60.0, 100.0, 120.0, 180.0, 360.0, 100, 180, 200, 300, ' (Cam Motion Law)', '--', 'Acceleration [m/s²]', 'BDC', 'Cam Angle [°]', 'Follower Jerk', 'Follower Position', 'Follower Velocity', 'Jerk [m/s³]', 'Position [m]', 'TDC', 'Time [s]', 'Velocity [m/s]', 'a', 'acceleration', 'b', 'cam_angle', 'control', 'legendre', 'minimum_energy', 'minimum_jerk', 'minimum_time', 'position', 'r', 't', 'tight', 'time', 'u', 'v', 'velocity', 'x']

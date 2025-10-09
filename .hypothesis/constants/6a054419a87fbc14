@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/cam_ring_processing.py
+# hypothesis_version: 6.135.0
+
+[0.0, 0.2, 0.3, 1.0, 15.0, 'R_psi', 'acceleration', 'base_radius', 'cam_angle', 'cam_angular_velocity', 'cam_parameters', 'constant', 'design_alternative', 'design_alternatives', 'design_type', 'efficiency', 'inf', 'kappa_c', 'linear', 'minimize_ring_size', 'objective', 'parameter_bounds', 'position', 'primary_acceleration', 'primary_position', 'primary_time', 'primary_velocity', 'psi', 'ring_design_params', 'ring_design_type', 'ring_size', 'sinusoidal', 'smoothness', 'stress', 'theta', 'time', 'validation', 'velocity', 'weights']

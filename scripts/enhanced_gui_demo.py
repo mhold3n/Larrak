@@ -8,7 +8,6 @@ This script demonstrates how to use the enhanced GUI that now supports both:
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add the current directory to Python path
@@ -19,8 +18,9 @@ def main():
     """Launch the enhanced GUI with preset parameters."""
     try:
         import tkinter as tk
+
         from cam_motion_gui import CamMotionGUI
-        
+
         print("Launching Enhanced Cam Motion Law & Ring Design GUI...")
         print("=" * 60)
         print("Features:")
@@ -36,33 +36,33 @@ def main():
         print("    - Ring profile mathematically determined by meshing law")
         print("    - Polar plots showing cam and ring follower profiles")
         print("=" * 60)
-        
+
         # Create and configure the GUI
         root = tk.Tk()
-        
+
         # Set style
         style = ttk.Style()
-        style.theme_use('clam')  # Use a modern theme
-        
+        style.theme_use("clam")  # Use a modern theme
+
         # Create the enhanced GUI
         app = CamMotionGUI(root)
-        
+
         # Set some default parameters for demonstration
-        app.variables['stroke'].set(25.0)
-        app.variables['upstroke_duration'].set(50.0)
-        app.variables['cycle_time'].set(1.2)
-        app.variables['motion_type'].set("minimum_jerk")
-        
+        app.variables["stroke"].set(25.0)
+        app.variables["upstroke_duration"].set(50.0)
+        app.variables["cycle_time"].set(1.2)
+        app.variables["motion_type"].set("minimum_jerk")
+
         # Set cam-ring system parameters
-        app.variables['base_radius'].set(18.0)
-        app.variables['connecting_rod_length'].set(25.0)
-        
+        app.variables["base_radius"].set(18.0)
+        app.variables["connecting_rod_length"].set(25.0)
+
         # Center the window
         root.update_idletasks()
         x = (root.winfo_screenwidth() // 2) - (root.winfo_width() // 2)
         y = (root.winfo_screenheight() // 2) - (root.winfo_height() // 2)
         root.geometry(f"+{x}+{y}")
-        
+
         print("GUI launched successfully!")
         print("Instructions:")
         print("1. Go to Tab 1 and click 'Solve Motion Law' to create the linear follower motion")
@@ -71,10 +71,10 @@ def main():
         print("4. Use the 'Save Plot' button to export your results")
         print()
         print("Close the GUI window to exit this demo.")
-        
+
         # Start the GUI
         root.mainloop()
-        
+
     except ImportError as e:
         print(f"Error importing required modules: {e}")
         print("Please ensure all dependencies are installed:")
@@ -85,7 +85,7 @@ def main():
         import traceback
         traceback.print_exc()
         return 1
-    
+
     return 0
 
 if __name__ == "__main__":

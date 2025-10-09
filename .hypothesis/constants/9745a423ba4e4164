@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/storage/memory.py
+# hypothesis_version: 6.135.0
+
+[1000, 1024, 'MemoryStorage', 'data_sizes', 'entry_count', 'nbytes', 'remove', 'retrieve', 'store', 'total_size_bytes', 'total_size_mb']

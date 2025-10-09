@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/constraints/motion.py
+# hypothesis_version: 6.135.0
+
+['MotionConstraints', 'acceleration', 'acceleration_bounds', 'control', 'control_bounds', 'final_acceleration', 'final_position', 'final_velocity', 'initial_acceleration', 'initial_position', 'initial_velocity', 'jerk', 'jerk_bounds', 'position', 'position_bounds', 'velocity', 'velocity_bounds']

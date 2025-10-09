@@ -4,11 +4,13 @@ Time kinematics component.
 This module provides a modular component for time-based kinematic analysis.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, List
+
 import numpy as np
 
-from ..base import BaseComponent, ComponentResult, ComponentStatus
 from campro.logging import get_logger
+
+from ..base import BaseComponent, ComponentResult, ComponentStatus
 
 log = get_logger(__name__)
 
@@ -20,11 +22,10 @@ class TimeKinematicsComponent(BaseComponent):
     This component computes time derivatives and kinematic relationships
     for cam-ring systems.
     """
-    
+
     def _validate_parameters(self) -> None:
         """Validate component parameters."""
-        pass
-    
+
     def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute time kinematics.
@@ -42,26 +43,26 @@ class TimeKinematicsComponent(BaseComponent):
         try:
             # Placeholder implementation
             log.info("Time kinematics component - placeholder implementation")
-            
+
             return ComponentResult(
                 status=ComponentStatus.COMPLETED,
                 outputs={},
-                metadata={'note': 'placeholder implementation'}
+                metadata={"note": "placeholder implementation"},
             )
-            
+
         except Exception as e:
             log.error(f"Error in time kinematics: {e}")
             return ComponentResult(
                 status=ComponentStatus.FAILED,
                 outputs={},
                 metadata={},
-                error_message=str(e)
+                error_message=str(e),
             )
-    
+
     def get_required_inputs(self) -> List[str]:
         """Get list of required input names."""
         return []
-    
+
     def get_outputs(self) -> List[str]:
         """Get list of output names."""
         return []

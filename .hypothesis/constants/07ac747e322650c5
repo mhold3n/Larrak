@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/cam_ring_optimizer.py
+# hypothesis_version: 6.135.0
+
+[0.0, 1e-06, 0.1, 0.2, 0.3, 0.5, 1.0, 3.0, 5.0, 7.0, 10.0, 20.0, 25.0, 45.0, 100.0, 150.0, 300.0, 360.0, 1000000.0, 100, 'CamRingOptimizer', 'R_psi', 'SLSQP', 'amplitude', 'average_radius', 'base_radius', 'cam_angle', 'cam_curves', 'convergence_info', 'design_type', 'disp', 'error_message', 'external', 'frequency', 'ftol', 'fun', 'ineq', 'inf', 'initial_guess', 'iterations', 'kappa_c', 'maximize_efficiency', 'maxiter', 'message', 'minimize_cam_size', 'minimize_ring_size', 'nfev', 'nit', 'optimization_method', 'optimized_parameters', 'position', 'profile_radius', 'psi', 'radius_error', 'radius_variation', 'ring_amplitude', 'ring_analysis', 'ring_base_radius', 'ring_frequency', 'sinusoidal', 'success', 'target_radius', 'theta', 'type', 'velocity']

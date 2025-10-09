@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/motion_law.py
+# hypothesis_version: 6.135.0
+
+[0.0, 1e-06, 0.1, 100.0, 100, 'acceleration', 'cam_angle', 'convergence_status', 'iterations', 'jerk', 'max_acceleration', 'max_jerk', 'max_velocity', 'minimum_energy', 'minimum_jerk', 'minimum_time', 'motion_type', 'objective_value', 'position', 'solve_time', 'stroke', 'velocity']

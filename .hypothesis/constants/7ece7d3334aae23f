@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/geometry/curvature.py
+# hypothesis_version: 6.135.0
+
+[1.0, 'Invalid inputs', 'kappa', 'max_curvature', 'min_curvature', 'num_points', 'r_double_prime', 'r_prime', 'r_theta', 'rho', 'theta']

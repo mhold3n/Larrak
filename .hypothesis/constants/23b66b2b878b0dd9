@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/sun_gear_optimizer.py
+# hypothesis_version: 6.135.0
+
+[0.0, 1e-06, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 45.0, 50.0, 150.0, 1000000.0, 100, 180, 300, 'R_psi', 'SLSQP', 'SunGearOptimizer', 'base_radius', 'cam_angle', 'cam_curves', 'convergence_info', 'disp', 'error_message', 'ftol', 'fun', 'gear_ratio', 'gear_specifications', 'ineq', 'inf', 'initial_guess', 'iterations', 'journal_offset_x', 'journal_offset_y', 'journal_radius', 'max_back_rotation', 'maximize_efficiency', 'maxiter', 'message', 'minimize_gear_stress', 'minimize_system_size', 'nfev', 'nit', 'optimization_method', 'optimized_parameters', 'position', 'psi', 'ring_gear_radius', 'ring_gear_teeth', 'success', 'sun_gear_parameters', 'sun_gear_radius', 'sun_gear_teeth', 'theta', 'type', 'x_theta']

@@ -7,7 +7,8 @@ for consistent data handling and error reporting.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Any, Optional, Union
+from typing import Any, Dict, Optional
+
 import numpy as np
 
 from campro.logging import get_logger
@@ -33,61 +34,61 @@ class PhysicsResult:
     This class provides a consistent interface for returning results
     from physics computations, including data, metadata, and status information.
     """
-    
+
     status: PhysicsStatus
     data: Dict[str, np.ndarray]
     metadata: Dict[str, Any]
     error_message: Optional[str] = None
     warnings: Optional[list] = None
-    
+
     def __post_init__(self):
         """Initialize warnings list if not provided."""
         if self.warnings is None:
             self.warnings = []
-    
+
     @property
     def is_successful(self) -> bool:
         """Check if computation was successful."""
         return self.status == PhysicsStatus.COMPLETED
-    
+
     @property
     def has_error(self) -> bool:
         """Check if computation had an error."""
         return self.status == PhysicsStatus.FAILED
-    
+
     @property
     def has_warnings(self) -> bool:
         """Check if computation had warnings."""
         return len(self.warnings) > 0
-    
+
     def add_warning(self, warning: str) -> None:
         """Add a warning message."""
         self.warnings.append(warning)
         log.warning(f"Added warning: {warning}")
-    
+
     def get_data_keys(self) -> list:
         """Get list of data keys."""
         return list(self.data.keys())
-    
+
     def get_data_shape(self, key: str) -> tuple:
         """Get shape of data array for given key."""
         if key not in self.data:
             raise KeyError(f"Data key '{key}' not found")
         return self.data[key].shape
-    
+
     def get_data_info(self) -> Dict[str, Dict[str, Any]]:
         """Get information about all data arrays."""
         info = {}
         for key, array in self.data.items():
             info[key] = {
-                'shape': array.shape,
-                'dtype': array.dtype,
-                'min': float(np.min(array)) if array.size > 0 else None,
-                'max': float(np.max(array)) if array.size > 0 else None,
-                'mean': float(np.mean(array)) if array.size > 0 else None
+                "shape": array.shape,
+                "dtype": array.dtype,
+                "min": float(np.min(array)) if array.size > 0 else None,
+                "max": float(np.max(array)) if array.size > 0 else None,
+                "mean": float(np.mean(array)) if array.size > 0 else None,
             }
         return info
-    
+
     def validate_data(self) -> bool:
         """Validate that all data arrays are valid."""
         for key, array in self.data.items():
@@ -98,39 +99,39 @@ class PhysicsResult:
                 log.error(f"Data '{key}' contains non-finite values")
                 return False
         return True
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary (excluding numpy arrays)."""
         return {
-            'status': self.status.value,
-            'metadata': self.metadata,
-            'error_message': self.error_message,
-            'warnings': self.warnings,
-            'data_keys': list(self.data.keys()),
-            'data_info': self.get_data_info()
+            "status": self.status.value,
+            "metadata": self.metadata,
+            "error_message": self.error_message,
+            "warnings": self.warnings,
+            "data_keys": list(self.data.keys()),
+            "data_info": self.get_data_info(),
         }
-    
+
     @classmethod
-    def success(cls, data: Dict[str, np.ndarray], 
-                metadata: Optional[Dict[str, Any]] = None) -> 'PhysicsResult':
+    def success(cls, data: Dict[str, np.ndarray],
+                metadata: Optional[Dict[str, Any]] = None) -> "PhysicsResult":
         """Create a successful result."""
         return cls(
             status=PhysicsStatus.COMPLETED,
             data=data,
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
-    
+
     @classmethod
-    def failure(cls, error_message: str, 
-                metadata: Optional[Dict[str, Any]] = None) -> 'PhysicsResult':
+    def failure(cls, error_message: str,
+                metadata: Optional[Dict[str, Any]] = None) -> "PhysicsResult":
         """Create a failed result."""
         return cls(
             status=PhysicsStatus.FAILED,
             data={},
             metadata=metadata or {},
-            error_message=error_message
+            error_message=error_message,
         )
-    
+
     def __repr__(self) -> str:
         """String representation of result."""
         status_str = self.status.value

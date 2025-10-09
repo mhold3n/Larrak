@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/cam_ring_mapping.py
+# hypothesis_version: 6.135.0
+
+[-1.0, 0.0, 1e-12, 1e-08, 1e-06, 0.1, 1.0, 2.0, 10.0, 15.0, 25.0, 'Omega', 'RK45', 'R_psi', 'amplitude', 'base_radius', 'cam', 'cam_curves', 'constant', 'contact_radius', 'contact_type', 'cubic', 'custom', 'custom_function', 'driver', 'external', 'extrapolate', 'frequency', 'internal', 'kappa_c', 'linear', 'no_cusps', 'omega', 'periodic', 'pitch_radius', 'positive_cam_radii', 'positive_ring_radii', 'profile_radius', 'psi', 'reasonable_curvature', 'rho_c', 'ring', 'ring_center_x', 'ring_center_y', 'sinusoidal', 'slope', 'theta', 'time', 'time_kinematics', 'x_theta']

@@ -5,15 +5,16 @@ This module provides functions for converting between different units
 and coordinate systems used in motion law problems.
 """
 
+from typing import Union
+
 import numpy as np
-from typing import Union, Tuple
 
 from campro.logging import get_logger
 
 log = get_logger(__name__)
 
 
-def convert_units(value: Union[float, np.ndarray], 
+def convert_units(value: Union[float, np.ndarray],
                  from_unit: str, to_unit: str) -> Union[float, np.ndarray]:
     """
     Convert values between different units.
@@ -32,45 +33,45 @@ def convert_units(value: Union[float, np.ndarray],
     # Define conversion factors
     conversions = {
         # Length conversions
-        ('mm', 'm'): 1e-3,
-        ('m', 'mm'): 1e3,
-        ('mm', 'in'): 0.0393701,
-        ('in', 'mm'): 25.4,
-        
+        ("mm", "m"): 1e-3,
+        ("m", "mm"): 1e3,
+        ("mm", "in"): 0.0393701,
+        ("in", "mm"): 25.4,
+
         # Time conversions
-        ('s', 'ms'): 1e3,
-        ('ms', 's'): 1e-3,
-        ('s', 'min'): 1/60,
-        ('min', 's'): 60,
-        
+        ("s", "ms"): 1e3,
+        ("ms", "s"): 1e-3,
+        ("s", "min"): 1/60,
+        ("min", "s"): 60,
+
         # Velocity conversions
-        ('mm/s', 'm/s'): 1e-3,
-        ('m/s', 'mm/s'): 1e3,
-        ('mm/s', 'in/s'): 0.0393701,
-        ('in/s', 'mm/s'): 25.4,
-        
+        ("mm/s", "m/s"): 1e-3,
+        ("m/s", "mm/s"): 1e3,
+        ("mm/s", "in/s"): 0.0393701,
+        ("in/s", "mm/s"): 25.4,
+
         # Acceleration conversions
-        ('mm/s²', 'm/s²'): 1e-3,
-        ('m/s²', 'mm/s²'): 1e3,
-        ('mm/s²', 'g'): 1e-3 / 9.80665,
-        ('g', 'mm/s²'): 9.80665 * 1e3,
-        
+        ("mm/s²", "m/s²"): 1e-3,
+        ("m/s²", "mm/s²"): 1e3,
+        ("mm/s²", "g"): 1e-3 / 9.80665,
+        ("g", "mm/s²"): 9.80665 * 1e3,
+
         # Jerk conversions
-        ('mm/s³', 'm/s³'): 1e-3,
-        ('m/s³', 'mm/s³'): 1e3,
-        
+        ("mm/s³", "m/s³"): 1e-3,
+        ("m/s³", "mm/s³"): 1e3,
+
         # Angle conversions
-        ('deg', 'rad'): np.pi / 180,
-        ('rad', 'deg'): 180 / np.pi,
-        ('deg', 'rev'): 1/360,
-        ('rev', 'deg'): 360,
+        ("deg", "rad"): np.pi / 180,
+        ("rad", "deg"): 180 / np.pi,
+        ("deg", "rev"): 1/360,
+        ("rev", "deg"): 360,
     }
-    
+
     # Check if conversion is supported
     conversion_key = (from_unit, to_unit)
     if conversion_key not in conversions:
         raise ValueError(f"Conversion from {from_unit} to {to_unit} not supported")
-    
+
     # Apply conversion
     factor = conversions[conversion_key]
     return value * factor
@@ -91,13 +92,13 @@ def time_to_cam_angle(time_array: np.ndarray, cycle_time: float = 1.0,
     """
     # Normalize time to 0-1 range
     normalized_time = time_array / cycle_time
-    
+
     # Convert to cam angle (0-360 degrees)
     cam_angle = start_angle + normalized_time * 360.0
-    
+
     # Ensure angles are in 0-360 range
     cam_angle = cam_angle % 360.0
-    
+
     return cam_angle
 
 
@@ -116,10 +117,10 @@ def cam_angle_to_time(cam_angle_array: np.ndarray, cycle_time: float = 1.0,
     """
     # Normalize cam angle to 0-360 range
     normalized_angle = (cam_angle_array - start_angle) % 360.0
-    
+
     # Convert to time
     time_array = normalized_angle / 360.0 * cycle_time
-    
+
     return time_array
 
 

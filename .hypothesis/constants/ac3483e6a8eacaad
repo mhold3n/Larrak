@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/base/component.py
+# hypothesis_version: 6.135.0
+
+['completed', 'failed', 'invalid', 'pending', 'running']

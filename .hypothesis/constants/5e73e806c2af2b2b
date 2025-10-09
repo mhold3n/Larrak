@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/mechanics/torque_analysis.py
+# hypothesis_version: 6.135.0
+
+[20.0, 100.0, 'acceleration', 'crank_angles', 'crank_center_offset', 'crank_radius', 'cycle_average_torque', 'displacement', 'instantaneous_torque', 'load_profile', 'max_torque', 'min_torque', 'motion_law_data', 'power_output', 'pressure_angle', 'rod_length', 'theta', 'torque_result', 'torque_ripple', 'velocity']

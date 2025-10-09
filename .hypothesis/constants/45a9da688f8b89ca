@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/motion_law_optimizer.py
+# hypothesis_version: 6.135.0
+
+[0.0, 1e-12, 1e-06, 0.3, 0.4, 0.5, 100.0, 360, 1000, 'MotionLawOptimizer', 'SLSQP', 'acceleration', 'collocation_method', 'converged', 'degree', 'disp', 'eq', 'failed', 'fallback', 'ftol', 'fun', 'iterations', 'jerk', 'legendre', 'max_iterations', 'maxiter', 'minimum_jerk', 'n_points', 'natural', 'objective_type', 'objective_value', 'position', 'stroke', 'tolerance', 'type', 'velocity']

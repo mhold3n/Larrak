@@ -7,89 +7,98 @@ future physics-based optimization.
 """
 
 from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
-from .collocation import CollocationSettings, CollocationMethod, CollocationOptimizer
-from .motion import MotionOptimizer, MotionObjectiveType
-from .secondary import SecondaryOptimizer
-from .tertiary import TertiaryOptimizer, LinkageParameters
-from .cam_ring_optimizer import CamRingOptimizer, CamRingOptimizationConstraints, CamRingOptimizationTargets
-from .sun_gear_optimizer import SunGearOptimizer, SunGearParameters, SunGearOptimizationConstraints, SunGearOptimizationTargets
-from .unified_framework import (
-    UnifiedOptimizationFramework, 
-    UnifiedOptimizationSettings, 
-    UnifiedOptimizationConstraints, 
-    UnifiedOptimizationTargets,
-    UnifiedOptimizationData,
-    OptimizationMethod,
-    OptimizationLayer
+from .cam_ring_optimizer import (
+    CamRingOptimizationConstraints,
+    CamRingOptimizationTargets,
+    CamRingOptimizer,
 )
+from .cam_ring_processing import (
+    create_constant_ring_design,
+    create_optimized_ring_design,
+    process_linear_to_ring_follower,
+    process_multi_objective_ring_design,
+    process_ring_optimization,
+)
+from .collocation import CollocationMethod, CollocationOptimizer, CollocationSettings
+from .motion import MotionObjectiveType, MotionOptimizer
 from .motion_law import (
     MotionLawConstraints,
     MotionLawResult,
     MotionLawValidator,
-    MotionType
+    MotionType,
 )
 from .motion_law_optimizer import MotionLawOptimizer
-from .cam_ring_processing import (
-    process_linear_to_ring_follower,
-    process_ring_optimization,
-    process_multi_objective_ring_design,
-    create_constant_ring_design,
-    create_optimized_ring_design
+from .secondary import SecondaryOptimizer
+from .sun_gear_optimizer import (
+    SunGearOptimizationConstraints,
+    SunGearOptimizationTargets,
+    SunGearOptimizer,
+    SunGearParameters,
+)
+from .tertiary import LinkageParameters, TertiaryOptimizer
+from .unified_framework import (
+    OptimizationLayer,
+    OptimizationMethod,
+    UnifiedOptimizationConstraints,
+    UnifiedOptimizationData,
+    UnifiedOptimizationFramework,
+    UnifiedOptimizationSettings,
+    UnifiedOptimizationTargets,
 )
 
 __all__ = [
     # Base classes
-    'BaseOptimizer',
-    'OptimizationResult',
-    'OptimizationStatus',
-    
+    "BaseOptimizer",
+    "OptimizationResult",
+    "OptimizationStatus",
+
     # Collocation
-    'CollocationSettings',
-    'CollocationMethod',
-    'CollocationOptimizer',
-    
+    "CollocationSettings",
+    "CollocationMethod",
+    "CollocationOptimizer",
+
     # Motion optimization
-    'MotionOptimizer',
-    'MotionObjectiveType',
-    
+    "MotionOptimizer",
+    "MotionObjectiveType",
+
     # Secondary optimization
-    'SecondaryOptimizer',
-    
+    "SecondaryOptimizer",
+
     # Tertiary optimization
-    'TertiaryOptimizer',
-    'LinkageParameters',
-    
+    "TertiaryOptimizer",
+    "LinkageParameters",
+
     # Cam-ring optimization
-    'CamRingOptimizer',
-    'CamRingOptimizationConstraints',
-    'CamRingOptimizationTargets',
-    
+    "CamRingOptimizer",
+    "CamRingOptimizationConstraints",
+    "CamRingOptimizationTargets",
+
     # Sun gear optimization
-    'SunGearOptimizer',
-    'SunGearParameters',
-    'SunGearOptimizationConstraints',
-    'SunGearOptimizationTargets',
-    
+    "SunGearOptimizer",
+    "SunGearParameters",
+    "SunGearOptimizationConstraints",
+    "SunGearOptimizationTargets",
+
     # Unified optimization framework
-    'UnifiedOptimizationFramework',
-    'UnifiedOptimizationSettings',
-    'UnifiedOptimizationConstraints',
-    'UnifiedOptimizationTargets',
-    'UnifiedOptimizationData',
-    'OptimizationMethod',
-    'OptimizationLayer',
-    
+    "UnifiedOptimizationFramework",
+    "UnifiedOptimizationSettings",
+    "UnifiedOptimizationConstraints",
+    "UnifiedOptimizationTargets",
+    "UnifiedOptimizationData",
+    "OptimizationMethod",
+    "OptimizationLayer",
+
     # Motion law optimization
-    'MotionLawConstraints',
-    'MotionLawResult',
-    'MotionLawValidator',
-    'MotionType',
-    'MotionLawOptimizer',
-    
+    "MotionLawConstraints",
+    "MotionLawResult",
+    "MotionLawValidator",
+    "MotionType",
+    "MotionLawOptimizer",
+
     # Cam-ring processing
-    'process_linear_to_ring_follower',
-    'process_ring_optimization',
-    'process_multi_objective_ring_design',
-    'create_constant_ring_design',
-    'create_optimized_ring_design',
+    "process_linear_to_ring_follower",
+    "process_ring_optimization",
+    "process_multi_objective_ring_design",
+    "create_constant_ring_design",
+    "create_optimized_ring_design",
 ]

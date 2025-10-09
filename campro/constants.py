@@ -11,17 +11,17 @@ DEFAULT_COLLOCATION_DEGREE = 3
 # Motion law types
 MOTION_LAW_TYPES = [
     "minimum_time",
-    "minimum_energy", 
+    "minimum_energy",
     "minimum_jerk",
     "minimum_snap",
-    "custom"
+    "custom",
 ]
 
 # Collocation methods
 COLLOCATION_METHODS = [
     "legendre",
-    "radau", 
-    "lobatto"
+    "radau",
+    "lobatto",
 ]
 
 

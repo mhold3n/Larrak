@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/motion.py
+# hypothesis_version: 6.135.0
+
+[0.0, 1.0, 10.0, 50.0, 100.0, 360, 3600, 'MotionOptimizer', 'assumptions', 'cam_angle_radians', 'collocation_degree', 'collocation_info', 'collocation_method', 'collocation_settings', 'configured', 'constant_temperature', 'converged', 'convergence_info', 'custom', 'degree', 'distance', 'ideal_fuel_load', 'independent_variable', 'iterations', 'max_acceleration', 'max_iterations', 'max_jerk', 'max_velocity', 'method', 'minimum_energy', 'minimum_jerk', 'minimum_time', 'motion_optimizer', 'motion_type', 'name', 'objective_type', 'objective_value', 'registry_stats', 'solve_time', 'time_horizon', 'tolerance', 'unknown', 'verbose']

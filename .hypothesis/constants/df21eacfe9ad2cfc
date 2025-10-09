@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/storage/registry.py
+# hypothesis_version: 6.135.0
+
+['OptimizationRegistry', 'chain_id', 'chains', 'default', 'optimizer_count', 'optimizer_id', 'optimizers', 'storage_stats', 'timestamp', 'total_chains', 'total_optimizers']

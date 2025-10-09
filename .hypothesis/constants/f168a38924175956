@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/storage/base.py
+# hypothesis_version: 6.135.0
+
+[0.0, -1000, 1000, 'BaseStorage', 'accessible_entries', 'average_age_seconds', 'expired', 'expired_entries', 'failed', 'pending', 'retrieved', 'storage_name', 'stored', 'total_accesses', 'total_entries']

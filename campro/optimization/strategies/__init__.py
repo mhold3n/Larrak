@@ -6,18 +6,18 @@ strategies, enabling easy extension and modification of optimization approaches.
 """
 
 from .base_strategy import BaseOptimizationStrategy, OptimizationStrategyResult
-from .motion_strategy import MotionOptimizationStrategy
 from .geometry_strategy import GeometryOptimizationStrategy
+from .motion_strategy import MotionOptimizationStrategy
 from .multi_objective import MultiObjectiveStrategy
 
 __all__ = [
     # Base strategy
-    'BaseOptimizationStrategy',
-    'OptimizationStrategyResult',
-    
+    "BaseOptimizationStrategy",
+    "OptimizationStrategyResult",
+
     # Specific strategies
-    'MotionOptimizationStrategy',
-    'GeometryOptimizationStrategy', 
-    'MultiObjectiveStrategy',
+    "MotionOptimizationStrategy",
+    "GeometryOptimizationStrategy",
+    "MultiObjectiveStrategy",
 ]
 

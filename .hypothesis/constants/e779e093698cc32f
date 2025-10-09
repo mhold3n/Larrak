@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/geometry/transformations.py
+# hypothesis_version: 6.135.0
+
+['Invalid inputs', 'cartesian_to_polar', 'num_points', 'polar_to_cartesian', 'r', 'theta', 'transform_type', 'x', 'y']

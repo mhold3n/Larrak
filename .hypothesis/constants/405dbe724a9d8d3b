@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/secondary.py
+# hypothesis_version: 6.135.0
+
+['SecondaryOptimizer', 'acceleration', 'collocation_info', 'collocation_settings', 'configured', 'control', 'motion_optimizer', 'name', 'objective_value', 'optimization_targets', 'position', 'primary_optimizer_id', 'processing_function', 'registry', 'registry_stats', 'time', 'velocity']

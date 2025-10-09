@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/physics/kinematics/crank_kinematics.py
+# hypothesis_version: 6.135.0
+
+[0.0, 100.0, 'CrankKinematics', 'acceleration', 'angular_velocity', 'crank_angles', 'crank_center_offset', 'crank_radius', 'displacement', 'kinematics_result', 'max_piston_velocity', 'max_rod_angle', 'motion_law_data', 'n_points', 'piston_accelerations', 'piston_displacements', 'piston_velocities', 'rod_angles', 'rod_length', 'theta', 'velocity']

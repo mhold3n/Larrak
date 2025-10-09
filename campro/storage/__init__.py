@@ -12,15 +12,15 @@ from .registry import OptimizationRegistry
 
 __all__ = [
     # Base classes
-    'BaseStorage',
-    'StorageResult',
-    'StorageStatus',
-    
+    "BaseStorage",
+    "StorageResult",
+    "StorageStatus",
+
     # Storage implementations
-    'MemoryStorage',
-    
+    "MemoryStorage",
+
     # Registry system
-    'OptimizationRegistry',
+    "OptimizationRegistry",
 ]
 
 

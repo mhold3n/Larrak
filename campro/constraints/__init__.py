@@ -6,22 +6,22 @@ motion law constraints, cam-specific constraints, and future physics constraints
 """
 
 from .base import BaseConstraints, ConstraintType, ConstraintViolation
+from .cam import CamConstraintType, CamMotionConstraints
 from .motion import MotionConstraints, MotionConstraintType
-from .cam import CamMotionConstraints, CamConstraintType
 
 __all__ = [
     # Base classes
-    'BaseConstraints',
-    'ConstraintType', 
-    'ConstraintViolation',
-    
+    "BaseConstraints",
+    "ConstraintType",
+    "ConstraintViolation",
+
     # Motion constraints
-    'MotionConstraints',
-    'MotionConstraintType',
-    
+    "MotionConstraints",
+    "MotionConstraintType",
+
     # Cam constraints
-    'CamMotionConstraints',
-    'CamConstraintType',
+    "CamMotionConstraints",
+    "CamConstraintType",
 ]
 
 

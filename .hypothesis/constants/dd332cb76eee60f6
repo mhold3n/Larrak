@@ -1,0 +1,4 @@
+# file: /Users/maxholden/Documents/GitHub/Larrak/campro/optimization/collocation.py
+# hypothesis_version: 6.135.0
+
+[0.0, 0.4, 0.5, 0.6, 1.0, 20.0, 60.0, 100.0, 100, 120, 180, 360, 'CollocationOptimizer', 'acceleration', 'cam_angle', 'control', 'degree', 'jerk', 'legendre', 'lobatto', 'max_acceleration', 'max_iterations', 'max_jerk', 'max_velocity', 'method', 'minimum_energy', 'minimum_jerk', 'minimum_time', 'n_points', 'objective_type', 'position', 'radau', 'stroke', 'time', 'time_horizon', 'tolerance', 'velocity', 'verbose']
