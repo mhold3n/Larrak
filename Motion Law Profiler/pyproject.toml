@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campro-litvin"
+version = "0.1.0"
+description = "Litvin planetary gear synthesis and optimization"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "CamPro" }]
+dependencies = []
+
+[project.scripts]
+campro-litvin = "campro.litvin.cli:main"
+
+[tool.setuptools]
+packages = ["campro", "campro.litvin", "campro.litvin.opt"]
+
+
