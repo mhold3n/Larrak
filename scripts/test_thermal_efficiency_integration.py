@@ -102,7 +102,7 @@ def test_motion_law_optimizer_integration():
 
     # Test without thermal efficiency
     print("Testing simple optimization...")
-    optimizer_simple = MotionLawOptimizer(use_thermal_efficiency=False)
+    optimizer_simple = MotionLawOptimizer(use_thermal_efficiency=True)
 
     constraints = MotionLawConstraints(
         stroke=20.0,
@@ -129,7 +129,7 @@ def test_motion_law_optimizer_integration():
 
     # Test enabling/disabling thermal efficiency
     print("\nTesting enable/disable thermal efficiency...")
-    optimizer = MotionLawOptimizer(use_thermal_efficiency=False)
+    optimizer = MotionLawOptimizer(use_thermal_efficiency=True)
 
     optimizer.enable_thermal_efficiency()
     print(f"✓ Thermal efficiency enabled: {optimizer.use_thermal_efficiency}")

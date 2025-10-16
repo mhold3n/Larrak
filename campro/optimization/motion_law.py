@@ -190,8 +190,10 @@ class ValidationResult:
 class MotionLawValidator:
     """Validate motion law results for physical feasibility."""
 
-    def __init__(self, tolerance: float = 1e-6):
+    def __init__(self, tolerance: float = 1e-6, continuity_factor: float = 1e-2):
         self.tolerance = tolerance
+        # continuity_factor scales step thresholds by signal magnitude (stroke, |v|, |a|)
+        self.continuity_factor = continuity_factor
 
     def validate(self, result: MotionLawResult) -> ValidationResult:
         """
@@ -256,24 +258,40 @@ class MotionLawValidator:
             return False
 
     def _check_continuity(self, result: MotionLawResult) -> bool:
-        """Check that motion law is continuous."""
+        """Check that motion law is continuous with scale-aware thresholds."""
         try:
-            # Check position continuity (more lenient for optimization results)
-            position_diff = np.diff(result.position)
-            if np.any(np.abs(position_diff) > 100 * self.tolerance):
-                log.warning("Position not continuous")
+            # Angular step (radians)
+            n = max(1, len(result.cam_angle) - 1)
+            dtheta = 2 * np.pi / n
+
+            # Position step tolerance: consider absolute floor, fraction of stroke, and predicted step from |v|·Δθ
+            vmax = float(np.max(np.abs(result.velocity))) if len(result.velocity) == len(result.cam_angle) else 0.0
+            predicted_step = vmax * dtheta
+            pos_step_tol = max(100 * self.tolerance, self.continuity_factor * float(result.stroke), 0.5 * predicted_step)
+
+            pos_diff = np.diff(result.position)
+            max_pos_step = float(np.max(np.abs(pos_diff))) if len(pos_diff) else 0.0
+            if np.any(np.abs(pos_diff) > pos_step_tol):
+                log.warning(f"Position not continuous (max step {max_pos_step:.3g} > tol {pos_step_tol:.3g})")
                 return False
 
-            # Check velocity continuity (more lenient for optimization results)
-            velocity_diff = np.diff(result.velocity)
-            if np.any(np.abs(velocity_diff) > 100 * self.tolerance):
-                log.warning("Velocity not continuous")
+            # Velocity step tolerance: scale by velocity magnitude
+            vel_diff = np.diff(result.velocity)
+            vmax_safe = vmax + 1e-12
+            vel_step_tol = max(100 * self.tolerance, self.continuity_factor * vmax_safe)
+            max_vel_step = float(np.max(np.abs(vel_diff))) if len(vel_diff) else 0.0
+            if np.any(np.abs(vel_diff) > vel_step_tol):
+                log.warning(f"Velocity not continuous (max step {max_vel_step:.3g} > tol {vel_step_tol:.3g})")
                 return False
 
-            # Check acceleration continuity (more lenient for optimization results)
-            acceleration_diff = np.diff(result.acceleration)
-            if np.any(np.abs(acceleration_diff) > 100 * self.tolerance):
-                log.warning("Acceleration not continuous")
+            # Acceleration step tolerance: scale by acceleration magnitude
+            acc = result.acceleration
+            amax = float(np.max(np.abs(acc))) + 1e-12 if len(acc) else 0.0
+            acc_diff = np.diff(acc)
+            acc_step_tol = max(100 * self.tolerance, self.continuity_factor * amax)
+            max_acc_step = float(np.max(np.abs(acc_diff))) if len(acc_diff) else 0.0
+            if np.any(np.abs(acc_diff) > acc_step_tol):
+                log.warning(f"Acceleration not continuous (max step {max_acc_step:.3g} > tol {acc_step_tol:.3g})")
                 return False
 
             return True

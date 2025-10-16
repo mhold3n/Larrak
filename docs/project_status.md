@@ -526,3 +526,4 @@ The Phase 1 optimization (motion law generation) was using fake analytical solut
 
 
 
+- Consolidated campro packages; new paths under campro.litvin and campro.freepiston. CLI: campro-litvin

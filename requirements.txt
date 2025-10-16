@@ -1,7 +1,28 @@
+# Larrak Dependencies
+# 
+# IMPORTANT: For best results, use conda to install dependencies:
+#   conda env create -f environment.yml
+#   conda activate larrak
+#
+# The conda installation includes ipopt solver support which is required
+# for optimization functionality. Pip installation may not include ipopt.
+#
+# If you must use pip, run: pip install -r requirements.txt
+# Then verify installation: python scripts/check_environment.py
+
+# Core optimization dependencies
 casadi>=3.6.0
+# Note: pip install of casadi may not include ipopt solver
+# Use conda install -c conda-forge casadi ipopt for full support
+
+# Numerical computing
 numpy>=1.24.0
 scipy>=1.10.0
+
+# Visualization
 matplotlib>=3.7.0
+
+# Development tools
 pytest>=7.4.0
 pytest-cov>=4.1.0
 mypy>=1.5.0

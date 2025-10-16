@@ -11,13 +11,87 @@ A comprehensive GUI with 5 tabs for three-stage optimization:
 
 import threading
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
+import sys
+import os
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from campro.logging import get_logger
+
+# Validate environment before starting GUI
+def _validate_gui_environment():
+    """Validate environment and show user-friendly error dialog if needed."""
+    try:
+        from campro.environment.validator import validate_environment
+        
+        results = validate_environment()
+        overall_status = results["summary"]["overall_status"]
+        
+        if overall_status.value == "error":
+            # Show error dialog
+            root = tk.Tk()
+            root.withdraw()  # Hide main window
+            
+            error_msg = (
+                "Environment validation failed!\n\n"
+                "Required dependencies are missing or incompatible.\n\n"
+                "To fix this issue:\n"
+                "1. Run: python scripts/setup_environment.py\n"
+                "2. Or run: python scripts/check_environment.py\n\n"
+                "Would you like to continue anyway?\n"
+                "(This will likely cause errors)"
+            )
+            
+            result = messagebox.askyesno(
+                "Environment Error",
+                error_msg,
+                icon="warning"
+            )
+            
+            root.destroy()
+            
+            if not result:
+                print("GUI startup cancelled due to environment issues.")
+                sys.exit(1)
+            else:
+                print("Warning: Continuing with environment issues. Errors may occur.")
+                
+        elif overall_status.value == "warning":
+            # Show warning dialog
+            root = tk.Tk()
+            root.withdraw()  # Hide main window
+            
+            warning_msg = (
+                "Environment validation passed with warnings.\n\n"
+                "Some dependencies may not be optimal.\n\n"
+                "Run 'python scripts/check_environment.py' for details.\n\n"
+                "Continue with GUI?"
+            )
+            
+            result = messagebox.askyesno(
+                "Environment Warning",
+                warning_msg,
+                icon="warning"
+            )
+            
+            root.destroy()
+            
+            if not result:
+                print("GUI startup cancelled due to environment warnings.")
+                sys.exit(1)
+                
+    except ImportError as e:
+        print(f"Warning: Could not import environment validator: {e}")
+        print("Environment validation skipped.")
+    except Exception as e:
+        print(f"Warning: Error during environment validation: {e}")
+        print("Environment validation failed.")
+
+# Perform validation
+_validate_gui_environment()
 from campro.optimization.unified_framework import (
     OptimizationMethod,
     UnifiedOptimizationConstraints,
@@ -599,6 +673,15 @@ class CamMotionGUI:
             import traceback
             traceback.print_exc()
             error_message = str(e)
+            # Promote common TE-requirement failures to a clear dialog
+            if "Thermal-efficiency path" in error_message or "CasADi" in error_message or "IPOPT" in error_message:
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Thermal Efficiency Required",
+                    "Thermal-efficiency optimization is required but unavailable or failed.\n\n"
+                    "Please install CasADi with IPOPT and retry.\n\n"
+                    "Conda (recommended):\n  conda install -c conda-forge casadi ipopt\n\n"
+                    "Pip (may lack IPOPT):\n  pip install 'casadi>=3.6,<3.7'",
+                ))
             self.root.after(0, self._enable_optimize_button)
             self.root.after(0, lambda: self.status_var.set(f"Optimization failed: {error_message}"))
 
@@ -620,6 +703,9 @@ class CamMotionGUI:
             tolerance=1e-6,
             lagrangian_tolerance=1e-8,
             penalty_weight=1.0,
+            # Enable CasADi/IPOPT path via thermal efficiency adapter
+            use_thermal_efficiency=True,
+            require_thermal_efficiency=True,
         )
 
         # Create constraints
@@ -659,7 +745,7 @@ class CamMotionGUI:
 
         # Configure framework
         self.unified_framework.configure(settings=settings, constraints=constraints, targets=targets)
-        print(f"DEBUG: Configured unified framework with method: {method_name}")
+        print(f"DEBUG: Configured unified framework with method: {method_name} (use_thermal_efficiency=True)")
 
     def _update_all_plots(self, result_data):
         """Update all plots with optimization results."""

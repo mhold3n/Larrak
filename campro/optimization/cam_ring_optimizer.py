@@ -306,14 +306,6 @@ class CamRingOptimizer(BaseOptimizer):
                 objective += ring_angle_penalty
                 log.warning(f"Incomplete ring profile: {np.degrees(ring_angle_span_rad):.1f}° coverage")
 
-            # Ring radius variation objective (encourage variation, not minimize)
-            if self.targets.minimize_ring_radius_variation:
-                ring_radius_variation = np.std(result["R_psi"])
-                # Invert the objective: reward variation, penalize constant radius
-                target_variation = 5.0  # Target 5mm variation
-                variation_error = abs(target_variation - ring_radius_variation)
-                objective += self.targets.ring_smoothness_weight * variation_error
-
             # Ring size objective (minimize maximum radius)
             if self.targets.minimize_ring_size:
                 max_ring_radius = float(np.max(litvin_result.R_psi))

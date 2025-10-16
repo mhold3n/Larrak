@@ -21,6 +21,35 @@ from campro.logging import get_logger
 
 log = get_logger(__name__)
 
+# Validate environment on module import
+def _validate_environment():
+    """Validate that the environment is properly set up."""
+    try:
+        from campro.environment.validator import validate_environment
+        
+        results = validate_environment()
+        overall_status = results["summary"]["overall_status"]
+        
+        if overall_status.value == "error":
+            error_msg = "Environment validation failed. Required dependencies are missing or incompatible."
+            log.error(error_msg)
+            log.error("Run 'python scripts/check_environment.py' for details.")
+            log.error("Run 'python scripts/setup_environment.py' to fix.")
+            raise RuntimeError(error_msg)
+        elif overall_status.value == "warning":
+            log.warning("Environment validation passed with warnings.")
+            log.warning("Run 'python scripts/check_environment.py' for details.")
+        
+    except ImportError as e:
+        log.error(f"Could not import environment validator: {e}")
+        log.error("Environment validation skipped.")
+    except Exception as e:
+        log.error(f"Error during environment validation: {e}")
+        log.error("Environment validation failed.")
+
+# Perform validation
+_validate_environment()
+
 
 @dataclass
 class MotionConstraints:
