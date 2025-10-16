@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import numpy as np
 
+from campro.constants import HSLLIB_PATH, IPOPT_LOG_DIR, IPOPT_OPT_PATH
 from campro.logging import get_logger
 
 log = get_logger(__name__)
@@ -21,8 +24,8 @@ class IPOPTOptions:
     acceptable_tol: float = 1e-6
     acceptable_iter: int = 15
 
-    # Linear solver options
-    linear_solver: str = "ma27"  # "ma27", "ma57", "ma77", "ma86", "ma97", "mumps", "pardiso"
+    # Linear solver options (unused when option_file_name is provided)
+    linear_solver: str = "ma27"  # kept for backward compatibility
     linear_solver_options: Dict[str, Any] = None
 
     # Barrier parameter options
@@ -57,6 +60,9 @@ class IPOPTOptions:
     def __post_init__(self):
         if self.linear_solver_options is None:
             self.linear_solver_options = {}
+
+    # Analysis options (optional)
+    enable_analysis: bool = False
 
 
 @dataclass
@@ -254,10 +260,18 @@ class IPOPTSolver:
         opts["ipopt.acceptable_tol"] = self.options.acceptable_tol
         opts["ipopt.acceptable_iter"] = self.options.acceptable_iter
 
-        # Linear solver
-        opts["ipopt.linear_solver"] = self.options.linear_solver
-        for key, value in self.options.linear_solver_options.items():
-            opts[f"ipopt.{key}"] = value
+        # Use creation-time options so Ipopt initializes linear solver & HSL before reading option file
+        ipopt_opt_path = IPOPT_OPT_PATH
+        hsl_path = HSLLIB_PATH
+
+        # Ensure linear solver and hsllib are applied at solver creation time (default MA27)
+        opts["ipopt.linear_solver"] = "ma27"
+        opts["ipopt.hsllib"] = hsl_path
+        try:
+            if Path(ipopt_opt_path).exists():
+                opts["ipopt.option_file_name"] = ipopt_opt_path
+        except Exception:
+            pass
 
         # Barrier parameter
         opts["ipopt.mu_strategy"] = self.options.mu_strategy
@@ -277,6 +291,18 @@ class IPOPTSolver:
         opts["ipopt.print_level"] = self.options.print_level
         opts["ipopt.print_frequency_iter"] = self.options.print_frequency_iter
         opts["ipopt.print_frequency_time"] = self.options.print_frequency_time
+        if getattr(self.options, "enable_analysis", False):
+            # Route detailed Ipopt output to a timestamped file for analysis
+            log_dir = Path(IPOPT_LOG_DIR)
+            try:
+                log_dir.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_file = str(log_dir / f"ipopt_{ts}.log")
+            opts["ipopt.output_file"] = out_file
+            # Encourage Ipopt to emit timing statistics
+            opts["ipopt.print_timing_statistics"] = "yes"
 
         # Warm start
         opts["ipopt.warm_start_init_point"] = self.options.warm_start_init_point
@@ -476,7 +502,7 @@ def get_default_ipopt_options() -> IPOPTOptions:
     options.max_iter = 5000
     options.tol = 1e-6
     options.acceptable_tol = 1e-4
-    options.linear_solver = "ma57"  # Good for sparse problems
+    # Linear solver is configured via ipopt.opt
     options.mu_strategy = "adaptive"
     options.line_search_method = "filter"
     options.print_level = 3  # Reduced output
@@ -493,7 +519,7 @@ def get_robust_ipopt_options() -> IPOPTOptions:
     options.max_iter = 10000
     options.tol = 1e-5
     options.acceptable_tol = 1e-3
-    options.linear_solver = "ma27"  # More robust
+    # Linear solver is configured via ipopt.opt
     options.mu_strategy = "monotone"
     options.line_search_method = "cg-penalty"
     options.print_level = 5

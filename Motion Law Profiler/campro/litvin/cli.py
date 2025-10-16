@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from campro.logging import get_logger
 from CamPro_LitvinPlanetary import (
     GeometrySearchConfig,
     OptimizationOrder,
@@ -12,7 +13,6 @@ from CamPro_LitvinPlanetary import (
     optimize_geometry,
     synthesize_planet_from_motion,
 )
-from campro.logging import get_logger
 
 
 def main() -> None:

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import cos, pi, sin
-from typing import List, Sequence, Tuple
+from typing import List, Tuple
 
 from campro.constants import PROFILE_CLOSURE_TOL
 from campro.logging import get_logger
-from .config import PlanetSynthesisConfig
-from .kinematics import PlanetKinematics
-from .motion import RadialSlotMotion
-from .involute_internal import InternalGearParams, InvoluteFlank, sample_internal_flank
 
+from .config import PlanetSynthesisConfig
+from .involute_internal import InternalGearParams, InvoluteFlank, sample_internal_flank
+from .kinematics import PlanetKinematics
 
 log = get_logger(__name__)
 
@@ -19,6 +19,9 @@ log = get_logger(__name__)
 @dataclass(frozen=True)
 class PlanetToothProfile:
     points: Sequence[Tuple[float, float]]
+
+
+ # Config imported from campro.litvin.config
 
 
 def _rotate(theta: float, x: float, y: float) -> Tuple[float, float]:
@@ -125,23 +128,23 @@ def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothP
     for theta_r in theta_vals:
         crossings: List[Tuple[float, float]] = []
         prev_w = None
-        prev_phi_scan = None
+        prev_phi = None
         for phi in flank.phi:
             (point, tangent) = _planet_coords(flank, kin, phi, theta_r)
             dtheta = _partial_theta(flank, kin, phi, theta_r, h)
             w = _cross(tangent[0], tangent[1], dtheta[0], dtheta[1])
-            if prev_w is not None and prev_phi_scan is not None:
+            if prev_w is not None and prev_phi is not None:
                 if w == 0.0:
                     crossings.append((phi, w))
                 elif prev_w == 0.0:
-                    crossings.append((prev_phi_scan, prev_w))
+                    crossings.append((prev_phi, prev_w))
                 elif w * prev_w < 0.0:
                     # Linear interpolation
                     t = abs(prev_w) / (abs(prev_w) + abs(w))
-                    phi_star = prev_phi_scan + t * (phi - prev_phi_scan)
+                    phi_star = prev_phi + t * (phi - prev_phi)
                     crossings.append((phi_star, 0.0))
             prev_w = w
-            prev_phi_scan = phi
+            prev_phi = phi
 
         phi_seed = crossings[0][0] if crossings else None
         if phi_seed is None:
@@ -174,7 +177,8 @@ def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothP
     if dist > PROFILE_CLOSURE_TOL:
         log.warning("Planet profile closure residual %.3e exceeds tolerance %.3e", dist, PROFILE_CLOSURE_TOL)
 
-    # Replicate path into tooth profile over z_p teeth by rotating
+    # Replicate single-contact path into tooth profile over z_p teeth by rotating
+    # The current pts trace one flank path over θ_r∈[0,2π]. Use z_p copies spaced by 2π/z_p.
     if config.planet_teeth <= 1:
         return PlanetToothProfile(points=pts)
 
@@ -187,7 +191,6 @@ def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothP
             replicated.append((c * x - s * y, s * x + c * y))
 
     return PlanetToothProfile(points=replicated)
-
 
 
 

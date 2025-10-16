@@ -252,6 +252,14 @@ class MotionLawOptimizer(BaseOptimizer):
             # Default to uniform points
             points = np.linspace(0, 2 * np.pi, self.n_points)
 
+        # DEBUG: spacing statistics
+        if len(points) >= 2:
+            dtheta = np.diff(points)
+            log.debug(
+                "Collocation points generated: n=%d, dtheta[min,mean,max]=[%.4g, %.4g, %.4g] rad",
+                len(points), float(np.min(dtheta)), float(np.mean(dtheta)), float(np.max(dtheta)),
+            )
+
         return points
 
     def _solve_minimum_jerk(self, collocation_points: np.ndarray,
@@ -306,6 +314,25 @@ class MotionLawOptimizer(BaseOptimizer):
         solution = self._extract_solution_minimum_jerk(
             result.x, control_points, collocation_points,
         )
+
+        # DEBUG: equality residuals at the solution
+        try:
+            residuals = [
+                boundary_position_start(result.x),
+                boundary_position_end(result.x),
+                boundary_velocity_start(result.x),
+                boundary_velocity_end(result.x),
+                boundary_acceleration_start(result.x),
+                boundary_acceleration_end(result.x),
+                stroke_constraint(result.x),
+            ]
+            max_abs = float(np.max(np.abs(residuals)))
+            log.debug(
+                "Equality residuals @solution: max_abs=%.3g, residuals=%s",
+                max_abs, [float(r) for r in residuals],
+            )
+        except Exception as _e:
+            log.debug(f"Could not compute residual diagnostics: {_e}")
 
         return MotionLawResult(
             cam_angle=collocation_points,
@@ -414,7 +441,7 @@ class MotionLawOptimizer(BaseOptimizer):
             log.error(f"Minimum energy optimization failed: {e}")
             raise RuntimeError(
                 f"Motion law optimization with CasADi failed: {e}. "
-                "Cannot fallback to scipy methods. Fix CasADi integration."
+                "Cannot fallback to scipy methods. Fix CasADi integration.",
             ) from e
 
     def _generate_initial_guess_minimum_jerk(self, control_points: np.ndarray,

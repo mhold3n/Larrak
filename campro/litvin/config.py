@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence, Tuple
+from typing import Tuple
 
 from .motion import RadialSlotMotion
 
@@ -33,7 +34,4 @@ class OptimizationOrder:
     ORDER1_GEOMETRY = 1
     ORDER2_MICRO = 2
     ORDER3_CO_MOTION = 3
-
-
-
 

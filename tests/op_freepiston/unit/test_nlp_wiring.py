@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from campro.freepiston.opt.nlp import build_collocation_nlp
 
 
@@ -16,11 +14,7 @@ def test_build_nlp_meta_and_objective_terms():
         "constraints": {"short_circuit_max": 0.5, "scavenging_min": 0.1},
         "timing": {"Ain_t_cm": 0.25, "Aex_t_cm": 0.75, "tol": 1e-2},
     }
-    try:
-        nlp, meta = build_collocation_nlp(P)
-    except RuntimeError:
-        pytest.skip("CasADi not available")
-        return
+    nlp, meta = build_collocation_nlp(P)
 
     assert isinstance(nlp, dict) and "x" in nlp and "f" in nlp and "g" in nlp
     assert meta.get("K") == 3 and meta.get("C") == 1

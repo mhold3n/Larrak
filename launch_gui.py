@@ -7,7 +7,6 @@ environment validation.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add the current directory to Python path
@@ -18,11 +17,11 @@ def validate_environment_before_launch():
     """Validate environment before launching GUI."""
     try:
         from campro.environment.validator import validate_environment
-        
+
         print("Validating environment...")
         results = validate_environment()
         overall_status = results["summary"]["overall_status"]
-        
+
         if overall_status.value == "error":
             print("❌ Environment validation failed!")
             print("Required dependencies are missing or incompatible.")
@@ -37,7 +36,7 @@ def validate_environment_before_launch():
             print("Continuing with GUI launch...")
         else:
             print("✅ Environment validation passed!")
-            
+
     except ImportError as e:
         print(f"⚠️  Warning: Could not import environment validator: {e}")
         print("Environment validation skipped.")
@@ -48,7 +47,7 @@ def validate_environment_before_launch():
 try:
     # Validate environment first
     validate_environment_before_launch()
-    
+
     from cam_motion_gui import main
 
     if __name__ == "__main__":

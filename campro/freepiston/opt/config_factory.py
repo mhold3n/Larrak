@@ -76,8 +76,11 @@ class ConfigFactory:
                 "ipopt": {
                     "max_iter": 1000,
                     "tol": 1e-6,
-                    "linear_solver": "ma27",
+                    # creation-time options ensure HSL is initialized before reading file
                     "hessian_approximation": "limited-memory",
+                    "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
+                    "linear_solver": "ma27",
+                    "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
                 },
             },
             objective={
@@ -112,8 +115,10 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 5000,
             "tol": 1e-8,
-            "linear_solver": "ma57",
             "hessian_approximation": "exact",
+            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
+            "linear_solver": "ma27",
+            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
         })
 
         # Stricter constraints
@@ -137,7 +142,9 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 500,
             "tol": 1e-4,
+            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
             "linear_solver": "ma27",
+            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
         })
 
         # Relaxed constraints
@@ -165,7 +172,9 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 2000,
             "tol": 1e-6,
-            "linear_solver": "ma57",
+            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
+            "linear_solver": "ma27",
+            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
         })
 
         return config
@@ -179,10 +188,12 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 10000,
             "tol": 1e-4,
-            "linear_solver": "ma57",
             "hessian_approximation": "limited-memory",
             "mu_strategy": "adaptive",
             "mu_init": 1e-3,
+            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
+            "linear_solver": "ma27",
+            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
         })
 
         # Enable adaptive refinement

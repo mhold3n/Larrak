@@ -14,11 +14,12 @@ or optimization. It faithfully enforces the Phase-2 relationships:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import numpy as np
 
 from campro.logging import get_logger
+
 from .litvin_assembly import AssemblyInputs, AssemblyState, compute_assembly_state
 
 log = get_logger(__name__)
@@ -111,7 +112,7 @@ def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
         ratio = float(np.mean(dphi_dpsi))
         expected = sign * (base_circle_ring / max(base_circle_cam, 1e-9))
         log.info(
-            f"Phase-2 no-slip check: mean(dφ/dψ) ≈ {ratio:.6f}, expected {expected:.6f}"
+            f"Phase-2 no-slip check: mean(dφ/dψ) ≈ {ratio:.6f}, expected {expected:.6f}",
         )
     except Exception:
         # Do not raise in animation path; log only

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Final
 
-
-_PACKAGE_LOGGER_LEVEL: Final[int] = logging.INFO
+# Allow environment override without touching handlers
+_LEVEL_NAME: Final[str] = os.getenv("CAMPRO_LOG_LEVEL", "INFO").upper()
+_PACKAGE_LOGGER_LEVEL: Final[int] = getattr(logging, _LEVEL_NAME, logging.INFO)
 
 
 def get_logger(name: str) -> logging.Logger:

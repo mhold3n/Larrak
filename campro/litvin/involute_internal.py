@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import cos, sin, sqrt
-from typing import List, Sequence, Tuple
+from typing import List, Tuple
 
 from campro.constants import DEG_TO_RAD
 
@@ -70,7 +71,6 @@ def sample_internal_flank(params: InternalGearParams, n: int = 200) -> InvoluteF
         tangents.append((tx, ty))
 
     return InvoluteFlank(phi=phis, points=pts, tangents=tangents)
-
 
 
 

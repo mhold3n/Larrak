@@ -8,9 +8,9 @@ problems using direct collocation methods with CasADi and Ipopt.
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple
 
-import casadi as ca
 import numpy as np
 
+import casadi as ca
 from campro.constants import (
     COLLOCATION_METHODS,
     COLLOCATION_TOLERANCE,
@@ -26,20 +26,20 @@ def _validate_environment():
     """Validate that the environment is properly set up."""
     try:
         from campro.environment.validator import validate_environment
-        
+
         results = validate_environment()
         overall_status = results["summary"]["overall_status"]
-        
+
         if overall_status.value == "error":
             error_msg = "Environment validation failed. Required dependencies are missing or incompatible."
             log.error(error_msg)
             log.error("Run 'python scripts/check_environment.py' for details.")
             log.error("Run 'python scripts/setup_environment.py' to fix.")
             raise RuntimeError(error_msg)
-        elif overall_status.value == "warning":
+        if overall_status.value == "warning":
             log.warning("Environment validation passed with warnings.")
             log.warning("Run 'python scripts/check_environment.py' for details.")
-        
+
     except ImportError as e:
         log.error(f"Could not import environment validator: {e}")
         log.error("Environment validation skipped.")

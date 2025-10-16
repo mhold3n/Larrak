@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import platform
 import shutil
-import subprocess
 from dataclasses import dataclass
-from typing import Optional
 
 from campro.logging import get_logger
 

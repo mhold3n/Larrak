@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence, Tuple
+from typing import Tuple
 
 from campro.logging import get_logger
-from .motion import RadialSlotMotion
-from .planetary_synthesis import PlanetSynthesisConfig, synthesize_planet_from_motion
-from ..opt.collocation import CollocationGrid, make_uniform_grid
-from .metrics import evaluate_order0_metrics, evaluate_order0_metrics_given_phi
-from .planetary_synthesis import _newton_solve_phi
+
+from ..opt.collocation import make_uniform_grid
 from .involute_internal import InternalGearParams, sample_internal_flank
 from .kinematics import PlanetKinematics
-
+from .metrics import evaluate_order0_metrics, evaluate_order0_metrics_given_phi
+from .motion import RadialSlotMotion
+from .planetary_synthesis import (
+    PlanetSynthesisConfig,
+    _newton_solve_phi,
+)
 
 log = get_logger(__name__)
 

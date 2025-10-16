@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict
-from math import sin
 from pathlib import Path
-from typing import Tuple
 
+from campro.logging import get_logger
 from CamPro_LitvinPlanetary import (
     GeometrySearchConfig,
     OptimizationOrder,
@@ -15,7 +13,6 @@ from CamPro_LitvinPlanetary import (
     optimize_geometry,
     synthesize_planet_from_motion,
 )
-from campro.logging import get_logger
 
 
 def main() -> None:

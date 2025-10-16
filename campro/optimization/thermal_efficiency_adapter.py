@@ -66,8 +66,11 @@ class ThermalEfficiencyConfig:
     n_cells: int = 50
 
     # Solver settings
-    linear_solver: str = "ma57"
+    linear_solver: str = "ma27"
     hessian_approximation: str = "limited-memory"
+
+    # Analysis settings
+    enable_analysis: bool = False
 
     # Validation settings
     check_convergence: bool = True
@@ -147,9 +150,31 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             complex_config.solver["ipopt"].update({
                 "max_iter": self.config.max_iterations,
                 "tol": self.config.tolerance,
-                "linear_solver": self.config.linear_solver,
                 "hessian_approximation": self.config.hessian_approximation,
+                # Ensure creation-time options are passed to Ipopt
+                "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
+                "linear_solver": "ma27",
+                "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
             })
+
+            # Enable analysis if requested
+            if self.config.enable_analysis:
+                from datetime import datetime
+                from pathlib import Path
+
+                from campro.constants import IPOPT_LOG_DIR
+
+                log_dir = Path(IPOPT_LOG_DIR)
+                try:
+                    log_dir.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    pass
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                out_file = str(log_dir / f"ipopt_{ts}.log")
+                complex_config.solver["ipopt"].update({
+                    "output_file": out_file,
+                    "print_timing_statistics": "yes",
+                })
 
             # Enable 1D gas model if requested
             if self.config.use_1d_gas_model:
@@ -207,12 +232,33 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             raise RuntimeError(
                 "Complex gas optimizer with CasADi/IPOPT is not available. "
                 "Cannot perform thermal efficiency optimization. "
-                "Check import errors in logs for details."
+                "Check import errors in logs for details.",
             )
 
         try:
             # Run complex optimization
             complex_result = self.complex_optimizer.optimize_with_validation(validate=True)
+
+            # Extract or generate analysis from complex result
+            if hasattr(complex_result, 'ipopt_analysis') and complex_result.ipopt_analysis is not None:
+                analysis = complex_result.ipopt_analysis
+            else:
+                # Perform analysis on complex result if not provided
+                from campro.optimization.solver_analysis import analyze_ipopt_run
+                
+                # Get the most recent log file
+                log_file_path = self._get_log_file_path()
+                
+                # Build stats from complex result
+                stats = {
+                    'success': complex_result.success,
+                    'iterations': complex_result.iterations,
+                    'primal_inf': getattr(complex_result, 'primal_inf', 0.0),
+                    'dual_inf': getattr(complex_result, 'dual_inf', 0.0),
+                    'return_status': getattr(complex_result, 'status', 'unknown')
+                }
+                
+                analysis = analyze_ipopt_run(stats, log_file_path)
 
             # Convert to standard OptimizationResult
             if complex_result.success:
@@ -240,6 +286,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                         "optimization_method": "thermal_efficiency",
                         "complex_optimizer": True,
                         "validation_passed": self._validate_result(complex_result),
+                        "ipopt_analysis": analysis,
                     },
                 )
             log.warning(f"Complex optimization failed: {complex_result.message}")
@@ -407,6 +454,20 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             log.error(f"Result validation failed: {e}")
             return False
 
+    def _get_log_file_path(self) -> Optional[str]:
+        """Get the most recent Ipopt log file for analysis."""
+        from campro.constants import IPOPT_LOG_DIR
+        
+        log_dir = Path(IPOPT_LOG_DIR)
+        if not log_dir.exists():
+            return None
+        
+        log_files = list(log_dir.glob("ipopt_*.log"))
+        if not log_files:
+            return None
+        
+        # Return most recent log file
+        return str(max(log_files, key=lambda p: p.stat().st_mtime))
 
     def solve_motion_law(self, constraints: MotionLawConstraints,
                         motion_type: MotionType) -> MotionLawResult:

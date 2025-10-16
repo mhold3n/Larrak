@@ -260,37 +260,73 @@ class MotionLawValidator:
     def _check_continuity(self, result: MotionLawResult) -> bool:
         """Check that motion law is continuous with scale-aware thresholds."""
         try:
-            # Angular step (radians)
-            n = max(1, len(result.cam_angle) - 1)
-            dtheta = 2 * np.pi / n
+            theta = result.cam_angle
+            pos = result.position
+            vel = result.velocity
+            acc = result.acceleration
 
-            # Position step tolerance: consider absolute floor, fraction of stroke, and predicted step from |v|·Δθ
-            vmax = float(np.max(np.abs(result.velocity))) if len(result.velocity) == len(result.cam_angle) else 0.0
-            predicted_step = vmax * dtheta
-            pos_step_tol = max(100 * self.tolerance, self.continuity_factor * float(result.stroke), 0.5 * predicted_step)
+            if len(theta) < 2:
+                return True
 
-            pos_diff = np.diff(result.position)
-            max_pos_step = float(np.max(np.abs(pos_diff))) if len(pos_diff) else 0.0
-            if np.any(np.abs(pos_diff) > pos_step_tol):
+            # Actual angular steps (may be non-uniform with Legendre collocation)
+            dtheta = np.diff(theta)
+            dtheta_min = float(np.min(dtheta))
+            dtheta_max = float(np.max(dtheta))
+            dtheta_mean = float(np.mean(dtheta))
+            log.debug(
+                "Continuity check: n=%d, dtheta[min,mean,max]=[%.4g, %.4g, %.4g] rad",
+                len(theta), dtheta_min, dtheta_mean, dtheta_max,
+            )
+
+            base_tol = 100.0 * self.tolerance
+            vmax = float(np.max(np.abs(vel))) if len(vel) == len(theta) else 0.0
+            amax = float(np.max(np.abs(acc))) if len(acc) == len(theta) else 0.0
+
+            # Position continuity: per-segment tolerance using local dtheta
+            pos_tol_seg = np.maximum.reduce((
+                np.full_like(dtheta, base_tol, dtype=float),
+                np.full_like(dtheta, self.continuity_factor * float(result.stroke), dtype=float),
+                0.5 * vmax * dtheta,
+            ))
+            pos_diff = np.diff(pos)
+            if len(pos_diff) and np.any(np.abs(pos_diff) > pos_tol_seg):
+                idx = int(np.argmax(np.abs(pos_diff) - pos_tol_seg))
+                log.debug(
+                    "Position continuity worst @seg=%d: theta=[%.3f deg, %.3f deg], delta_x=%.4g, tol=%.4g, dtheta=%.4g, vmax=%.4g, stroke=%.4g, base_tol=%.4g",
+                    idx, float(np.degrees(theta[idx])), float(np.degrees(theta[idx+1])),
+                    float(pos_diff[idx]), float(pos_tol_seg[idx]), float(dtheta[idx]),
+                    vmax, float(result.stroke), base_tol,
+                )
+                max_pos_step = float(np.max(np.abs(pos_diff)))
+                pos_step_tol = float(np.max(pos_tol_seg))
                 log.warning(f"Position not continuous (max step {max_pos_step:.3g} > tol {pos_step_tol:.3g})")
                 return False
 
-            # Velocity step tolerance: scale by velocity magnitude
-            vel_diff = np.diff(result.velocity)
-            vmax_safe = vmax + 1e-12
-            vel_step_tol = max(100 * self.tolerance, self.continuity_factor * vmax_safe)
-            max_vel_step = float(np.max(np.abs(vel_diff))) if len(vel_diff) else 0.0
-            if np.any(np.abs(vel_diff) > vel_step_tol):
+            # Velocity continuity: global tolerance; emit segment context for worst offender
+            vel_diff = np.diff(vel)
+            vel_step_tol = max(base_tol, self.continuity_factor * (vmax + 1e-12))
+            if len(vel_diff) and np.any(np.abs(vel_diff) > vel_step_tol):
+                idx = int(np.argmax(np.abs(vel_diff)))
+                log.debug(
+                    "Velocity continuity worst @seg=%d: theta=[%.3f deg, %.3f deg], delta_v=%.4g, tol=%.4g, dtheta=%.4g, amax=%.4g",
+                    idx, float(np.degrees(theta[idx])), float(np.degrees(theta[idx+1])),
+                    float(vel_diff[idx]), float(vel_step_tol), float(dtheta[idx]), amax,
+                )
+                max_vel_step = float(np.max(np.abs(vel_diff)))
                 log.warning(f"Velocity not continuous (max step {max_vel_step:.3g} > tol {vel_step_tol:.3g})")
                 return False
 
-            # Acceleration step tolerance: scale by acceleration magnitude
-            acc = result.acceleration
-            amax = float(np.max(np.abs(acc))) + 1e-12 if len(acc) else 0.0
+            # Acceleration continuity: global tolerance; emit segment context
             acc_diff = np.diff(acc)
-            acc_step_tol = max(100 * self.tolerance, self.continuity_factor * amax)
-            max_acc_step = float(np.max(np.abs(acc_diff))) if len(acc_diff) else 0.0
-            if np.any(np.abs(acc_diff) > acc_step_tol):
+            acc_step_tol = max(base_tol, self.continuity_factor * (amax + 1e-12))
+            if len(acc_diff) and np.any(np.abs(acc_diff) > acc_step_tol):
+                idx = int(np.argmax(np.abs(acc_diff)))
+                log.debug(
+                    "Acceleration continuity worst @seg=%d: theta=[%.3f deg, %.3f deg], delta_a=%.4g, tol=%.4g, dtheta=%.4g",
+                    idx, float(np.degrees(theta[idx])), float(np.degrees(theta[idx+1])),
+                    float(acc_diff[idx]), float(acc_step_tol), float(dtheta[idx]),
+                )
+                max_acc_step = float(np.max(np.abs(acc_diff)))
                 log.warning(f"Acceleration not continuous (max step {max_acc_step:.3g} > tol {acc_step_tol:.3g})")
                 return False
 

@@ -11,7 +11,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Add project root to path for imports
 project_root = Path(__file__).parent.parent
@@ -20,7 +19,7 @@ sys.path.insert(0, str(project_root))
 # Avoid import-time validation before env exists
 os.environ.setdefault("CAMPRO_SKIP_VALIDATION", "1")
 
-from campro.environment.validator import validate_environment, get_installation_instructions
+from campro.environment.validator import validate_environment
 from campro.logging import get_logger
 
 log = get_logger(__name__)
@@ -47,17 +46,16 @@ def run_command(cmd: list, check: bool = True, stream: bool = False) -> subproce
                 cwd=project_root,
             )
             return result
-        else:
-            result = subprocess.run(
-                cmd,
-                check=check,
-                capture_output=True,
-                text=True,
-                cwd=project_root,
-            )
-            if result.stdout:
-                log.info(f"Command output: {result.stdout}")
-            return result
+        result = subprocess.run(
+            cmd,
+            check=check,
+            capture_output=True,
+            text=True,
+            cwd=project_root,
+        )
+        if result.stdout:
+            log.info(f"Command output: {result.stdout}")
+        return result
     except subprocess.CalledProcessError as e:
         log.error(f"Command failed: {e}")
         if e.stderr:
@@ -99,7 +97,7 @@ def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
         return False
     # Validate non-empty env file to avoid SpecNotFound empty error
     try:
-        with open(env_file, "r", encoding="utf-8") as f:
+        with open(env_file, encoding="utf-8") as f:
             content = f.read().strip()
         if not content:
             log.error(f"Environment file is empty: {env_file}")
@@ -107,14 +105,14 @@ def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
     except Exception as read_exc:
         log.error(f"Error reading environment file: {read_exc}")
         return False
-    
+
     package_manager = "mamba" if use_mamba else "conda"
-    
+
     try:
         # Check if environment already exists
         env_name = "larrak"
         result = run_command([package_manager, "env", "list"], check=False)
-        
+
         if env_name in result.stdout:
             log.info(f"Environment '{env_name}' already exists. Updating...")
             cmd = [package_manager, "env", "update", "-f", env_file, "--name", env_name]
@@ -129,13 +127,13 @@ def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
                 run_command(["conda", "config", "--set", "channel_priority", "strict"], check=False)
             except Exception:
                 pass
-        
+
         print("⏳ Creating/updating conda environment... (this may take several minutes)")
         # Stream conda/mamba output so user sees native progress bars
         run_command(cmd, stream=True)
         log.info(f"Environment setup completed successfully using {package_manager}")
         return True
-        
+
     except subprocess.CalledProcessError as e:
         log.error(f"Failed to create/update environment: {e}")
         return False
@@ -149,21 +147,20 @@ def validate_setup() -> bool:
         True if validation passes, False otherwise
     """
     log.info("Validating environment setup...")
-    
+
     try:
         results = validate_environment()
         overall_status = results["summary"]["overall_status"]
-        
+
         if overall_status.value == "pass":
             log.info("✓ Environment validation passed")
             return True
-        elif overall_status.value == "warning":
+        if overall_status.value == "warning":
             log.warning("⚠ Environment validation passed with warnings")
             return True
-        else:
-            log.error("✗ Environment validation failed")
-            return False
-            
+        log.error("✗ Environment validation failed")
+        return False
+
     except Exception as e:
         log.error(f"Error during validation: {e}")
         return False
@@ -172,39 +169,39 @@ def validate_setup() -> bool:
 def main():
     """Main setup function."""
     parser = argparse.ArgumentParser(
-        description="Setup Larrak environment using conda/mamba"
+        description="Setup Larrak environment using conda/mamba",
     )
     parser.add_argument(
         "--env-file",
         default="environment.yml",
-        help="Environment file to use (default: environment.yml)"
+        help="Environment file to use (default: environment.yml)",
     )
     parser.add_argument(
         "--use-mamba",
         action="store_true",
-        help="Use mamba instead of conda (faster)"
+        help="Use mamba instead of conda (faster)",
     )
     parser.add_argument(
         "--skip-validation",
         action="store_true",
-        help="Skip validation after setup"
+        help="Skip validation after setup",
     )
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Enable verbose output"
+        help="Enable verbose output",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Set up logging level
     if args.verbose:
         import logging
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     print("Larrak Environment Setup")
     print("=" * 50)
-    
+
     # Check for conda/mamba
     if args.use_mamba and check_mamba_available():
         package_manager = "mamba"
@@ -222,15 +219,15 @@ def main():
         print("  - Miniforge: https://github.com/conda-forge/miniforge")
         print("\nAfter installation, restart your terminal and run this script again.")
         sys.exit(1)
-    
+
     # Create environment
     env_file = args.env_file
     if not os.path.isabs(env_file):
         env_file = os.path.join(project_root, env_file)
-    
+
     print(f"📦 Creating environment from {env_file}...")
     success = create_conda_environment(env_file, use_mamba=(package_manager == "mamba"))
-    
+
     if not success:
         print("❌ Failed to create environment")
         # Retry with mamba if available and not already used
@@ -240,7 +237,7 @@ def main():
                 success = True
         if not success:
             sys.exit(1)
-    
+
     # Validate setup
     if not args.skip_validation:
         print("🔍 Validating environment...")
@@ -251,7 +248,7 @@ def main():
             print("Run 'python scripts/check_environment.py' for details")
     else:
         print("✅ Environment setup completed (validation skipped)")
-    
+
     # Print next steps
     print("\nNext steps:")
     print("1. Activate the environment:")

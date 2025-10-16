@@ -5,8 +5,8 @@ from math import cos, sin
 from typing import Tuple
 
 from campro.logging import get_logger
-from .motion import RadialSlotMotion
 
+from .motion import RadialSlotMotion
 
 log = get_logger(__name__)
 
