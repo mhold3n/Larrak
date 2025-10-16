@@ -51,7 +51,7 @@ def _check_ipopt_availability() -> bool:
         if not _IPOPT_AVAILABLE:
             log.warning(
                 "IPOPT solver is not available in CasADi. Run 'python scripts/check_environment.py' "
-                "for details or 'python scripts/setup_environment.py' to install."
+                "for details or 'python scripts/setup_environment.py' to install.",
             )
     except Exception as exc:
         _IPOPT_AVAILABLE = False

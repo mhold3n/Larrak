@@ -1,22 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from math import atan2, cos, pi, sin, sqrt
-from typing import List, Sequence, Tuple
+from math import pi, sqrt
+from typing import List, Tuple
 
 from campro.constants import PROFILE_CLOSURE_TOL
 from campro.logging import get_logger
+
 from .config import PlanetSynthesisConfig
+from .involute_internal import InternalGearParams, sample_internal_flank
 from .kinematics import PlanetKinematics
-from .involute_internal import InternalGearParams, InvoluteFlank, sample_internal_flank
 from .planetary_synthesis import (
-    _cross,
-    _interpolate_flank,
     _newton_solve_phi,
     _partial_theta,
     _planet_coords,
 )
-
 
 log = get_logger(__name__)
 
@@ -148,7 +147,7 @@ def evaluate_order0_metrics_given_phi(
 
     x0, y0 = pts[0]
     x1, y1 = pts[-1]
-    closure = sqrt((x1 - x0) * (x1 - y0) + (y1 - y0) * (y1 - y0))
+    closure = sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0))
 
     length = 0.0
     for i in range(len(pts) - 1):
@@ -177,7 +176,4 @@ def evaluate_order0_metrics_given_phi(
         samples=len(theta_vals),
         feasible=feasible,
     )
-
-
-
 

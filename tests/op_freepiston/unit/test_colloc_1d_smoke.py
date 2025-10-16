@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from campro.freepiston.opt.nlp import build_collocation_nlp
 
 
@@ -15,11 +13,7 @@ def test_build_nlp_1d_smoke_tiny_grid():
                     "xR_min": 0.05, "xR_max": 0.20, "vL_min": -10.0, "vL_max": 10.0,
                     "vR_min": -10.0, "vR_max": 10.0, "x_gap_min": 8.0e-4},
     }
-    try:
-        nlp, meta = build_collocation_nlp(P)
-    except RuntimeError:
-        pytest.skip("CasADi not available")
-        return
+    nlp, meta = build_collocation_nlp(P)
     assert "x" in nlp and "f" in nlp and "g" in nlp
     assert meta["K"] == 1 and meta["C"] == 1
 

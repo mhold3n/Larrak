@@ -6,9 +6,10 @@ with CasADi and Ipopt, supporting various collocation schemes.
 """
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 

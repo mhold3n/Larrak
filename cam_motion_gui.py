@@ -9,32 +9,34 @@ A comprehensive GUI with 5 tabs for three-stage optimization:
 5. Crank Center - Torque and side-loading optimization (Run 3)
 """
 
+import sys
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
-import sys
-import os
+from pathlib import Path
+from tkinter import messagebox, ttk
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from campro.logging import get_logger
+from campro.optimization.solver_analysis import analyze_ipopt_run
+
 
 # Validate environment before starting GUI
 def _validate_gui_environment():
     """Validate environment and show user-friendly error dialog if needed."""
     try:
         from campro.environment.validator import validate_environment
-        
+
         results = validate_environment()
         overall_status = results["summary"]["overall_status"]
-        
+
         if overall_status.value == "error":
             # Show error dialog
             root = tk.Tk()
             root.withdraw()  # Hide main window
-            
+
             error_msg = (
                 "Environment validation failed!\n\n"
                 "Required dependencies are missing or incompatible.\n\n"
@@ -44,45 +46,45 @@ def _validate_gui_environment():
                 "Would you like to continue anyway?\n"
                 "(This will likely cause errors)"
             )
-            
+
             result = messagebox.askyesno(
                 "Environment Error",
                 error_msg,
-                icon="warning"
+                icon="warning",
             )
-            
+
             root.destroy()
-            
+
             if not result:
                 print("GUI startup cancelled due to environment issues.")
                 sys.exit(1)
             else:
                 print("Warning: Continuing with environment issues. Errors may occur.")
-                
+
         elif overall_status.value == "warning":
             # Show warning dialog
             root = tk.Tk()
             root.withdraw()  # Hide main window
-            
+
             warning_msg = (
                 "Environment validation passed with warnings.\n\n"
                 "Some dependencies may not be optimal.\n\n"
                 "Run 'python scripts/check_environment.py' for details.\n\n"
                 "Continue with GUI?"
             )
-            
+
             result = messagebox.askyesno(
                 "Environment Warning",
                 warning_msg,
-                icon="warning"
+                icon="warning",
             )
-            
+
             root.destroy()
-            
+
             if not result:
                 print("GUI startup cancelled due to environment warnings.")
                 sys.exit(1)
-                
+
     except ImportError as e:
         print(f"Warning: Could not import environment validator: {e}")
         print("Environment validation skipped.")
@@ -136,6 +138,9 @@ class CamMotionGUI:
 
         # Initialize unified optimization framework
         self.unified_framework = UnifiedOptimizationFramework("UnifiedCamRingOptimizer")
+
+        # Store latest Ipopt log path for analysis
+        self.latest_ipopt_log = None
 
         # Create GUI elements
         self._create_widgets()
@@ -673,15 +678,6 @@ class CamMotionGUI:
             import traceback
             traceback.print_exc()
             error_message = str(e)
-            # Promote common TE-requirement failures to a clear dialog
-            if "Thermal-efficiency path" in error_message or "CasADi" in error_message or "IPOPT" in error_message:
-                self.root.after(0, lambda: messagebox.showerror(
-                    "Thermal Efficiency Required",
-                    "Thermal-efficiency optimization is required but unavailable or failed.\n\n"
-                    "Please install CasADi with IPOPT and retry.\n\n"
-                    "Conda (recommended):\n  conda install -c conda-forge casadi ipopt\n\n"
-                    "Pip (may lack IPOPT):\n  pip install 'casadi>=3.6,<3.7'",
-                ))
             self.root.after(0, self._enable_optimize_button)
             self.root.after(0, lambda: self.status_var.set(f"Optimization failed: {error_message}"))
 
@@ -703,10 +699,13 @@ class CamMotionGUI:
             tolerance=1e-6,
             lagrangian_tolerance=1e-8,
             penalty_weight=1.0,
-            # Enable CasADi/IPOPT path via thermal efficiency adapter
-            use_thermal_efficiency=True,
-            require_thermal_efficiency=True,
         )
+
+        # Enable Ipopt analysis for MA57 readiness grading
+        settings.enable_ipopt_analysis = True
+
+        # Enable thermal efficiency to use Ipopt (required for analysis)
+        settings.use_thermal_efficiency = True
 
         # Create constraints
         constraints = UnifiedOptimizationConstraints(
@@ -745,7 +744,7 @@ class CamMotionGUI:
 
         # Configure framework
         self.unified_framework.configure(settings=settings, constraints=constraints, targets=targets)
-        print(f"DEBUG: Configured unified framework with method: {method_name} (use_thermal_efficiency=True)")
+        print(f"DEBUG: Configured unified framework with method: {method_name}")
 
     def _update_all_plots(self, result_data):
         """Update all plots with optimization results."""
@@ -769,6 +768,12 @@ class CamMotionGUI:
 
             # Update status
             self.status_var.set(f"Optimization completed - Total time: {result_data.total_solve_time:.3f}s")
+
+            # Show detailed per-phase analysis
+            self._show_detailed_analysis(result_data)
+
+            # Show MA57 readiness analysis
+            self._show_ma57_readiness()
 
         except Exception as e:
             print(f"DEBUG: Error updating plots: {e}")
@@ -1402,6 +1407,111 @@ Side-Loading:
         self._on_stroke_changed()
 
         self.status_var.set("Parameters reset to defaults")
+
+    def _show_detailed_analysis(self, result_data):
+        """Show detailed per-phase analysis in console output."""
+        try:
+            print("\n" + "="*60)
+            print("DETAILED OPTIMIZATION ANALYSIS")
+            print("="*60)
+            
+            # Phase 1 Analysis
+            p1_analysis = getattr(result_data, 'primary_ipopt_analysis', None)
+            print(f"\nPhase 1 (Thermal Efficiency):")
+            if p1_analysis:
+                print(f"  MA57 Readiness: {p1_analysis.grade.upper()}")
+                print(f"  Reasons: {', '.join(p1_analysis.reasons)}")
+                print(f"  Suggested Action: {p1_analysis.suggested_action}")
+                if 'iterations' in p1_analysis.stats:
+                    print(f"  Iterations: {p1_analysis.stats['iterations']}")
+                if 'solve_time' in p1_analysis.stats:
+                    print(f"  Solve Time: {p1_analysis.stats['solve_time']:.3f}s")
+            else:
+                print("  Analysis: Not available (thermal efficiency adapter)")
+            
+            # Phase 2 Analysis
+            p2_analysis = getattr(result_data, 'secondary_ipopt_analysis', None)
+            print(f"\nPhase 2 (Litvin/Cam-Ring):")
+            if p2_analysis:
+                print(f"  MA57 Readiness: {p2_analysis.grade.upper()}")
+                print(f"  Reasons: {', '.join(p2_analysis.reasons)}")
+                print(f"  Suggested Action: {p2_analysis.suggested_action}")
+                if 'iterations' in p2_analysis.stats:
+                    print(f"  Iterations: {p2_analysis.stats['iterations']}")
+                if 'solve_time' in p2_analysis.stats:
+                    print(f"  Solve Time: {p2_analysis.stats['solve_time']:.3f}s")
+            else:
+                print("  Analysis: Not available")
+            
+            # Phase 3 Analysis
+            p3_analysis = getattr(result_data, 'tertiary_ipopt_analysis', None)
+            print(f"\nPhase 3 (Crank Center):")
+            if p3_analysis:
+                print(f"  MA57 Readiness: {p3_analysis.grade.upper()}")
+                print(f"  Reasons: {', '.join(p3_analysis.reasons)}")
+                print(f"  Suggested Action: {p3_analysis.suggested_action}")
+                if 'iterations' in p3_analysis.stats:
+                    print(f"  Iterations: {p3_analysis.stats['iterations']}")
+                if 'solve_time' in p3_analysis.stats:
+                    print(f"  Solve Time: {p3_analysis.stats['solve_time']:.3f}s")
+            else:
+                print("  Analysis: Not available")
+            
+            # Overall Summary
+            print(f"\nOverall Summary:")
+            print(f"  Total Solve Time: {result_data.total_solve_time:.3f}s")
+            print(f"  Optimization Method: {result_data.optimization_method}")
+            
+            # Count phases with analysis
+            analysis_count = sum(1 for analysis in [p1_analysis, p2_analysis, p3_analysis] if analysis is not None)
+            print(f"  Phases with Analysis: {analysis_count}/3")
+            
+            print("="*60)
+            
+        except Exception as e:
+            print(f"DEBUG: Detailed analysis display failed: {e}")
+
+    def _show_ma57_readiness(self):
+        """Analyze all optimization phases and show comprehensive MA57 readiness."""
+        try:
+            if not hasattr(self, 'unified_result') or not self.unified_result:
+                return
+            
+            # Extract analysis from all phases
+            p1_analysis = getattr(self.unified_result, 'primary_ipopt_analysis', None)
+            p2_analysis = getattr(self.unified_result, 'secondary_ipopt_analysis', None)
+            p3_analysis = getattr(self.unified_result, 'tertiary_ipopt_analysis', None)
+            
+            # Display each phase separately
+            status_lines = []
+            if p1_analysis:
+                status_lines.append(f"P1 MA57: {p1_analysis.grade.upper()}")
+            if p2_analysis:
+                status_lines.append(f"P2 MA57: {p2_analysis.grade.upper()}")
+            if p3_analysis:
+                status_lines.append(f"P3 MA57: {p3_analysis.grade.upper()}")
+            
+            # Update status bar with all three phases
+            if status_lines:
+                current_status = self.status_var.get()
+                # Remove any existing MA57 info
+                if " | MA57" in current_status:
+                    current_status = current_status.split(" | MA57")[0]
+                grade_info = " | " + " | ".join(status_lines)
+                self.status_var.set(current_status + grade_info)
+            
+            # Log detailed analysis for debugging
+            print("DEBUG: Multi-phase MA57 readiness analysis:")
+            if p1_analysis:
+                print(f"  Phase 1: {p1_analysis.grade} - {p1_analysis.reasons}")
+            if p2_analysis:
+                print(f"  Phase 2: {p2_analysis.grade} - {p2_analysis.reasons}")
+            if p3_analysis:
+                print(f"  Phase 3: {p3_analysis.grade} - {p3_analysis.reasons}")
+
+        except Exception as e:
+            # If analysis fails, keep normal status
+            print(f"DEBUG: Multi-phase MA57 readiness analysis failed: {e}")
 
 
 def main():

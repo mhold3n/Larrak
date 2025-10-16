@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import cos, pi, sin
-from typing import List, Sequence, Tuple
+from typing import List, Tuple
 
 from campro.constants import PROFILE_CLOSURE_TOL
 from campro.logging import get_logger
-from .config import PlanetSynthesisConfig
-from .kinematics import PlanetKinematics
-from .motion import RadialSlotMotion
-from .involute_internal import InternalGearParams, InvoluteFlank, sample_internal_flank
 
+from .config import PlanetSynthesisConfig
+from .involute_internal import InternalGearParams, InvoluteFlank, sample_internal_flank
+from .kinematics import PlanetKinematics
 
 log = get_logger(__name__)
 

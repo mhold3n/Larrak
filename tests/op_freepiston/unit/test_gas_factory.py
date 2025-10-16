@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from campro.freepiston.gas import build_gas_model
 
 
@@ -14,11 +12,7 @@ def test_build_gas_model_modes():
 
 
 def test_mdot_symbolic_smoke():
-    try:
-        import casadi as ca  # type: ignore
-    except Exception:
-        pytest.skip("CasADi not available")
-        return
+    import casadi as ca  # type: ignore
 
     gm = build_gas_model({"flow": {"mode": "0d"}})
 

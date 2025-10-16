@@ -1,7 +1,4 @@
 import math
-from typing import Callable
-
-import pytest
 
 
 def zero_motion(theta: float) -> float:

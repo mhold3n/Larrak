@@ -42,5 +42,15 @@ DEFAULT_DISCHARGE_COEFFICIENT: float = 0.7
 
 
 
+# IPOPT / HSL integration constants
+# Note: these paths are user-environment specific and centralized here to avoid
+# duplication across modules. Update as needed for the active environment.
+HSLLIB_PATH: str = "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib"
+IPOPT_OPT_PATH: str = "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt"
+
+# Default directory for Ipopt output files when analysis is enabled
+IPOPT_LOG_DIR: str = "logs/ipopt"
+
+
 
 

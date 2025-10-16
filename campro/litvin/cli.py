@@ -4,15 +4,11 @@ import argparse
 import json
 from pathlib import Path
 
-from CamPro_LitvinPlanetary import (
-    GeometrySearchConfig,
-    OptimizationOrder,
-    PlanetSynthesisConfig,
-    RadialSlotMotion,
-    optimize_geometry,
-    synthesize_planet_from_motion,
-)
 from campro.logging import get_logger
+from .config import GeometrySearchConfig, OptimizationOrder, PlanetSynthesisConfig
+from .motion import RadialSlotMotion
+from .optimization import optimize_geometry
+from .planetary_synthesis import synthesize_planet_from_motion
 
 
 def main() -> None:

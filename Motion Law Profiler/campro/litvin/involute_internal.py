@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import cos, sin, sqrt
-from typing import List, Sequence, Tuple
+from typing import List, Tuple
 
 from campro.constants import DEG_TO_RAD
 

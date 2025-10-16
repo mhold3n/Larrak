@@ -142,7 +142,6 @@ def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPO
 
     if n_vars > 1000 or n_constraints > 1000:
         # Large problem - use more robust settings
-        options.linear_solver = "ma57"
         options.hessian_approximation = "limited-memory"
         options.max_iter = 10000
         log.info(f"Large problem detected ({n_vars} vars, {n_constraints} constraints), using robust settings")

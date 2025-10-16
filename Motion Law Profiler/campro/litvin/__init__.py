@@ -4,8 +4,8 @@ from .motion import RadialSlotMotion
 from .planetary_synthesis import PlanetToothProfile, synthesize_planet_from_motion
 
 __all__ = [
-    "RadialSlotMotion",
     "PlanetToothProfile",
+    "RadialSlotMotion",
     "synthesize_planet_from_motion",
 ]
 
