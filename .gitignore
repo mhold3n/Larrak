@@ -209,3 +209,7 @@ Thumbs.db
 casadi/
 coinhsl-archive-2023.11.17/
 ThirdParty-HSL/
+
+# Additional dependency files
+ipopt.opt
+ma57_migration_data.json
