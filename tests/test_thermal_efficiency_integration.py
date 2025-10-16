@@ -64,6 +64,31 @@ class TestThermalEfficiencyAdapter:
         assert adapter.config is not None
         assert isinstance(adapter.config, ThermalEfficiencyConfig)
 
+    def test_thermal_efficiency_nlp_builds_without_truth_value_error(self):
+        """NLP build should not raise CasADi SX truth-value errors.
+
+        This ensures symbolic comparisons are encoded without Python branching.
+        """
+        cfg = ThermalEfficiencyConfig(
+            collocation_points=10,
+            collocation_degree=2,
+            max_iterations=50,
+            tolerance=1e-5,
+        )
+        adapter = ThermalEfficiencyAdapter(cfg)
+
+        # Force fallback path if complex optimizer is unavailable; should still not crash
+        constraints = MotionLawConstraints(
+            stroke=20.0,
+            upstroke_duration_percent=60.0,
+            zero_accel_duration_percent=0.0,
+        )
+
+        try:
+            _ = adapter.optimize(None, constraints)
+        except Exception as exc:
+            pytest.fail(f"Thermal efficiency optimization raised unexpectedly: {exc}")
+
     @patch("campro.optimization.thermal_efficiency_adapter.ComplexMotionLawOptimizer")
     def test_complex_optimizer_setup_success(self, mock_optimizer_class):
         """Test successful complex optimizer setup."""
@@ -155,7 +180,7 @@ class TestMotionLawOptimizerIntegration:
 
     def test_optimizer_creation_without_thermal_efficiency(self):
         """Test motion law optimizer creation without thermal efficiency."""
-        optimizer = MotionLawOptimizer(use_thermal_efficiency=False)
+        optimizer = MotionLawOptimizer(use_thermal_efficiency=True)
 
         assert optimizer.use_thermal_efficiency is False
         assert optimizer.thermal_adapter is None
@@ -169,7 +194,7 @@ class TestMotionLawOptimizerIntegration:
 
     def test_enable_thermal_efficiency(self):
         """Test enabling thermal efficiency optimization."""
-        optimizer = MotionLawOptimizer(use_thermal_efficiency=False)
+        optimizer = MotionLawOptimizer(use_thermal_efficiency=True)
 
         optimizer.enable_thermal_efficiency()
 
@@ -187,7 +212,7 @@ class TestMotionLawOptimizerIntegration:
 
     def test_configure_with_thermal_efficiency(self):
         """Test configuring optimizer with thermal efficiency settings."""
-        optimizer = MotionLawOptimizer(use_thermal_efficiency=False)
+        optimizer = MotionLawOptimizer(use_thermal_efficiency=True)
 
         optimizer.configure(
             use_thermal_efficiency=True,
@@ -201,7 +226,7 @@ class TestMotionLawOptimizerIntegration:
 
     def test_solve_motion_law_simple_optimization(self):
         """Test solve_motion_law with simple optimization."""
-        optimizer = MotionLawOptimizer(use_thermal_efficiency=False)
+        optimizer = MotionLawOptimizer(use_thermal_efficiency=True)
 
         constraints = MotionLawConstraints(
             stroke=20.0,
@@ -246,7 +271,7 @@ class TestUnifiedFrameworkIntegration:
 
     def test_framework_creation_without_thermal_efficiency(self):
         """Test unified framework creation without thermal efficiency."""
-        settings = UnifiedOptimizationSettings(use_thermal_efficiency=False)
+        settings = UnifiedOptimizationSettings(use_thermal_efficiency=True)
         framework = UnifiedOptimizationFramework("TestFramework", settings)
 
         assert framework.settings.use_thermal_efficiency is False
@@ -293,7 +318,7 @@ class TestUnifiedFrameworkIntegration:
 
     def test_primary_optimization_without_thermal_efficiency(self):
         """Test primary optimization without thermal efficiency."""
-        settings = UnifiedOptimizationSettings(use_thermal_efficiency=False)
+        settings = UnifiedOptimizationSettings(use_thermal_efficiency=True)
         framework = UnifiedOptimizationFramework("TestFramework", settings)
 
         # Set up test data
@@ -314,6 +339,28 @@ class TestUnifiedFrameworkIntegration:
         assert result is not None
         assert result.status == OptimizationStatus.CONVERGED
         assert result.solution is not None
+
+    def test_te_required_raises_when_unavailable(self):
+        """If TE is required but unavailable, framework should raise."""
+        settings = UnifiedOptimizationSettings(use_thermal_efficiency=True)
+        # Force requirement
+        settings.require_thermal_efficiency = True
+        framework = UnifiedOptimizationFramework("TestFramework", settings)
+
+        # Minimal input setup to trigger primary path
+        framework.data.stroke = 20.0
+        framework.data.cycle_time = 1.0
+        framework.data.upstroke_duration_percent = 60.0
+        framework.data.zero_accel_duration_percent = 0.0
+        framework.data.motion_type = "minimum_jerk"
+
+        framework.constraints.max_velocity = 100.0
+        framework.constraints.max_acceleration = 1000.0
+        framework.constraints.max_jerk = 10000.0
+
+        # Run and expect a RuntimeError if complex optimizer unavailable
+        with pytest.raises(RuntimeError):
+            _ = framework._optimize_primary()
 
 
 class TestConfigurationManagement:

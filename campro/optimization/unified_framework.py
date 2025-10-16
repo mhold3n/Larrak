@@ -91,6 +91,8 @@ class UnifiedOptimizationSettings:
     # Thermal-efficiency-focused primary optimization (complex gas optimizer)
     use_thermal_efficiency: bool = False
     thermal_efficiency_config: Optional[Dict[str, Any]] = None
+    # If true, fail fast when TE is enabled but unavailable/non-converged
+    require_thermal_efficiency: bool = False
     # Phase-1: constant load model (free piston against generator)
     constant_load_value: float = 1.0
     # Phase-1: constant operating temperature (free-piston idealization)
@@ -502,41 +504,43 @@ class UnifiedOptimizationFramework:
                     ml_constraints,
                     MotionType.MINIMUM_JERK,
                 )
-                # Convert to framework OptimizationResult
-                return OptimizationResult(
-                    status=OptimizationStatus.CONVERGED if adapter_result.convergence_status == "converged" else OptimizationStatus.FAILED,
-                    objective_value=adapter_result.objective_value,
-                    solution=adapter_result.to_dict(),
-                    iterations=adapter_result.iterations,
-                    solve_time=adapter_result.solve_time,
+                status = (
+                    OptimizationStatus.CONVERGED
+                    if adapter_result.convergence_status == "converged"
+                    else OptimizationStatus.FAILED
                 )
+                if status == OptimizationStatus.CONVERGED:
+                    # Convert to framework OptimizationResult
+                    result = OptimizationResult(
+                        status=status,
+                        objective_value=adapter_result.objective_value,
+                        solution=adapter_result.to_dict(),
+                        iterations=adapter_result.iterations,
+                        solve_time=adapter_result.solve_time,
+                    )
+                    
+                    # Attach primary-level assumptions to convergence info for downstream visibility
+                    assumptions = {
+                        'constant_temperature': True,
+                        'ideal_fuel_load': True,
+                        'angular_sampling_points': 360,
+                        'independent_variable': 'cam_angle_radians',
+                        'constant_temperature_K': float(getattr(self.settings, 'constant_temperature_K', 900.0)),
+                        'constant_load_value': float(getattr(self.settings, 'constant_load_value', 1.0))
+                    }
+                    result.metadata.update({'assumptions': assumptions})
+                    
+                    return result
+                else:
+                    # TE path failed; raise immediately
+                    raise RuntimeError(
+                        "Thermal-efficiency optimization failed; install CasADi+IPOPT and retry"
+                    )
             except Exception as exc:
-                log.warning(f"Thermal-efficiency adapter path failed, falling back to simple primary optimization: {exc}")
-                # fall through to default simple optimization below
-        
-        # Use the cam motion law solver which properly handles upstroke duration and zero acceleration duration
-        result = self.primary_optimizer.solve_cam_motion_law(
-            cam_constraints=cam_constraints,
-            motion_type=motion_type,
-            cycle_time=self.data.cycle_time
-        )
-
-        # Attach primary-level assumptions to convergence info for downstream visibility
-        try:
-            if isinstance(result, OptimizationResult):
-                assumptions = {
-                    'constant_temperature': True,
-                    'ideal_fuel_load': True,
-                    'angular_sampling_points': 360,
-                    'independent_variable': 'cam_angle_radians',
-                    'constant_temperature_K': float(getattr(self.settings, 'constant_temperature_K', 900.0)),
-                    'constant_load_value': float(getattr(self.settings, 'constant_load_value', 1.0))
-                }
-                result.metadata.update({'assumptions': assumptions})
-        except Exception:
-            pass
-
-        return result
+                raise RuntimeError(
+                    f"Thermal-efficiency adapter path failed: {exc}. "
+                    "Cannot fallback to simple optimization. Fix CasADi integration."
+                ) from exc
     
     def _optimize_secondary(self) -> OptimizationResult:
         """Perform secondary optimization (cam-ring)."""

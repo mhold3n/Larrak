@@ -164,6 +164,13 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
 
         except ImportError as e:
             log.error(f"Failed to import complex gas optimizer: {e}")
+            # Emit environment diagnostics for CasADi/IPOPT
+            try:
+                import casadi as ca  # type: ignore
+                plugins = ca.nlpsol_plugins() if hasattr(ca, "nlpsol_plugins") else []
+                log.error(f"CasADi version: {getattr(ca, '__version__', 'unknown')} | nlpsol plugins: {plugins}")
+            except Exception as exc:
+                log.error(f"CasADi import failed in diagnostics: {exc}")
             log.error("Complex gas optimizer not available. Using fallback mode.")
             # If tests patched ComplexMotionLawOptimizer into this module, use it
             try:
@@ -197,8 +204,11 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
         log.info("Starting thermal efficiency optimization for acceleration zones")
 
         if self.complex_optimizer is None:
-            log.warning("Complex gas optimizer not available. Using fallback optimization.")
-            return self._fallback_optimization(constraints)
+            raise RuntimeError(
+                "Complex gas optimizer with CasADi/IPOPT is not available. "
+                "Cannot perform thermal efficiency optimization. "
+                "Check import errors in logs for details."
+            )
 
         try:
             # Run complex optimization
@@ -244,6 +254,8 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
 
         except Exception as e:
             log.error(f"Thermal efficiency optimization failed: {e}")
+            import traceback
+            log.error(f"Traceback: {traceback.format_exc()}")
             return OptimizationResult(
                 status=OptimizationStatus.FAILED,
                 objective_value=float("inf"),
@@ -395,67 +407,6 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             log.error(f"Result validation failed: {e}")
             return False
 
-    def _fallback_optimization(self, constraints: MotionLawConstraints) -> OptimizationResult:
-        """Fallback optimization when complex optimizer is not available."""
-        log.info("Using fallback optimization (simple motion law)")
-
-        try:
-            # Generate simple motion law
-            x, v, a, j = self._generate_fallback_motion_law(constraints)
-
-            # Create motion law data
-            motion_law_data = {
-                "cam_angle": np.linspace(0, 2*np.pi, 360),
-                "position": x,
-                "velocity": v,
-                "acceleration": a,
-                "jerk": j,
-                # Aliases expected by some tests
-                "theta": np.linspace(0, 2*np.pi, 360),
-                "x": x,
-                "v": v,
-                "a": a,
-                "j": j,
-                "constraints": constraints.to_dict() if hasattr(constraints, "to_dict") else {
-                    "stroke": constraints.stroke,
-                    "upstroke_duration_percent": constraints.upstroke_duration_percent,
-                    "zero_accel_duration_percent": constraints.zero_accel_duration_percent,
-                    "max_velocity": constraints.max_velocity,
-                    "max_acceleration": constraints.max_acceleration,
-                    "max_jerk": constraints.max_jerk,
-                },
-                "optimization_type": "fallback",
-                "thermal_efficiency": 0.0,
-            }
-
-            return OptimizationResult(
-                status=OptimizationStatus.CONVERGED,
-                objective_value=float(np.trapz(j**2, motion_law_data["cam_angle"])),
-                solution=motion_law_data,
-                iterations=0,
-                solve_time=0.0,
-                metadata={
-                    "thermal_efficiency": 0.0,
-                    "indicated_work": 0.0,
-                    "max_pressure": 0.0,
-                    "max_temperature": 0.0,
-                    "min_piston_gap": 0.0,
-                    "optimization_method": "fallback",
-                    "complex_optimizer": False,
-                    "validation_passed": False,
-                },
-            )
-
-        except Exception as e:
-            log.error(f"Fallback optimization failed: {e}")
-            return OptimizationResult(
-                status=OptimizationStatus.FAILED,
-                objective_value=float("inf"),
-                solution=None,
-                iterations=0,
-                solve_time=0.0,
-                metadata={"error": str(e)},
-            )
 
     def solve_motion_law(self, constraints: MotionLawConstraints,
                         motion_type: MotionType) -> MotionLawResult:

@@ -1,0 +1,39 @@
+name: larrak
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Python version constraint
+  - python>=3.9,<3.12
+
+  # Core optimization dependencies
+  - casadi>=3.6.0
+  - ipopt>=3.14.0
+
+  # Numerical computing
+  - numpy>=1.24.0
+  - scipy>=1.10.0
+
+  # Visualization
+  - matplotlib>=3.7.0
+
+  # Development tools
+  - pytest>=7.4.0
+  - pytest-cov>=4.1.0
+  - mypy>=1.5.0
+  - ruff>=0.0.280
+  - hypothesis>=6.82.0
+
+  # Package management / utilities
+  - pip
+  - colorama
+
+  # Optional interactive tools
+  - jupyter
+  - ipython
+
+  # Pip packages (if needed)
+  - pip:
+      # Add pip-only packages here if required
+      # - some-pip-only-package>=1.0.0
+

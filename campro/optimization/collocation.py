@@ -8,7 +8,7 @@ with CasADi and Ipopt, supporting various collocation schemes.
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -21,6 +21,32 @@ from campro.constants import (
 from campro.logging import get_logger
 
 from .base import BaseOptimizer, OptimizationResult
+
+
+# Lightweight grid utilities to support litvin optimization without importing heavy deps
+@dataclass(frozen=True)
+class CollocationGrid:
+    theta: Sequence[float]
+
+
+def make_uniform_grid(n: int) -> CollocationGrid:
+    import math
+
+    n = max(8, int(n))
+    theta = [2.0 * math.pi * i / n for i in range(n)]
+    return CollocationGrid(theta=theta)
+
+
+def central_diff(values: Sequence[float], h: float) -> Tuple[Sequence[float], Sequence[float]]:
+    n = len(values)
+    d = [0.0] * n
+    d2 = [0.0] * n
+    for i in range(n):
+        ip = (i + 1) % n
+        im = (i - 1) % n
+        d[i] = (values[ip] - values[im]) / (2.0 * h)
+        d2[i] = (values[ip] - 2.0 * values[i] + values[im]) / (h * h)
+    return d, d2
 
 log = get_logger(__name__)
 

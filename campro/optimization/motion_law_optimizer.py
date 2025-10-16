@@ -202,7 +202,22 @@ class MotionLawOptimizer(BaseOptimizer):
             validator = MotionLawValidator()
             validation = validator.validate(result)
             if not validation.valid:
-                log.warning(f"Motion law validation failed: {validation}")
+                # Emit detailed diagnostics for debugging continuity or boundary failures
+                issues = ", ".join(validation.issues) if hasattr(validation, "issues") else str(validation)
+                try:
+                    max_dx = float(np.max(np.abs(np.diff(result.position))))
+                    max_dv = float(np.max(np.abs(np.diff(result.velocity))))
+                    max_da = float(np.max(np.abs(np.diff(result.acceleration))))
+                except Exception:
+                    max_dx = max_dv = max_da = float("nan")
+                log.warning(
+                    "Motion law validation failed: %s | maxΔx=%.3g, maxΔv=%.3g, maxΔa=%.3g, points=%d",
+                    issues,
+                    max_dx,
+                    max_dv,
+                    max_da,
+                    len(result.cam_angle) if hasattr(result, "cam_angle") else -1,
+                )
 
             solve_time = time.time() - start_time
             log.info(f"Motion law optimization completed in {solve_time:.3f} seconds")
@@ -397,24 +412,10 @@ class MotionLawOptimizer(BaseOptimizer):
 
         except Exception as e:
             log.error(f"Minimum energy optimization failed: {e}")
-            # Fall back to smooth acceleration profile
-            result = self._solve_smooth_acceleration_profile(collocation_points, constraints)
-
-            return MotionLawResult(
-                cam_angle=collocation_points,
-                position=result["position"],
-                velocity=result["velocity"],
-                acceleration=result["acceleration"],
-                jerk=result["jerk"],
-                objective_value=0.0,
-                convergence_status="fallback",
-                solve_time=time.time() - start_time,
-                iterations=1,
-                stroke=constraints.stroke,
-                upstroke_duration_percent=constraints.upstroke_duration_percent,
-                zero_accel_duration_percent=constraints.zero_accel_duration_percent,
-                motion_type=MotionType.MINIMUM_ENERGY,
-            )
+            raise RuntimeError(
+                f"Motion law optimization with CasADi failed: {e}. "
+                "Cannot fallback to scipy methods. Fix CasADi integration."
+            ) from e
 
     def _generate_initial_guess_minimum_jerk(self, control_points: np.ndarray,
                                            constraints: MotionLawConstraints) -> np.ndarray:

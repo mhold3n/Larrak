@@ -2,6 +2,35 @@
 
 A comprehensive Python framework for solving optimal motion law problems using direct collocation methods with CasADi and Ipopt.
 
+[![CI](https://github.com/yourusername/larrak/workflows/CI/badge.svg)](https://github.com/yourusername/larrak/actions)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**CI/CD**: This repository includes GitHub Actions workflows that automatically validate the environment setup, run tests, and perform code quality checks on every push and pull request.
+
+## Prerequisites
+
+- **Python 3.9+**: Required for all installations
+- **Conda or Miniconda**: Recommended for best compatibility with ipopt solver
+- **Git**: For cloning the repository
+
+## Quick Installation
+
+The fastest way to get started:
+
+```bash
+# Clone and setup
+git clone <repository-url>
+cd Larrak
+python scripts/setup_environment.py
+conda activate larrak
+
+# Verify installation
+python scripts/check_environment.py
+```
+
+**Note**: Large dependency folders (`casadi/`, `coinhsl-archive-2023.11.17/`, `ThirdParty-HSL/`) are excluded from GitHub clones. The setup script will install CasADi and IPOPT via conda. For optional HSL solvers that improve performance, see the [Installation Guide](docs/installation_guide.md#optional-hsl-solvers-ma27ma57).
+
 ## Features
 
 - **Multiple Motion Law Types**: Minimum time, energy, jerk, and custom objectives
@@ -11,22 +40,7 @@ A comprehensive Python framework for solving optimal motion law problems using d
 - **High Performance**: Leverages CasADi's symbolic computation and Ipopt's optimization
 - **Comprehensive Testing**: Unit tests, integration tests, and property-based testing
 - **Visualization**: Built-in plotting capabilities for solution analysis
-
-## Quick Start
-
-### Installation
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd Larrak
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install in development mode
-pip install -e .
-```
+- **Automated Setup**: One-command environment setup with dependency validation
 
 ### Basic Usage - Cam Motion Laws
 
@@ -263,13 +277,68 @@ pytest -q
 
 ## Documentation
 
+- [Installation Guide](docs/installation_guide.md): Comprehensive installation instructions
 - [Design Document](docs/optimal_motion_design.md): Detailed technical documentation
 - [Project Status](docs/project_status.md): Current implementation status and API reference
+
+## Installation Methods
+
+### Method 1: Conda (Recommended)
+
+Conda provides the most reliable installation with ipopt solver support:
+
+```bash
+# Create environment from environment.yml
+conda env create -f environment.yml
+conda activate larrak
+
+# Verify installation
+python scripts/check_environment.py
+```
+
+### Method 2: Automated Setup
+
+Use the provided setup script for automated installation:
+
+```bash
+# Run setup script (detects conda/mamba automatically)
+python scripts/setup_environment.py
+
+# Activate environment
+conda activate larrak
+```
+
+### Method 3: Pip (Alternative)
+
+Pip installation may not include ipopt solver support:
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Verify installation
+python scripts/check_environment.py
+```
+
+## Verifying Installation
+
+After installation, verify everything works:
+
+```bash
+# Check environment status
+python scripts/check_environment.py
+
+# Test basic functionality
+python -c "import campro; print('✓ Installation successful!')"
+
+# Run GUI
+python cam_motion_gui.py
+```
 
 ## Dependencies
 
 - **CasADi** (>=3.6.0): Symbolic computation and optimal control
-- **Ipopt**: Interior-point optimizer
+- **Ipopt**: Interior-point optimizer (included with conda installation)
 - **NumPy** (>=1.24.0): Numerical computations
 - **SciPy** (>=1.10.0): Additional numerical tools
 - **Matplotlib** (>=3.7.0): Plotting and visualization
