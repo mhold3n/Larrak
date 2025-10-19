@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from typing import Dict, List
 
 from campro.logging import get_logger
+from campro.constants import CASADI_PHYSICS_EPSILON
+
+# Import CasADi for domain guards
+try:
+    import casadi as ca  # type: ignore
+except ImportError:
+    ca = None  # type: ignore
 
 log = get_logger(__name__)
 
@@ -205,7 +212,7 @@ def thermal_efficiency(*, W_ind: float, Q_in: float) -> float:
     """
     if Q_in <= 0.0:
         return 0.0
-    return W_ind / Q_in
+    return W_ind / ca.fmax(Q_in, CASADI_PHYSICS_EPSILON)
 
 
 def mechanical_efficiency(*, W_ind: float, W_friction: float) -> float:
@@ -227,7 +234,7 @@ def mechanical_efficiency(*, W_ind: float, W_friction: float) -> float:
     """
     if W_ind <= 0.0:
         return 0.0
-    return (W_ind - W_friction) / W_ind
+    return (W_ind - W_friction) / ca.fmax(W_ind, CASADI_PHYSICS_EPSILON)
 
 
 def volumetric_efficiency(*, m_actual: float, m_theoretical: float) -> float:
@@ -249,7 +256,7 @@ def volumetric_efficiency(*, m_actual: float, m_theoretical: float) -> float:
     """
     if m_theoretical <= 0.0:
         return 0.0
-    return m_actual / m_theoretical
+    return m_actual / ca.fmax(m_theoretical, CASADI_PHYSICS_EPSILON)
 
 
 def scavenging_efficiency(*, m_fresh: float, m_total: float) -> float:
@@ -271,7 +278,7 @@ def scavenging_efficiency(*, m_fresh: float, m_total: float) -> float:
     """
     if m_total <= 0.0:
         return 0.0
-    return m_fresh / m_total
+    return m_fresh / ca.fmax(m_total, CASADI_PHYSICS_EPSILON)
 
 
 def short_circuit_loss(*, m_short_circuit: float, m_total: float) -> float:
@@ -293,7 +300,7 @@ def short_circuit_loss(*, m_short_circuit: float, m_total: float) -> float:
     """
     if m_total <= 0.0:
         return 0.0
-    return m_short_circuit / m_total
+    return m_short_circuit / ca.fmax(m_total, CASADI_PHYSICS_EPSILON)
 
 
 def cycle_analysis(*, p_series: List[float], V_series: List[float],
@@ -353,15 +360,15 @@ def cycle_analysis(*, p_series: List[float], V_series: List[float],
     # Compression ratio (simplified)
     V_max = max(V_series) if V_series else 0.0
     V_min = min(V_series) if V_series else 0.0
-    CR = V_max / V_min if V_min > 0.0 else 0.0
+    CR = V_max / ca.fmax(V_min, CASADI_PHYSICS_EPSILON) if V_min > 0.0 else 0.0
 
     return {
         "indicated_work": W_ind,
         "thermal_efficiency": eta_th,
         "mechanical_efficiency": eta_mech,
         "volumetric_efficiency": eta_vol,
-        "pressure_ratio": p_max / p_min if p_min > 0.0 else 0.0,
-        "temperature_ratio": T_max / T_min if T_min > 0.0 else 0.0,
+        "pressure_ratio": p_max / ca.fmax(p_min, CASADI_PHYSICS_EPSILON) if p_min > 0.0 else 0.0,
+        "temperature_ratio": T_max / ca.fmax(T_min, CASADI_PHYSICS_EPSILON) if T_min > 0.0 else 0.0,
         "compression_ratio": CR,
         "friction_work": W_friction,
         "heat_input": Q_in,
@@ -607,7 +614,7 @@ def blowdown_efficiency(
     if m_exhaust_initial <= 0.0:
         return 0.0
 
-    return m_exhaust_removed / m_exhaust_initial
+    return m_exhaust_removed / ca.fmax(m_exhaust_initial, CASADI_PHYSICS_EPSILON)
 
 
 def scavenging_quality_index(
@@ -629,19 +636,19 @@ def scavenging_quality_index(
 
     if target_distribution is None:
         # Target uniform distribution
-        target_distribution = [1.0 / len(fresh_charge_distribution)] * len(fresh_charge_distribution)
+        target_distribution = [1.0 / ca.fmax(len(fresh_charge_distribution), CASADI_PHYSICS_EPSILON)] * len(fresh_charge_distribution)
 
     if len(fresh_charge_distribution) != len(target_distribution):
         return 0.0
 
     # Calculate coefficient of variation (inverse of uniformity)
-    mean_fresh = sum(fresh_charge_distribution) / len(fresh_charge_distribution)
+    mean_fresh = sum(fresh_charge_distribution) / ca.fmax(len(fresh_charge_distribution), CASADI_PHYSICS_EPSILON)
     if mean_fresh <= 0.0:
         return 0.0
 
-    variance = sum((x - mean_fresh)**2 for x in fresh_charge_distribution) / len(fresh_charge_distribution)
+    variance = sum((x - mean_fresh)**2 for x in fresh_charge_distribution) / ca.fmax(len(fresh_charge_distribution), CASADI_PHYSICS_EPSILON)
     std_dev = variance**0.5
-    cv = std_dev / mean_fresh
+    cv = std_dev / ca.fmax(mean_fresh, CASADI_PHYSICS_EPSILON)
 
     # Quality index (higher is better, 1.0 for perfect uniformity)
     quality_index = 1.0 / (1.0 + cv)

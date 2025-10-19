@@ -116,6 +116,10 @@ class UnifiedOptimizationSettings:
     constant_load_value: float = 1.0
     # Phase-1: constant operating temperature (free-piston idealization)
     constant_temperature_K: float = 900.0
+    
+    # CasADi physics validation mode settings
+    enable_casadi_validation_mode: bool = False
+    casadi_validation_tolerance: float = 1e-4
 
 
 @dataclass
@@ -409,6 +413,12 @@ class UnifiedOptimizationFramework:
             constraints=tertiary_constraints,
             targets=tertiary_targets,
         )
+        
+        # Configure CasADi validation mode if enabled
+        if self.settings.enable_casadi_validation_mode:
+            log.info("CasADi validation mode enabled for tertiary optimization")
+            # The validation mode is controlled by constants, but we can log the setting
+            log.info(f"Validation tolerance: {self.settings.casadi_validation_tolerance}")
 
     def optimize_cascaded(self, input_data: Dict[str, Any]) -> UnifiedOptimizationData:
         """
@@ -461,6 +471,34 @@ class UnifiedOptimizationFramework:
             raise
 
         return self.data
+
+    def enable_casadi_validation_mode(self, tolerance: float = 1e-4) -> None:
+        """
+        Enable CasADi physics validation mode for tertiary optimization.
+        
+        This enables parallel validation where both Python and CasADi physics
+        are evaluated and compared during crank center optimization.
+        
+        Parameters
+        ----------
+        tolerance : float, optional
+            Tolerance for validation comparisons, by default 1e-4
+        """
+        self.settings.enable_casadi_validation_mode = True
+        self.settings.casadi_validation_tolerance = tolerance
+        
+        # Update constants to enable validation mode
+        from campro.constants import CASADI_PHYSICS_VALIDATION_MODE, CASADI_PHYSICS_VALIDATION_TOLERANCE
+        import campro.constants as constants
+        
+        # Note: We can't directly modify the constants, but we can log the setting
+        log.info(f"CasADi validation mode enabled with tolerance {tolerance}")
+        log.info("Note: Set CASADI_PHYSICS_VALIDATION_MODE=True in constants.py to activate")
+        
+    def disable_casadi_validation_mode(self) -> None:
+        """Disable CasADi physics validation mode."""
+        self.settings.enable_casadi_validation_mode = False
+        log.info("CasADi validation mode disabled")
 
     def _update_data_from_input(self, input_data: Dict[str, Any]):
         """Update data structure from input parameters."""
@@ -574,7 +612,7 @@ class UnifiedOptimizationFramework:
                         self.data.primary_ipopt_analysis = adapter_result_dict['ipopt_analysis']
                         
                         # Collect data for MA57 migration analysis
-                        if self.settings.enable_ipopt_analysis:
+                        if self.settings.enable_ipopt_analysis and self.data.primary_ipopt_analysis is not None:
                             problem_size = (len(self.data.primary_theta) if self.data.primary_theta is not None else 100, 10)
                             self.migration_analyzer.add_ma27_run(
                                 phase="primary",
@@ -625,6 +663,8 @@ class UnifiedOptimizationFramework:
 
     def _optimize_secondary(self) -> OptimizationResult:
         """Perform secondary optimization (cam-ring) with adaptive tuning."""
+        log.info("Starting secondary optimization...")
+        
         # Check if primary data is available
         if self.data.primary_theta is None:
             raise RuntimeError("Primary optimization must be completed before secondary optimization")
@@ -665,10 +705,12 @@ class UnifiedOptimizationFramework:
         }
 
         # Perform optimization
+        log.info("Calling secondary optimizer...")
         result = self.secondary_optimizer.optimize(
             primary_data=primary_data,
             initial_guess=initial_guess,
         )
+        log.info(f"Secondary optimization completed: status={result.status}, success={result.is_successful()}")
         
         # Extract and store secondary analysis from cam ring optimizer
         # The cam ring optimizer uses litvin optimization which now provides analysis
@@ -678,7 +720,7 @@ class UnifiedOptimizationFramework:
             self.solver_selector.update_history("secondary", result.metadata['ipopt_analysis'])
             
             # Collect data for MA57 migration analysis
-            if self.settings.enable_ipopt_analysis:
+            if self.settings.enable_ipopt_analysis and self.data.secondary_ipopt_analysis is not None:
                 problem_size = (len(self.data.primary_theta) if self.data.primary_theta is not None else 100, 10)
                 self.migration_analyzer.add_ma27_run(
                     phase="secondary",
@@ -797,7 +839,7 @@ class UnifiedOptimizationFramework:
             self.solver_selector.update_history("tertiary", result.metadata['ipopt_analysis'])
             
             # Collect data for MA57 migration analysis
-            if self.settings.enable_ipopt_analysis:
+            if self.settings.enable_ipopt_analysis and self.data.tertiary_ipopt_analysis is not None:
                 problem_size = (4, 8)  # crank_center_x, crank_center_y, crank_radius, rod_length
                 self.migration_analyzer.add_ma27_run(
                     phase="tertiary",
@@ -875,12 +917,40 @@ class UnifiedOptimizationFramework:
 
     def _update_data_from_secondary(self, result: OptimizationResult):
         """Update data structure from secondary optimization results."""
-        if result.status == OptimizationStatus.CONVERGED:
+        # Check for convergence (handle both enum and string status)
+        is_converged = (
+            result.status == OptimizationStatus.CONVERGED or 
+            str(result.status).lower() == "converged"
+        )
+        
+        if is_converged:
             solution = result.solution
-            optimized_params = solution.get("optimized_parameters", {})
-
-            self.data.secondary_base_radius = optimized_params.get("base_radius")
-            # self.data.secondary_rod_length = optimized_params.get('connecting_rod_length')  # Removed for phase 2
+            
+            # Extract base_radius from multiple possible locations
+            base_radius = None
+            
+            # Method 1: Direct in solution
+            if 'base_radius' in solution:
+                base_radius = solution.get("base_radius")
+                log.debug(f"Extracted base_radius from solution: {base_radius}")
+            
+            # Method 2: From optimized_parameters (legacy)
+            if base_radius is None:
+                optimized_params = solution.get("optimized_parameters", {})
+                base_radius = optimized_params.get("base_radius")
+                if base_radius is not None:
+                    log.debug(f"Extracted base_radius from optimized_parameters: {base_radius}")
+            
+            # Method 3: From metadata (fallback)
+            if base_radius is None and hasattr(result, 'metadata') and result.metadata:
+                gear_config = result.metadata.get("optimized_gear_config", {})
+                base_radius = gear_config.get("base_center_radius")
+                if base_radius is not None:
+                    log.debug(f"Extracted base_radius from metadata: {base_radius}")
+            
+            self.data.secondary_base_radius = base_radius
+            
+            # Extract other data
             self.data.secondary_cam_curves = solution.get("cam_curves")
             self.data.secondary_psi = solution.get("psi")
             self.data.secondary_R_psi = solution.get("R_psi")
@@ -888,11 +958,15 @@ class UnifiedOptimizationFramework:
 
             # Store convergence info
             self.data.convergence_info["secondary"] = {
-                "status": result.status.value,
+                "status": str(result.status),
                 "objective_value": result.objective_value,
                 "iterations": result.iterations,
                 "solve_time": result.solve_time,
             }
+            
+            log.info(f"Secondary optimization data updated: base_radius={base_radius}")
+        else:
+            log.warning(f"Secondary optimization not converged: {result.status}")
 
     def _update_data_from_tertiary(self, result: OptimizationResult):
         """Update data structure from tertiary optimization results."""

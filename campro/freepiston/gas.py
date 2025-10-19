@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Literal, Protocol
 
 from campro.logging import get_logger
+from campro.constants import CASADI_PHYSICS_EPSILON
 
 log = get_logger(__name__)
 
@@ -35,16 +36,16 @@ def _mdot_orifice() -> MassFlowFunction:
         eps = 1e-12
         pr = (p_down + eps) / (p_up + eps)
         pr_crit = (2.0 / (gamma + 1.0)) ** (gamma / (gamma - 1.0))
-        c_up = ca.sqrt(gamma * R * T_up)
+        c_up = ca.sqrt(ca.fmax(gamma * R * T_up, CASADI_PHYSICS_EPSILON))
         # Choked branch
-        c_crit = ca.sqrt(gamma * R * T_up * (2.0 / (gamma + 1.0)))
+        c_crit = ca.sqrt(ca.fmax(gamma * R * T_up * (2.0 / (gamma + 1.0)), CASADI_PHYSICS_EPSILON))
         rho_crit = rho_up * (2.0 / (gamma + 1.0)) ** (1.0 / (gamma - 1.0))
         mdot_choked = A_eff * rho_crit * c_crit
         # Subsonic branch (isentropic)
         term1 = 2.0 * gamma / (gamma - 1.0)
-        term2 = ca.fmax(0.0, pr ** (2.0 / gamma) - pr ** ((gamma + 1.0) / gamma))
-        u = c_up * ca.sqrt(term1 * term2)
-        rho_throat = rho_up * pr ** (1.0 / gamma)
+        term2 = ca.fmax(0.0, ca.fmax(pr, CASADI_PHYSICS_EPSILON) ** (2.0 / gamma) - ca.fmax(pr, CASADI_PHYSICS_EPSILON) ** ((gamma + 1.0) / gamma))
+        u = c_up * ca.sqrt(ca.fmax(term1 * term2, CASADI_PHYSICS_EPSILON))
+        rho_throat = rho_up * ca.fmax(pr, CASADI_PHYSICS_EPSILON) ** (1.0 / gamma)
         mdot_sub = A_eff * rho_throat * u
         # Select based on critical pressure ratio
         use_choked = ca.if_else(pr <= pr_crit, 1.0, 0.0)
@@ -56,8 +57,8 @@ def _q_woschni_like() -> HeatTransferFunction:
     def fn(*, ca: Any, p_gas: Any, T_gas: Any, T_wall: Any,
            B: float, x_L: Any, x_R: Any) -> Any:
         # Simple Woschni-like h and area model
-        h = 130.0 * (p_gas / 1.0e5) ** 0.8 * (T_gas / 1000.0) ** 0.55
-        A_wall = ca.pi * B * ca.fmax(0.0, x_R - x_L) + 2.0 * ca.pi * (B / 2.0) ** 2
+        h = 130.0 * ca.fmax(p_gas / 1.0e5, CASADI_PHYSICS_EPSILON) ** 0.8 * ca.fmax(T_gas / 1000.0, CASADI_PHYSICS_EPSILON) ** 0.55
+        A_wall = ca.pi * B * ca.fmax(0.0, x_R - x_L) + 2.0 * ca.pi * ca.fmax(B / 2.0, CASADI_PHYSICS_EPSILON) ** 2
         return h * A_wall * (T_gas - T_wall)
     return fn
 

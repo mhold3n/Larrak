@@ -6,6 +6,7 @@ from typing import Any, Dict, Tuple
 from campro.freepiston.gas import build_gas_model
 from campro.freepiston.opt.colloc import CollocationGrid, make_grid
 from campro.logging import get_logger
+from campro.constants import CASADI_PHYSICS_EPSILON
 
 log = get_logger(__name__)
 
@@ -60,8 +61,8 @@ def chamber_volume_from_pistons(*, x_L: Any, x_R: Any, B: float, Vc: float) -> A
         Chamber volume [m^3] (CasADi variable)
     """
     ca = _import_casadi()
-    A_piston = math.pi * (B / 2.0) ** 2
-    return Vc + A_piston * (x_R - x_L)
+    A_piston = math.pi * ca.fmax(B / 2.0, CASADI_PHYSICS_EPSILON) ** 2
+    return ca.fmax(Vc + A_piston * (x_R - x_L), CASADI_PHYSICS_EPSILON)
 
 
 def enhanced_piston_dae_constraints(
@@ -78,7 +79,7 @@ def enhanced_piston_dae_constraints(
     ca = _import_casadi()
 
     # Gas pressure forces
-    A_piston = math.pi * (geometry["bore"] / 2.0) ** 2
+    A_piston = math.pi * ca.fmax(geometry["bore"] / 2.0, CASADI_PHYSICS_EPSILON) ** 2
     F_gas_L = p_gas_c * A_piston
     F_gas_R = -p_gas_c * A_piston  # Opposite direction
 
@@ -89,8 +90,8 @@ def enhanced_piston_dae_constraints(
     rod_length = geometry["rod_length"]
 
     # Effective mass including rod dynamics
-    m_eff_L = m_piston + m_rod * (rod_cg_offset / rod_length)
-    m_eff_R = m_piston + m_rod * (rod_cg_offset / rod_length)
+    m_eff_L = m_piston + m_rod * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
+    m_eff_R = m_piston + m_rod * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
 
     F_inertia_L = -m_eff_L * aL_c
     F_inertia_R = -m_eff_R * aR_c
@@ -150,7 +151,7 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
 
     # Piston area
     B = geometry.get("bore", 0.1)  # m
-    A_piston = math.pi * (B / 2.0) ** 2
+    A_piston = math.pi * ca.fmax(B / 2.0, CASADI_PHYSICS_EPSILON) ** 2
 
     # Gas pressure forces (opposed pistons)
     F_gas_L = p_gas * A_piston
@@ -167,8 +168,8 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
     F_piston_inertia_R = -m_piston * a_R
 
     # Connecting rod inertia (simplified)
-    F_rod_inertia_L = -m_rod * a_L * (rod_cg_offset / rod_length)
-    F_rod_inertia_R = -m_rod * a_R * (rod_cg_offset / rod_length)
+    F_rod_inertia_L = -m_rod * a_L * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
+    F_rod_inertia_R = -m_rod * a_R * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
 
     F_inertia_L = F_piston_inertia_L + F_rod_inertia_L
     F_inertia_R = F_piston_inertia_R + F_rod_inertia_R
@@ -200,7 +201,7 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
 
     # Smooth clearance penalty using tanh function
     gap_violation = ca.fmax(0.0, gap_min - gap)
-    F_clearance = k_clearance * gap_violation * ca.tanh(gap_violation / clearance_smooth)
+    F_clearance = k_clearance * gap_violation * ca.tanh(gap_violation / ca.fmax(clearance_smooth, CASADI_PHYSICS_EPSILON))
 
     # Net forces
     F_L = F_gas_L + F_inertia_L + F_friction_L + F_ring_L + F_clearance
@@ -226,12 +227,12 @@ def enhanced_gas_dae_constraints(
     R = thermo.get("R", 287.0)
     gamma = thermo.get("gamma", 1.4)
     cp = thermo.get("cp", 1005.0)
-    cv = cp / gamma
+    cv = cp / ca.fmax(gamma, CASADI_PHYSICS_EPSILON)
 
     # Mass balance: d(rho*V)/dt = mdot_in - mdot_out
     # Expanding: rho*dV/dt + V*drho/dt = mdot_in - mdot_out
     # Solving for drho/dt: drho/dt = (mdot_in - mdot_out - rho*dV/dt) / V
-    drho_dt = (mdot_in_c - mdot_out_c - rho_c * dV_dt_c) / V_c
+    drho_dt = (mdot_in_c - mdot_out_c - rho_c * dV_dt_c) / ca.fmax(V_c, CASADI_PHYSICS_EPSILON)
 
     # Energy balance: d(m*e)/dt = Q_comb - Q_heat + mdot_in*h_in - mdot_out*h_out - p*dV/dt
     # where m = rho*V, e = cv*T, h = cp*T, p = rho*R*T
@@ -258,7 +259,7 @@ def enhanced_gas_dae_constraints(
     dT_dt = (Q_comb_c - Q_heat_c +
              mdot_in_c * h_in - mdot_out_c * h_out -
              p_gas * dV_dt_c -
-             e_internal * (drho_dt * V_c + rho_c * dV_dt_c)) / (m_total * cv)
+             e_internal * (drho_dt * V_c + rho_c * dV_dt_c)) / ca.fmax(m_total * cv, CASADI_PHYSICS_EPSILON)
 
     return drho_dt, dT_dt
 
@@ -312,12 +313,12 @@ def gas_energy_balance(*, rho: Any, T: Any, V: Any, dV_dt: Any,
     # Gas properties (temperature-dependent)
     R = 287.0  # J/(kg K) - gas constant for air
     cp_ref = 1005.0  # J/(kg K) - reference specific heat
-    cv_ref = cp_ref / gamma  # J/(kg K) - reference specific heat at constant volume
+    cv_ref = cp_ref / ca.fmax(gamma, CASADI_PHYSICS_EPSILON)  # J/(kg K) - reference specific heat at constant volume
 
     # Temperature-dependent specific heat (simplified linear model)
     # In practice, this would use JANAF polynomial fits
     cp = cp_ref * (1.0 + 0.0001 * (T - 300.0))  # Linear temperature dependence
-    cv = cp / gamma
+    cv = cp / ca.fmax(gamma, CASADI_PHYSICS_EPSILON)
 
     # Set default inlet/outlet temperatures
     if T_in is None:
@@ -350,7 +351,7 @@ def gas_energy_balance(*, rho: Any, T: Any, V: Any, dV_dt: Any,
     # Solve for dT/dt
     dT_dt = (Q_combustion - Q_heat_transfer +
              mdot_in * h_in - mdot_out * h_out -
-             p * dV_dt - e * dm_dt) / (m * cv)
+             p * dV_dt - e * dm_dt) / ca.fmax(m * cv, CASADI_PHYSICS_EPSILON)
 
     return dT_dt
 
@@ -443,7 +444,7 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
     Ain_k = Ain0
     Aex_k = Aex0
 
-    h = 1.0 / K
+    h = 1.0 / ca.fmax(K, CASADI_PHYSICS_EPSILON)
     # Objective accumulators
     W_ind_accum = 0.0
     Q_in_accum = 0.0
@@ -527,12 +528,12 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
             V_c = chamber_volume_from_pistons(x_L=xL_c, x_R=xR_c,
                                             B=geometry.get("bore", 0.1),
                                             Vc=geometry.get("clearance_volume", 1e-4))
-            dV_dt = math.pi * (geometry.get("bore", 0.1) / 2.0) ** 2 * (vR_c - vL_c)
+            dV_dt = math.pi * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2 * (vR_c - vL_c)
 
             # Enhanced piston forces with proper acceleration coupling
             # Compute accelerations from velocity differences (simplified)
-            aL_c = (vL_c - vL_k) / h if h > 0 else 0.0
-            aR_c = (vR_c - vR_k) / h if h > 0 else 0.0
+            aL_c = (vL_c - vL_k) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
+            aR_c = (vR_c - vR_k) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
 
             # Calculate average gas pressure for piston forces
             p_avg = 0.0
@@ -541,7 +542,7 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 u_i = u_colloc[c][i]
                 E_i = E_colloc[c][i]
                 # Convert to pressure using ideal gas law
-                p_i = (1.4 - 1.0) * rho_i * (E_i - 0.5 * u_i**2)
+                p_i = (1.4 - 1.0) * rho_i * (E_i - 0.5 * ca.fmax(u_i, CASADI_PHYSICS_EPSILON)**2)
                 p_avg += p_i
             p_avg /= n_cells
 
@@ -585,12 +586,12 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 )
 
                 # Cell width (simplified)
-                dx = (xR_c - xL_c) / n_cells
+                dx = (xR_c - xL_c) / ca.fmax(n_cells, CASADI_PHYSICS_EPSILON)
 
                 # Semi-discrete form: dU/dt = -(F_right - F_left) / dx + S
                 dU_dt = []
                 for comp in range(3):
-                    dU_dt.append(-(F_right[comp] - F_left[comp]) / dx + S_sources[comp])
+                    dU_dt.append(-(F_right[comp] - F_left[comp]) / ca.fmax(dx, CASADI_PHYSICS_EPSILON) + S_sources[comp])
 
                 # Add collocation constraint
                 U_cell = [rho_i, rho_i * u_i, rho_i * E_i]
@@ -616,11 +617,11 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 rhs_xR += h * grid.a[c][j] * vR_colloc[j]
 
                 # Enhanced force balance with proper mass calculation
-                m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
-                m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
+                m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+                m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
 
-                rhs_vL += h * grid.a[c][j] * (F_L_c / m_total_L)
-                rhs_vR += h * grid.a[c][j] * (F_R_c / m_total_R)
+                rhs_vL += h * grid.a[c][j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+                rhs_vR += h * grid.a[c][j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
 
             colloc_res = [xL_c - rhs_xL, xR_c - rhs_xR, vL_c - rhs_vL, vR_c - rhs_vR]
             g += colloc_res
@@ -636,7 +637,7 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
             # Simplified mass flow calculation
             mdot_in = Ain_c * 0.1  # Simplified
             mdot_out = Aex_c * 0.1  # Simplified
-            ratio = mdot_out / (mdot_in + eps)
+            ratio = mdot_out / ca.fmax(mdot_in + eps, CASADI_PHYSICS_EPSILON)
             scav_penalty_accum += h * grid.weights[c] * ratio
 
         # Step to next time point
@@ -650,11 +651,11 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
             xR_k1 += h * grid.weights[j] * vR_colloc[j]
 
             # Enhanced force balance with proper mass calculation
-            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
-            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
+            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
 
-            vL_k1 += h * grid.weights[j] * (F_L_c / m_total_L)
-            vR_k1 += h * grid.weights[j] * (F_R_c / m_total_R)
+            vL_k1 += h * grid.weights[j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+            vR_k1 += h * grid.weights[j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
 
         # Update gas states
         rho_k1 = [rho_k[i] for i in range(n_cells)]
@@ -731,7 +732,7 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
     J_terms.append(-W_ind_accum)
     # Thermal efficiency surrogate: maximize W_ind/Q_in -> minimize -(W/Q)
     if w_eta > 0.0:
-        J_terms.append(-w_eta * (W_ind_accum / (Q_in_accum + 1e-6)))
+        J_terms.append(-w_eta * (W_ind_accum / ca.fmax(Q_in_accum + 1e-6, CASADI_PHYSICS_EPSILON)))
     # Scavenging penalty (minimize cycle short-circuit fraction)
     if w_short > 0.0:
         J_terms.append(w_short * scav_penalty_accum)
@@ -754,14 +755,14 @@ def _hllc_flux_symbolic(U_L: List[Any], U_R: List[Any], ca: Any) -> List[Any]:
     rho_R, rhou_R, rhoE_R = U_R
 
     # Convert to primitive variables
-    u_L = rhou_L / rho_L
-    u_R = rhou_R / rho_R
-    p_L = (1.4 - 1.0) * rho_L * (rhoE_L / rho_L - 0.5 * u_L**2)
-    p_R = (1.4 - 1.0) * rho_R * (rhoE_R / rho_R - 0.5 * u_R**2)
+    u_L = rhou_L / ca.fmax(rho_L, CASADI_PHYSICS_EPSILON)
+    u_R = rhou_R / ca.fmax(rho_R, CASADI_PHYSICS_EPSILON)
+    p_L = (1.4 - 1.0) * rho_L * (rhoE_L / ca.fmax(rho_L, CASADI_PHYSICS_EPSILON) - 0.5 * ca.fmax(u_L, CASADI_PHYSICS_EPSILON)**2)
+    p_R = (1.4 - 1.0) * rho_R * (rhoE_R / ca.fmax(rho_R, CASADI_PHYSICS_EPSILON) - 0.5 * ca.fmax(u_R, CASADI_PHYSICS_EPSILON)**2)
 
     # Simplified flux calculation
-    F_L = [rho_L * u_L, rho_L * u_L**2 + p_L, (rhoE_L + p_L) * u_L]
-    F_R = [rho_R * u_R, rho_R * u_R**2 + p_R, (rhoE_R + p_R) * u_R]
+    F_L = [rho_L * u_L, rho_L * ca.fmax(u_L, CASADI_PHYSICS_EPSILON)**2 + p_L, (rhoE_L + p_L) * u_L]
+    F_R = [rho_R * u_R, rho_R * ca.fmax(u_R, CASADI_PHYSICS_EPSILON)**2 + p_R, (rhoE_R + p_R) * u_R]
 
     # Simple average for now (in practice, use proper HLLC)
     F = [(F_L[i] + F_R[i]) / 2.0 for i in range(3)]
@@ -777,15 +778,15 @@ def _calculate_1d_source_terms(rho: Any, u: Any, E: Any, xL: Any, xR: Any,
     ca = _import_casadi()
 
     # Volume change rate
-    dV_dt = math.pi * (geometry.get("bore", 0.1) / 2.0) ** 2 * (vR - vL)
+    dV_dt = math.pi * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2 * (vR - vL)
 
     # Cell volume (simplified)
-    V_cell = (xR - xL) / flow_cfg.get("mesh_cells", 80)
+    V_cell = (xR - xL) / ca.fmax(flow_cfg.get("mesh_cells", 80), CASADI_PHYSICS_EPSILON)
 
     # Source terms
-    S_rho = -rho * dV_dt / V_cell  # Mass source
-    S_rhou = -rho * u * dV_dt / V_cell  # Momentum source
-    S_rhoE = -rho * E * dV_dt / V_cell + Q_comb / V_cell  # Energy source
+    S_rho = -rho * dV_dt / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Mass source
+    S_rhou = -rho * u * dV_dt / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Momentum source
+    S_rhoE = -rho * E * dV_dt / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON) + Q_comb / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Energy source
 
     return [S_rho, S_rhou, S_rhoE]
 
@@ -860,7 +861,7 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
     Ain_k = Ain0
     Aex_k = Aex0
 
-    h = 1.0 / K
+    h = 1.0 / ca.fmax(K, CASADI_PHYSICS_EPSILON)
     # Objective accumulators
     W_ind_accum = 0.0
     Q_in_accum = 0.0
@@ -950,15 +951,15 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             V_c = chamber_volume_from_pistons(x_L=xL_c, x_R=xR_c,
                                             B=geometry.get("bore", 0.1),
                                             Vc=geometry.get("clearance_volume", 1e-4))
-            dV_dt = math.pi * (geometry.get("bore", 0.1) / 2.0) ** 2 * (vR_c - vL_c)
+            dV_dt = math.pi * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2 * (vR_c - vL_c)
 
             # Gas pressure
             p_c = gas_pressure_from_state(rho=rho_c, T=T_c)
 
             # Enhanced piston forces with proper acceleration coupling
             # Compute accelerations from velocity differences (simplified)
-            aL_c = (vL_c - vL_k) / h if h > 0 else 0.0
-            aR_c = (vR_c - vR_k) / h if h > 0 else 0.0
+            aL_c = (vL_c - vL_k) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
+            aR_c = (vR_c - vR_k) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
 
             F_L_c, F_R_c = piston_force_balance(p_gas=p_c, x_L=xL_c, x_R=xR_c,
                                                v_L=vL_c, v_R=vR_c, a_L=aL_c, a_R=aR_c,
@@ -992,10 +993,10 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
 
             # Mass balance
             dm_dt = mdot_in - mdot_out
-            drho_dt = (dm_dt - rho_c * dV_dt) / V_c
+            drho_dt = (dm_dt - rho_c * dV_dt) / ca.fmax(V_c, CASADI_PHYSICS_EPSILON)
             # Fresh fraction dynamics
             m_c = rho_c * V_c
-            dyF_dt = (mdot_in - mdot_out * yF_k - yF_k * dm_dt) / (m_c + 1e-9)
+            dyF_dt = (mdot_in - mdot_out * yF_k - yF_k * dm_dt) / ca.fmax(m_c, CASADI_PHYSICS_EPSILON)
 
             # Collocation equations (state updates using A matrix)
             rhs_xL = xL_k
@@ -1020,11 +1021,11 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
                 rhs_xR += h * grid.a[c][j] * vR_colloc[j]
 
                 # Enhanced force balance with proper mass calculation
-                m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
-                m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
+                m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+                m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
 
-                rhs_vL += h * grid.a[c][j] * (F_L_c / m_total_L)
-                rhs_vR += h * grid.a[c][j] * (F_R_c / m_total_R)
+                rhs_vL += h * grid.a[c][j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+                rhs_vR += h * grid.a[c][j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
                 rhs_rho += h * grid.a[c][j] * drho_dt
                 rhs_T += h * grid.a[c][j] * dT_dt
                 if dynamic_wall:
@@ -1057,7 +1058,7 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             Q_in_accum += h * grid.weights[c] * Q_comb_c
             # Scavenging short-circuit penalty surrogate
             eps = 1e-9
-            ratio = mdot_out / (mdot_in + eps)
+            ratio = mdot_out / ca.fmax(mdot_in + eps, CASADI_PHYSICS_EPSILON)
             scav_penalty_accum += h * grid.weights[c] * ratio
 
         # Step to next time point
@@ -1073,11 +1074,11 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             xR_k1 += h * grid.weights[j] * vR_colloc[j]
 
             # Enhanced force balance with proper mass calculation
-            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
-            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / geometry.get("rod_length", 0.15))
+            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
 
-            vL_k1 += h * grid.weights[j] * (F_L_c / m_total_L)
-            vR_k1 += h * grid.weights[j] * (F_R_c / m_total_R)
+            vL_k1 += h * grid.weights[j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+            vR_k1 += h * grid.weights[j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
             rho_k1 += h * grid.weights[j] * drho_dt
             T_k1 += h * grid.weights[j] * dT_dt
             if dynamic_wall:
@@ -1160,8 +1161,8 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
                 Ain_prev = Ain_stage[j] if k > 0 else Ain0
                 Aex_prev = Aex_stage[j] if k > 0 else Aex0
 
-                Ain_rate = (Ain_stage[j] - Ain_prev) / h
-                Aex_rate = (Aex_stage[j] - Aex_prev) / h
+                Ain_rate = (Ain_stage[j] - Ain_prev) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
+                Aex_rate = (Aex_stage[j] - Aex_prev) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
 
                 g += [Ain_rate, Aex_rate]  # Valve rate constraints
                 lbg += [-bounds.get("dA_dt_max", 0.02), -bounds.get("dA_dt_max", 0.02)]
@@ -1260,7 +1261,7 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
     J_terms.append(-W_ind_accum)
     # Thermal efficiency surrogate: maximize W_ind/Q_in -> minimize -(W/Q)
     if w_eta > 0.0:
-        J_terms.append(-w_eta * (W_ind_accum / (Q_in_accum + 1e-6)))
+        J_terms.append(-w_eta * (W_ind_accum / ca.fmax(Q_in_accum + 1e-6, CASADI_PHYSICS_EPSILON)))
     # Scavenging penalty (minimize cycle short-circuit fraction)
     if w_short > 0.0:
         J_terms.append(w_short * short_circuit_fraction)

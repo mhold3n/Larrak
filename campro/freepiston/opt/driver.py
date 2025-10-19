@@ -126,10 +126,16 @@ def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPO
 
     # Override with user-specified options
     for key, value in solver_opts.items():
-        if hasattr(options, key):
-            setattr(options, key, value)
+        # Handle ipopt. prefix in config keys
+        if key.startswith('ipopt.'):
+            attr_name = key[6:]  # Remove 'ipopt.' prefix
         else:
-            log.warning(f"Unknown IPOPT option: {key}")
+            attr_name = key
+            
+        if hasattr(options, attr_name):
+            setattr(options, attr_name, value)
+        else:
+            log.warning(f"Unknown IPOPT option: {key} (attribute: {attr_name})")
 
     # Adjust options based on problem size
     num = P.get("num", {})
@@ -180,9 +186,9 @@ def _setup_optimization_bounds(
             x0 = np.array(warm_start["x0"])
             if len(x0) != n_vars:
                 log.warning(f"Warm start x0 length {len(x0)} != problem size {n_vars}")
-                x0 = np.zeros(n_vars)
+                x0 = _generate_physics_based_initial_guess(n_vars, P)
         else:
-            x0 = np.zeros(n_vars)
+            x0 = _generate_physics_based_initial_guess(n_vars, P)
 
         # Set up parameters
         p = np.array([])  # No parameters for now
@@ -195,6 +201,87 @@ def _setup_optimization_bounds(
     except Exception as e:
         log.error(f"Failed to set up optimization bounds: {e!s}")
         return None, None, None, None, None, None
+
+
+def _generate_physics_based_initial_guess(n_vars: int, P: Dict[str, Any]) -> np.ndarray:
+    """Generate physics-based initial guess for better thermal efficiency convergence."""
+    x0 = np.zeros(n_vars)
+    
+    # Get geometry and thermodynamics from problem parameters
+    geom = P.get("geometry", {})
+    thermo = P.get("thermodynamics", {})
+    bounds = P.get("bounds", {})
+    
+    # Extract key parameters
+    stroke = geom.get("stroke", 0.1)  # m
+    bore = geom.get("bore", 0.1)  # m
+    compression_ratio = geom.get("compression_ratio", 10.0)
+    clearance_volume = geom.get("clearance_volume", 1e-4)  # m^3
+    
+    # Thermodynamic properties
+    gamma = thermo.get("gamma", 1.4)
+    R = thermo.get("R", 287.0)  # J/(kg K)
+    cp = thermo.get("cp", 1005.0)  # J/(kg K)
+    
+    # Estimate initial conditions based on geometry
+    # Piston positions: ensure minimum gap is maintained
+    gap_min = bounds.get("gap_min", 0.0008)  # Minimum gap constraint
+    x_L_initial = stroke * 0.1  # Start at 10% of stroke
+    x_R_initial = x_L_initial + gap_min + stroke * 0.6  # Ensure minimum gap + 60% stroke range
+    
+    # Initial gas state (intake conditions)
+    p_initial = 1e5  # Pa (atmospheric pressure)
+    T_initial = 300.0  # K (room temperature)
+    rho_initial = p_initial / (R * T_initial)  # kg/m^3
+    
+    # Estimate compression pressure and temperature
+    p_compressed = p_initial * (compression_ratio ** gamma)
+    T_compressed = T_initial * (compression_ratio ** (gamma - 1))
+    rho_compressed = p_compressed / (R * T_compressed)
+    
+    # Estimate velocities based on stroke and cycle time
+    cycle_time = 1.0  # s (default)
+    avg_velocity = stroke / (cycle_time / 2)  # m/s
+    
+    # Apply initial guess to variables (assuming ordering: x_L, v_L, x_R, v_R, rho, T)
+    n_per_point = 6
+    n_points = n_vars // n_per_point
+    
+    for i in range(n_points):
+        idx = i * n_per_point
+        
+        # Interpolate between initial and compressed states
+        progress = i / max(1, n_points - 1)
+        
+        if idx < n_vars:
+            x0[idx] = x_L_initial + (stroke * 0.4) * progress  # x_L (reduced range)
+        if idx + 1 < n_vars:
+            x0[idx + 1] = avg_velocity * (1 - 2 * progress)  # v_L (smooth velocity profile)
+        if idx + 2 < n_vars:
+            x0[idx + 2] = x_R_initial - (stroke * 0.4) * progress  # x_R (reduced range)
+        if idx + 3 < n_vars:
+            x0[idx + 3] = -avg_velocity * (1 - 2 * progress)  # v_R (opposite to v_L)
+        if idx + 4 < n_vars:
+            x0[idx + 4] = rho_initial + (rho_compressed - rho_initial) * progress  # rho
+        if idx + 5 < n_vars:
+            x0[idx + 5] = T_initial + (T_compressed - T_initial) * progress  # T
+    
+    # Safety check: ensure gap constraint is satisfied
+    for i in range(n_points):
+        idx = i * n_per_point
+        if idx + 2 < n_vars:  # Both x_L and x_R are available
+            gap = x0[idx + 2] - x0[idx]  # x_R - x_L
+            if gap < gap_min:
+                # Adjust x_R to maintain minimum gap
+                x0[idx + 2] = x0[idx] + gap_min
+                log.debug(f"Adjusted piston gap at point {i}: gap={gap:.6f} -> {gap_min:.6f}")
+    
+    log.debug(f"Generated physics-based initial guess for {n_vars} variables")
+    log.debug(f"Initial conditions: p={p_initial:.0f} Pa, T={T_initial:.0f} K, rho={rho_initial:.3f} kg/m³")
+    log.debug(f"Compressed conditions: p={p_compressed:.0f} Pa, T={T_compressed:.0f} K, rho={rho_compressed:.3f} kg/m³")
+    log.debug(f"Piston gap range: {gap_min:.6f} m minimum")
+    
+    return x0
 
 
 def _apply_problem_bounds(

@@ -43,7 +43,13 @@ def _check_ipopt_availability() -> bool:
             try:
                 x = ca.SX.sym("x")
                 f = x ** 2
-                ca.nlpsol("ipopt_probe", "ipopt", {"x": x, "f": f})
+                # Set MA27 as the FIRST linear solver to prevent MUMPS default
+                # Import HSL path here to avoid circular imports
+                from campro.constants import HSLLIB_PATH
+                ca.nlpsol("ipopt_probe", "ipopt", {"x": x, "f": f}, {
+                    "ipopt.linear_solver": "ma27",
+                    "ipopt.hsllib": HSLLIB_PATH
+                })
                 _IPOPT_AVAILABLE = True
             except Exception:
                 _IPOPT_AVAILABLE = False

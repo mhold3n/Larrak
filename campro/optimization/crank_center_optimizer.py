@@ -14,7 +14,10 @@ import numpy as np
 from scipy.optimize import minimize
 
 from campro.logging import get_logger
+from campro.constants import HSLLIB_PATH
 from campro.optimization.solver_analysis import MA57ReadinessReport, analyze_ipopt_run
+
+log = get_logger(__name__)
 from campro.freepiston.opt.ipopt_solver import IPOPTSolver, IPOPTOptions
 from campro.physics.geometry.litvin import LitvinGearGeometry
 from campro.physics.kinematics.crank_kinematics import (
@@ -24,9 +27,24 @@ from campro.physics.mechanics.side_loading import SideLoadAnalyzer
 from campro.physics.mechanics.torque_analysis import (
     PistonTorqueCalculator,
 )
+from campro.constants import (
+    USE_CASADI_PHYSICS, 
+    CASADI_PHYSICS_VALIDATION_MODE, 
+    CASADI_PHYSICS_VALIDATION_TOLERANCE
+)
 
 from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
 from .collocation import CollocationSettings
+
+# Import CasADi physics when feature toggle is enabled
+if USE_CASADI_PHYSICS:
+    try:
+        from campro.physics.casadi import create_unified_physics
+        import casadi as ca
+        log.info("CasADi physics integration enabled")
+    except ImportError as e:
+        log.warning(f"CasADi physics not available: {e}")
+        USE_CASADI_PHYSICS = False
 
 log = get_logger(__name__)
 
@@ -669,6 +687,22 @@ class CrankCenterOptimizer(BaseOptimizer):
         This method converts the scipy-based optimization to a CasADi NLP problem
         and solves it using Ipopt with MA27 linear solver and analysis.
         """
+        if not USE_CASADI_PHYSICS:
+            log.info("CasADi physics disabled, using scipy optimization")
+            # Fall back to scipy
+            return minimize(
+                objective,
+                initial_params,
+                method="SLSQP",
+                bounds=bounds,
+                constraints=constraints,
+                options={
+                    "maxiter": self.constraints.max_iterations,
+                    "ftol": self.constraints.tolerance,
+                    "disp": False,
+                },
+            )
+        
         try:
             import casadi as ca
         except ImportError:
@@ -687,85 +721,92 @@ class CrankCenterOptimizer(BaseOptimizer):
                 },
             )
         
+        log.info("Using CasADi physics for crank center optimization")
+        
+        # Check if validation mode is enabled
+        if CASADI_PHYSICS_VALIDATION_MODE:
+            log.info("CasADi physics validation mode enabled - running parallel validation")
+            return self._optimize_with_validation_mode(
+                objective, initial_params, bounds, constraints, param_names,
+                motion_law_data, load_profile, gear_geometry
+            )
+        
         n_vars = len(param_names)
         
         # Create CasADi variables
         x = ca.SX.sym('x', n_vars)
         
-        # Create physics-based objective using external evaluation
-        def evaluate_physics_objective(params_array):
-            """Evaluate full physics objective for given parameters."""
-            param_dict = dict(zip(param_names, params_array))
-            param_dict["bore_diameter"] = 100.0
-            param_dict["piston_clearance"] = 0.1
-            
-            # Configure physics models
-            self._configure_physics_models(param_dict, gear_geometry)
-            crank_center_offset = (param_dict["crank_center_x"], param_dict["crank_center_y"])
-            
-            # Compute torque
-            torque_inputs = {
-                "motion_law_data": motion_law_data,
-                "load_profile": load_profile,
-                "crank_center_offset": crank_center_offset,
-            }
-            torque_result = self._torque_calculator.simulate(torque_inputs)
-            
-            # Compute side loading
-            side_load_inputs = {
-                "motion_law_data": motion_law_data,
-                "load_profile": load_profile,
-                "crank_center_offset": crank_center_offset,
-            }
-            side_load_result = self._side_load_analyzer.simulate(side_load_inputs)
-            
-            if not torque_result.is_successful or not side_load_result.is_successful:
-                return 1e6
-            
-            torque_result_obj = torque_result.metadata.get("torque_result")
-            side_load_result_obj = side_load_result.metadata.get("side_load_result")
-            
-            if torque_result_obj is None or side_load_result_obj is None:
-                return 1e6
-            
-            # Multi-objective
-            objective = 0.0
-            if self.targets.maximize_torque:
-                objective += self.targets.torque_weight * (-torque_result_obj.cycle_average_torque)
-            if self.targets.minimize_side_loading:
-                objective += self.targets.side_load_weight * side_load_result_obj.total_penalty
-            if self.targets.minimize_torque_ripple:
-                objective += self.targets.torque_ripple_weight * torque_result_obj.torque_ripple
-            if self.targets.maximize_power_output:
-                objective += self.targets.power_output_weight * (-torque_result_obj.power_output)
-            
-            return objective
-
-        # For CasADi: use simple quadratic as proxy, validate with physics
-        obj_approx = ca.sum1((x - initial_params)**2)  # Distance from initial guess
+        # Extract individual parameters
+        crank_center_x = x[0]
+        crank_center_y = x[1]
+        crank_radius = x[2]
+        rod_length = x[3]
         
-        # Create constraint functions
+        # Create unified physics function
+        unified_physics_fn = create_unified_physics()
+        
+        # Prepare motion law data for CasADi
+        theta_vec = ca.DM(motion_law_data["theta"][:10])  # Use first 10 points
+        pressure_vec = ca.DM(load_profile[:10])  # Use first 10 points
+        
+        # Fixed parameters
+        bore = 100.0  # mm
+        max_side_threshold = 200.0  # N
+        
+        # Extract Litvin geometry from kinematics_state if available
+        if hasattr(self, 'kinematics_state') and self.kinematics_state.litvin_geometry:
+            litvin_geom = self.kinematics_state.litvin_geometry
+            litvin_config = ca.DM([
+                litvin_geom.z_r, litvin_geom.z_p, litvin_geom.module,
+                litvin_geom.alpha_deg, litvin_geom.R0, 1.0  # enabled
+            ])
+        else:
+            # Disable Litvin metrics
+            litvin_config = ca.DM([50.0, 20.0, 2.0, 20.0, 25.0, 0.0])  # disabled
+        
+        # Evaluate unified physics
+        torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = unified_physics_fn(
+            theta_vec, pressure_vec, 
+            crank_radius, rod_length, crank_center_x, crank_center_y,
+            bore, max_side_threshold, litvin_config
+        )
+        
+        # Create multi-objective function
+        objective = 0.0
+        
+        # Torque maximization (negative because we minimize)
+        if self.targets.maximize_torque:
+            objective += self.targets.torque_weight * (-torque_avg)
+        
+        # Side-loading minimization
+        if self.targets.minimize_side_loading:
+            objective += self.targets.side_load_weight * side_load_penalty
+        
+        # Torque ripple minimization
+        if self.targets.minimize_torque_ripple:
+            objective += self.targets.torque_ripple_weight * torque_ripple
+        
+        # Power output maximization (approximate as torque * angular velocity)
+        if self.targets.maximize_power_output:
+            angular_velocity = 100.0  # rad/s (fixed for now)
+            power_output = torque_avg * angular_velocity
+            objective += self.targets.power_output_weight * (-power_output)
+        
+        # Create constraint functions using CasADi physics
         constraint_exprs = []
-        for constraint in constraints:
-            if constraint['type'] == 'ineq':
-                # Inequality constraint: g(x) >= 0
-                constraint_exprs.append(ca.SX.sym(f'g_{len(constraint_exprs)}'))
-            elif constraint['type'] == 'eq':
-                # Equality constraint: h(x) = 0
-                constraint_exprs.append(ca.SX.sym(f'h_{len(constraint_exprs)}'))
         
-        # For now, create a simplified NLP that focuses on the main objective
-        # This is a placeholder - in a full implementation, we'd need to integrate
-        # the complex physics models (torque calculation, side loading) into CasADi
+        # Minimum torque constraint: torque_avg >= min_torque_output
+        min_torque_constraint = torque_avg - self.constraints.min_torque_output
+        constraint_exprs.append(min_torque_constraint)
         
-        # Simple quadratic objective as placeholder
-        # In reality, this would be the full physics-based objective
-        obj_approx = ca.sum1(x**2)  # Placeholder objective
+        # Maximum side load constraint: side_load_penalty <= max_side_load_penalty
+        max_side_load_constraint = self.constraints.max_side_load_penalty - side_load_penalty
+        constraint_exprs.append(max_side_load_constraint)
         
         # Create NLP problem
         nlp = {
             'x': x,
-            'f': obj_approx,
+            'f': objective,
             'g': ca.vertcat(*constraint_exprs) if constraint_exprs else ca.SX()
         }
         
@@ -778,15 +819,14 @@ class CrankCenterOptimizer(BaseOptimizer):
             print_level=3
         )
         
-        # Create CasADi solver
-        casadi_solver = ca.nlpsol('solver', 'ipopt', nlp, {
+        # Create CasADi solver using centralized factory
+        from campro.optimization.ipopt_factory import create_ipopt_solver
+        casadi_solver = create_ipopt_solver('solver', nlp, {
             'ipopt.max_iter': solver_options.max_iter,
             'ipopt.tol': solver_options.tol,
             'ipopt.linear_solver': solver_options.linear_solver,
             'ipopt.print_level': solver_options.print_level,
-            'ipopt.option_file_name': '/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt',
-            'ipopt.hsllib': '/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib',
-        })
+        }, force_linear_solver=True)
         
         # Set up Ipopt solver wrapper
         solver = IPOPTSolver(solver_options)
@@ -814,19 +854,14 @@ class CrankCenterOptimizer(BaseOptimizer):
                 ubg=ubg
             )
             
-            # Validate with full physics
-            actual_obj = evaluate_physics_objective(result.x_opt)
-            log.info(f"Physics objective value: {actual_obj:.6f}")
-            
-            # Update result with actual physics objective
-            result.f_opt = actual_obj
+            log.info(f"CasADi physics objective value: {result.f_opt:.6f}")
             
             # Create a result object that matches the expected interface
             class IpoptOptimizationResult:
-                def __init__(self, ipopt_result, actual_objective):
+                def __init__(self, ipopt_result):
                     self.success = ipopt_result.success
                     self.x_opt = ipopt_result.x_opt
-                    self.f_opt = actual_objective
+                    self.f_opt = ipopt_result.f_opt
                     self.iterations = ipopt_result.iterations
                     self.message = ipopt_result.message
                     self.status = ipopt_result.status
@@ -834,7 +869,7 @@ class CrankCenterOptimizer(BaseOptimizer):
                     self.dual_inf = ipopt_result.dual_inf
                     self.cpu_time = ipopt_result.cpu_time
             
-            return IpoptOptimizationResult(result, actual_obj)
+            return IpoptOptimizationResult(result)
             
         except Exception as e:
             log.error(f"Ipopt optimization failed: {e}")
@@ -851,3 +886,122 @@ class CrankCenterOptimizer(BaseOptimizer):
                     "disp": False,
                 },
             )
+
+    def _optimize_with_validation_mode(self, objective, initial_params: np.ndarray, bounds: List[Tuple[float, float]], 
+                                     constraints: List[Dict], param_names: List[str],
+                                     motion_law_data: Dict[str, np.ndarray], load_profile: np.ndarray, 
+                                     gear_geometry: LitvinGearGeometry):
+        """
+        Optimize using validation mode - runs both Python and CasADi physics for comparison.
+        
+        This method runs the optimization using Python physics (for safety) while also
+        running CasADi physics in parallel to collect validation statistics.
+        """
+        log.info("Running optimization in CasADi physics validation mode")
+        
+        # Run Python-based optimization (safe fallback)
+        log.info("Running Python physics optimization...")
+        python_result = minimize(
+            objective,
+            initial_params,
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
+            options={
+                "maxiter": self.constraints.max_iterations,
+                "ftol": self.constraints.tolerance,
+                "disp": False,
+            },
+        )
+        
+        # Run CasADi physics evaluation at the optimized point for comparison
+        log.info("Running CasADi physics validation at optimized point...")
+        try:
+            casadi_validation = self._validate_casadi_physics_at_point(
+                python_result.x, param_names, motion_law_data, load_profile, gear_geometry
+            )
+            
+            # Log validation results
+            self._log_validation_comparison(python_result, casadi_validation)
+            
+        except Exception as e:
+            log.warning(f"CasADi validation failed: {e}")
+            casadi_validation = None
+        
+        # Return Python result (safe choice)
+        return python_result
+
+    def _validate_casadi_physics_at_point(self, params: np.ndarray, param_names: List[str],
+                                        motion_law_data: Dict[str, np.ndarray], 
+                                        load_profile: np.ndarray, gear_geometry: LitvinGearGeometry):
+        """
+        Validate CasADi physics at a specific parameter point.
+        
+        Returns validation metrics comparing CasADi and Python physics results.
+        """
+        import casadi as ca
+        from campro.physics.casadi import create_unified_physics
+        
+        # Extract parameters
+        crank_center_x, crank_center_y, crank_radius, rod_length = params
+        
+        # Create CasADi unified physics function
+        unified_fn = create_unified_physics()
+        
+        # Prepare inputs for CasADi evaluation
+        theta_vec = motion_law_data["crank_angle"]
+        pressure_vec = load_profile
+        
+        # Convert to CasADi format (assuming fixed size for now)
+        if len(theta_vec) == 0:
+            # Handle empty arrays
+            theta_vec = np.zeros(10)
+            pressure_vec = np.zeros(10)
+        elif len(theta_vec) != 10:
+            # Pad or truncate to fixed size
+            if len(theta_vec) < 10:
+                theta_vec = np.pad(theta_vec, (0, 10 - len(theta_vec)), mode='constant', constant_values=0)
+                pressure_vec = np.pad(pressure_vec, (0, 10 - len(pressure_vec)), mode='constant', constant_values=0)
+            else:
+                theta_vec = theta_vec[:10]
+                pressure_vec = pressure_vec[:10]
+        
+        theta_ca = ca.DM(theta_vec)
+        pressure_ca = ca.DM(pressure_vec)
+        
+        # Litvin configuration (disabled for now)
+        litvin_config = ca.DM([50.0, 20.0, 2.0, 20.0, 25.0, 0.0])
+        
+        # Evaluate CasADi physics
+        casadi_result = unified_fn(
+            theta_ca, pressure_ca, crank_radius, rod_length, 
+            crank_center_x, crank_center_y, 100.0, 200.0, litvin_config
+        )
+        
+        return {
+            'torque_avg': float(casadi_result[0]),
+            'torque_ripple': float(casadi_result[1]),
+            'side_load_penalty': float(casadi_result[2]),
+            'litvin_objective': float(casadi_result[3]),
+            'litvin_closure': float(casadi_result[4])
+        }
+
+    def _log_validation_comparison(self, python_result, casadi_validation):
+        """
+        Log comparison between Python and CasADi physics results.
+        """
+        if casadi_validation is None:
+            log.warning("CasADi validation failed - no comparison available")
+            return
+        
+        # For now, just log that validation was performed
+        # In a full implementation, we would compare against Python physics results
+        log.info("CasADi physics validation completed:")
+        log.info(f"  Torque avg: {casadi_validation['torque_avg']:.6f}")
+        log.info(f"  Torque ripple: {casadi_validation['torque_ripple']:.6f}")
+        log.info(f"  Side load penalty: {casadi_validation['side_load_penalty']:.6f}")
+        log.info(f"  Litvin objective: {casadi_validation['litvin_objective']:.6f}")
+        log.info(f"  Litvin closure: {casadi_validation['litvin_closure']:.6f}")
+        
+        # TODO: Add actual comparison with Python results and tolerance checking
+        log.info("Validation mode: Using Python results for optimization (CasADi for comparison only)")

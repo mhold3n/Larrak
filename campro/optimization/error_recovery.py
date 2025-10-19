@@ -79,7 +79,7 @@ _DEFAULT_STRATEGIES: Sequence[RetryStrategy] = [
     ),
     RetryStrategy(
         "alt_linear_solver",
-        {"ipopt.linear_solver": "mumps"},
+        {"ipopt.linear_solver": "ma57"},
     ),
     RetryStrategy(
         "final_low_print",

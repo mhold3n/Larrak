@@ -7,6 +7,7 @@ from typing import Tuple, Optional, Any
 import numpy as np
 
 from campro.logging import get_logger
+from campro.constants import HSLLIB_PATH
 from campro.freepiston.opt.ipopt_solver import IPOPTSolver, IPOPTOptions
 
 from .involute_internal import InternalGearParams, sample_internal_flank
@@ -225,15 +226,14 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         print_level=3
     )
     
-    # Create CasADi solver
-    casadi_solver = ca.nlpsol('solver', 'ipopt', nlp, {
+    # Create CasADi solver using centralized factory
+    from campro.optimization.ipopt_factory import create_ipopt_solver
+    casadi_solver = create_ipopt_solver('solver', nlp, {
         'ipopt.max_iter': solver_options.max_iter,
         'ipopt.tol': solver_options.tol,
         'ipopt.linear_solver': solver_options.linear_solver,
         'ipopt.print_level': solver_options.print_level,
-        'ipopt.option_file_name': '/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt',
-        'ipopt.hsllib': '/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib',
-    })
+    }, force_linear_solver=True)
     
     # Set up Ipopt solver wrapper
     solver = IPOPTSolver(solver_options)

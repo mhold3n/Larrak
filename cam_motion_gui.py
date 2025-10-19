@@ -22,6 +22,8 @@ from matplotlib.figure import Figure
 from campro.logging import get_logger
 from campro.optimization.solver_analysis import analyze_ipopt_run
 
+log = get_logger(__name__)
+
 
 # Validate environment before starting GUI
 def _validate_gui_environment():
@@ -271,6 +273,10 @@ class CamMotionGUI:
             "minimize_combustion_side_load": tk.BooleanVar(value=True),
             "minimize_torque_ripple": tk.BooleanVar(value=True),
             "maximize_power_output": tk.BooleanVar(value=True),
+            
+            # CasADi physics validation mode
+            "enable_casadi_validation_mode": tk.BooleanVar(value=False),
+            "casadi_validation_tolerance": tk.DoubleVar(value=1e-4),
         }
 
     def _create_widgets(self):
@@ -433,6 +439,15 @@ class CamMotionGUI:
         ttk.Checkbutton(objectives_frame, text="Min Side Load", variable=self.variables["minimize_side_loading"]).pack(side=tk.LEFT, padx=5)
         ttk.Checkbutton(objectives_frame, text="Min Compression Side Load", variable=self.variables["minimize_compression_side_load"]).pack(side=tk.LEFT, padx=5)
         ttk.Checkbutton(objectives_frame, text="Min Combustion Side Load", variable=self.variables["minimize_combustion_side_load"]).pack(side=tk.LEFT, padx=5)
+
+        # Row 9: CasADi validation mode controls
+        ttk.Label(self.control_frame, text="CasADi Validation:").grid(row=10, column=0, sticky=tk.W, pady=2)
+        validation_frame = ttk.Frame(self.control_frame)
+        validation_frame.grid(row=10, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2)
+        
+        ttk.Checkbutton(validation_frame, text="Enable Validation Mode", variable=self.variables["enable_casadi_validation_mode"]).pack(side=tk.LEFT, padx=5)
+        ttk.Label(validation_frame, text="Tolerance:").pack(side=tk.LEFT, padx=(10, 5))
+        ttk.Entry(validation_frame, textvariable=self.variables["casadi_validation_tolerance"], width=8).pack(side=tk.LEFT, padx=5)
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
@@ -706,6 +721,10 @@ class CamMotionGUI:
 
         # Enable thermal efficiency to use Ipopt (required for analysis)
         settings.use_thermal_efficiency = True
+        
+        # Configure CasADi validation mode from GUI
+        settings.enable_casadi_validation_mode = self.variables["enable_casadi_validation_mode"].get()
+        settings.casadi_validation_tolerance = self.variables["casadi_validation_tolerance"].get()
 
         # Create constraints
         constraints = UnifiedOptimizationConstraints(
@@ -744,6 +763,14 @@ class CamMotionGUI:
 
         # Configure framework
         self.unified_framework.configure(settings=settings, constraints=constraints, targets=targets)
+        
+        # Enable CasADi validation mode if requested
+        if settings.enable_casadi_validation_mode:
+            self.unified_framework.enable_casadi_validation_mode(settings.casadi_validation_tolerance)
+            print(f"DEBUG: CasADi validation mode enabled with tolerance: {settings.casadi_validation_tolerance}")
+        else:
+            self.unified_framework.disable_casadi_validation_mode()
+            
         print(f"DEBUG: Configured unified framework with method: {method_name}")
 
     def _update_all_plots(self, result_data):

@@ -16,6 +16,39 @@ from campro.logging import get_logger
 
 log = get_logger(__name__)
 
+# Global flag to prevent multiple IPOPT linear solver initializations
+_IPOPT_LINEAR_SOLVER_INITIALIZED = False
+
+
+def _validate_ma27_usage() -> None:
+    """Validate that MA27 is being used and fail hard if MUMPS is detected."""
+    try:
+        import casadi as ca
+        from campro.optimization.ipopt_factory import create_ipopt_solver
+        
+        # Create a test problem to check which linear solver is actually being used
+        x = ca.SX.sym("x")
+        f = x ** 2
+        g = x - 1
+        nlp = {"x": x, "f": f, "g": g}
+        
+        # Create solver using centralized factory
+        solver = create_ipopt_solver("ma27_test", nlp, force_linear_solver=True)
+        
+        # Try to solve a simple problem to verify MA27 is working
+        result = solver(x0=0, lbg=0, ubg=0)
+        
+        # Check if solver actually used MA27 (this is a heuristic check)
+        # If MA27 is not available, IPOPT will fall back to MUMPS and we'll get warnings
+        log.info("MA27 linear solver validation passed")
+        
+    except Exception as e:
+        log.error(f"MA27 validation failed: {e}")
+        raise RuntimeError(
+            "MA27 linear solver is not available. MUMPS fallback is not allowed. "
+            "Please ensure HSL library with MA27 is properly installed."
+        ) from e
+
 
 class ValidationStatus(Enum):
     """Status of a validation check."""
@@ -85,9 +118,12 @@ def validate_casadi_ipopt() -> ValidationResult:
 
         # Fallback for CasADi builds without nlpsol_plugins attribute
         try:
+            from campro.optimization.ipopt_factory import create_ipopt_solver
             x = ca.SX.sym("x")
             f = x ** 2
-            ca.nlpsol("ipopt_probe", "ipopt", {"x": x, "f": f})
+            nlp = {"x": x, "f": f}
+            # Use centralized factory to prevent clobbering
+            create_ipopt_solver("ipopt_probe", nlp, force_linear_solver=True)
             return ValidationResult(
                 status=ValidationStatus.PASS,
                 message="CasADi with ipopt support is available (fallback check)",
@@ -153,6 +189,7 @@ def validate_hsl_solvers() -> List[ValidationResult]:
         if not hsl_available:
             try:
                 # Try to create a simple problem that might use HSL internally
+                from campro.optimization.ipopt_factory import create_ipopt_solver
                 x = ca.SX.sym("x")
                 f = x ** 2
                 g = x - 1
@@ -160,7 +197,8 @@ def validate_hsl_solvers() -> List[ValidationResult]:
                 
                 # This might fail if HSL is not available, but we can't easily distinguish
                 # between HSL-specific failures and other issues
-                solver = ca.nlpsol("hsl_test", "ipopt", nlp)
+                # Use centralized factory to prevent clobbering
+                solver = create_ipopt_solver("hsl_test", nlp, force_linear_solver=True)
                 # If we get here, ipopt is available but HSL status is unclear
                 hsl_available = False
                 hsl_details = ["Unknown (ipopt available but HSL status unclear)"]
@@ -272,6 +310,9 @@ def validate_required_packages() -> List[ValidationResult]:
 def validate_environment() -> Dict[str, Any]:
     """Perform comprehensive environment validation and return structured results."""
     log.info("Starting environment validation")
+
+    # Validate MA27 usage first - fail hard if MUMPS is detected
+    _validate_ma27_usage()
 
     results: Dict[str, Any] = {
         "python_version": validate_python_version(),
