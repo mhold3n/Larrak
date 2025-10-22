@@ -185,8 +185,19 @@ class IPOPTSolver:
             if p is None:
                 p = np.array([])
 
+            # Try warm-start persistence if enabled
+            warm_kwargs: Dict[str, Any] = {}
+            try:
+                if str(self.options.warm_start_init_point).lower() == "yes":
+                    from campro.diagnostics.warmstart import load_warmstart, save_warmstart
+                    n_x = int(np.asarray(x0).size)
+                    n_g = int(np.asarray(lbg).size) if lbg is not None else (int(np.asarray(ubg).size) if ubg is not None else 0)
+                    warm_kwargs = load_warmstart(n_x, n_g)
+            except Exception:
+                warm_kwargs = {}
+
             # Solve
-            result = solver(x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p)
+            result = solver(x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs)
 
             # Extract solution
             x_opt = result["x"].full().flatten()
@@ -215,7 +226,7 @@ class IPOPTSolver:
 
             message = self._get_status_message(status)
 
-            return IPOPTResult(
+            out = IPOPTResult(
                 success=success,
                 x_opt=x_opt,
                 f_opt=f_opt,
@@ -232,6 +243,21 @@ class IPOPTSolver:
                 kkt_error=kkt_error,
                 feasibility_error=feasibility_error,
             )
+
+            # Save warm-start for subsequent runs
+            try:
+                if str(self.options.warm_start_init_point).lower() == "yes":
+                    from campro.diagnostics.warmstart import save_warmstart
+                    # Multipliers for constraints are available as lam_g; lam_x may be present too
+                    lam_g = result.get("lam_g", None)
+                    lam_x = result.get("lam_x", None)
+                    lam_g_arr = None if lam_g is None else lam_g.full().flatten()
+                    lam_x_arr = None if lam_x is None else lam_x.full().flatten()
+                    save_warmstart(x_opt, lam_g=lam_g_arr, lam_x=lam_x_arr)
+            except Exception:
+                pass
+
+            return out
 
         except Exception as e:
             log.error(f"IPOPT solve failed: {e!s}")

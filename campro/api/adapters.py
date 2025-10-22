@@ -42,9 +42,16 @@ def motion_result_to_solve_report(result: "OptimizationResult") -> SolveReport: 
         "run_meta": f"runs/{RUN_ID}.json",
     }
 
+    # Map common backend statuses to public report status
+    public_status = (
+        "Solve_Success"
+        if status_str == "converged"
+        else ("Infeasible" if status_str == "infeasible" else "Failed")
+    )
+
     report = SolveReport(
         run_id=RUN_ID,
-        status="Solve_Success" if status_str == "converged" else "Failed",
+        status=public_status,
         kkt={k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals},
         n_iter=n_iter,
         scaling_stats={},

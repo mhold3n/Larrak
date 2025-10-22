@@ -278,11 +278,22 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
         "ipopt.tol": 1e-6,
         "ipopt.acceptable_tol": 1e-4,
         "ipopt.print_level": 0,
+        # Enable warm-start if available
+        "ipopt.warm_start_init_point": "yes",
+        "ipopt.warm_start_bound_push": 1e-6,
+        "ipopt.warm_start_mult_bound_push": 1e-6,
     }
     solver = create_ipopt_solver("feas_phase0", nlp, opts, linear_solver="ma27")
 
     try:
-        res = solver(x0=z0, lbx=lbx, ubx=ubx, lbg=np.array(lbg), ubg=np.array(ubg))
+        # Try to load warm-start from previous run if shapes match
+        try:
+            from campro.diagnostics.warmstart import load_warmstart, save_warmstart
+            warm_args = load_warmstart(total, len(lbg))
+        except Exception:
+            warm_args = {}
+
+        res = solver(x0=z0, lbx=lbx, ubx=ubx, lbg=np.array(lbg), ubg=np.array(ubg), **warm_args)
         z_opt = np.array(res["x"]).reshape((-1,))
         # Extract slacks
         ptr = n_x
@@ -322,12 +333,23 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
             else:
                 recs.append("Relax boundary/ stroke conditions or adjust phases")
 
-        return FeasibilityReport(
+        report = FeasibilityReport(
             feasible=feasible,
             max_violation=max_violation,
             violations=violations,
             recommendations=recs,
         )
+
+        # Persist warm-start arrays for future runs
+        try:
+            lam_g = None
+            if "lam_g" in res:
+                lam_g = np.array(res["lam_g"]).reshape((-1,))
+            save_warmstart(z_opt, lam_g=lam_g, tag="feas")
+        except Exception:
+            pass
+
+        return report
     except Exception:
         # Fallback to heuristic in case of solver error
         return check_feasibility(constraints, bounds)

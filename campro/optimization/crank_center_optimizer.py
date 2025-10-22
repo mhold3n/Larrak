@@ -816,7 +816,8 @@ class CrankCenterOptimizer(BaseOptimizer):
             tol=self.constraints.tolerance,
             linear_solver="ma27",
             enable_analysis=True,
-            print_level=3
+            print_level=3,
+            warm_start_init_point="yes",
         )
         
         # Create CasADi solver using centralized factory

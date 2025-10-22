@@ -4,14 +4,19 @@ Exposes data classes and façade functions for common workflows.
 """
 
 from typing import Any, Dict, Tuple
+from dataclasses import asdict as _asdict
 
 from campro.constraints.cam import CamMotionConstraints
-from campro.diagnostics.run_metadata import RUN_ID, log_run_metadata
+from campro.diagnostics.run_metadata import RUN_ID, log_run_metadata, set_global_seeds
+from campro.diagnostics.feasibility import check_feasibility_nlp
 from campro.optimization.motion import MotionOptimizer
 
 from .problem_spec import ProblemSpec
 from .solve_report import SolveReport
 from .adapters import motion_result_to_solve_report
+from campro.logging import get_logger
+
+log = get_logger(__name__)
 
 
 def solve_motion(spec: ProblemSpec) -> SolveReport:
@@ -19,6 +24,12 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
 
     Adapts ProblemSpec into existing MotionOptimizer and returns a SolveReport.
     """
+    # Determinism: seed RNGs once per façade entry
+    try:
+        set_global_seeds(1337)
+    except Exception:
+        pass
+
     # Map ProblemSpec to cam constraints
     phases = spec.phases or {}
     bounds = spec.bounds or {}
@@ -56,6 +67,76 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     }
     motion_type = obj_map.get(spec.objective, "minimum_jerk")
 
+    # Phase-0 feasibility check (fast infeasibility detection)
+    feas_constraints: Dict[str, Any] = {
+        "stroke": float(spec.stroke),
+        "cycle_time": float(spec.cycle_time),
+        "upstroke_percent": float(up_pct),
+        "zero_accel_percent": float(zero_pct) if zero_pct is not None else None,
+    }
+    feas_bounds: Dict[str, Any] = {}
+    for k in ("max_velocity", "max_acceleration", "max_jerk"):
+        if k in bounds and bounds[k] is not None:
+            try:
+                feas_bounds[k] = float(bounds[k])
+            except Exception:
+                pass
+
+    try:
+        feas = check_feasibility_nlp(feas_constraints, feas_bounds)
+    except Exception as exc:  # pragma: no cover - feasibility failures shouldn't crash
+        log.warning(f"Feasibility pre-check failed: {exc}")
+        feas = None
+
+    # Prepare simple scaling stats (O(1) normalization hints)
+    def _infer_scales() -> Dict[str, float]:
+        x_s = max(1.0, abs(float(spec.stroke)))
+        v_s = max(1.0, abs(float(bounds.get("max_velocity", 1.0) or 1.0)))
+        a_s = max(1.0, abs(float(bounds.get("max_acceleration", 1.0) or 1.0)))
+        j_s = max(1.0, abs(float(bounds.get("max_jerk", 1.0) or 1.0)))
+        t_s = max(1e-2, float(spec.cycle_time))
+        return {"x": x_s, "v": v_s, "a": a_s, "j": j_s, "t": t_s}
+
+    scaling_stats = {"scaling_primary": _infer_scales()}
+
+    # Early exit on infeasible spec
+    if feas is not None and not getattr(feas, "feasible", True):
+        from campro.optimization.base import OptimizationResult, OptimizationStatus
+
+        # Create a minimal failed result to flow through the adapter
+        fake = OptimizationResult(
+            status=OptimizationStatus.INFEASIBLE,
+            iterations=0,
+            convergence_info={"feasibility_primary": _asdict(feas)},
+        )
+        report = motion_result_to_solve_report(fake)
+        # Enrich report with feasibility + scaling telemetry
+        try:
+            report.residuals["feas.max_violation"] = float(getattr(feas, "max_violation", 0.0))
+            for k, v in (getattr(feas, "violations", {}) or {}).items():
+                if isinstance(v, (int, float)):
+                    report.residuals[f"feas.violation.{k}"] = float(v)
+        except Exception:
+            pass
+        report.scaling_stats.update(scaling_stats)
+
+        # Persist lightweight run metadata
+        meta: Dict[str, Any] = {
+            "run_id": RUN_ID,
+            "objective": motion_type,
+            "stroke": spec.stroke,
+            "cycle_time": spec.cycle_time,
+            "phases": spec.phases,
+            "bounds": spec.bounds,
+            "feasibility": _asdict(feas),
+            "status": report.status,
+        }
+        try:
+            log_run_metadata(meta)
+        except Exception:
+            pass
+        return report
+
     optimizer = MotionOptimizer()
     result = optimizer.solve_cam_motion_law(
         cam_constraints=constraints, motion_type=motion_type, cycle_time=float(spec.cycle_time)
@@ -77,7 +158,19 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     except Exception:
         pass
 
-    return motion_result_to_solve_report(result)
+    # Convert to public report and augment with feasibility + scaling telemetry
+    report = motion_result_to_solve_report(result)
+    if feas is not None:
+        try:
+            report.residuals["feas.max_violation"] = float(getattr(feas, "max_violation", 0.0))
+            for k, v in (getattr(feas, "violations", {}) or {}).items():
+                if isinstance(v, (int, float)):
+                    report.residuals[f"feas.violation.{k}"] = float(v)
+        except Exception:
+            pass
+    report.scaling_stats.update(scaling_stats)
+
+    return report
 
 
 def design_gear(spec: ProblemSpec, motion: SolveReport) -> Tuple[dict, SolveReport]:
