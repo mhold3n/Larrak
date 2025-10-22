@@ -29,7 +29,36 @@ conda activate larrak
 python scripts/check_environment.py
 ```
 
-**Note**: Large dependency folders (`casadi/`, `coinhsl-archive-2023.11.17/`, `ThirdParty-HSL/`) are excluded from GitHub clones. The setup script will install CasADi and IPOPT via conda. For optional HSL solvers that improve performance, see the [Installation Guide](docs/installation_guide.md#optional-hsl-solvers-ma27ma57).
+**Note**: Large dependency folders (`casadi/`, `coinhsl-archive-2023.11.17/`, `ThirdParty-HSL/`) are excluded from GitHub clones. The setup script will install CasADi and IPOPT via conda. HSL solvers (MA27/MA57) are supported; non-HSL fallbacks are not permitted in this project.
+
+## Modern Usage
+
+### CLI
+
+```bash
+# Solve a motion law from a YAML/JSON spec
+larrak solve --spec specs/example_min_jerk.yml --diagnose
+```
+
+This writes `runs/{RUN_ID}-report.json` and an Ipopt log to `runs/{RUN_ID}-ipopt.log`.
+
+### Python API
+
+```python
+from campro.api import ProblemSpec, solve_motion
+
+spec = ProblemSpec(
+    stroke=20.0,
+    cycle_time=1.0,
+    phases={"upstroke_percent": 60.0, "zero_accel_percent": 0.0},
+    bounds={"max_velocity": 100.0, "max_acceleration": 1000.0, "max_jerk": 10000.0},
+    objective="minimum_jerk",
+)
+report = solve_motion(spec)
+print(report.status, report.kkt)
+```
+
+> Legacy examples below (CamPro_OptimalMotion, older solver APIs) are kept for reference and will be updated as the façade API expands.
 
 ## Features
 

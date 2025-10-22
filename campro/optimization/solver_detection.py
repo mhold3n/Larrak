@@ -47,7 +47,7 @@ def is_ma57_available() -> bool:  # noqa: D401 – simple function, no docstring
 
         # Attempt to create an Ipopt solver with MA57 using factory
         from campro.optimization.ipopt_factory import create_ipopt_solver
-        create_ipopt_solver("_ma57_probe", nlp, {"ipopt.linear_solver": "ma57"}, force_linear_solver=False)
+        create_ipopt_solver("_ma57_probe", nlp, {}, linear_solver="ma57")
 
         _ma57_available = True
     except Exception as exc:  # pylint: disable=broad-except

@@ -70,7 +70,7 @@ class ThermalEfficiencyConfig:
     hessian_approximation: str = "limited-memory"
 
     # Analysis settings
-    enable_analysis: bool = False
+    enable_analysis: bool = True
 
     # Validation settings
     check_convergence: bool = True
@@ -162,8 +162,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                 "dual_inf_tol": 1e-3,  # Relaxed dual infeasibility tolerance
                 "compl_inf_tol": 1e-3,  # Relaxed complementarity tolerance
                 "constr_viol_tol": 1e-3,  # Relaxed constraint violation tolerance
-                # Ensure creation-time options are passed to Ipopt
-                "linear_solver": "ma27",
+                # Note: linear_solver is set by the IPOPT factory
             })
 
             # Enable analysis if requested

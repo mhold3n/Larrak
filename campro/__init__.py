@@ -4,6 +4,7 @@ import os
 from typing import Optional
 
 from campro.logging import get_logger
+from campro.diagnostics.run_metadata import set_global_seeds
 
 __version__ = "0.1.0"
 
@@ -43,15 +44,13 @@ def _check_ipopt_availability() -> bool:
             try:
                 x = ca.SX.sym("x")
                 f = x ** 2
-                # Set MA27 as the FIRST linear solver to prevent MUMPS default
-                # Import HSL path here to avoid circular imports
-                from campro.constants import HSLLIB_PATH
-                ca.nlpsol("ipopt_probe", "ipopt", {"x": x, "f": f}, {
-                    "ipopt.linear_solver": "ma27",
-                    "ipopt.hsllib": HSLLIB_PATH
-                })
+                # Use the centralized factory with explicit linear solver
+                from campro.optimization.ipopt_factory import create_ipopt_solver
+                create_ipopt_solver("ipopt_probe", {"x": x, "f": f}, linear_solver="ma27")
                 _IPOPT_AVAILABLE = True
-            except Exception:
+                log.info("IPOPT availability check completed with MA27 linear solver")
+            except Exception as e:
+                log.error(f"IPOPT availability check failed: {e}")
                 _IPOPT_AVAILABLE = False
 
         if not _IPOPT_AVAILABLE:
@@ -82,6 +81,12 @@ def is_ipopt_available() -> bool:
 # Perform lightweight validation on import
 _check_ipopt_availability()
 
+# Ensure deterministic RNG state for reproducibility at import time.
+try:
+    set_global_seeds()
+except Exception:
+    # Seeding should never fail import; ignore in edge environments.
+    pass
 
 
 

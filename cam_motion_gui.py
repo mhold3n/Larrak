@@ -10,6 +10,8 @@ A comprehensive GUI with 5 tabs for three-stage optimization:
 """
 
 import sys
+import os
+import subprocess
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -277,6 +279,9 @@ class CamMotionGUI:
             # CasADi physics validation mode
             "enable_casadi_validation_mode": tk.BooleanVar(value=False),
             "casadi_validation_tolerance": tk.DoubleVar(value=1e-4),
+
+            # ORDER2 (CasADi) micro optimization toggle
+            "enable_order2_micro": tk.BooleanVar(value=False),
         }
 
     def _create_widgets(self):
@@ -309,6 +314,11 @@ class CamMotionGUI:
         # Tab 5: Crank Center Optimization
         self.tertiary_frame = ttk.Frame(self.notebook, padding="10")
         self.notebook.add(self.tertiary_frame, text="Crank Center (Run 3)")
+
+        # Tab 6: Diagnostics (read-only)
+        self.diagnostics_frame = ttk.Frame(self.notebook, padding="10")
+        self.notebook.add(self.diagnostics_frame, text="Diagnostics")
+        self._build_diagnostics_tab()
 
         # Status bar
         self.status_var = tk.StringVar(value="Ready - Configure parameters and run optimization")
@@ -403,6 +413,14 @@ class CamMotionGUI:
         )
         self.save_button.grid(row=4, column=4, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0))
 
+        # Diagnose button: quick access to Ipopt/solver diagnostics
+        self.diagnose_button = ttk.Button(
+            self.control_frame,
+            text="Diagnose NLP",
+            command=self._diagnose_nlp,
+        )
+        self.diagnose_button.grid(row=4, column=6, sticky=tk.W, pady=10, padx=(20, 0))
+
         # Row 5: Tertiary optimization header
         ttk.Separator(self.control_frame, orient="horizontal").grid(row=5, column=0, columnspan=6, sticky="ew", pady=5)
         ttk.Label(self.control_frame, text="Crank Center Optimization (Run 3)", font=("TkDefaultFont", 10, "bold")).grid(row=6, column=0, columnspan=6, sticky=tk.W, pady=2)
@@ -444,10 +462,15 @@ class CamMotionGUI:
         ttk.Label(self.control_frame, text="CasADi Validation:").grid(row=10, column=0, sticky=tk.W, pady=2)
         validation_frame = ttk.Frame(self.control_frame)
         validation_frame.grid(row=10, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2)
-        
         ttk.Checkbutton(validation_frame, text="Enable Validation Mode", variable=self.variables["enable_casadi_validation_mode"]).pack(side=tk.LEFT, padx=5)
         ttk.Label(validation_frame, text="Tolerance:").pack(side=tk.LEFT, padx=(10, 5))
         ttk.Entry(validation_frame, textvariable=self.variables["casadi_validation_tolerance"], width=8).pack(side=tk.LEFT, padx=5)
+
+        # Row 10: ORDER2 (CasADi) toggle
+        ttk.Label(self.control_frame, text="ORDER2 (CasADi):").grid(row=11, column=0, sticky=tk.W, pady=2)
+        order2_frame = ttk.Frame(self.control_frame)
+        order2_frame.grid(row=11, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Checkbutton(order2_frame, text="Enable ORDER2 (micro)", variable=self.variables["enable_order2_micro"]).pack(side=tk.LEFT, padx=5)
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
@@ -460,6 +483,224 @@ class CamMotionGUI:
         self.control_frame.pack(fill=tk.X, pady=(0, 10))
         self.notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         self.status_bar.pack(fill=tk.X, side=tk.BOTTOM)
+
+    def _build_diagnostics_tab(self):
+        """Create read-only diagnostics UI elements."""
+        # Summary group
+        summary = ttk.LabelFrame(self.diagnostics_frame, text="Summary", padding="10")
+        summary.pack(fill=tk.X, expand=False)
+
+        self.diag_run_id_var = tk.StringVar(value="-")
+        self.diag_status_var = tk.StringVar(value="-")
+        self.diag_iter_var = tk.StringVar(value="0")
+
+        ttk.Label(summary, text="Run ID:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        ttk.Label(summary, textvariable=self.diag_run_id_var).grid(row=0, column=1, sticky=tk.W, pady=2)
+
+        ttk.Label(summary, text="Status:").grid(row=0, column=2, sticky=tk.W, padx=(20, 0), pady=2)
+        ttk.Label(summary, textvariable=self.diag_status_var).grid(row=0, column=3, sticky=tk.W, pady=2)
+
+        ttk.Label(summary, text="Iterations:").grid(row=0, column=4, sticky=tk.W, padx=(20, 0), pady=2)
+        ttk.Label(summary, textvariable=self.diag_iter_var).grid(row=0, column=5, sticky=tk.W, pady=2)
+
+        # Residuals group
+        residuals = ttk.LabelFrame(self.diagnostics_frame, text="Residuals", padding="10")
+        residuals.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        self.diag_residuals_text = tk.Text(residuals, height=10, wrap="none")
+        self.diag_residuals_text.pack(fill=tk.BOTH, expand=True)
+        self.diag_residuals_text.config(state="disabled")
+
+        # KKT/Constraint stats group
+        kkt_frame = ttk.LabelFrame(self.diagnostics_frame, text="KKT / Constraint Stats", padding="10")
+        kkt_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        self.diag_kkt_text = tk.Text(kkt_frame, height=6, wrap="none")
+        self.diag_kkt_text.pack(fill=tk.BOTH, expand=True)
+        self.diag_kkt_text.config(state="disabled")
+
+        # Artifacts group
+        artifacts = ttk.LabelFrame(self.diagnostics_frame, text="Artifacts", padding="10")
+        artifacts.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        self.diag_artifacts_text = tk.Text(artifacts, height=6, wrap="none")
+        self.diag_artifacts_text.pack(fill=tk.BOTH, expand=True)
+        self.diag_artifacts_text.config(state="disabled")
+        # Buttons for quick actions
+        art_btns = ttk.Frame(artifacts)
+        art_btns.pack(fill=tk.X, expand=False, pady=(6, 0))
+        ttk.Button(art_btns, text="Open Ipopt Log", command=lambda: self._open_artifact('ipopt_log')).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(art_btns, text="Copy Log Path", command=lambda: self._copy_artifact('ipopt_log')).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Button(art_btns, text="Open Run Meta", command=lambda: self._open_artifact('run_meta')).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(art_btns, text="Copy Meta Path", command=lambda: self._copy_artifact('run_meta')).pack(side=tk.LEFT)
+
+        # Feasibility group
+        feas = ttk.LabelFrame(self.diagnostics_frame, text="Feasibility (Phase 0)", padding="10")
+        feas.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        self.diag_feas_text = tk.Text(feas, height=8, wrap="none")
+        self.diag_feas_text.pack(fill=tk.BOTH, expand=True)
+        self.diag_feas_text.config(state="disabled")
+
+    def _update_diagnostics_tab(self, solve_report):
+        """Populate diagnostics tab from a SolveReport-like object."""
+        try:
+            if not solve_report:
+                return
+            # Summary
+            self.diag_run_id_var.set(getattr(solve_report, 'run_id', '-') or '-')
+            self.diag_status_var.set(getattr(solve_report, 'status', '-') or '-')
+            try:
+                self.diag_iter_var.set(str(int(getattr(solve_report, 'n_iter', 0) or 0)))
+            except Exception:
+                self.diag_iter_var.set("0")
+
+            # Residuals
+            try:
+                self.diag_residuals_text.config(state="normal")
+                self.diag_residuals_text.delete("1.0", tk.END)
+                res = getattr(solve_report, 'residuals', {}) or {}
+                if res:
+                    # Stable order for common keys first
+                    keys = ["primal_inf", "dual_inf", "kkt_error", "constraint_violation"]
+                    printed = set()
+                    for k in keys:
+                        if k in res:
+                            try:
+                                self.diag_residuals_text.insert(tk.END, f"{k}: {float(res[k]):.6e}\n")
+                                printed.add(k)
+                            except Exception:
+                                pass
+                    # Print remaining keys
+                    for k, v in res.items():
+                        if k in printed:
+                            continue
+                        try:
+                            if isinstance(v, (int, float)):
+                                self.diag_residuals_text.insert(tk.END, f"{k}: {float(v):.6e}\n")
+                            else:
+                                self.diag_residuals_text.insert(tk.END, f"{k}: {v}\n")
+                        except Exception:
+                            pass
+                else:
+                    self.diag_residuals_text.insert(tk.END, "No residuals available.\n")
+            finally:
+                self.diag_residuals_text.config(state="disabled")
+
+            # Artifacts
+            try:
+                self.diag_artifacts_text.config(state="normal")
+                self.diag_artifacts_text.delete("1.0", tk.END)
+                arts = getattr(solve_report, 'artifacts', {}) or {}
+                if arts:
+                    for k, v in arts.items():
+                        self.diag_artifacts_text.insert(tk.END, f"{k}: {v}\n")
+                else:
+                    self.diag_artifacts_text.insert(tk.END, "No artifacts recorded.\n")
+            finally:
+                self.diag_artifacts_text.config(state="disabled")
+
+            # KKT stats
+            try:
+                self.diag_kkt_text.config(state="normal")
+                self.diag_kkt_text.delete("1.0", tk.END)
+                kkt = getattr(solve_report, 'kkt', {}) or {}
+                if kkt:
+                    order = ["primal_inf", "dual_inf", "compl_inf"]
+                    printed = set()
+                    for k in order:
+                        if k in kkt:
+                            try:
+                                self.diag_kkt_text.insert(tk.END, f"{k}: {float(kkt[k]):.6e}\n")
+                                printed.add(k)
+                            except Exception:
+                                pass
+                    for k, v in kkt.items():
+                        if k in printed:
+                            continue
+                        try:
+                            self.diag_kkt_text.insert(tk.END, f"{k}: {float(v):.6e}\n")
+                        except Exception:
+                            self.diag_kkt_text.insert(tk.END, f"{k}: {v}\n")
+                else:
+                    self.diag_kkt_text.insert(tk.END, "No KKT stats available.\n")
+            finally:
+                self.diag_kkt_text.config(state="disabled")
+
+            # Feasibility (from unified_result if available)
+            try:
+                self.diag_feas_text.config(state="normal")
+                self.diag_feas_text.delete("1.0", tk.END)
+                feas_info = None
+                if hasattr(self, 'unified_result') and self.unified_result is not None:
+                    ci = getattr(self.unified_result, 'convergence_info', {}) or {}
+                    feas_info = ci.get('feasibility_primary')
+                if isinstance(feas_info, dict):
+                    feasible = feas_info.get('feasible', False)
+                    max_violation = feas_info.get('max_violation', 0.0)
+                    self.diag_feas_text.insert(tk.END, f"Feasible: {feasible}\n")
+                    self.diag_feas_text.insert(tk.END, f"Max Violation: {max_violation:.3e}\n")
+                    viol = feas_info.get('violations', {}) or {}
+                    if viol:
+                        self.diag_feas_text.insert(tk.END, "Violations:\n")
+                        for k, v in viol.items():
+                            try:
+                                self.diag_feas_text.insert(tk.END, f"  - {k}: {float(v):.3e}\n")
+                            except Exception:
+                                self.diag_feas_text.insert(tk.END, f"  - {k}: {v}\n")
+                    recs = feas_info.get('recommendations', []) or []
+                    if recs:
+                        self.diag_feas_text.insert(tk.END, "Recommendations:\n")
+                        for r in recs:
+                            self.diag_feas_text.insert(tk.END, f"  - {r}\n")
+                else:
+                    self.diag_feas_text.insert(tk.END, "Feasibility info not available.\n")
+            finally:
+                self.diag_feas_text.config(state="disabled")
+        except Exception as e:
+            print(f"DEBUG: Failed to update diagnostics tab: {e}")
+
+    # --- Diagnostics helpers: artifact open/copy ---------------------------------
+    def _get_artifact_path(self, kind: str) -> str | None:
+        try:
+            if hasattr(self, 'solve_report') and self.solve_report and getattr(self.solve_report, 'artifacts', None):
+                path = self.solve_report.artifacts.get(kind)
+                if path:
+                    return str(path)
+        except Exception:
+            pass
+        if kind == 'ipopt_log' and getattr(self, 'latest_ipopt_log', None):
+            return self.latest_ipopt_log
+        return None
+
+    def _open_artifact(self, kind: str) -> None:
+        path = self._get_artifact_path(kind)
+        if not path:
+            self.status_var.set(f"No {kind.replace('_', ' ')} path available")
+            return
+        p = Path(path)
+        if not p.exists():
+            self.status_var.set(f"Path not found: {p}")
+            return
+        try:
+            if sys.platform.startswith('darwin'):
+                subprocess.run(['open', str(p)], check=False)
+            elif os.name == 'nt':  # Windows
+                os.startfile(str(p))  # type: ignore[attr-defined]
+            else:
+                subprocess.run(['xdg-open', str(p)], check=False)
+            self.status_var.set(f"Opened: {p}")
+        except Exception as e:
+            self.status_var.set(f"Open failed: {e}")
+
+    def _copy_artifact(self, kind: str) -> None:
+        path = self._get_artifact_path(kind)
+        if not path:
+            self.status_var.set(f"No {kind.replace('_', ' ')} path available")
+            return
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(path)
+            self.root.update()  # Keep clipboard after window loses focus
+            self.status_var.set(f"Copied path: {path}")
+        except Exception as e:
+            self.status_var.set(f"Copy failed: {e}")
 
     def _setup_plots(self):
         """Setup matplotlib plots for each tab."""
@@ -676,10 +917,26 @@ class CamMotionGUI:
             print(f"DEBUG: System optimization input data: {input_data}")
 
             # Perform cascaded optimization
+            print("DEBUG: Starting cascaded optimization...")
             result_data = self.unified_framework.optimize_cascaded(input_data)
+            print("DEBUG: Cascaded optimization completed successfully!")
 
-            # Store the result
+            # Store the result and convert to SolveReport for diagnostics
             self.unified_result = result_data
+            try:
+                from campro.api.adapters import unified_data_to_solve_report
+                self.solve_report = unified_data_to_solve_report(result_data)
+                # Cache latest Ipopt log for diagnostics panel
+                try:
+                    if hasattr(self.solve_report, 'artifacts') and isinstance(self.solve_report.artifacts, dict):
+                        self.latest_ipopt_log = self.solve_report.artifacts.get('ipopt_log', None)
+                except Exception:
+                    pass
+                # Update diagnostics tab on main thread
+                self.root.after(0, self._update_diagnostics_tab, self.solve_report)
+            except Exception as _e:
+                # Keep GUI responsive even if adapter fails
+                print(f"DEBUG: SolveReport adapter failed: {_e}")
 
             # Update plots on main thread
             self.root.after(0, self._update_all_plots, result_data)
@@ -687,6 +944,9 @@ class CamMotionGUI:
             # Update frames label if we have frame count
             if hasattr(self, "_total_frames"):
                 self.root.after(0, lambda: self.frames_label.config(text=f"Frames: {self._total_frames} (collocation points)"))
+
+            # Re-enable optimize button
+            self.root.after(0, self._enable_optimize_button)
 
         except Exception as e:
             print(f"DEBUG: Error in optimization thread: {e}")
@@ -764,6 +1024,15 @@ class CamMotionGUI:
         # Configure framework
         self.unified_framework.configure(settings=settings, constraints=constraints, targets=targets)
         
+        # Enable ORDER2_MICRO (CasADi) if requested via checkbox
+        try:
+            enable_order2 = bool(self.variables["enable_order2_micro"].get())
+            if hasattr(self.unified_framework, 'secondary_optimizer') and self.unified_framework.secondary_optimizer is not None:
+                setattr(self.unified_framework.secondary_optimizer, 'enable_order2_micro', enable_order2)
+                log.info(f"ORDER2_MICRO enabled: {enable_order2}")
+        except Exception as _e:
+            print(f"DEBUG: Failed to set ORDER2 flag: {_e}")
+        
         # Enable CasADi validation mode if requested
         if settings.enable_casadi_validation_mode:
             self.unified_framework.enable_casadi_validation_mode(settings.casadi_validation_tolerance)
@@ -777,6 +1046,8 @@ class CamMotionGUI:
         """Update all plots with optimization results."""
         try:
             print("DEBUG: Updating all plots with result data")
+            print(f"DEBUG: Result data type: {type(result_data)}")
+            print(f"DEBUG: Result data attributes: {dir(result_data)}")
 
             # Update Motion Law tab
             self._update_motion_law_plot(result_data)
@@ -796,11 +1067,36 @@ class CamMotionGUI:
             # Update status
             self.status_var.set(f"Optimization completed - Total time: {result_data.total_solve_time:.3f}s")
 
+            # Append residuals summary from SolveReport if available
+            try:
+                sr = getattr(self, 'solve_report', None)
+                if sr and getattr(sr, 'residuals', None):
+                    # Prefer common keys; fallback to first two residuals
+                    ordered = []
+                    for k in ("primal_inf", "dual_inf", "kkt_error", "constraint_violation"):
+                        if k in sr.residuals:
+                            try:
+                                ordered.append(f"{k}={float(sr.residuals[k]):.1e}")
+                            except Exception:
+                                pass
+                    if not ordered:
+                        items = list(sr.residuals.items())[:2]
+                        ordered = [f"{k}={float(v):.1e}" for k, v in items if isinstance(v, (int, float))]
+                    if ordered:
+                        cur = self.status_var.get()
+                        self.status_var.set(cur + " | Residuals: " + ", ".join(ordered))
+            except Exception as _e:
+                print(f"DEBUG: Failed to append residuals to status: {_e}")
+
             # Show detailed per-phase analysis
+            print("DEBUG: Showing detailed analysis...")
             self._show_detailed_analysis(result_data)
 
             # Show MA57 readiness analysis
+            print("DEBUG: Showing MA57 readiness analysis...")
             self._show_ma57_readiness()
+
+            print("DEBUG: All plots updated successfully!")
 
         except Exception as e:
             print(f"DEBUG: Error updating plots: {e}")
@@ -1539,6 +1835,103 @@ Side-Loading:
         except Exception as e:
             # If analysis fails, keep normal status
             print(f"DEBUG: Multi-phase MA57 readiness analysis failed: {e}")
+
+    def _diagnose_nlp(self):
+        """Run quick diagnostics: residuals and MA57 readiness from last run."""
+        try:
+            # Ensure we have results
+            if not hasattr(self, 'unified_result') or self.unified_result is None:
+                self.status_var.set("No results to diagnose. Run optimization first.")
+                return
+
+            # Build or reuse SolveReport
+            try:
+                from campro.api.adapters import unified_data_to_solve_report
+                sr = getattr(self, 'solve_report', None)
+                if sr is None:
+                    sr = unified_data_to_solve_report(self.unified_result)
+                    self.solve_report = sr
+            except Exception as _e:
+                sr = None
+                print(f"DEBUG: Unable to build SolveReport for diagnostics: {_e}")
+
+            # Determine Ipopt log path for analysis
+            ipopt_log = None
+            if sr and getattr(sr, 'artifacts', None):
+                try:
+                    ipopt_log = sr.artifacts.get('ipopt_log')
+                except Exception:
+                    ipopt_log = None
+            if not ipopt_log and hasattr(self, 'latest_ipopt_log'):
+                ipopt_log = self.latest_ipopt_log
+
+            # Analyze Ipopt output heuristically (stats may be empty)
+            readiness = None
+            try:
+                readiness = analyze_ipopt_run({}, ipopt_log)
+            except Exception as _e:
+                print(f"DEBUG: analyze_ipopt_run failed: {_e}")
+
+            # Compose report text
+            lines = []
+            if sr:
+                lines.append(f"Run ID: {getattr(sr, 'run_id', 'n/a')}")
+                lines.append(f"Status: {getattr(sr, 'status', 'n/a')}")
+                lines.append(f"Iterations: {getattr(sr, 'n_iter', 0)}")
+                if getattr(sr, 'residuals', None):
+                    # Show a few key residuals
+                    keys = ["primal_inf", "dual_inf", "kkt_error", "constraint_violation"]
+                    shown = []
+                    for k in keys:
+                        if k in sr.residuals:
+                            try:
+                                shown.append(f"{k}={float(sr.residuals[k]):.2e}")
+                            except Exception:
+                                pass
+                    if not shown:
+                        # show first two entries
+                        items = list(sr.residuals.items())[:2]
+                        for k, v in items:
+                            if isinstance(v, (int, float)):
+                                shown.append(f"{k}={v:.2e}")
+                    if shown:
+                        lines.append("Residuals: " + ", ".join(shown))
+                if ipopt_log:
+                    lines.append(f"Ipopt log: {ipopt_log}")
+            if readiness:
+                lines.append("")
+                lines.append(f"MA57 Readiness: {readiness.grade.upper()}")
+                if readiness.reasons:
+                    lines.append("Reasons: " + ", ".join(readiness.reasons))
+                if readiness.suggested_action:
+                    lines.append("Suggested: " + readiness.suggested_action)
+
+            text = "\n".join(lines) if lines else "No diagnostics available."
+
+            # Show modal info dialog and refresh Diagnostics tab
+            try:
+                messagebox.showinfo("NLP Diagnostics", text)
+            except Exception:
+                # Fallback: print to console
+                print("NLP Diagnostics:\n" + text)
+
+            try:
+                if sr is not None:
+                    self._update_diagnostics_tab(sr)
+            except Exception as _e:
+                print(f"DEBUG: Diagnostics tab refresh failed: {_e}")
+
+            # Update status bar with short summary
+            if readiness:
+                current = self.status_var.get()
+                if " | Diagnose:" in current:
+                    current = current.split(" | Diagnose:")[0]
+                self.status_var.set(current + f" | Diagnose: MA57 {readiness.grade.upper()}")
+        except Exception as e:
+            try:
+                messagebox.showwarning("NLP Diagnostics", f"Diagnostics failed: {e}")
+            except Exception:
+                print(f"NLP Diagnostics failed: {e}")
 
 
 def main():

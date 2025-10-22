@@ -21,6 +21,8 @@ from campro.optimization.solver_selection import (
 )
 from campro.optimization.parameter_tuning import DynamicParameterTuner
 from campro.optimization.ma57_migration_analyzer import MA57MigrationAnalyzer
+from campro.diagnostics.feasibility import check_feasibility
+from campro.diagnostics.scaling import compute_scaling_vector
 
 from .base import OptimizationResult, OptimizationStatus
 from .cam_ring_optimizer import (
@@ -105,7 +107,7 @@ class UnifiedOptimizationSettings:
     save_intermediate_results: bool = True
 
     # Ipopt analysis settings
-    enable_ipopt_analysis: bool = False
+    enable_ipopt_analysis: bool = True
 
     # Thermal-efficiency-focused primary optimization (complex gas optimizer)
     use_thermal_efficiency: bool = False
@@ -445,6 +447,36 @@ class UnifiedOptimizationFramework:
             # Update data with input
             self._update_data_from_input(input_data)
 
+            # A4: Phase-0 feasibility check for primary constraints
+            try:
+                from campro.diagnostics.feasibility import check_feasibility_nlp
+                primary_constraints = {
+                    "stroke": self.data.stroke,
+                    "cycle_time": self.data.cycle_time,
+                    "upstroke_percent": self.data.upstroke_duration_percent,
+                    "zero_accel_percent": self.data.zero_accel_duration_percent,
+                }
+                primary_bounds = {
+                    "max_velocity": self.constraints.max_velocity,
+                    "max_acceleration": self.constraints.max_acceleration,
+                    "max_jerk": self.constraints.max_jerk,
+                }
+                feas = check_feasibility_nlp(primary_constraints, primary_bounds)
+                self.data.convergence_info["feasibility_primary"] = {
+                    "feasible": feas.feasible,
+                    "max_violation": feas.max_violation,
+                    "violations": feas.violations,
+                    "recommendations": feas.recommendations,
+                }
+                if not feas.feasible:
+                    log.warning(
+                        "Primary feasibility (NLP) failed (max_violation=%.3e): %s",
+                        feas.max_violation,
+                        ", ".join(feas.recommendations) if feas.recommendations else "",
+                    )
+            except Exception as _e:
+                log.debug(f"Feasibility NLP pre-check skipped due to error: {_e}")
+
             # Primary optimization (motion law)
             log.info("Starting primary optimization (motion law)")
             primary_result = self._optimize_primary()
@@ -452,11 +484,38 @@ class UnifiedOptimizationFramework:
 
             # Secondary optimization (cam-ring)
             log.info("Starting secondary optimization (cam-ring)")
+            # A4: Feasibility check for secondary bound ordering
+            try:
+                sec_pairs = {
+                    "base_radius": (self.constraints.base_radius_min, self.constraints.base_radius_max),
+                }
+                sec_constraints = {"pairs": sec_pairs}
+                _ = check_feasibility(sec_constraints, {})
+                # We only record ordering issues if any
+            except Exception:
+                pass
             secondary_result = self._optimize_secondary()
             self._update_data_from_secondary(secondary_result)
 
             # Tertiary optimization (sun gear)
             log.info("Starting tertiary optimization (sun gear)")
+            # A4: Feasibility check for tertiary bounds
+            try:
+                tert_pairs = {
+                    "crank_center_x": (self.constraints.crank_center_x_min, self.constraints.crank_center_x_max),
+                    "crank_center_y": (self.constraints.crank_center_y_min, self.constraints.crank_center_y_max),
+                    "crank_radius": (self.constraints.crank_radius_min, self.constraints.crank_radius_max),
+                }
+                tert_constraints = {"pairs": tert_pairs}
+                tert_feas = check_feasibility(tert_constraints, {})
+                if tert_feas.violations:
+                    self.data.convergence_info.setdefault("feasibility_tertiary", {})
+                    self.data.convergence_info["feasibility_tertiary"].update({
+                        "violations": tert_feas.violations,
+                        "recommendations": tert_feas.recommendations,
+                    })
+            except Exception:
+                pass
             tertiary_result = self._optimize_tertiary()
             self._update_data_from_tertiary(tertiary_result)
 
@@ -538,6 +597,19 @@ class UnifiedOptimizationFramework:
             max_acceleration=max_acceleration,
             max_jerk=max_jerk,
         )
+
+        # A3: Compute and record primary scaling vector for diagnostics
+        try:
+            bounds_for_scaling = {
+                "position": (0.0, float(self.data.stroke)),
+                "velocity": (-(max_velocity or 0.0), (max_velocity or 0.0)),
+                "acceleration": (-(max_acceleration or 0.0), (max_acceleration or 0.0)),
+                "jerk": (-(max_jerk or 0.0), (max_jerk or 0.0)),
+            }
+            scales = compute_scaling_vector(bounds_for_scaling)
+            self.data.convergence_info["scaling_primary"] = scales
+        except Exception:
+            pass
 
         # Get motion type from data
         motion_type = self.data.motion_type
@@ -704,6 +776,14 @@ class UnifiedOptimizationFramework:
             "base_radius": self.data.stroke,
         }
 
+        # A3: Compute and record simple scaling stats for secondary design variables
+        try:
+            bmin, bmax = float(self.constraints.base_radius_min), float(self.constraints.base_radius_max)
+            sec_scales = compute_scaling_vector({"base_radius": (bmin, bmax)})
+            self.data.convergence_info["scaling_secondary"] = sec_scales
+        except Exception:
+            pass
+
         # Perform optimization
         log.info("Calling secondary optimizer...")
         result = self.secondary_optimizer.optimize(
@@ -795,6 +875,21 @@ class UnifiedOptimizationFramework:
             "psi": self.data.secondary_psi,
             "R_psi": self.data.secondary_R_psi,
         }
+
+        # A3: Compute and record tertiary variable scaling based on bounds
+        try:
+            scales_ter = compute_scaling_vector({
+                "crank_center_x": (float(self.constraints.crank_center_x_min), float(self.constraints.crank_center_x_max)),
+                "crank_center_y": (float(self.constraints.crank_center_y_min), float(self.constraints.crank_center_y_max)),
+                "crank_radius": (float(self.constraints.crank_radius_min), float(self.constraints.crank_radius_max)),
+                "rod_length": (
+                    float(getattr(self.constraints, 'rod_length_min', (self.data.secondary_base_radius or 20.0) * 4.0)),
+                    float(getattr(self.constraints, 'rod_length_max', (self.data.secondary_base_radius or 20.0) * 8.0)),
+                ),
+            })
+            self.data.convergence_info["scaling_tertiary"] = scales_ter
+        except Exception:
+            pass
 
         # Analyze problem characteristics for tertiary optimization
         problem_chars = ProblemCharacteristics(

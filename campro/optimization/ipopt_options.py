@@ -79,9 +79,7 @@ def build_casadi_options(
         if field in data and data[field] is not None:
             opts[key] = data[field]
 
-    # Creation-time linear solver + hsllib (must be present before reading file)
-    opts["ipopt.linear_solver"] = solver.value
-    opts["ipopt.hsllib"] = HSLLIB_PATH
+    # Note: linear_solver and hsllib are set by the IPOPT factory
 
     # Warm-start params (if enabled)
     if data.get("warm_start_init_point", "no") == "yes":
@@ -95,6 +93,16 @@ def build_casadi_options(
     ls_opts = data.get("linear_solver_options") or {}
     for k, v in ls_opts.items():
         opts[f"ipopt.{k}"] = v
+
+    # Robust defaults (only if not provided explicitly)
+    opts.setdefault("ipopt.max_iter", 4000)
+    opts.setdefault("ipopt.acceptable_tol", 1e-6)
+    opts.setdefault("ipopt.acceptable_iter", 15)
+    opts.setdefault("ipopt.mu_strategy", "adaptive")
+    opts.setdefault("ipopt.nlp_scaling_method", "gradient-based")
+    opts.setdefault("ipopt.nlp_scaling_max_gradient", 100.0)
+    opts.setdefault("ipopt.bound_relax_factor", 1e-8)
+    opts.setdefault("ipopt.print_user_options", "yes")
 
     # Emit option file with *run-time* parameters (Ipopt expects bare keys)
     if emit_file:

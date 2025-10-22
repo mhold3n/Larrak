@@ -52,6 +52,7 @@ conda = [
 
 [project.scripts]
 campro-litvin = "campro.litvin.cli:main"
+larrak = "scripts.larrak_cli:main"
 
 [tool.ruff]
 target-version = "py39"
@@ -84,7 +85,6 @@ addopts = "-v --tb=short"
 markers = [
     "performance: marks tests as performance benchmarks (deselect with '-m \"not performance\"')",
 ]
-
 
 
 

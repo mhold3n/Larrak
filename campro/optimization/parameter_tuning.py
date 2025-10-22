@@ -140,7 +140,7 @@ class DynamicParameterTuner:
         return {
             "ipopt.max_iter": params.max_iter,
             "ipopt.tol": params.tol,
-            "ipopt.linear_solver": params.linear_solver,
+            # Note: linear_solver is set by the IPOPT factory
             "ipopt.mu_strategy": params.mu_strategy,
             "ipopt.print_level": params.print_level,
             "ipopt.hessian_approximation": params.hessian_approximation,

@@ -1,12 +1,16 @@
 """
-Clean Cam-Ring System Designer GUI
+DEPRECATED: Legacy clean GUI prototype.
 
-A simplified, focused GUI with 4 clear tabs:
-1. Motion Law - Linear follower motion visualization
-2. Cam/Ring Motion - Motion relationships
-3. 2D Profiles - Cam and ring profile plots
-4. Animation - 60-frame discrete animation
+Use `cam_motion_gui.py` (the main GUI) going forward. This prototype is kept
+for reference and may be removed in a future release.
 """
+
+import warnings
+warnings.warn(
+    "cam_motion_gui_clean is deprecated; use cam_motion_gui instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import threading
 import tkinter as tk

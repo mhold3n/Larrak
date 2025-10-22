@@ -117,7 +117,7 @@ class IPOPTSolver:
             try:
                 from campro.optimization.ipopt_factory import create_ipopt_solver
                 nlp = {"x": ca.SX.sym("x"), "f": 0, "g": ca.SX([])}
-                _ = create_ipopt_solver("probe", nlp, force_linear_solver=True)
+                _ = create_ipopt_solver("probe", nlp, linear_solver="ma27")
                 self.ipopt_available = True
                 return
             except Exception:
@@ -244,15 +244,9 @@ class IPOPTSolver:
         # Convert options to CasADi format
         opts = self._convert_options()
 
-        # Ensure MA27 is always used - fail hard if not available
-        if opts.get("ipopt.linear_solver") != "ma27":
-            raise RuntimeError(
-                f"Linear solver must be 'ma27', got '{opts.get('ipopt.linear_solver')}'. "
-                "MUMPS fallback is not allowed for optimal performance."
-            )
-
-        # Create solver directly (temporarily bypass factory to debug)
-        solver = ca.nlpsol("solver", "ipopt", nlp, opts)
+        # Use centralized factory with explicit linear solver
+        from campro.optimization.ipopt_factory import create_ipopt_solver
+        solver = create_ipopt_solver("solver", nlp, opts, linear_solver="ma27")
 
         return solver
 
@@ -267,9 +261,8 @@ class IPOPTSolver:
         opts["ipopt.acceptable_tol"] = self.options.acceptable_tol
         opts["ipopt.acceptable_iter"] = self.options.acceptable_iter
 
-        # Linear solver and HSL library (set once at creation time)
-        opts["ipopt.linear_solver"] = self.options.linear_solver
-        opts["ipopt.hsllib"] = HSLLIB_PATH
+        # Note: linear_solver is set by the IPOPT factory
+        # HSL library path is also set by the factory
 
         # Barrier parameter
         opts["ipopt.mu_strategy"] = self.options.mu_strategy

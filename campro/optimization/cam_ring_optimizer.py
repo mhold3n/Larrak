@@ -6,6 +6,7 @@ parameters (cam radius, connecting rod length, ring design) using the same
 collocation approach as the primary motion law optimization.
 """
 
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -90,11 +91,18 @@ class CamRingOptimizer(BaseOptimizer):
     """
 
     def __init__(self, name: str = "CamRingOptimizer",
-                 settings: Optional[CollocationSettings] = None):
+                 settings: Optional[CollocationSettings] = None,
+                 enable_order2_micro: Optional[bool] = None):
         super().__init__(name)
         self.settings = settings or CollocationSettings()
         self.constraints = CamRingOptimizationConstraints()
         self.targets = CamRingOptimizationTargets()
+        # Feature flag to enable CasADi ORDER2_MICRO path
+        if enable_order2_micro is None:
+            env_flag = os.getenv("CAMPRO_ENABLE_ORDER2_MICRO", "0").strip()
+            self.enable_order2_micro = env_flag in {"1", "true", "TRUE", "yes", "on"}
+        else:
+            self.enable_order2_micro = bool(enable_order2_micro)
         self._is_configured = True
 
     def configure(self, constraints: Optional[CamRingOptimizationConstraints] = None,
@@ -121,6 +129,9 @@ class CamRingOptimizer(BaseOptimizer):
         for key, value in kwargs.items():
             if hasattr(self.settings, key):
                 setattr(self.settings, key, value)
+            # Allow toggling ORDER2 via configure
+            if key == "enable_order2_micro":
+                self.enable_order2_micro = bool(value)
 
         self._is_configured = True
         log.info(f"Configured {self.name} with constraints and targets")
@@ -197,9 +208,16 @@ class CamRingOptimizer(BaseOptimizer):
             log.info("Starting ORDER1_GEOMETRY...")
             order1_result = optimize_geometry(geometry_config, OptimizationOrder.ORDER1_GEOMETRY)
 
-            log.info("Starting ORDER2_MICRO... (temporarily disabled due to CasADi issues)")
-            # Temporarily disable ORDER2_MICRO due to CasADi function factory issues
-            order2_result = type('MockResult', (), {'feasible': False, 'best_config': None, 'objective_value': None, 'ipopt_analysis': None})()
+            if self.enable_order2_micro:
+                log.info("Starting ORDER2_MICRO (CasADi + Ipopt, scaled)")
+                try:
+                    order2_result = optimize_geometry(geometry_config, OptimizationOrder.ORDER2_MICRO)
+                except Exception as e:
+                    log.warning(f"ORDER2_MICRO failed: {e}; falling back to ORDER1/0")
+                    order2_result = type('MockResult', (), {'feasible': False, 'best_config': None, 'objective_value': None, 'ipopt_analysis': None})()
+            else:
+                log.info("ORDER2_MICRO disabled (set enable_order2_micro=True or CAMPRO_ENABLE_ORDER2_MICRO=1 to enable)")
+                order2_result = type('MockResult', (), {'feasible': False, 'best_config': None, 'objective_value': None, 'ipopt_analysis': None})()
 
             # Use the best result from the optimization orders
             best_result = order2_result if order2_result.feasible else (order1_result if order1_result.feasible else order0_result)
@@ -399,4 +417,3 @@ class CamRingOptimizer(BaseOptimizer):
         })
 
         return constraints
-

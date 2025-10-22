@@ -22,7 +22,7 @@ class IPOPTOptions:
     acceptable_iter: int = 15
 
     # Linear solver options
-    linear_solver: str = "ma27"  # "ma27", "ma57", "ma77", "ma86", "ma97", "mumps", "pardiso"
+    linear_solver: str = "ma27"  # "ma27", "ma57", "ma77", "ma86", "ma97", "pardiso"
     linear_solver_options: Dict[str, Any] = None
 
     # Barrier parameter options

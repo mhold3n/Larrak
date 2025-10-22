@@ -15,7 +15,7 @@ class SolverType(Enum):
     """Available linear solvers."""
     MA27 = "ma27"
     MA57 = "ma57"  # For future use when available
-    # MUMPS removed - not allowed for optimal performance
+    # Non-HSL solvers are not permitted in this project
 
 
 @dataclass

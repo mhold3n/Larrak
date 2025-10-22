@@ -78,7 +78,7 @@ class ConfigFactory:
                     "tol": 1e-6,
                     # creation-time options ensure HSL is initialized before reading file
                     "hessian_approximation": "limited-memory",
-                    "linear_solver": "ma27",
+                    # Note: linear_solver is set by the IPOPT factory
                 },
             },
             objective={
@@ -114,7 +114,7 @@ class ConfigFactory:
             "max_iter": 5000,
             "tol": 1e-8,
             "hessian_approximation": "exact",
-            "linear_solver": "ma27",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         # Stricter constraints
@@ -138,7 +138,7 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 500,
             "tol": 1e-4,
-            "linear_solver": "ma27",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         # Relaxed constraints
@@ -166,7 +166,7 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 2000,
             "tol": 1e-6,
-            "linear_solver": "ma27",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         return config
@@ -183,7 +183,7 @@ class ConfigFactory:
             "hessian_approximation": "limited-memory",
             "mu_strategy": "adaptive",
             "mu_init": 1e-3,
-            "linear_solver": "ma27",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         # Enable adaptive refinement

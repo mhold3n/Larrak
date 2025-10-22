@@ -16,26 +16,33 @@ sys.path.insert(0, str(current_dir))
 def validate_environment_before_launch():
     """Validate environment before launching GUI."""
     try:
-        from campro.environment.validator import validate_environment
-
-        print("Validating environment...")
-        results = validate_environment()
-        overall_status = results["summary"]["overall_status"]
-
-        if overall_status.value == "error":
-            print("❌ Environment validation failed!")
-            print("Required dependencies are missing or incompatible.")
-            print("\nTo fix this issue:")
-            print("1. Run: python scripts/setup_environment.py")
-            print("2. Or run: python scripts/check_environment.py")
-            print("\nExiting...")
-            sys.exit(1)
-        elif overall_status.value == "warning":
-            print("⚠️  Environment validation passed with warnings.")
-            print("Run 'python scripts/check_environment.py' for details.")
-            print("Continuing with GUI launch...")
-        else:
-            print("✅ Environment validation passed!")
+        # TEMPORARILY DISABLE VALIDATION TO PREVENT UNEXPECTED LINEAR SOLVER CHANGES
+        # The validation process may create solvers that conflict with the MA27/MA57 policy
+        print("⚠️  Environment validation temporarily disabled to avoid linear-solver conflicts")
+        print("Continuing with GUI launch...")
+        return
+        
+        # Original validation code (commented out to avoid unintended solver initialization)
+        # from campro.environment.validator import validate_environment
+        # 
+        # print("Validating environment...")
+        # results = validate_environment()
+        # overall_status = results["summary"]["overall_status"]
+        # 
+        # if overall_status.value == "error":
+        #     print("❌ Environment validation failed!")
+        #     print("Required dependencies are missing or incompatible.")
+        #     print("\nTo fix this issue:")
+        #     print("1. Run: python scripts/setup_environment.py")
+        #     print("2. Or run: python scripts/check_environment.py")
+        #     print("\nExiting...")
+        #     sys.exit(1)
+        # elif overall_status.value == "warning":
+        #     print("⚠️  Environment validation passed with warnings.")
+        #     print("Run 'python scripts/check_environment.py' for details.")
+        #     print("Continuing with GUI launch...")
+        # else:
+        #     print("✅ Environment validation passed!")
 
     except ImportError as e:
         print(f"⚠️  Warning: Could not import environment validator: {e}")
@@ -63,7 +70,6 @@ except ImportError as e:
 except Exception as e:
     print(f"❌ Error starting GUI: {e}")
     sys.exit(1)
-
 
 
 

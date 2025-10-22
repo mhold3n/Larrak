@@ -7,6 +7,7 @@ from typing import Tuple, Optional, Any
 import numpy as np
 
 from campro.logging import get_logger
+from campro.diagnostics.scaling import build_scaled_nlp, scale_bounds, scale_value
 from campro.constants import HSLLIB_PATH
 from campro.freepiston.opt.ipopt_solver import IPOPTSolver, IPOPTOptions
 
@@ -210,14 +211,19 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     phi_min = float(np.min(flank.phi))
     phi_max = float(np.max(flank.phi))
     
-    # Create NLP problem
+    # Create NLP problem (unscaled)
     nlp = {
         'x': phi,
         'f': smoothness_penalty,
-        'g': periodicity_constraint
+        'g': periodicity_constraint,
     }
-    
-    # Create CasADi NLP solver
+
+    # Scaling for phi decision variable (keep z = s*phi ~ O(1))
+    magnitude = max(abs(phi_min), abs(phi_max))
+    s_phi = (1.0 / magnitude) if magnitude > 1e-6 else 1.0
+    nlp_scaled = build_scaled_nlp(nlp, s_phi, kind='SX')
+
+    # Create Ipopt options
     solver_options = IPOPTOptions(
         max_iter=1000,
         tol=1e-6,
@@ -226,27 +232,22 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         print_level=3
     )
     
-    # Create CasADi solver using centralized factory
-    from campro.optimization.ipopt_factory import create_ipopt_solver
-    casadi_solver = create_ipopt_solver('solver', nlp, {
-        'ipopt.max_iter': solver_options.max_iter,
-        'ipopt.tol': solver_options.tol,
-        'ipopt.linear_solver': solver_options.linear_solver,
-        'ipopt.print_level': solver_options.print_level,
-    }, force_linear_solver=True)
-    
     # Set up Ipopt solver wrapper
     solver = IPOPTSolver(solver_options)
     
     # Solve the NLP
     try:
+        # Scale x0/lbx/ubx into z-domain: z = s*phi
+        x0_z = scale_value(np.asarray(phi_init), s_phi)
+        lbz, ubz = scale_bounds((np.full(n, phi_min), np.full(n, phi_max)), s_phi)
+
         result = solver.solve(
-            nlp=casadi_solver,
-            x0=phi_init,
-            lbx=np.full(n, phi_min),
-            ubx=np.full(n, phi_max),
-            lbg=np.array([0.0]),  # periodicity constraint: phi[n-1] - phi[0] = 0
-            ubg=np.array([0.0])
+            nlp=nlp_scaled,
+            x0=x0_z,
+            lbx=lbz,
+            ubx=ubz,
+            lbg=np.array([0.0]),  # periodicity constraint: remains 0 after scaling
+            ubg=np.array([0.0]),
         )
         
         if result.success:
@@ -314,4 +315,3 @@ def _order2_fallback_smoothing(config: GeometrySearchConfig, phi_init: np.ndarra
     m = evaluate_order0_metrics_given_phi(cand, phi_vals)
     obj = m.slip_integral - 0.1 * m.contact_length + (0.0 if m.feasible else 1e3)
     return OptimResult(best_config=cand, objective_value=obj, feasible=m.feasible)
-

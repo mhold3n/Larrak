@@ -95,7 +95,7 @@ def verify_ipopt_with_solver(solver_name: str) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Verify Ipopt linear solver initialization")
-    parser.add_argument("--solver", default="ma57", help="Linear solver to verify (e.g., ma57, ma27, mumps)")
+    parser.add_argument("--solver", default="ma57", help="Linear solver to verify (e.g., ma57, ma27)")
     args = parser.parse_args()
 
     exit_code = verify_ipopt_with_solver(args.solver)
@@ -107,5 +107,4 @@ def main() -> None:
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint
     main()
-
 

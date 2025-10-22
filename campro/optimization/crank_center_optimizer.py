@@ -824,9 +824,9 @@ class CrankCenterOptimizer(BaseOptimizer):
         casadi_solver = create_ipopt_solver('solver', nlp, {
             'ipopt.max_iter': solver_options.max_iter,
             'ipopt.tol': solver_options.tol,
-            'ipopt.linear_solver': solver_options.linear_solver,
+            # Note: linear_solver is set by the IPOPT factory
             'ipopt.print_level': solver_options.print_level,
-        }, force_linear_solver=True)
+        }, linear_solver="ma27")
         
         # Set up Ipopt solver wrapper
         solver = IPOPTSolver(solver_options)

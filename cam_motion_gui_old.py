@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """
-Tkinter GUI for Cam Motion Law Optimization
+DEPRECATED: Legacy GUI for Cam Motion Law Optimization.
 
-A simple graphical interface for inputting cam constraints and visualizing
-the resulting motion law curves.
+This module is kept for reference only. Use `cam_motion_gui.py` instead.
+It may be removed in a future release.
 """
+
+import warnings
+warnings.warn(
+    "cam_motion_gui_old is deprecated; use cam_motion_gui instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import threading
 import tkinter as tk
