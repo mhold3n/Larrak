@@ -32,3 +32,4 @@ echo "🚀 Running optimization..."
 # Run the optimization with all passed arguments
 python scripts/run_optimization_cli.py "$@"
 
+
