@@ -446,3 +446,7 @@ class TestUnifiedFrameworkIntegration:
         # Test history management
         framework.solver_selector.clear_history()
         assert len(framework.solver_selector.analysis_history) == 0
+
+
+
+

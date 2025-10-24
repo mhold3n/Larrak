@@ -9,7 +9,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+from campro.constants import CASADI_PHYSICS_EPSILON
+
 from campro.logging import get_logger
+
+# Import CasADi for domain guards
+try:
+    import casadi as ca  # type: ignore
+except ImportError:
+    ca = None  # type: ignore
 
 log = get_logger(__name__)
 
@@ -70,14 +78,14 @@ def comprehensive_path_constraints(
     # Valve rate constraints
     if "A_in" in controls and len(controls["A_in"]) > 1:
         for i in range(1, len(controls["A_in"])):
-            dA_dt = (controls["A_in"][i] - controls["A_in"][i-1]) / grid.h
+            dA_dt = (controls["A_in"][i] - controls["A_in"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
             g_path.append(dA_dt)
             lbg_path.append(-bounds.get("dA_dt_max", 0.02))
             ubg_path.append(bounds.get("dA_dt_max", 0.02))
 
     if "A_ex" in controls and len(controls["A_ex"]) > 1:
         for i in range(1, len(controls["A_ex"])):
-            dA_dt = (controls["A_ex"][i] - controls["A_ex"][i-1]) / grid.h
+            dA_dt = (controls["A_ex"][i] - controls["A_ex"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
             g_path.append(dA_dt)
             lbg_path.append(-bounds.get("dA_dt_max", 0.02))
             ubg_path.append(bounds.get("dA_dt_max", 0.02))
@@ -92,8 +100,8 @@ def comprehensive_path_constraints(
     # Piston acceleration constraints
     if "v_L" in states and "v_R" in states and len(states["v_L"]) > 1:
         for i in range(1, len(states["v_L"])):
-            aL = (states["v_L"][i] - states["v_L"][i-1]) / grid.h
-            aR = (states["v_R"][i] - states["v_R"][i-1]) / grid.h
+            aL = (states["v_L"][i] - states["v_L"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
+            aR = (states["v_R"][i] - states["v_R"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
             g_path.extend([aL, aR])
             lbg_path.extend([-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)])
             ubg_path.extend([bounds.get("a_max", 1000.0), bounds.get("a_max", 1000.0)])
@@ -226,7 +234,7 @@ def valve_rate_constraints(
 
     if len(valve_states) > 1:
         for i in range(1, len(valve_states)):
-            dA_dt = (valve_states[i] - valve_states[i-1]) / grid.h
+            dA_dt = (valve_states[i] - valve_states[i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
             g_rate.append(dA_dt)
             lbg_rate.append(-bounds.get("dA_dt_max", 0.02))
             ubg_rate.append(bounds.get("dA_dt_max", 0.02))
@@ -286,8 +294,8 @@ def piston_acceleration_constraints(
 
     if len(v_L_states) > 1:
         for i in range(1, len(v_L_states)):
-            aL = (v_L_states[i] - v_L_states[i-1]) / grid.h
-            aR = (v_R_states[i] - v_R_states[i-1]) / grid.h
+            aL = (v_L_states[i] - v_L_states[i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
+            aR = (v_R_states[i] - v_R_states[i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
             g_accel.extend([aL, aR])
             lbg_accel.extend([-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)])
             ubg_accel.extend([bounds.get("a_max", 1000.0), bounds.get("a_max", 1000.0)])

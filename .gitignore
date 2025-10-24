@@ -177,6 +177,7 @@ conda-bld/
 
 # Project-specific
 logs/
+.github-mcp/
 *.png
 *.pdf
 *.svg

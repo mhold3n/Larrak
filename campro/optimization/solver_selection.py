@@ -15,7 +15,7 @@ class SolverType(Enum):
     """Available linear solvers."""
     MA27 = "ma27"
     MA57 = "ma57"  # For future use when available
-    MUMPS = "mumps"
+    # Non-HSL solvers are not permitted in this project
 
 
 @dataclass
@@ -78,6 +78,11 @@ class AdaptiveSolverSelector:
     
     def update_history(self, phase: str, analysis: MA57ReadinessReport):
         """Update analysis history for future decisions."""
+        # Handle case where analysis is None (optimization failed)
+        if analysis is None:
+            log.warning(f"No analysis available for phase {phase}, skipping history update")
+            return
+            
         if phase not in self.analysis_history:
             self.analysis_history[phase] = AnalysisHistory(
                 avg_grade=analysis.grade,

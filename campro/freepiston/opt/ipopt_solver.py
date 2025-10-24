@@ -46,6 +46,8 @@ class IPOPTOptions:
     print_level: int = 5  # 0=silent, 5=normal, 12=verbose
     print_frequency_iter: int = 1
     print_frequency_time: float = 5.0
+    output_file: Optional[str] = None
+    print_timing_statistics: bool = False
 
     # Warm start options
     warm_start_init_point: str = "no"  # "no", "yes"
@@ -113,11 +115,9 @@ class IPOPTSolver:
             import casadi as ca
             # Prefer a direct instantiation probe to handle builds without nlpsol_plugins
             try:
-                _ = ca.nlpsol(
-                    "probe",
-                    "ipopt",
-                    {"x": ca.SX.sym("x"), "f": 0, "g": ca.SX([])},
-                )
+                from campro.optimization.ipopt_factory import create_ipopt_solver
+                nlp = {"x": ca.SX.sym("x"), "f": 0, "g": ca.SX([])}
+                _ = create_ipopt_solver("probe", nlp, linear_solver="ma27")
                 self.ipopt_available = True
                 return
             except Exception:
@@ -185,8 +185,19 @@ class IPOPTSolver:
             if p is None:
                 p = np.array([])
 
+            # Try warm-start persistence if enabled
+            warm_kwargs: Dict[str, Any] = {}
+            try:
+                if str(self.options.warm_start_init_point).lower() == "yes":
+                    from campro.diagnostics.warmstart import load_warmstart, save_warmstart
+                    n_x = int(np.asarray(x0).size)
+                    n_g = int(np.asarray(lbg).size) if lbg is not None else (int(np.asarray(ubg).size) if ubg is not None else 0)
+                    warm_kwargs = load_warmstart(n_x, n_g)
+            except Exception:
+                warm_kwargs = {}
+
             # Solve
-            result = solver(x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p)
+            result = solver(x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs)
 
             # Extract solution
             x_opt = result["x"].full().flatten()
@@ -215,7 +226,7 @@ class IPOPTSolver:
 
             message = self._get_status_message(status)
 
-            return IPOPTResult(
+            out = IPOPTResult(
                 success=success,
                 x_opt=x_opt,
                 f_opt=f_opt,
@@ -233,6 +244,21 @@ class IPOPTSolver:
                 feasibility_error=feasibility_error,
             )
 
+            # Save warm-start for subsequent runs
+            try:
+                if str(self.options.warm_start_init_point).lower() == "yes":
+                    from campro.diagnostics.warmstart import save_warmstart
+                    # Multipliers for constraints are available as lam_g; lam_x may be present too
+                    lam_g = result.get("lam_g", None)
+                    lam_x = result.get("lam_x", None)
+                    lam_g_arr = None if lam_g is None else lam_g.full().flatten()
+                    lam_x_arr = None if lam_x is None else lam_x.full().flatten()
+                    save_warmstart(x_opt, lam_g=lam_g_arr, lam_x=lam_x_arr)
+            except Exception:
+                pass
+
+            return out
+
         except Exception as e:
             log.error(f"IPOPT solve failed: {e!s}")
             return self._create_error_result(str(e), time.time() - start_time)
@@ -244,8 +270,9 @@ class IPOPTSolver:
         # Convert options to CasADi format
         opts = self._convert_options()
 
-        # Create solver
-        solver = ca.nlpsol("solver", "ipopt", nlp, opts)
+        # Use centralized factory with explicit linear solver
+        from campro.optimization.ipopt_factory import create_ipopt_solver
+        solver = create_ipopt_solver("solver", nlp, opts, linear_solver="ma27")
 
         return solver
 
@@ -260,18 +287,8 @@ class IPOPTSolver:
         opts["ipopt.acceptable_tol"] = self.options.acceptable_tol
         opts["ipopt.acceptable_iter"] = self.options.acceptable_iter
 
-        # Use creation-time options so Ipopt initializes linear solver & HSL before reading option file
-        ipopt_opt_path = IPOPT_OPT_PATH
-        hsl_path = HSLLIB_PATH
-
-        # Ensure linear solver and hsllib are applied at solver creation time (default MA27)
-        opts["ipopt.linear_solver"] = "ma27"
-        opts["ipopt.hsllib"] = hsl_path
-        try:
-            if Path(ipopt_opt_path).exists():
-                opts["ipopt.option_file_name"] = ipopt_opt_path
-        except Exception:
-            pass
+        # Note: linear_solver is set by the IPOPT factory
+        # HSL library path is also set by the factory
 
         # Barrier parameter
         opts["ipopt.mu_strategy"] = self.options.mu_strategy
@@ -291,7 +308,11 @@ class IPOPTSolver:
         opts["ipopt.print_level"] = self.options.print_level
         opts["ipopt.print_frequency_iter"] = self.options.print_frequency_iter
         opts["ipopt.print_frequency_time"] = self.options.print_frequency_time
-        if getattr(self.options, "enable_analysis", False):
+        
+        # Handle analysis output options
+        if self.options.output_file:
+            opts["ipopt.output_file"] = self.options.output_file
+        elif getattr(self.options, "enable_analysis", False):
             # Route detailed Ipopt output to a timestamped file for analysis
             log_dir = Path(IPOPT_LOG_DIR)
             try:
@@ -301,7 +322,8 @@ class IPOPTSolver:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_file = str(log_dir / f"ipopt_{ts}.log")
             opts["ipopt.output_file"] = out_file
-            # Encourage Ipopt to emit timing statistics
+            
+        if self.options.print_timing_statistics:
             opts["ipopt.print_timing_statistics"] = "yes"
 
         # Warm start
@@ -313,6 +335,15 @@ class IPOPTSolver:
         opts["ipopt.hessian_approximation"] = self.options.hessian_approximation
         opts["ipopt.limited_memory_max_history"] = self.options.limited_memory_max_history
         opts["ipopt.limited_memory_update_type"] = self.options.limited_memory_update_type
+
+        # Add linear solver options if provided
+        for key, value in self.options.linear_solver_options.items():
+            opts[f"ipopt.{key}"] = value
+
+        # Log configuration for debugging
+        log.debug(f"IPOPT options configured: linear_solver={self.options.linear_solver}, "
+                 f"max_iter={self.options.max_iter}, tol={self.options.tol}")
+        log.debug(f"Full IPOPT options dict: {opts}")
 
         return opts
 

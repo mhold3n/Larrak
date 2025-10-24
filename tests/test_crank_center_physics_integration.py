@@ -16,6 +16,7 @@ from campro.optimization.crank_center_optimizer import (
 )
 from campro.optimization.base import OptimizationStatus
 from campro.optimization.solver_analysis import MA57ReadinessReport
+from campro.constants import USE_CASADI_PHYSICS
 
 
 class TestCrankCenterPhysicsIntegration:
@@ -351,3 +352,142 @@ class TestCrankCenterPhysicsIntegration:
         
         assert optimizer.constraints.max_iterations == 200
         assert optimizer.targets.maximize_torque is False
+
+
+class TestCasadiPhysicsToggleIntegration:
+    """Test cross-mode integration between Python and CasADi physics."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.constraints = CrankCenterOptimizationConstraints(
+            max_iterations=50,  # Reduced for testing
+            tolerance=1e-4,
+            crank_center_x_min=-10.0,
+            crank_center_x_max=10.0,
+            crank_center_y_min=-10.0,
+            crank_center_y_max=10.0,
+        )
+        
+        self.targets = CrankCenterOptimizationTargets(
+            maximize_torque=True,
+            minimize_side_loading=True,
+            minimize_torque_ripple=False,
+            maximize_power_output=False,
+            torque_weight=1.0,
+            side_load_weight=0.5,
+            torque_ripple_weight=0.0,
+            power_output_weight=0.0,
+        )
+
+    @pytest.mark.skipif(not USE_CASADI_PHYSICS, reason="CasADi physics not enabled")
+    def test_casadi_physics_mode_integration(self):
+        """Test optimizer integration with CasADi physics enabled."""
+        optimizer = CrankCenterOptimizer()
+        optimizer.configure(constraints=self.constraints, targets=self.targets)
+        
+        # Mock the required inputs
+        mock_inputs = {
+            'crank_center_x': 5.0,
+            'crank_center_y': 2.0,
+            'crank_radius': 50.0,
+            'rod_length': 150.0,
+            'motion_law_data': {
+                'theta': np.linspace(0, 2*np.pi, 10),
+                'pressure': 1e5 * np.ones(10),
+            },
+            'litvin_config': {
+                'z_r': 50.0,
+                'z_p': 20.0,
+                'module': 2.0,
+                'alpha_deg': 20.0,
+                'R0': 25.0,
+            }
+        }
+        
+        # Test that optimizer can run with CasADi physics
+        result = optimizer.simulate(mock_inputs)
+        
+        # Check that result is valid
+        assert result.status in [OptimizationStatus.SUCCESS, OptimizationStatus.CONVERGED]
+        assert 'crank_center_x' in result.outputs
+        assert 'crank_center_y' in result.outputs
+        assert 'crank_radius' in result.outputs
+        assert 'rod_length' in result.outputs
+
+    def test_python_physics_mode_integration(self):
+        """Test optimizer integration with Python physics (fallback mode)."""
+        # Temporarily disable CasADi physics for this test
+        with patch('campro.constants.USE_CASADI_PHYSICS', False):
+            optimizer = CrankCenterOptimizer()
+            optimizer.configure(constraints=self.constraints, targets=self.targets)
+            
+            # Mock the required inputs
+            mock_inputs = {
+                'crank_center_x': 5.0,
+                'crank_center_y': 2.0,
+                'crank_radius': 50.0,
+                'rod_length': 150.0,
+                'motion_law_data': {
+                    'theta': np.linspace(0, 2*np.pi, 10),
+                    'pressure': 1e5 * np.ones(10),
+                },
+                'litvin_config': {
+                    'z_r': 50.0,
+                    'z_p': 20.0,
+                    'module': 2.0,
+                    'alpha_deg': 20.0,
+                    'R0': 25.0,
+                }
+            }
+            
+            # Test that optimizer can run with Python physics
+            result = optimizer.simulate(mock_inputs)
+            
+            # Check that result is valid
+            assert result.status in [OptimizationStatus.SUCCESS, OptimizationStatus.CONVERGED]
+            assert 'crank_center_x' in result.outputs
+            assert 'crank_center_y' in result.outputs
+            assert 'crank_radius' in result.outputs
+            assert 'rod_length' in result.outputs
+
+    def test_cross_mode_parity(self):
+        """Test that Python and CasADi modes produce similar results."""
+        # This test would require both modes to be available and produce comparable results
+        # For now, just verify that both modes can be configured
+        
+        # Test Python mode
+        with patch('campro.constants.USE_CASADI_PHYSICS', False):
+            optimizer_python = CrankCenterOptimizer()
+            optimizer_python.configure(constraints=self.constraints, targets=self.targets)
+            assert optimizer_python is not None
+        
+        # Test CasADi mode (if available)
+        if USE_CASADI_PHYSICS:
+            optimizer_casadi = CrankCenterOptimizer()
+            optimizer_casadi.configure(constraints=self.constraints, targets=self.targets)
+            assert optimizer_casadi is not None
+
+    def test_toggle_enablement_criteria(self):
+        """Test that toggle enablement criteria are met."""
+        # This test verifies that the conditions for enabling CasADi physics are met
+        # In practice, this would check:
+        # 1. Parity thresholds are met
+        # 2. Performance gates are satisfied
+        # 3. All tests pass
+        
+        # For now, just verify the toggle state
+        if USE_CASADI_PHYSICS:
+            # If enabled, verify that CasADi is available
+            try:
+                import casadi as ca
+                from campro.physics.casadi import create_unified_physics
+                unified_fn = create_unified_physics()
+                assert unified_fn is not None
+            except ImportError:
+                pytest.fail("CasADi physics enabled but CasADi not available")
+        else:
+            # If disabled, verify that fallback works
+            with patch('campro.constants.USE_CASADI_PHYSICS', False):
+                optimizer = CrankCenterOptimizer()
+                optimizer.configure(constraints=self.constraints, targets=self.targets)
+                assert optimizer is not None

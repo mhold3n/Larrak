@@ -21,6 +21,8 @@ from campro.optimization.solver_selection import (
 )
 from campro.optimization.parameter_tuning import DynamicParameterTuner
 from campro.optimization.ma57_migration_analyzer import MA57MigrationAnalyzer
+from campro.diagnostics.feasibility import check_feasibility
+from campro.diagnostics.scaling import compute_scaling_vector
 
 from .base import OptimizationResult, OptimizationStatus
 from .cam_ring_optimizer import (
@@ -105,7 +107,7 @@ class UnifiedOptimizationSettings:
     save_intermediate_results: bool = True
 
     # Ipopt analysis settings
-    enable_ipopt_analysis: bool = False
+    enable_ipopt_analysis: bool = True
 
     # Thermal-efficiency-focused primary optimization (complex gas optimizer)
     use_thermal_efficiency: bool = False
@@ -116,6 +118,10 @@ class UnifiedOptimizationSettings:
     constant_load_value: float = 1.0
     # Phase-1: constant operating temperature (free-piston idealization)
     constant_temperature_K: float = 900.0
+    
+    # CasADi physics validation mode settings
+    enable_casadi_validation_mode: bool = False
+    casadi_validation_tolerance: float = 1e-4
 
 
 @dataclass
@@ -409,6 +415,12 @@ class UnifiedOptimizationFramework:
             constraints=tertiary_constraints,
             targets=tertiary_targets,
         )
+        
+        # Configure CasADi validation mode if enabled
+        if self.settings.enable_casadi_validation_mode:
+            log.info("CasADi validation mode enabled for tertiary optimization")
+            # The validation mode is controlled by constants, but we can log the setting
+            log.info(f"Validation tolerance: {self.settings.casadi_validation_tolerance}")
 
     def optimize_cascaded(self, input_data: Dict[str, Any]) -> UnifiedOptimizationData:
         """
@@ -435,6 +447,36 @@ class UnifiedOptimizationFramework:
             # Update data with input
             self._update_data_from_input(input_data)
 
+            # A4: Phase-0 feasibility check for primary constraints
+            try:
+                from campro.diagnostics.feasibility import check_feasibility_nlp
+                primary_constraints = {
+                    "stroke": self.data.stroke,
+                    "cycle_time": self.data.cycle_time,
+                    "upstroke_percent": self.data.upstroke_duration_percent,
+                    "zero_accel_percent": self.data.zero_accel_duration_percent,
+                }
+                primary_bounds = {
+                    "max_velocity": self.constraints.max_velocity,
+                    "max_acceleration": self.constraints.max_acceleration,
+                    "max_jerk": self.constraints.max_jerk,
+                }
+                feas = check_feasibility_nlp(primary_constraints, primary_bounds)
+                self.data.convergence_info["feasibility_primary"] = {
+                    "feasible": feas.feasible,
+                    "max_violation": feas.max_violation,
+                    "violations": feas.violations,
+                    "recommendations": feas.recommendations,
+                }
+                if not feas.feasible:
+                    log.warning(
+                        "Primary feasibility (NLP) failed (max_violation=%.3e): %s",
+                        feas.max_violation,
+                        ", ".join(feas.recommendations) if feas.recommendations else "",
+                    )
+            except Exception as _e:
+                log.debug(f"Feasibility NLP pre-check skipped due to error: {_e}")
+
             # Primary optimization (motion law)
             log.info("Starting primary optimization (motion law)")
             primary_result = self._optimize_primary()
@@ -442,11 +484,38 @@ class UnifiedOptimizationFramework:
 
             # Secondary optimization (cam-ring)
             log.info("Starting secondary optimization (cam-ring)")
+            # A4: Feasibility check for secondary bound ordering
+            try:
+                sec_pairs = {
+                    "base_radius": (self.constraints.base_radius_min, self.constraints.base_radius_max),
+                }
+                sec_constraints = {"pairs": sec_pairs}
+                _ = check_feasibility(sec_constraints, {})
+                # We only record ordering issues if any
+            except Exception:
+                pass
             secondary_result = self._optimize_secondary()
             self._update_data_from_secondary(secondary_result)
 
             # Tertiary optimization (sun gear)
             log.info("Starting tertiary optimization (sun gear)")
+            # A4: Feasibility check for tertiary bounds
+            try:
+                tert_pairs = {
+                    "crank_center_x": (self.constraints.crank_center_x_min, self.constraints.crank_center_x_max),
+                    "crank_center_y": (self.constraints.crank_center_y_min, self.constraints.crank_center_y_max),
+                    "crank_radius": (self.constraints.crank_radius_min, self.constraints.crank_radius_max),
+                }
+                tert_constraints = {"pairs": tert_pairs}
+                tert_feas = check_feasibility(tert_constraints, {})
+                if tert_feas.violations:
+                    self.data.convergence_info.setdefault("feasibility_tertiary", {})
+                    self.data.convergence_info["feasibility_tertiary"].update({
+                        "violations": tert_feas.violations,
+                        "recommendations": tert_feas.recommendations,
+                    })
+            except Exception:
+                pass
             tertiary_result = self._optimize_tertiary()
             self._update_data_from_tertiary(tertiary_result)
 
@@ -461,6 +530,34 @@ class UnifiedOptimizationFramework:
             raise
 
         return self.data
+
+    def enable_casadi_validation_mode(self, tolerance: float = 1e-4) -> None:
+        """
+        Enable CasADi physics validation mode for tertiary optimization.
+        
+        This enables parallel validation where both Python and CasADi physics
+        are evaluated and compared during crank center optimization.
+        
+        Parameters
+        ----------
+        tolerance : float, optional
+            Tolerance for validation comparisons, by default 1e-4
+        """
+        self.settings.enable_casadi_validation_mode = True
+        self.settings.casadi_validation_tolerance = tolerance
+        
+        # Update constants to enable validation mode
+        from campro.constants import CASADI_PHYSICS_VALIDATION_MODE, CASADI_PHYSICS_VALIDATION_TOLERANCE
+        import campro.constants as constants
+        
+        # Note: We can't directly modify the constants, but we can log the setting
+        log.info(f"CasADi validation mode enabled with tolerance {tolerance}")
+        log.info("Note: Set CASADI_PHYSICS_VALIDATION_MODE=True in constants.py to activate")
+        
+    def disable_casadi_validation_mode(self) -> None:
+        """Disable CasADi physics validation mode."""
+        self.settings.enable_casadi_validation_mode = False
+        log.info("CasADi validation mode disabled")
 
     def _update_data_from_input(self, input_data: Dict[str, Any]):
         """Update data structure from input parameters."""
@@ -500,6 +597,19 @@ class UnifiedOptimizationFramework:
             max_acceleration=max_acceleration,
             max_jerk=max_jerk,
         )
+
+        # A3: Compute and record primary scaling vector for diagnostics
+        try:
+            bounds_for_scaling = {
+                "position": (0.0, float(self.data.stroke)),
+                "velocity": (-(max_velocity or 0.0), (max_velocity or 0.0)),
+                "acceleration": (-(max_acceleration or 0.0), (max_acceleration or 0.0)),
+                "jerk": (-(max_jerk or 0.0), (max_jerk or 0.0)),
+            }
+            scales = compute_scaling_vector(bounds_for_scaling)
+            self.data.convergence_info["scaling_primary"] = scales
+        except Exception:
+            pass
 
         # Get motion type from data
         motion_type = self.data.motion_type
@@ -574,7 +684,7 @@ class UnifiedOptimizationFramework:
                         self.data.primary_ipopt_analysis = adapter_result_dict['ipopt_analysis']
                         
                         # Collect data for MA57 migration analysis
-                        if self.settings.enable_ipopt_analysis:
+                        if self.settings.enable_ipopt_analysis and self.data.primary_ipopt_analysis is not None:
                             problem_size = (len(self.data.primary_theta) if self.data.primary_theta is not None else 100, 10)
                             self.migration_analyzer.add_ma27_run(
                                 phase="primary",
@@ -625,6 +735,8 @@ class UnifiedOptimizationFramework:
 
     def _optimize_secondary(self) -> OptimizationResult:
         """Perform secondary optimization (cam-ring) with adaptive tuning."""
+        log.info("Starting secondary optimization...")
+        
         # Check if primary data is available
         if self.data.primary_theta is None:
             raise RuntimeError("Primary optimization must be completed before secondary optimization")
@@ -664,11 +776,21 @@ class UnifiedOptimizationFramework:
             "base_radius": self.data.stroke,
         }
 
+        # A3: Compute and record simple scaling stats for secondary design variables
+        try:
+            bmin, bmax = float(self.constraints.base_radius_min), float(self.constraints.base_radius_max)
+            sec_scales = compute_scaling_vector({"base_radius": (bmin, bmax)})
+            self.data.convergence_info["scaling_secondary"] = sec_scales
+        except Exception:
+            pass
+
         # Perform optimization
+        log.info("Calling secondary optimizer...")
         result = self.secondary_optimizer.optimize(
             primary_data=primary_data,
             initial_guess=initial_guess,
         )
+        log.info(f"Secondary optimization completed: status={result.status}, success={result.is_successful()}")
         
         # Extract and store secondary analysis from cam ring optimizer
         # The cam ring optimizer uses litvin optimization which now provides analysis
@@ -678,7 +800,7 @@ class UnifiedOptimizationFramework:
             self.solver_selector.update_history("secondary", result.metadata['ipopt_analysis'])
             
             # Collect data for MA57 migration analysis
-            if self.settings.enable_ipopt_analysis:
+            if self.settings.enable_ipopt_analysis and self.data.secondary_ipopt_analysis is not None:
                 problem_size = (len(self.data.primary_theta) if self.data.primary_theta is not None else 100, 10)
                 self.migration_analyzer.add_ma27_run(
                     phase="secondary",
@@ -754,6 +876,21 @@ class UnifiedOptimizationFramework:
             "R_psi": self.data.secondary_R_psi,
         }
 
+        # A3: Compute and record tertiary variable scaling based on bounds
+        try:
+            scales_ter = compute_scaling_vector({
+                "crank_center_x": (float(self.constraints.crank_center_x_min), float(self.constraints.crank_center_x_max)),
+                "crank_center_y": (float(self.constraints.crank_center_y_min), float(self.constraints.crank_center_y_max)),
+                "crank_radius": (float(self.constraints.crank_radius_min), float(self.constraints.crank_radius_max)),
+                "rod_length": (
+                    float(getattr(self.constraints, 'rod_length_min', (self.data.secondary_base_radius or 20.0) * 4.0)),
+                    float(getattr(self.constraints, 'rod_length_max', (self.data.secondary_base_radius or 20.0) * 8.0)),
+                ),
+            })
+            self.data.convergence_info["scaling_tertiary"] = scales_ter
+        except Exception:
+            pass
+
         # Analyze problem characteristics for tertiary optimization
         problem_chars = ProblemCharacteristics(
             n_variables=4,  # crank_center_x, crank_center_y, crank_radius, rod_length
@@ -797,7 +934,7 @@ class UnifiedOptimizationFramework:
             self.solver_selector.update_history("tertiary", result.metadata['ipopt_analysis'])
             
             # Collect data for MA57 migration analysis
-            if self.settings.enable_ipopt_analysis:
+            if self.settings.enable_ipopt_analysis and self.data.tertiary_ipopt_analysis is not None:
                 problem_size = (4, 8)  # crank_center_x, crank_center_y, crank_radius, rod_length
                 self.migration_analyzer.add_ma27_run(
                     phase="tertiary",
@@ -875,12 +1012,40 @@ class UnifiedOptimizationFramework:
 
     def _update_data_from_secondary(self, result: OptimizationResult):
         """Update data structure from secondary optimization results."""
-        if result.status == OptimizationStatus.CONVERGED:
+        # Check for convergence (handle both enum and string status)
+        is_converged = (
+            result.status == OptimizationStatus.CONVERGED or 
+            str(result.status).lower() == "converged"
+        )
+        
+        if is_converged:
             solution = result.solution
-            optimized_params = solution.get("optimized_parameters", {})
-
-            self.data.secondary_base_radius = optimized_params.get("base_radius")
-            # self.data.secondary_rod_length = optimized_params.get('connecting_rod_length')  # Removed for phase 2
+            
+            # Extract base_radius from multiple possible locations
+            base_radius = None
+            
+            # Method 1: Direct in solution
+            if 'base_radius' in solution:
+                base_radius = solution.get("base_radius")
+                log.debug(f"Extracted base_radius from solution: {base_radius}")
+            
+            # Method 2: From optimized_parameters (legacy)
+            if base_radius is None:
+                optimized_params = solution.get("optimized_parameters", {})
+                base_radius = optimized_params.get("base_radius")
+                if base_radius is not None:
+                    log.debug(f"Extracted base_radius from optimized_parameters: {base_radius}")
+            
+            # Method 3: From metadata (fallback)
+            if base_radius is None and hasattr(result, 'metadata') and result.metadata:
+                gear_config = result.metadata.get("optimized_gear_config", {})
+                base_radius = gear_config.get("base_center_radius")
+                if base_radius is not None:
+                    log.debug(f"Extracted base_radius from metadata: {base_radius}")
+            
+            self.data.secondary_base_radius = base_radius
+            
+            # Extract other data
             self.data.secondary_cam_curves = solution.get("cam_curves")
             self.data.secondary_psi = solution.get("psi")
             self.data.secondary_R_psi = solution.get("R_psi")
@@ -888,11 +1053,15 @@ class UnifiedOptimizationFramework:
 
             # Store convergence info
             self.data.convergence_info["secondary"] = {
-                "status": result.status.value,
+                "status": str(result.status),
                 "objective_value": result.objective_value,
                 "iterations": result.iterations,
                 "solve_time": result.solve_time,
             }
+            
+            log.info(f"Secondary optimization data updated: base_radius={base_radius}")
+        else:
+            log.warning(f"Secondary optimization not converged: {result.status}")
 
     def _update_data_from_tertiary(self, result: OptimizationResult):
         """Update data structure from tertiary optimization results."""

@@ -15,7 +15,7 @@ Strategy order (configurable):
 1. Relax line-search & tolerances.
 2. Switch Hessian approximation mode.
 3. Adjust barrier parameters.
-4. Alternative linear solver (MUMPS) if available.
+4. Alternate HSL solver selection if available.
 5. Final attempt with reduced print and CPU time.
 
 Each stage logs parameters, elapsed time and outcome via project logger.
@@ -79,7 +79,7 @@ _DEFAULT_STRATEGIES: Sequence[RetryStrategy] = [
     ),
     RetryStrategy(
         "alt_linear_solver",
-        {"ipopt.linear_solver": "mumps"},
+        {},  # Note: linear_solver is set by the IPOPT factory
     ),
     RetryStrategy(
         "final_low_print",

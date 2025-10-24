@@ -522,3 +522,7 @@ class MA57MigrationAnalyzer:
             json.dump(report, f, indent=2)
         
         log.info(f"Exported migration analysis report to {output_file}")
+
+
+
+

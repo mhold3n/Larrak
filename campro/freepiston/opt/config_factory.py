@@ -74,13 +74,11 @@ class ConfigFactory:
             num={"K": 20, "C": 1},
             solver={
                 "ipopt": {
-                    "max_iter": 1000,
+                    "max_iter": 5000,
                     "tol": 1e-6,
                     # creation-time options ensure HSL is initialized before reading file
                     "hessian_approximation": "limited-memory",
-                    "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
-                    "linear_solver": "ma27",
-                    "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
+                    # Note: linear_solver is set by the IPOPT factory
                 },
             },
             objective={
@@ -109,16 +107,14 @@ class ConfigFactory:
         config = ConfigFactory.create_default_config()
 
         # Higher resolution
-        config.num = {"K": 50, "C": 3}
+        config.num = {"K": 50, "C": 1}  # Radau only supports C=1
 
         # More aggressive solver settings
         config.solver["ipopt"].update({
             "max_iter": 5000,
             "tol": 1e-8,
             "hessian_approximation": "exact",
-            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
-            "linear_solver": "ma27",
-            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         # Stricter constraints
@@ -142,9 +138,7 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 500,
             "tol": 1e-4,
-            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
-            "linear_solver": "ma27",
-            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         # Relaxed constraints
@@ -172,9 +166,7 @@ class ConfigFactory:
         config.solver["ipopt"].update({
             "max_iter": 2000,
             "tol": 1e-6,
-            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
-            "linear_solver": "ma27",
-            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         return config
@@ -191,9 +183,7 @@ class ConfigFactory:
             "hessian_approximation": "limited-memory",
             "mu_strategy": "adaptive",
             "mu_init": 1e-3,
-            "option_file_name": "/Users/maxholden/Documents/GitHub/Larrak/ipopt.opt",
-            "linear_solver": "ma27",
-            "hsllib": "/Users/maxholden/anaconda3/envs/larrak/lib/libcoinhsl.dylib",
+            # Note: linear_solver is set by the IPOPT factory
         })
 
         # Enable adaptive refinement
@@ -242,7 +232,7 @@ class ConfigFactory:
             thermodynamics=config_dict.get("thermodynamics", {}),
             bounds=config_dict.get("bounds", {}),
             constraints=config_dict.get("constraints", {}),
-            num=config_dict.get("num", {"K": 20, "C": 3}),
+            num=config_dict.get("num", {"K": 20, "C": 1}),  # Radau only supports C=1
             solver=config_dict.get("solver", {}),
             objective=config_dict.get("objective", {"method": "indicated_work"}),
             model_type=config_dict.get("model_type", "0d"),

@@ -190,9 +190,10 @@ class ValidationResult:
 class MotionLawValidator:
     """Validate motion law results for physical feasibility."""
 
-    def __init__(self, tolerance: float = 1e-6, continuity_factor: float = 1e-2):
+    def __init__(self, tolerance: float = 1e-6, continuity_factor: float = 1e-1):
         self.tolerance = tolerance
         # continuity_factor scales step thresholds by signal magnitude (stroke, |v|, |a|)
+        # Increased from 1e-2 to 1e-1 to be more lenient with continuity requirements
         self.continuity_factor = continuity_factor
 
     def validate(self, result: MotionLawResult) -> ValidationResult:

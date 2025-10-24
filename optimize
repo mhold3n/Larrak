@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""
+Quick optimization runner - simple wrapper for the CLI optimization script.
+
+IMPORTANT: This script must be run in the 'larrak' conda environment where CasADi is installed.
+
+Usage:
+  conda activate larrak
+  ./optimize                    # Run with default parameters
+  ./optimize --stroke 30.0      # Run with custom stroke
+  ./optimize --quiet            # Run quietly
+  ./optimize --help             # Show help
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+# Import and run the CLI script
+from scripts.run_optimization_cli import main
+
+if __name__ == "__main__":
+    main()

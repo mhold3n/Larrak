@@ -116,6 +116,11 @@ class DynamicParameterTuner:
     
     def create_ipopt_options(self, params: SolverParameters) -> dict:
         """Create Ipopt options dictionary from SolverParameters."""
+        # Ensure MA27 is always used
+        if params.linear_solver not in ["ma27", "ma57"]:
+            log.warning(f"Invalid linear solver '{params.linear_solver}', forcing MA27")
+            params.linear_solver = "ma27"
+        
         return {
             "max_iter": params.max_iter,
             "tol": params.tol,
@@ -127,10 +132,15 @@ class DynamicParameterTuner:
     
     def create_casadi_options(self, params: SolverParameters) -> dict:
         """Create CasADi options dictionary from SolverParameters."""
+        # Ensure MA27 is always used
+        if params.linear_solver not in ["ma27", "ma57"]:
+            log.warning(f"Invalid linear solver '{params.linear_solver}', forcing MA27")
+            params.linear_solver = "ma27"
+        
         return {
             "ipopt.max_iter": params.max_iter,
             "ipopt.tol": params.tol,
-            "ipopt.linear_solver": params.linear_solver,
+            # Note: linear_solver is set by the IPOPT factory
             "ipopt.mu_strategy": params.mu_strategy,
             "ipopt.print_level": params.print_level,
             "ipopt.hessian_approximation": params.hessian_approximation,

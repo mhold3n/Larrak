@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+from typing import Any, Dict
+
+from campro.diagnostics import RUN_ID
+from campro.diagnostics.run_metadata import log_run_metadata
+from campro.diagnostics.ipopt_logger import get_ipopt_log_stats
+from campro.api.solve_report import SolveReport
+
+
+def motion_result_to_solve_report(result: "OptimizationResult") -> SolveReport:  # type: ignore[name-defined]
+    """Convert a Motion/OptimizationResult to a SolveReport."""
+    status = getattr(result, "status", None)
+    status_str = getattr(status, "value", str(status)) if status is not None else "unknown"
+
+    # Extract basic residuals if present
+    residuals: Dict[str, float] = {}
+    conv = getattr(result, "convergence_info", {}) or {}
+    for k in ("primal_inf", "dual_inf", "complementarity", "constraint_violation", "kkt_error"):
+        v = conv.get(k)
+        if isinstance(v, (int, float)):
+            residuals[k] = float(v)
+
+    # Derive iterations if available
+    n_iter = 0
+    try:
+        n_iter = int(getattr(result, "iterations", 0) or 0)
+    except Exception:
+        pass
+
+    # Parse Ipopt log if present and merge residuals
+    log_stats = get_ipopt_log_stats()
+    if log_stats:
+        for k_src, k_dst in (("primal_inf", "primal_inf"), ("dual_inf", "dual_inf"), ("compl_inf", "compl_inf")):
+            v = log_stats.get(k_src)
+            if isinstance(v, (int, float)):
+                residuals[k_dst] = float(v)
+
+    # Artifacts are populated by diagnostics elsewhere; include runs log path
+    artifacts: Dict[str, Any] = {
+        "ipopt_log": f"runs/{RUN_ID}-ipopt.log",
+        "run_meta": f"runs/{RUN_ID}.json",
+    }
+
+    # Map common backend statuses to public report status
+    public_status = (
+        "Solve_Success"
+        if status_str == "converged"
+        else ("Infeasible" if status_str == "infeasible" else "Failed")
+    )
+
+    report = SolveReport(
+        run_id=RUN_ID,
+        status=public_status,
+        kkt={k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals},
+        n_iter=n_iter,
+        scaling_stats={},
+        residuals=residuals,
+        artifacts=artifacts,
+    )
+
+    # Persist metadata
+    try:
+        log_run_metadata({
+            "run_id": RUN_ID,
+            "status": report.status,
+            "n_iter": report.n_iter,
+            "kkt": report.kkt,
+            "residuals": report.residuals,
+            "artifacts": report.artifacts,
+        })
+    except Exception:
+        pass
+
+    return report
+
+
+def unified_data_to_solve_report(data: "UnifiedOptimizationData") -> SolveReport:  # type: ignore[name-defined]
+    """Convert UnifiedOptimizationData to a SolveReport summary.
+
+    Aggregates convergence info to a single high-level status.
+    """
+    # Aggregate status: prefer tertiary, else secondary, else primary
+    ci = getattr(data, "convergence_info", {}) or {}
+    status_primary = (ci.get("primary", {}) or {}).get("status")
+    status_secondary = (ci.get("secondary", {}) or {}).get("status")
+    status_tertiary = (ci.get("tertiary", {}) or {}).get("status")
+
+    final_status = status_tertiary or status_secondary or status_primary or "unknown"
+    status_str = str(final_status).lower()
+
+    # Collect residual-like values if available via analyses
+    residuals: Dict[str, float] = {}
+    for phase_attr in ("primary_ipopt_analysis", "secondary_ipopt_analysis", "tertiary_ipopt_analysis"):
+        report = getattr(data, phase_attr, None)
+        if report and getattr(report, "stats", None):
+            stats = report.stats  # type: ignore[assignment]
+            for key in ("primal_inf", "dual_inf"):
+                v = stats.get(key)
+                if isinstance(v, (int, float)):
+                    residuals[f"{phase_attr}.{key}"] = float(v)
+
+    # Include feasibility pre-check results if present
+    feas = (getattr(data, "convergence_info", {}) or {}).get("feasibility_primary") or {}
+    if isinstance(feas, dict):
+        mv = feas.get("max_violation")
+        if isinstance(mv, (int, float)):
+            residuals["feas_primary.max_violation"] = float(mv)
+
+    # Parse Ipopt log and add residuals/kkt if available
+    log_stats = get_ipopt_log_stats()
+    if log_stats:
+        for k_src, k_dst in (("primal_inf", "primal_inf"), ("dual_inf", "dual_inf"), ("compl_inf", "compl_inf")):
+            v = log_stats.get(k_src)
+            if isinstance(v, (int, float)):
+                residuals[k_dst] = float(v)
+
+    # Iterations: prefer tertiary
+    n_iter = 0
+    for phase in ("tertiary", "secondary", "primary"):
+        it = (ci.get(phase, {}) or {}).get("iterations")
+        if isinstance(it, int):
+            n_iter = it
+            break
+
+    artifacts: Dict[str, Any] = {
+        "ipopt_log": f"runs/{RUN_ID}-ipopt.log",
+        "run_meta": f"runs/{RUN_ID}.json",
+    }
+
+    # Scaling stats if recorded by framework
+    scaling_stats = {}
+    ci = getattr(data, "convergence_info", {}) or {}
+    for key in ("scaling_primary", "scaling_secondary", "scaling_tertiary"):
+        if key in ci and isinstance(ci[key], dict):
+            scaling_stats[key] = ci[key]
+
+    report = SolveReport(
+        run_id=RUN_ID,
+        status="Solve_Success" if status_str == "converged" else ("Infeasible" if status_str == "infeasible" else "Failed"),
+        kkt={k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals},
+        n_iter=n_iter,
+        scaling_stats=scaling_stats,
+        residuals=residuals,
+        artifacts=artifacts,
+    )
+
+    # Persist metadata (feasibility and scaling included)
+    try:
+        feas = (getattr(data, "convergence_info", {}) or {}).get("feasibility_primary")
+        meta = {
+            "run_id": RUN_ID,
+            "status": report.status,
+            "n_iter": report.n_iter,
+            "kkt": report.kkt,
+            "residuals": report.residuals,
+            "scaling_stats": report.scaling_stats,
+            "feasibility_primary": feas,
+            "artifacts": report.artifacts,
+        }
+        log_run_metadata(meta)
+    except Exception:
+        pass
+
+    return report

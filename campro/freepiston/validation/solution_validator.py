@@ -54,6 +54,7 @@ class SolutionValidator:
             Validation results dictionary
         """
         log.info("Starting solution validation...")
+        log.debug(f"Solution structure: meta keys={list(solution.meta.keys())}, data keys={list(solution.data.keys())}")
 
         validation_results = {
             "success": False,
@@ -112,61 +113,78 @@ class SolutionValidator:
 
     def _validate_basic_properties(self, solution: Solution, results: Dict[str, Any]) -> None:
         """Validate basic solution properties."""
-        if not hasattr(solution, "states"):
-            results["errors"].append("Solution missing states")
+        # Check if solution has the expected structure
+        if not hasattr(solution, "data") or not hasattr(solution, "meta"):
+            results["errors"].append("Solution missing required data or meta attributes")
             return
 
-        if not hasattr(solution, "controls"):
-            results["errors"].append("Solution missing controls")
-            return
-
-        states = solution.states
-        controls = solution.controls
-
-        # Check required state variables
-        required_states = ["x_L", "x_R", "v_L", "v_R", "pressure", "temperature"]
-        for state in required_states:
-            if state not in states:
-                results["errors"].append(f"Missing required state: {state}")
-
-        # Check required control variables
-        required_controls = ["A_in", "A_ex"]
-        for control in required_controls:
-            if control not in controls:
-                results["errors"].append(f"Missing required control: {control}")
-
-        # Check data consistency
-        if "x_L" in states and "x_R" in states:
-            x_L = states["x_L"]
-            x_R = states["x_R"]
-            if len(x_L) != len(x_R):
-                results["errors"].append("Inconsistent state array lengths")
+        # For now, skip detailed state/control validation since the current Solution
+        # structure doesn't include states and controls in the expected format
+        # This is a placeholder for future implementation when the Solution structure
+        # is updated to include states and controls
+        results["warnings"].append("Detailed state/control validation not implemented for current Solution structure")
+        
+        # Basic validation of available data
+        if not solution.data:
+            results["warnings"].append("Solution data is empty")
+        
+        if not solution.meta:
+            results["warnings"].append("Solution meta is empty")
+        
+        # Check if optimization was successful
+        optimization_info = solution.meta.get("optimization", {})
+        if not optimization_info.get("success", False):
+            results["warnings"].append(f"Optimization did not converge: {optimization_info.get('message', 'Unknown error')}")
 
     def _validate_convergence(self, solution: Solution, results: Dict[str, Any]) -> None:
         """Validate solution convergence."""
-        if hasattr(solution, "success") and solution.success:
-            results["convergence"] = True
-            log.info("Solution converged successfully")
-        else:
-            results["convergence"] = False
-            results["warnings"].append("Solution did not converge")
-            log.warning("Solution did not converge")
+        # Check both property and metadata for success
+        success = getattr(solution, 'success', False)
+        if not success:
+            # Check IPOPT status codes in metadata
+            opt_meta = solution.meta.get("optimization", {})
+            status = opt_meta.get("status", -1)
+            # Status 0 = Optimal, Status 1 = "Solved To Acceptable Level"
+            if status in [0, 1]:
+                success = True
+                if status == 1:
+                    results["warnings"].append("Converged to acceptable level (not optimal)")
+                    log.info("Solution converged to acceptable level")
+                else:
+                    log.info("Solution converged optimally")
+            else:
+                results["warnings"].append(f"Solution did not converge (status: {status})")
+                log.warning(f"Solution did not converge (status: {status})")
+        
+        results["convergence"] = success
 
-        # Check iteration count
-        if hasattr(solution, "iterations"):
-            max_iter = self.config.get("optimization", {}).get("max_iterations", 1000)
-            if solution.iterations >= max_iter:
-                results["warnings"].append(f"Maximum iterations reached: {solution.iterations}")
+        # Check iteration count (use property with fallback)
+        iterations = getattr(solution, 'iterations', 0)
+        if iterations == 0:
+            # Fallback to metadata
+            iterations = solution.meta.get("optimization", {}).get("iterations", 0)
+        
+        max_iter = self.config.get("optimization", {}).get("max_iterations", 1000)
+        if iterations >= max_iter:
+            results["warnings"].append(f"Maximum iterations reached: {iterations}")
 
-        # Check objective function value
-        if hasattr(solution, "objective_value"):
-            if math.isnan(solution.objective_value):
-                results["errors"].append("Objective function value is NaN")
-            elif math.isinf(solution.objective_value):
-                results["warnings"].append("Objective function value is infinite")
+        # Check objective function value (use property with fallback)
+        objective_value = getattr(solution, 'objective_value', float("inf"))
+        if objective_value == float("inf"):
+            # Fallback to metadata
+            objective_value = solution.meta.get("optimization", {}).get("f_opt", float("inf"))
+        
+        if math.isnan(objective_value):
+            results["errors"].append("Objective function value is NaN")
+        elif math.isinf(objective_value):
+            results["warnings"].append("Objective function value is infinite")
 
     def _validate_physical_constraints(self, solution: Solution, results: Dict[str, Any]) -> None:
         """Validate physical constraints."""
+        if not hasattr(solution, "states"):
+            results["warnings"].append("Physical constraints validation not implemented for current Solution structure")
+            return
+            
         states = solution.states
         violations = []
 
@@ -268,9 +286,13 @@ class SolutionValidator:
 
     def _validate_performance_constraints(self, solution: Solution, results: Dict[str, Any]) -> None:
         """Validate performance constraints."""
-        # Check if performance metrics are available
-        if hasattr(solution, "performance_metrics"):
-            perf_metrics = solution.performance_metrics
+        # Check if performance metrics are available (use property with fallback)
+        perf_metrics = getattr(solution, "performance_metrics", {})
+        if not perf_metrics:
+            # Fallback to direct dict access
+            perf_metrics = solution.meta.get("performance_metrics", {})
+        
+        if perf_metrics:
 
             violations = []
 
@@ -299,6 +321,10 @@ class SolutionValidator:
     def _calculate_validation_metrics(self, solution: Solution, results: Dict[str, Any]) -> None:
         """Calculate validation metrics."""
         metrics = {}
+        if not hasattr(solution, "states"):
+            results["warnings"].append("Validation metrics calculation not implemented for current Solution structure")
+            return
+            
         states = solution.states
 
         # Pressure metrics

@@ -337,7 +337,7 @@ class ResultProcessor:
     def _validate_solution(self, solution: Solution) -> Dict[str, Any]:
         """Validate the optimization solution."""
         try:
-            return self.solution_validator.validate(solution)
+            return self.solution_validator.validate_solution(solution)
         except Exception as e:
             log.warning(f"Solution validation failed: {e}")
             return {"warnings": [f"Solution validation failed: {e}"]}
@@ -345,7 +345,7 @@ class ResultProcessor:
     def _validate_physics(self, solution: Solution) -> Dict[str, Any]:
         """Validate physics constraints."""
         try:
-            return self.physics_validator.validate(solution)
+            return self.physics_validator.validate_physics(solution)
         except Exception as e:
             log.warning(f"Physics validation failed: {e}")
             return {"warnings": [f"Physics validation failed: {e}"]}

@@ -280,24 +280,33 @@ class MotionLawOptimizer(BaseOptimizer):
         n_control_points = min(20, n_points // 2)
         control_points = np.linspace(0, 2 * np.pi, n_control_points)
 
-        # Initial guess: smooth S-curve
-        initial_guess = self._generate_initial_guess_minimum_jerk(
+        # Initial guess: smooth S-curve (physical units)
+        initial_guess_phys = self._generate_initial_guess_minimum_jerk(
             control_points, constraints,
         )
 
-        # Define objective function
-        def objective(params):
-            return self._minimum_jerk_objective(params, control_points, collocation_points)
+        # Scaling: normalize control-point positions by stroke to keep magnitudes O(1)
+        pos_scale = 1.0 / max(float(constraints.stroke), 1e-6)
+        initial_guess_norm = initial_guess_phys * pos_scale
 
-        # Define constraints
-        constraint_list = self._define_motion_law_constraints(
-            initial_guess, control_points, collocation_points, constraints,
+        # Define objective function operating on normalized parameters by converting to physical
+        def objective(params_norm):
+            params_phys = params_norm / pos_scale
+            return self._minimum_jerk_objective(params_phys, control_points, collocation_points)
+
+        # Define constraints and wrap to accept normalized parameters
+        base_constraints = self._define_motion_law_constraints(
+            initial_guess_phys, control_points, collocation_points, constraints,
         )
+        constraint_list = [
+            {"type": c["type"], "fun": (lambda p, f=c["fun"]: f(p / pos_scale))}
+            for c in base_constraints
+        ]
 
-        # Solve optimization
+        # Solve optimization in normalized parameter space
         result = minimize(
             objective,
-            initial_guess,
+            initial_guess_norm,
             method="SLSQP",
             constraints=constraint_list,
             options={
@@ -310,9 +319,10 @@ class MotionLawOptimizer(BaseOptimizer):
         if not result.success:
             log.warning(f"Optimization did not converge: {result.message}")
 
-        # Extract solution
+        # Extract solution (convert params back to physical units)
+        params_phys = result.x / pos_scale
         solution = self._extract_solution_minimum_jerk(
-            result.x, control_points, collocation_points,
+            params_phys, control_points, collocation_points,
         )
 
         # DEBUG: equality residuals at the solution
@@ -416,7 +426,7 @@ class MotionLawOptimizer(BaseOptimizer):
         start_time = time.time()
 
         try:
-            # Implement proper minimum energy optimization
+            # Implement proper minimum energy optimization (with normalized parameters)
             result = self._solve_minimum_energy_optimization(collocation_points, constraints)
 
             solve_time = time.time() - start_time
@@ -792,24 +802,33 @@ class MotionLawOptimizer(BaseOptimizer):
         n_control_points = min(20, n_points // 2)
         control_points = np.linspace(0, 2 * np.pi, n_control_points)
 
-        # Initial guess: smooth S-curve
-        initial_guess = self._generate_initial_guess_minimum_energy(
+        # Initial guess: smooth S-curve (physical units)
+        initial_guess_phys = self._generate_initial_guess_minimum_energy(
             control_points, constraints,
         )
 
-        # Define objective function (minimize acceleration squared)
-        def objective(params):
-            return self._minimum_energy_objective(params, control_points, collocation_points)
+        # Scaling: normalize control-point positions by stroke
+        pos_scale = 1.0 / max(float(constraints.stroke), 1e-6)
+        initial_guess_norm = initial_guess_phys * pos_scale
 
-        # Define constraints
-        constraint_list = self._define_motion_law_constraints(
-            initial_guess, control_points, collocation_points, constraints,
+        # Define objective function (minimize acceleration^2) operating on normalized parameters by converting to physical
+        def objective(params_norm):
+            params_phys = params_norm / pos_scale
+            return self._minimum_energy_objective(params_phys, control_points, collocation_points)
+
+        # Define constraints and wrap to accept normalized parameters
+        base_constraints = self._define_motion_law_constraints(
+            initial_guess_phys, control_points, collocation_points, constraints,
         )
+        constraint_list = [
+            {"type": c["type"], "fun": (lambda p, f=c["fun"]: f(p / pos_scale))}
+            for c in base_constraints
+        ]
 
-        # Solve optimization
+        # Solve optimization in normalized parameter space
         result = minimize(
             objective,
-            initial_guess,
+            initial_guess_norm,
             method="SLSQP",
             constraints=constraint_list,
             options={
@@ -822,9 +841,10 @@ class MotionLawOptimizer(BaseOptimizer):
         if not result.success:
             log.warning(f"Minimum energy optimization did not converge: {result.message}")
 
-        # Extract solution
+        # Extract solution (convert params back to physical units)
+        params_phys = result.x / pos_scale
         solution = self._extract_solution_minimum_energy(
-            result.x, control_points, collocation_points,
+            params_phys, control_points, collocation_points,
         )
 
         return {

@@ -22,7 +22,7 @@ class IPOPTOptions:
     acceptable_iter: int = 15
 
     # Linear solver options
-    linear_solver: str = "ma27"  # "ma27", "ma57", "ma77", "ma86", "ma97", "mumps", "pardiso"
+    linear_solver: str = "ma27"  # "ma27", "ma57", "ma77", "ma86", "ma97", "pardiso"
     linear_solver_options: Dict[str, Any] = None
 
     # Barrier parameter options
@@ -220,13 +220,13 @@ class IPOPTSolver:
 
     def _create_solver(self, nlp: Any) -> Any:
         """Create IPOPT solver with options."""
-        import casadi as ca
+        from campro.optimization.ipopt_factory import create_ipopt_solver
 
         # Convert options to CasADi format
         opts = self._convert_options()
 
-        # Create solver
-        solver = ca.nlpsol("solver", "ipopt", nlp, opts)
+        # Create solver using centralized factory
+        solver = create_ipopt_solver("solver", nlp, opts, force_linear_solver=True)
 
         return solver
 
