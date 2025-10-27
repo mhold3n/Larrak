@@ -289,9 +289,14 @@ class UnifiedOptimizationFramework:
         )
 
         # Initialize primary optimizer (motion law)
-        self.primary_optimizer = MotionOptimizer(
-            settings=collocation_settings,
-        )
+        # Use CasADi optimizer if enabled, otherwise fall back to MotionOptimizer
+        if hasattr(self.settings, 'use_casadi') and self.settings.use_casadi:
+            from campro.optimization.casadi_unified_flow import CasADiUnifiedFlow
+            self.primary_optimizer = CasADiUnifiedFlow()
+        else:
+            self.primary_optimizer = MotionOptimizer(
+                settings=collocation_settings,
+            )
 
         # Initialize secondary optimizer (cam-ring)
         self.secondary_optimizer = CamRingOptimizer(
@@ -479,8 +484,33 @@ class UnifiedOptimizationFramework:
 
             # Primary optimization (motion law)
             log.info("Starting primary optimization (motion law)")
-            primary_result = self._optimize_primary()
+            
+            # Get warm-start initial guess if using CasADi optimizer
+            initial_guess = None
+            if hasattr(self.primary_optimizer, 'warmstart_mgr'):
+                initial_guess = self.primary_optimizer.warmstart_mgr.get_initial_guess(input_data)
+                if initial_guess:
+                    log.info("Using warm-start initial guess for primary optimization")
+                else:
+                    log.info("No suitable warm-start found, using default initial guess")
+            
+            primary_result = self._optimize_primary(initial_guess=initial_guess)
             self._update_data_from_primary(primary_result)
+            
+            # Store solution for future warm-starts if using CasADi optimizer
+            if (hasattr(self.primary_optimizer, 'warmstart_mgr') and 
+                primary_result.successful and 
+                hasattr(primary_result, 'variables')):
+                self.primary_optimizer.warmstart_mgr.store_solution(
+                    input_data,
+                    primary_result.variables,
+                    {
+                        'solve_time': primary_result.solve_time,
+                        'objective_value': primary_result.objective_value,
+                        'n_segments': getattr(self.primary_optimizer, 'n_segments', 50),
+                        'timestamp': time.time()
+                    }
+                )
 
             # Secondary optimization (cam-ring)
             log.info("Starting secondary optimization (cam-ring)")

@@ -161,71 +161,61 @@ def validate_casadi_ipopt() -> ValidationResult:
 
 
 def validate_hsl_solvers() -> List[ValidationResult]:
-    """Validate HSL solver availability (MA27/MA57) - optional but improves performance."""
+    """Validate HSL solver availability (MA27, MA57, MA77, MA86, MA97) - optional but improves performance."""
     results: List[ValidationResult] = []
     
-    # Check for MA27/MA57 availability through CasADi
+    # Check for all HSL solvers availability through CasADi
     try:
         import casadi as ca
         
-        # Check if HSL solvers are available in CasADi
-        hsl_available = False
-        hsl_details = []
+        # Test all HSL solvers
+        hsl_solvers = ['ma27', 'ma57', 'ma77', 'ma86', 'ma97']
+        available_solvers = []
+        solver_details = []
         
-        # Try to detect HSL solvers through CasADi's internal mechanisms
-        try:
-            # Check if CasADi was compiled with HSL support
-            if hasattr(ca, 'has_plugin'):
-                if ca.has_plugin('ma27'):
-                    hsl_available = True
-                    hsl_details.append("MA27")
-                if ca.has_plugin('ma57'):
-                    hsl_available = True
-                    hsl_details.append("MA57")
-        except Exception:
-            pass
+        # Create a simple test problem
+        x = ca.SX.sym("x")
+        f = x ** 2
+        g = x - 1
+        nlp = {"x": x, "f": f, "g": g}
         
-        # Alternative check: look for HSL-related symbols or try to create a solver
-        if not hsl_available:
+        for solver_name in hsl_solvers:
             try:
-                # Try to create a simple problem that might use HSL internally
-                from campro.optimization.ipopt_factory import create_ipopt_solver
+                # Try to create a solver with this HSL linear solver
+                solver = ca.nlpsol(f'hsl_test_{solver_name}', 'ipopt', nlp, {
+                    'ipopt.linear_solver': solver_name,
+                    'ipopt.print_level': 0,
+                    'ipopt.sb': 'yes'
+                })
                 
-                x = ca.SX.sym("x")
-                f = x ** 2
-                g = x - 1
-                nlp = {"x": x, "f": f, "g": g}
-                
-                # This might fail if HSL is not available, but we can't easily distinguish
-                # between HSL-specific failures and other issues
-                # Use centralized factory with explicit linear solver
-                solver = create_ipopt_solver("hsl_test", nlp, linear_solver="ma27")
-                
-                # Test the solver to see if it actually uses MA27
+                # Test the solver with a simple problem
                 result = solver(x0=0, lbg=0, ubg=0)
+                stats = solver.stats()
                 
-                # If we get here, ipopt is available but HSL status is unclear
-                hsl_available = False
-                hsl_details = ["Unknown (ipopt available but HSL status unclear)"]
-            except Exception:
-                hsl_available = False
-                hsl_details = ["Not detected"]
+                if stats['success']:
+                    available_solvers.append(solver_name.upper())
+                    solver_details.append(solver_name.upper())
+                else:
+                    solver_details.append(f"{solver_name.upper()}(failed)")
+                    
+            except Exception as e:
+                solver_details.append(f"{solver_name.upper()}(error)")
         
-        if hsl_available:
+        if available_solvers:
             results.append(
                 ValidationResult(
                     status=ValidationStatus.PASS,
-                    message="HSL solvers (MA27/MA57) are available",
-                    details=f"Available HSL solvers: {', '.join(hsl_details)}",
-                    suggestion="HSL solvers will improve optimization performance",
+                    message=f"HSL solvers are available ({len(available_solvers)}/5)",
+                    details=f"Available: {', '.join(available_solvers)} | All tested: {', '.join(solver_details)}",
+                    suggestion="HSL solvers will significantly improve optimization performance",
                 )
             )
         else:
             results.append(
                 ValidationResult(
                     status=ValidationStatus.WARNING,
-                    message="HSL solvers (MA27/MA57) are not available",
-                    details=f"Status: {', '.join(hsl_details) if hsl_details else 'Not detected'}",
+                    message="No HSL solvers are available",
+                    details=f"Tested: {', '.join(solver_details)}",
                     suggestion=(
                         "HSL solvers are optional but improve performance. To obtain them:\n"
                         "1. Visit STFC licensing portal: https://licences.stfc.ac.uk/product/coin-hsl\n"

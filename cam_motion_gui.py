@@ -282,6 +282,15 @@ class CamMotionGUI:
 
             # ORDER2 (CasADi) micro optimization toggle
             "enable_order2_micro": tk.BooleanVar(value=False),
+            
+            # CasADi optimization options
+            "use_casadi_optimizer": tk.BooleanVar(value=False),
+            "enable_warmstart": tk.BooleanVar(value=True),
+            "casadi_n_segments": tk.IntVar(value=50),
+            "casadi_poly_order": tk.IntVar(value=3),
+            "casadi_collocation_method": tk.StringVar(value="legendre"),
+            "thermal_efficiency_target": tk.DoubleVar(value=0.55),
+            "enable_thermal_efficiency": tk.BooleanVar(value=True),
         }
 
     def _create_widgets(self):
@@ -471,6 +480,40 @@ class CamMotionGUI:
         order2_frame = ttk.Frame(self.control_frame)
         order2_frame.grid(row=11, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2)
         ttk.Checkbutton(order2_frame, text="Enable ORDER2 (micro)", variable=self.variables["enable_order2_micro"]).pack(side=tk.LEFT, padx=5)
+
+        # Row 11: CasADi Optimization Options
+        ttk.Separator(self.control_frame, orient="horizontal").grid(row=12, column=0, columnspan=6, sticky="ew", pady=5)
+        ttk.Label(self.control_frame, text="CasADi Optimization Options", font=("TkDefaultFont", 10, "bold")).grid(row=13, column=0, columnspan=6, sticky=tk.W, pady=2)
+        
+        # CasADi optimizer toggle
+        ttk.Label(self.control_frame, text="CasADi Optimizer:").grid(row=14, column=0, sticky=tk.W, pady=2)
+        casadi_frame = ttk.Frame(self.control_frame)
+        casadi_frame.grid(row=14, column=1, columnspan=5, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Checkbutton(casadi_frame, text="Use CasADi Optimizer", variable=self.variables["use_casadi_optimizer"]).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(casadi_frame, text="Enable Warm-start", variable=self.variables["enable_warmstart"]).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(casadi_frame, text="Thermal Efficiency", variable=self.variables["enable_thermal_efficiency"]).pack(side=tk.LEFT, padx=5)
+        
+        # CasADi parameters
+        ttk.Label(self.control_frame, text="Segments:").grid(row=15, column=0, sticky=tk.W, pady=2)
+        ttk.Entry(self.control_frame, textvariable=self.variables["casadi_n_segments"], width=8).grid(row=15, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        
+        ttk.Label(self.control_frame, text="Poly Order:").grid(row=15, column=2, sticky=tk.W, pady=2, padx=(20, 0))
+        ttk.Entry(self.control_frame, textvariable=self.variables["casadi_poly_order"], width=8).grid(row=15, column=3, sticky=tk.W, padx=(5, 0), pady=2)
+        
+        ttk.Label(self.control_frame, text="Method:").grid(row=15, column=4, sticky=tk.W, pady=2, padx=(20, 0))
+        casadi_method_combo = ttk.Combobox(
+            self.control_frame,
+            textvariable=self.variables["casadi_collocation_method"],
+            values=["legendre", "radau"],
+            state="readonly",
+            width=10,
+        )
+        casadi_method_combo.grid(row=15, column=5, sticky=tk.W, padx=(5, 0), pady=2)
+        casadi_method_combo.set("legendre")
+        
+        # Thermal efficiency target
+        ttk.Label(self.control_frame, text="Efficiency Target:").grid(row=16, column=0, sticky=tk.W, pady=2)
+        ttk.Entry(self.control_frame, textvariable=self.variables["thermal_efficiency_target"], width=8).grid(row=16, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
@@ -985,6 +1028,16 @@ class CamMotionGUI:
         # Configure CasADi validation mode from GUI
         settings.enable_casadi_validation_mode = self.variables["enable_casadi_validation_mode"].get()
         settings.casadi_validation_tolerance = self.variables["casadi_validation_tolerance"].get()
+        
+        # Configure CasADi optimizer settings
+        settings.use_casadi = self.variables["use_casadi_optimizer"].get()
+        if settings.use_casadi:
+            settings.casadi_n_segments = self.variables["casadi_n_segments"].get()
+            settings.casadi_poly_order = self.variables["casadi_poly_order"].get()
+            settings.casadi_collocation_method = self.variables["casadi_collocation_method"].get()
+            settings.enable_warmstart = self.variables["enable_warmstart"].get()
+            settings.thermal_efficiency_target = self.variables["thermal_efficiency_target"].get()
+            settings.enable_thermal_efficiency = self.variables["enable_thermal_efficiency"].get()
 
         # Create constraints
         constraints = UnifiedOptimizationConstraints(
@@ -1721,6 +1774,15 @@ Side-Loading:
         self.variables["minimize_combustion_side_load"].set(True)
         self.variables["minimize_torque_ripple"].set(True)
         self.variables["maximize_power_output"].set(True)
+        
+        # Reset CasADi optimization parameters
+        self.variables["use_casadi_optimizer"].set(False)
+        self.variables["enable_warmstart"].set(True)
+        self.variables["casadi_n_segments"].set(50)
+        self.variables["casadi_poly_order"].set(3)
+        self.variables["casadi_collocation_method"].set("legendre")
+        self.variables["thermal_efficiency_target"].set(0.55)
+        self.variables["enable_thermal_efficiency"].set(True)
 
         # Clear results and plots
         self.unified_result = None

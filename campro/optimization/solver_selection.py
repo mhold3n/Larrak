@@ -12,9 +12,12 @@ log = get_logger(__name__)
 
 
 class SolverType(Enum):
-    """Available linear solvers."""
-    MA27 = "ma27"
-    MA57 = "ma57"  # For future use when available
+    """Available HSL linear solvers."""
+    MA27 = "ma27"  # Classic sparse symmetric solver - best for small to medium problems
+    MA57 = "ma57"  # Modern sparse symmetric solver - best for medium to large problems
+    MA77 = "ma77"  # Out-of-core solver - best for very large problems with limited RAM
+    MA86 = "ma86"  # Parallel solver (CPU) - best for large problems on multi-core systems
+    MA97 = "ma97"  # Advanced parallel solver - best for very large problems on multi-core systems
     # Non-HSL solvers are not permitted in this project
 
 
@@ -48,33 +51,113 @@ class AdaptiveSolverSelector:
     def select_solver(self, problem_chars: ProblemCharacteristics, 
                      phase: str) -> SolverType:
         """
-        Select optimal solver for given problem characteristics.
+        Select optimal HSL solver for given problem characteristics.
         
-        Currently always returns MA27. Future: add logic for MA57 selection
-        when available based on problem characteristics.
+        Selection criteria:
+        - MA27: Small to medium problems (< 5,000 variables)
+        - MA57: Medium to large problems (5,000-50,000 variables)
+        - MA77: Very large problems (> 50,000 variables) or limited RAM
+        - MA86: Large problems on multi-core systems
+        - MA97: Very large problems on multi-core systems (most advanced)
         """
         # Get historical data for this phase
         history = self.analysis_history.get(phase)
         
-        # Revised decision logic: prefer MA57 when available **and** history
-        # indicates potential benefit; otherwise default to MA27.
-
-        ma57_available = is_ma57_available()
-
-        if ma57_available and self.should_consider_ma57(phase):
-            chosen = SolverType.MA57
+        # Determine optimal solver based on problem characteristics
+        n_vars = problem_chars.n_variables
+        
+        # Check solver availability
+        available_solvers = self._get_available_solvers()
+        
+        # Selection logic based on problem size and characteristics
+        if n_vars < 5000:
+            # Small to medium problems - prefer MA27
+            if SolverType.MA27 in available_solvers:
+                chosen = SolverType.MA27
+            else:
+                chosen = self._fallback_solver(available_solvers)
+        elif n_vars < 50000:
+            # Medium to large problems - prefer MA57
+            if SolverType.MA57 in available_solvers:
+                chosen = SolverType.MA57
+            elif SolverType.MA27 in available_solvers:
+                chosen = SolverType.MA27
+            else:
+                chosen = self._fallback_solver(available_solvers)
         else:
-            chosen = SolverType.MA27
+            # Very large problems - prefer MA97 or MA77
+            if SolverType.MA97 in available_solvers:
+                chosen = SolverType.MA97
+            elif SolverType.MA77 in available_solvers:
+                chosen = SolverType.MA77
+            elif SolverType.MA86 in available_solvers:
+                chosen = SolverType.MA86
+            elif SolverType.MA57 in available_solvers:
+                chosen = SolverType.MA57
+            else:
+                chosen = self._fallback_solver(available_solvers)
 
         log.debug(
-            "Selected solver for %s phase: %s (MA57 available=%s, readiness=%s)",
+            "Selected solver for %s phase: %s (problem size: %d variables, available: %s)",
             phase,
             chosen.value,
-            ma57_available,
-            self.should_consider_ma57(phase),
+            n_vars,
+            [s.value for s in available_solvers],
         )
 
         return chosen
+    
+    def _get_available_solvers(self) -> List[SolverType]:
+        """Check which HSL solvers are available."""
+        available = []
+        
+        try:
+            import casadi as ca
+            
+            # Test each solver
+            for solver_type in SolverType:
+                try:
+                    # Create a simple test problem
+                    x = ca.SX.sym("x")
+                    f = x ** 2
+                    g = x - 1
+                    nlp = {"x": x, "f": f, "g": g}
+                    
+                    # Try to create a solver with this HSL linear solver
+                    solver = ca.nlpsol(f'test_{solver_type.value}', 'ipopt', nlp, {
+                        'ipopt.linear_solver': solver_type.value,
+                        'ipopt.print_level': 0,
+                        'ipopt.sb': 'yes'
+                    })
+                    
+                    # Test the solver
+                    result = solver(x0=0, lbg=0, ubg=0)
+                    stats = solver.stats()
+                    if stats['success']:
+                        available.append(solver_type)
+                        
+                except Exception:
+                    # Solver not available
+                    pass
+                    
+        except ImportError:
+            # CasADi not available
+            pass
+            
+        return available
+    
+    def _fallback_solver(self, available_solvers: List[SolverType]) -> SolverType:
+        """Select a fallback solver from available options."""
+        # Prefer MA27 as the most robust fallback
+        if SolverType.MA27 in available_solvers:
+            return SolverType.MA27
+        elif SolverType.MA57 in available_solvers:
+            return SolverType.MA57
+        elif available_solvers:
+            return available_solvers[0]  # Return first available
+        else:
+            # This should not happen if HSL is properly installed
+            raise RuntimeError("No HSL solvers are available")
     
     def update_history(self, phase: str, analysis: MA57ReadinessReport):
         """Update analysis history for future decisions."""

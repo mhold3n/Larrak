@@ -1,11 +1,15 @@
 # Larrak Dependencies
 # 
-# IMPORTANT: For best results, use conda to install dependencies:
-#   conda env create -f environment.yml
+# IMPORTANT: This project requires conda for proper installation:
+#   conda create -n larrak python=3.11
 #   conda activate larrak
+#   conda install -c conda-forge casadi ipopt numpy scipy matplotlib
 #
-# The conda installation includes ipopt solver support which is required
-# for optimization functionality. Pip installation may not include ipopt.
+# HSL Solvers (MA27, MA57, MA77, MA86, MA97) Configuration:
+# The HSL binaries are located in: CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5/bin
+# These have been added to the system PATH for CasADi/Ipopt to access all HSL solvers.
+# Available solvers: MA27 (small problems), MA57 (medium problems), MA77 (large problems, out-of-core),
+# MA86 (parallel), MA97 (advanced parallel). See docs/hsl_solver_guide.md for details.
 #
 # If you must use pip, run: pip install -r requirements.txt
 # Then verify installation: python scripts/check_environment.py
