@@ -25,14 +25,16 @@ from campro.logging import get_logger
 log = get_logger(__name__)
 
 
-def run_command(cmd: list, check: bool = True, stream: bool = False) -> subprocess.CompletedProcess:
+def run_command(
+    cmd: list, check: bool = True, stream: bool = False,
+) -> subprocess.CompletedProcess:
     """
     Run a command and return the result.
-    
+
     Args:
         cmd: Command to run as list
         check: Whether to raise exception on non-zero exit
-        
+
     Returns:
         Completed process result
     """
@@ -84,11 +86,11 @@ def check_mamba_available() -> bool:
 def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
     """
     Create conda environment from environment file.
-    
+
     Args:
         env_file: Path to environment.yml file
         use_mamba: Whether to use mamba instead of conda
-        
+
     Returns:
         True if successful, False otherwise
     """
@@ -123,12 +125,19 @@ def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
         # Prefer libmamba solver for speed on conda
         if package_manager == "conda":
             try:
-                run_command(["conda", "config", "--set", "solver", "libmamba"], check=False)
-                run_command(["conda", "config", "--set", "channel_priority", "strict"], check=False)
+                run_command(
+                    ["conda", "config", "--set", "solver", "libmamba"], check=False,
+                )
+                run_command(
+                    ["conda", "config", "--set", "channel_priority", "strict"],
+                    check=False,
+                )
             except Exception:
                 pass
 
-        print("⏳ Creating/updating conda environment... (this may take several minutes)")
+        print(
+            "⏳ Creating/updating conda environment... (this may take several minutes)",
+        )
         # Stream conda/mamba output so user sees native progress bars
         run_command(cmd, stream=True)
         log.info(f"Environment setup completed successfully using {package_manager}")
@@ -142,7 +151,7 @@ def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
 def validate_setup() -> bool:
     """
     Validate that the environment setup was successful.
-    
+
     Returns:
         True if validation passes, False otherwise
     """
@@ -197,6 +206,7 @@ def main():
     # Set up logging level
     if args.verbose:
         import logging
+
         logging.getLogger().setLevel(logging.DEBUG)
 
     print("Larrak Environment Setup")

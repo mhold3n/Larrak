@@ -18,12 +18,15 @@ class MA57ReadinessReport:
     stats: Dict[str, Any]
 
     def to_json(self) -> str:
-        return json.dumps({
-            "grade": self.grade,
-            "reasons": self.reasons,
-            "suggested_action": self.suggested_action,
-            "stats": self.stats,
-        }, indent=2)
+        return json.dumps(
+            {
+                "grade": self.grade,
+                "reasons": self.reasons,
+                "suggested_action": self.suggested_action,
+                "stats": self.stats,
+            },
+            indent=2,
+        )
 
 
 def _safe_get(d: Dict[str, Any], key: str, default: Any) -> Any:
@@ -33,7 +36,9 @@ def _safe_get(d: Dict[str, Any], key: str, default: Any) -> Any:
         return default
 
 
-def analyze_ipopt_run(stats: Dict[str, Any], ipopt_output_file: Optional[str]) -> MA57ReadinessReport:
+def analyze_ipopt_run(
+    stats: Dict[str, Any], ipopt_output_file: Optional[str],
+) -> MA57ReadinessReport:
     """
     Analyze an Ipopt run (stats + optional output file) and estimate whether MA57
     would likely yield better robustness/performance than MA27.
@@ -58,12 +63,20 @@ def analyze_ipopt_run(stats: Dict[str, Any], ipopt_output_file: Optional[str]) -
         try:
             text = Path(ipopt_output_file).read_text(errors="ignore")
             # Heuristic parsing: look for common lines
-            if "Total CPU secs in linear solver" in text and "Total CPU secs in IPOPT" in text:
+            if (
+                "Total CPU secs in linear solver" in text
+                and "Total CPU secs in IPOPT" in text
+            ):
                 try:
                     # Rough extraction
                     import re
-                    ls_match = re.search(r"Total CPU secs in linear solver\s*=\s*([0-9.]+)", text)
-                    total_match = re.search(r"Total CPU secs in IPOPT\s*=\s*([0-9.]+)", text)
+
+                    ls_match = re.search(
+                        r"Total CPU secs in linear solver\s*=\s*([0-9.]+)", text,
+                    )
+                    total_match = re.search(
+                        r"Total CPU secs in IPOPT\s*=\s*([0-9.]+)", text,
+                    )
                     if ls_match and total_match:
                         ls = float(ls_match.group(1))
                         total = float(total_match.group(1))
@@ -71,10 +84,14 @@ def analyze_ipopt_run(stats: Dict[str, Any], ipopt_output_file: Optional[str]) -
                             ls_time_ratio = ls / total
                 except Exception:
                     pass
-            refactorizations = text.count("Factorization CPU time") + text.count("KKT: Cholesky")
+            refactorizations = text.count("Factorization CPU time") + text.count(
+                "KKT: Cholesky",
+            )
             restoration_occurrences = text.count("Restoration phase activated")
             inertia_corrections = text.count("inertia")
-            small_pivot_warnings = text.count("small pivot") + text.count("singular KKT")
+            small_pivot_warnings = text.count("small pivot") + text.count(
+                "singular KKT",
+            )
         except Exception as exc:
             log.warning(f"Failed to parse Ipopt output file {ipopt_output_file}: {exc}")
 
@@ -97,9 +114,21 @@ def analyze_ipopt_run(stats: Dict[str, Any], ipopt_output_file: Optional[str]) -
         reasons.append("Significant primal/dual infeasibility remained")
 
     # Grade
-    if any(["Ipopt did not succeed" in r or "Restoration" in r or "near-singularity" in r for r in reasons]):
+    if any(
+        [
+            "Ipopt did not succeed" in r
+            or "Restoration" in r
+            or "near-singularity" in r
+            for r in reasons
+        ],
+    ):
         grade = "high"
-    elif any(["dominates runtime" in r or "refactorizations" in r or "inertia" in r for r in reasons]):
+    elif any(
+        [
+            "dominates runtime" in r or "refactorizations" in r or "inertia" in r
+            for r in reasons
+        ],
+    ):
         grade = "medium"
     else:
         grade = "low"
@@ -129,5 +158,3 @@ def analyze_ipopt_run(stats: Dict[str, Any], ipopt_output_file: Optional[str]) -
         },
     )
     return report
-
-

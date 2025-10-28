@@ -14,5 +14,3 @@ def test_build_nlp_smoke():
         return
     assert "x" in nlp and "f" in nlp and "g" in nlp
     assert meta["K"] == 5 and meta["C"] == 1
-
-

@@ -76,7 +76,9 @@ class ThermalEfficiencyConfig:
     check_convergence: bool = True
     check_physics: bool = True  # Re-enabled
     check_constraints: bool = True  # Re-enabled
-    thermal_efficiency_min: float = 0.0  # Keep disabled to allow optimization to complete
+    thermal_efficiency_min: float = (
+        0.0  # Keep disabled to allow optimization to complete
+    )
     max_pressure_limit: float = 12e6  # Pa
     max_temperature_limit: float = 2600.0  # K
 
@@ -84,7 +86,7 @@ class ThermalEfficiencyConfig:
 class ThermalEfficiencyAdapter(BaseOptimizer):
     """
     Adapter for thermal efficiency optimization using complex gas optimizer.
-    
+
     This adapter bridges the existing motion law optimization system with the
     complex gas optimizer, focusing specifically on thermal efficiency for
     acceleration zone optimization.
@@ -105,6 +107,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                 MotionLawOptimizer as _ComplexMotionLawOptimizer,
             )
             from campro.freepiston.opt.optimization_lib import OptimizationConfig
+
             # Expose name in module globals so tests can patch it
             global ComplexMotionLawOptimizer  # type: ignore
             ComplexMotionLawOptimizer = _ComplexMotionLawOptimizer  # type: ignore
@@ -116,54 +119,63 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             complex_config = create_optimization_scenario("efficiency")
 
             # Override with our specific configuration
-            complex_config.geometry.update({
-                "bore": self.config.bore,
-                "stroke": self.config.stroke,
-                "compression_ratio": self.config.compression_ratio,
-                "clearance_volume": self.config.clearance_volume,
-                "mass": self.config.mass,
-                "rod_mass": self.config.rod_mass,
-                "rod_length": self.config.rod_length,
-            })
+            complex_config.geometry.update(
+                {
+                    "bore": self.config.bore,
+                    "stroke": self.config.stroke,
+                    "compression_ratio": self.config.compression_ratio,
+                    "clearance_volume": self.config.clearance_volume,
+                    "mass": self.config.mass,
+                    "rod_mass": self.config.rod_mass,
+                    "rod_length": self.config.rod_length,
+                },
+            )
 
-            complex_config.thermodynamics.update({
-                "gamma": self.config.gamma,
-                "R": self.config.R,
-                "cp": self.config.cp,
-                "cv": self.config.cv,
-            })
+            complex_config.thermodynamics.update(
+                {
+                    "gamma": self.config.gamma,
+                    "R": self.config.R,
+                    "cp": self.config.cp,
+                    "cv": self.config.cv,
+                },
+            )
 
             complex_config.num = {
                 "K": self.config.collocation_points,
                 "C": self.config.collocation_degree,
             }
 
-            complex_config.objective.update({
-                "method": "thermal_efficiency",
-                "w": {
-                    "smooth": self.config.smoothness_weight,
-                    "short_circuit": self.config.short_circuit_weight,
-                    "eta_th": self.config.thermal_efficiency_weight,
+            complex_config.objective.update(
+                {
+                    "method": "thermal_efficiency",
+                    "w": {
+                        "smooth": self.config.smoothness_weight,
+                        "short_circuit": self.config.short_circuit_weight,
+                        "eta_th": self.config.thermal_efficiency_weight,
+                    },
                 },
-            })
+            )
 
             # Use robust IPOPT options for better convergence
-            complex_config.solver["ipopt"].update({
-                "max_iter": self.config.max_iterations,
-                "tol": self.config.tolerance,
-                "acceptable_tol": self.config.tolerance * 100,  # Much more relaxed acceptable tolerance
-                "hessian_approximation": "limited-memory",  # More robust for large problems
-                "mu_strategy": "monotone",  # More conservative barrier parameter strategy
-                "mu_init": 1e-2,  # Larger initial barrier parameter
-                "mu_max": 1e5,  # Allow larger barrier parameters
-                "line_search_method": "cg-penalty",  # More robust line search
-                "print_level": 2,  # Minimal output for better performance
-                "max_cpu_time": 300,  # 5 minute time limit
-                "dual_inf_tol": 1e-3,  # Relaxed dual infeasibility tolerance
-                "compl_inf_tol": 1e-3,  # Relaxed complementarity tolerance
-                "constr_viol_tol": 1e-3,  # Relaxed constraint violation tolerance
-                # Note: linear_solver is set by the IPOPT factory
-            })
+            complex_config.solver["ipopt"].update(
+                {
+                    "max_iter": self.config.max_iterations,
+                    "tol": self.config.tolerance,
+                    "acceptable_tol": self.config.tolerance
+                    * 100,  # Much more relaxed acceptable tolerance
+                    "hessian_approximation": "limited-memory",  # More robust for large problems
+                    "mu_strategy": "monotone",  # More conservative barrier parameter strategy
+                    "mu_init": 1e-2,  # Larger initial barrier parameter
+                    "mu_max": 1e5,  # Allow larger barrier parameters
+                    "line_search_method": "cg-penalty",  # More robust line search
+                    "print_level": 2,  # Minimal output for better performance
+                    "max_cpu_time": 300,  # 5 minute time limit
+                    "dual_inf_tol": 1e-3,  # Relaxed dual infeasibility tolerance
+                    "compl_inf_tol": 1e-3,  # Relaxed complementarity tolerance
+                    "constr_viol_tol": 1e-3,  # Relaxed constraint violation tolerance
+                    # Note: linear_solver is set by the IPOPT factory
+                },
+            )
 
             # Enable analysis if requested
             if self.config.enable_analysis:
@@ -179,10 +191,12 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                     pass
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 out_file = str(log_dir / f"ipopt_{ts}.log")
-                complex_config.solver["ipopt"].update({
-                    "output_file": out_file,
-                    "print_timing_statistics": "yes",
-                })
+                complex_config.solver["ipopt"].update(
+                    {
+                        "output_file": out_file,
+                        "print_timing_statistics": "yes",
+                    },
+                )
 
             # Enable 1D gas model if requested
             if self.config.use_1d_gas_model:
@@ -192,9 +206,9 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
 
             # Create the complex optimizer with warm start strategy
             self.complex_optimizer = ComplexMotionLawOptimizer(complex_config)
-            
+
             # Enable warm start for better convergence
-            if hasattr(self.complex_optimizer, 'enable_warm_start'):
+            if hasattr(self.complex_optimizer, "enable_warm_start"):
                 self.complex_optimizer.enable_warm_start(True)
 
             log.info("Thermal efficiency adapter configured with complex gas optimizer")
@@ -204,8 +218,11 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             # Emit environment diagnostics for CasADi/IPOPT
             try:
                 import casadi as ca  # type: ignore
+
                 plugins = ca.nlpsol_plugins() if hasattr(ca, "nlpsol_plugins") else []
-                log.error(f"CasADi version: {getattr(ca, '__version__', 'unknown')} | nlpsol plugins: {plugins}")
+                log.error(
+                    f"CasADi version: {getattr(ca, '__version__', 'unknown')} | nlpsol plugins: {plugins}",
+                )
             except Exception as exc:
                 log.error(f"CasADi import failed in diagnostics: {exc}")
             log.error("Complex gas optimizer not available. Using fallback mode.")
@@ -223,18 +240,22 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             log.error(f"Failed to setup complex gas optimizer: {e}")
             self.complex_optimizer = None
 
-    def optimize(self, objective, constraints: MotionLawConstraints,
-                initial_guess: Optional[Dict[str, np.ndarray]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        objective,
+        constraints: MotionLawConstraints,
+        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Optimize motion law for thermal efficiency.
-        
+
         Args:
             objective: Objective function (ignored, uses thermal efficiency)
             constraints: Motion law constraints
             initial_guess: Initial guess (optional)
             **kwargs: Additional optimization parameters
-            
+
         Returns:
             OptimizationResult with thermal efficiency optimization
         """
@@ -249,38 +270,49 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
 
         try:
             # Run complex optimization
-            complex_result = self.complex_optimizer.optimize_with_validation(validate=True)
+            complex_result = self.complex_optimizer.optimize_with_validation(
+                validate=True,
+            )
 
             # Extract or generate analysis from complex result
-            if hasattr(complex_result, 'ipopt_analysis') and complex_result.ipopt_analysis is not None:
+            if (
+                hasattr(complex_result, "ipopt_analysis")
+                and complex_result.ipopt_analysis is not None
+            ):
                 analysis = complex_result.ipopt_analysis
             else:
                 # Perform analysis on complex result if not provided
                 from campro.optimization.solver_analysis import analyze_ipopt_run
-                
+
                 # Get the most recent log file
                 log_file_path = self._get_log_file_path()
-                
+
                 # Build stats from complex result
                 stats = {
-                    'success': complex_result.success,
-                    'iterations': complex_result.iterations,
-                    'primal_inf': getattr(complex_result, 'primal_inf', 0.0),
-                    'dual_inf': getattr(complex_result, 'dual_inf', 0.0),
-                    'return_status': getattr(complex_result, 'status', 'unknown')
+                    "success": complex_result.success,
+                    "iterations": complex_result.iterations,
+                    "primal_inf": getattr(complex_result, "primal_inf", 0.0),
+                    "dual_inf": getattr(complex_result, "dual_inf", 0.0),
+                    "return_status": getattr(complex_result, "status", "unknown"),
                 }
-                
+
                 analysis = analyze_ipopt_run(stats, log_file_path)
 
             # Convert to standard OptimizationResult
             if complex_result.success:
                 # Extract motion law data from complex result
-                motion_law_data = self._extract_motion_law_data(complex_result, constraints)
+                motion_law_data = self._extract_motion_law_data(
+                    complex_result, constraints,
+                )
 
                 # Validate thermal efficiency
-                thermal_efficiency = complex_result.performance_metrics.get("thermal_efficiency", 0.0)
+                thermal_efficiency = complex_result.performance_metrics.get(
+                    "thermal_efficiency", 0.0,
+                )
                 if thermal_efficiency < self.config.thermal_efficiency_min:
-                    log.warning(f"Thermal efficiency {thermal_efficiency:.3f} below minimum {self.config.thermal_efficiency_min}")
+                    log.warning(
+                        f"Thermal efficiency {thermal_efficiency:.3f} below minimum {self.config.thermal_efficiency_min}",
+                    )
 
                 # Use minimized objective as 1 - eta_th to directly reflect efficiency
                 return OptimizationResult(
@@ -291,10 +323,18 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                     solve_time=complex_result.cpu_time,
                     metadata={
                         "thermal_efficiency": thermal_efficiency,
-                        "indicated_work": complex_result.performance_metrics.get("indicated_work", 0.0),
-                        "max_pressure": complex_result.performance_metrics.get("max_pressure", 0.0),
-                        "max_temperature": complex_result.performance_metrics.get("max_temperature", 0.0),
-                        "min_piston_gap": complex_result.performance_metrics.get("min_piston_gap", 0.0),
+                        "indicated_work": complex_result.performance_metrics.get(
+                            "indicated_work", 0.0,
+                        ),
+                        "max_pressure": complex_result.performance_metrics.get(
+                            "max_pressure", 0.0,
+                        ),
+                        "max_temperature": complex_result.performance_metrics.get(
+                            "max_temperature", 0.0,
+                        ),
+                        "min_piston_gap": complex_result.performance_metrics.get(
+                            "min_piston_gap", 0.0,
+                        ),
                         "optimization_method": "thermal_efficiency",
                         "complex_optimizer": True,
                         "validation_passed": self._validate_result(complex_result),
@@ -314,6 +354,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
         except Exception as e:
             log.error(f"Thermal efficiency optimization failed: {e}")
             import traceback
+
             log.error(f"Traceback: {traceback.format_exc()}")
             return OptimizationResult(
                 status=OptimizationStatus.FAILED,
@@ -324,19 +365,28 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                 metadata={"error": str(e)},
             )
 
-    def _extract_motion_law_data(self, complex_result, constraints: MotionLawConstraints) -> Dict[str, Any]:
+    def _extract_motion_law_data(
+        self, complex_result, constraints: MotionLawConstraints,
+    ) -> Dict[str, Any]:
         """Extract motion law data from complex optimization result."""
         try:
             # Extract optimized motion law from complex result
-            if hasattr(complex_result, "solution") and complex_result.solution is not None:
+            if (
+                hasattr(complex_result, "solution")
+                and complex_result.solution is not None
+            ):
                 solution = complex_result.solution
 
                 # Extract state variables if available
-                if hasattr(solution, "data") and isinstance(solution.data, dict) and "states" in solution.data:
+                if (
+                    hasattr(solution, "data")
+                    and isinstance(solution.data, dict)
+                    and "states" in solution.data
+                ):
                     states = solution.data["states"]
 
                     # Extract piston positions and velocities
-                    theta = np.linspace(0, 2*np.pi, 360)  # Cam angle
+                    theta = np.linspace(0, 2 * np.pi, 360)  # Cam angle
 
                     if "x_L" in states and "x_R" in states:
                         x_L = states["x_L"]
@@ -345,8 +395,15 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                         # Map OP engine states (positions/velocities) to single follower motion in mm and per-rad units
                         # Use average of left/right pistons as effective follower displacement
                         # Convert meters to millimeters
-                        x_m = 0.5 * (np.asarray(states.get("x_L", np.zeros_like(theta))) + np.asarray(states.get("x_R", np.zeros_like(theta))))
-                        v_ms = 0.5 * (np.asarray(states.get("v_L", np.zeros_like(theta))) + np.asarray(states.get("v_R", np.zeros_like(theta))))
+                        x_m = 0.5 * (
+                            np.asarray(states.get("x_L", np.zeros_like(theta)))
+                            + np.asarray(states.get("x_R", np.zeros_like(theta)))
+                        )
+                        v_ms = 0.5 * (
+                            np.asarray(states.get("v_L", np.zeros_like(theta)))
+                            + np.asarray(states.get("v_R", np.zeros_like(theta)))
+                        )
+
                         # Ensure correct length by interpolating or trimming
                         def resample(arr: np.ndarray) -> np.ndarray:
                             arr = np.asarray(arr).flatten()
@@ -355,6 +412,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                             xsrc = np.linspace(0.0, 1.0, len(arr))
                             xdst = np.linspace(0.0, 1.0, len(theta))
                             return np.interp(xdst, xsrc, arr)
+
                         x = resample(x_m) * 1000.0
                         # Velocity provided in m/s; convert to mm/rad using dθ/dt = ω. Assume unit ω for lack of data
                         v = resample(v_ms) * 1000.0  # mm/s ~ mm/rad with ω=1
@@ -372,18 +430,20 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                 x, v, a, j = self._generate_fallback_motion_law(constraints)
 
             return {
-                "cam_angle": np.linspace(0, 2*np.pi, 360),
+                "cam_angle": np.linspace(0, 2 * np.pi, 360),
                 "position": x,
                 "velocity": v,
                 "acceleration": a,
                 "jerk": j,
                 # Aliases expected by some tests
-                "theta": np.linspace(0, 2*np.pi, 360),
+                "theta": np.linspace(0, 2 * np.pi, 360),
                 "x": x,
                 "v": v,
                 "a": a,
                 "j": j,
-                "constraints": constraints.to_dict() if hasattr(constraints, "to_dict") else {
+                "constraints": constraints.to_dict()
+                if hasattr(constraints, "to_dict")
+                else {
                     "stroke": constraints.stroke,
                     "upstroke_duration_percent": constraints.upstroke_duration_percent,
                     "zero_accel_duration_percent": constraints.zero_accel_duration_percent,
@@ -392,7 +452,9 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                     "max_jerk": constraints.max_jerk,
                 },
                 "optimization_type": "thermal_efficiency",
-                "thermal_efficiency": complex_result.performance_metrics.get("thermal_efficiency", 0.0),
+                "thermal_efficiency": complex_result.performance_metrics.get(
+                    "thermal_efficiency", 0.0,
+                ),
             }
 
         except Exception as e:
@@ -400,12 +462,14 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             # Return fallback motion law
             x, v, a, j = self._generate_fallback_motion_law(constraints)
             return {
-                "cam_angle": np.linspace(0, 2*np.pi, 360),
+                "cam_angle": np.linspace(0, 2 * np.pi, 360),
                 "position": x,
                 "velocity": v,
                 "acceleration": a,
                 "jerk": j,
-                "constraints": constraints.to_dict() if hasattr(constraints, "to_dict") else {
+                "constraints": constraints.to_dict()
+                if hasattr(constraints, "to_dict")
+                else {
                     "stroke": constraints.stroke,
                     "upstroke_duration_percent": constraints.upstroke_duration_percent,
                     "zero_accel_duration_percent": constraints.zero_accel_duration_percent,
@@ -417,9 +481,11 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                 "thermal_efficiency": 0.0,
             }
 
-    def _generate_fallback_motion_law(self, constraints: MotionLawConstraints) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def _generate_fallback_motion_law(
+        self, constraints: MotionLawConstraints,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Generate fallback motion law when complex optimization fails."""
-        theta = np.linspace(0, 2*np.pi, 360)
+        theta = np.linspace(0, 2 * np.pi, 360)
 
         # Generate simple harmonic motion as fallback
         stroke = constraints.stroke / 1000.0  # Convert mm to m
@@ -437,27 +503,41 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
                 return False
 
             # Check thermal efficiency
-            thermal_efficiency = complex_result.performance_metrics.get("thermal_efficiency", 0.0)
+            thermal_efficiency = complex_result.performance_metrics.get(
+                "thermal_efficiency", 0.0,
+            )
             if thermal_efficiency < self.config.thermal_efficiency_min:
-                log.warning(f"Thermal efficiency {thermal_efficiency:.3f} below minimum {self.config.thermal_efficiency_min}")
+                log.warning(
+                    f"Thermal efficiency {thermal_efficiency:.3f} below minimum {self.config.thermal_efficiency_min}",
+                )
                 return False
 
             # Check pressure limits
             max_pressure = complex_result.performance_metrics.get("max_pressure", 0.0)
             if max_pressure > self.config.max_pressure_limit:
-                log.warning(f"Max pressure {max_pressure:.0f} Pa exceeds limit {self.config.max_pressure_limit:.0f} Pa")
+                log.warning(
+                    f"Max pressure {max_pressure:.0f} Pa exceeds limit {self.config.max_pressure_limit:.0f} Pa",
+                )
                 return False
 
             # Check temperature limits
-            max_temperature = complex_result.performance_metrics.get("max_temperature", 0.0)
+            max_temperature = complex_result.performance_metrics.get(
+                "max_temperature", 0.0,
+            )
             if max_temperature > self.config.max_temperature_limit:
-                log.warning(f"Max temperature {max_temperature:.0f} K exceeds limit {self.config.max_temperature_limit:.0f} K")
+                log.warning(
+                    f"Max temperature {max_temperature:.0f} K exceeds limit {self.config.max_temperature_limit:.0f} K",
+                )
                 return False
 
             # Check piston clearance
-            min_piston_gap = complex_result.performance_metrics.get("min_piston_gap", 0.0)
+            min_piston_gap = complex_result.performance_metrics.get(
+                "min_piston_gap", 0.0,
+            )
             if min_piston_gap < 0.0008:  # 0.8 mm minimum clearance
-                log.warning(f"Min piston gap {min_piston_gap:.6f} m below minimum 0.0008 m")
+                log.warning(
+                    f"Min piston gap {min_piston_gap:.6f} m below minimum 0.0008 m",
+                )
                 return False
 
             return True
@@ -469,31 +549,34 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
     def _get_log_file_path(self) -> Optional[str]:
         """Get the most recent Ipopt log file for analysis."""
         from campro.constants import IPOPT_LOG_DIR
-        
+
         log_dir = Path(IPOPT_LOG_DIR)
         if not log_dir.exists():
             return None
-        
+
         log_files = list(log_dir.glob("ipopt_*.log"))
         if not log_files:
             return None
-        
+
         # Return most recent log file
         return str(max(log_files, key=lambda p: p.stat().st_mtime))
 
-    def solve_motion_law(self, constraints: MotionLawConstraints,
-                        motion_type: MotionType) -> MotionLawResult:
+    def solve_motion_law(
+        self, constraints: MotionLawConstraints, motion_type: MotionType,
+    ) -> MotionLawResult:
         """
         Solve motion law optimization with thermal efficiency focus.
-        
+
         Args:
             constraints: Motion law constraints
             motion_type: Motion type (ignored, always uses thermal efficiency)
-            
+
         Returns:
             MotionLawResult with thermal efficiency optimization
         """
-        log.info(f"Solving thermal efficiency motion law (ignoring motion_type: {motion_type})")
+        log.info(
+            f"Solving thermal efficiency motion law (ignoring motion_type: {motion_type})",
+        )
 
         # Run optimization
         result = self.optimize(None, constraints)
@@ -517,7 +600,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             )
         # Return failed result
         return MotionLawResult(
-            cam_angle=np.linspace(0, 2*np.pi, 360),
+            cam_angle=np.linspace(0, 2 * np.pi, 360),
             position=np.zeros(360),
             velocity=np.zeros(360),
             acceleration=np.zeros(360),

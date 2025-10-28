@@ -20,7 +20,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Final
 
-from campro.constants import HSLLIB_PATH, IPOPT_OPT_PATH
+from campro.constants import IPOPT_OPT_PATH
 from campro.logging import get_logger
 from campro.optimization.solver_selection import SolverType
 
@@ -30,7 +30,7 @@ log = get_logger(__name__)
 
 
 def build_casadi_options(
-    ipopt_options: "IPOPTOptions",  # type: ignore[name-defined]
+    ipopt_options: IPOPTOptions,  # type: ignore[name-defined]
     solver: SolverType,
     *,
     emit_file: bool = True,
@@ -86,7 +86,8 @@ def build_casadi_options(
         opts["ipopt.warm_start_init_point"] = data["warm_start_init_point"]
         opts["ipopt.warm_start_bound_push"] = data.get("warm_start_bound_push", 1e-6)
         opts["ipopt.warm_start_mult_bound_push"] = data.get(
-            "warm_start_mult_bound_push", 1e-6
+            "warm_start_mult_bound_push",
+            1e-6,
         )
 
     # Add user-supplied linear_solver_options dict verbatim (prefixed keys)

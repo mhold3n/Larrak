@@ -266,14 +266,15 @@ class TestProblemBuilder:
         builder = ProblemBuilder(config)
 
         # Test method chaining
-        result = (builder
-                 .with_geometry({"bore": 0.12})
-                 .with_thermodynamics({"gamma": 1.4})
-                 .with_bounds({"v_max": 30.0})
-                 .with_constraints({"short_circuit_max": 0.1})
-                 .with_objective({"method": "thermal_efficiency"})
-                 .with_solver_options({"max_iter": 1000})
-                 .with_1d_model(n_cells=40))
+        result = (
+            builder.with_geometry({"bore": 0.12})
+            .with_thermodynamics({"gamma": 1.4})
+            .with_bounds({"v_max": 30.0})
+            .with_constraints({"short_circuit_max": 0.1})
+            .with_objective({"method": "thermal_efficiency"})
+            .with_solver_options({"max_iter": 1000})
+            .with_1d_model(n_cells=40)
+        )
 
         assert result is builder  # Should return self for chaining
 
@@ -341,7 +342,9 @@ class TestResultProcessor:
 
     @patch("campro.freepiston.opt.optimization_lib.SolutionValidator")
     @patch("campro.freepiston.opt.optimization_lib.PhysicsValidator")
-    def test_process_successful_result(self, mock_physics_validator, mock_solution_validator):
+    def test_process_successful_result(
+        self, mock_physics_validator, mock_solution_validator,
+    ):
         """Test processing successful result."""
         # Mock validators
         mock_sol_validator = Mock()

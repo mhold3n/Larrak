@@ -15,4 +15,3 @@ def test_cam_angle_monotonic():
     theta = res.cam_angle
     # Strictly increasing sequence
     assert np.all(np.diff(theta) > 0)
-

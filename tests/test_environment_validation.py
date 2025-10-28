@@ -91,7 +91,9 @@ class TestValidateCasadiIpopt:
     @patch("campro.environment.validator.log")
     def test_casadi_import_error(self, mock_log):
         """Test validation when CasADi cannot be imported."""
-        with patch("builtins.__import__", side_effect=ImportError("No module named 'casadi'")):
+        with patch(
+            "builtins.__import__", side_effect=ImportError("No module named 'casadi'"),
+        ):
             result = validate_casadi_ipopt()
 
             assert result.status == ValidationStatus.ERROR
@@ -174,6 +176,7 @@ class TestValidateRequiredPackages:
 
     def test_package_import_error(self):
         """Test validation when a package cannot be imported."""
+
         def mock_import(name, *args, **kwargs):
             if name == "numpy":
                 raise ImportError("No module named 'numpy'")
@@ -239,8 +242,13 @@ class TestValidateEnvironment:
     @patch("campro.environment.validator.validate_casadi_ipopt")
     @patch("campro.environment.validator.validate_required_packages")
     @patch("campro.environment.validator.log")
-    def test_validate_environment_success(self, mock_log, mock_validate_packages,
-                                        mock_validate_casadi, mock_validate_python):
+    def test_validate_environment_success(
+        self,
+        mock_log,
+        mock_validate_packages,
+        mock_validate_casadi,
+        mock_validate_python,
+    ):
         """Test successful environment validation."""
         # Mock successful results
         mock_validate_python.return_value = ValidationResult(
@@ -254,9 +262,15 @@ class TestValidateEnvironment:
             version="3.6.0",
         )
         mock_validate_packages.return_value = [
-            ValidationResult(status=ValidationStatus.PASS, message="numpy is available"),
-            ValidationResult(status=ValidationStatus.PASS, message="scipy is available"),
-            ValidationResult(status=ValidationStatus.PASS, message="matplotlib is available"),
+            ValidationResult(
+                status=ValidationStatus.PASS, message="numpy is available",
+            ),
+            ValidationResult(
+                status=ValidationStatus.PASS, message="scipy is available",
+            ),
+            ValidationResult(
+                status=ValidationStatus.PASS, message="matplotlib is available",
+            ),
         ]
 
         results = validate_environment()
@@ -280,8 +294,13 @@ class TestValidateEnvironment:
     @patch("campro.environment.validator.validate_casadi_ipopt")
     @patch("campro.environment.validator.validate_required_packages")
     @patch("campro.environment.validator.log")
-    def test_validate_environment_with_errors(self, mock_log, mock_validate_packages,
-                                            mock_validate_casadi, mock_validate_python):
+    def test_validate_environment_with_errors(
+        self,
+        mock_log,
+        mock_validate_packages,
+        mock_validate_casadi,
+        mock_validate_python,
+    ):
         """Test environment validation with errors."""
         # Mock results with errors
         mock_validate_python.return_value = ValidationResult(
@@ -295,9 +314,15 @@ class TestValidateEnvironment:
             suggestion="Install CasADi using conda",
         )
         mock_validate_packages.return_value = [
-            ValidationResult(status=ValidationStatus.ERROR, message="numpy is not installed"),
-            ValidationResult(status=ValidationStatus.PASS, message="scipy is available"),
-            ValidationResult(status=ValidationStatus.PASS, message="matplotlib is available"),
+            ValidationResult(
+                status=ValidationStatus.ERROR, message="numpy is not installed",
+            ),
+            ValidationResult(
+                status=ValidationStatus.PASS, message="scipy is available",
+            ),
+            ValidationResult(
+                status=ValidationStatus.PASS, message="matplotlib is available",
+            ),
         ]
 
         results = validate_environment()
@@ -337,6 +362,7 @@ class TestImportTimeValidation:
                 del sys.modules["campro"]
 
             import campro
+
             assert campro.is_ipopt_available() is True
 
     @patch("builtins.__import__")
@@ -359,11 +385,13 @@ class TestImportTimeValidation:
                 del sys.modules["campro"]
 
             import campro
+
             assert campro.is_ipopt_available() is True
 
     @patch("builtins.__import__")
     def test_import_time_validation_casadi_not_available(self, mock_import):
         """Test import-time validation when CasADi is not available."""
+
         def mock_import_side_effect(name, *args, **kwargs):
             if name == "casadi":
                 raise ImportError("No module named 'casadi'")
@@ -377,6 +405,7 @@ class TestImportTimeValidation:
                 del sys.modules["campro"]
 
             import campro
+
             assert campro.is_ipopt_available() is False
 
 
@@ -396,5 +425,6 @@ class TestValidationPerformance:
                     del sys.modules["campro"]
 
                 import campro
+
                 # Should not print warning about slow execution
                 assert campro.is_ipopt_available() is not None

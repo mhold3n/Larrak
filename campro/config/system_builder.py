@@ -20,6 +20,7 @@ log = get_logger(__name__)
 @dataclass
 class SystemConfiguration:
     """Configuration for a complete system."""
+
     name: str
     components: Dict[str, Dict[str, Any]]
     connections: List[Dict[str, str]]
@@ -29,7 +30,7 @@ class SystemConfiguration:
 class SystemBuilder:
     """
     Builder for creating configurable physics systems.
-    
+
     This class enables the creation of complex systems by combining
     modular components with flexible configuration options.
     """
@@ -37,7 +38,7 @@ class SystemBuilder:
     def __init__(self, name: str = "CustomSystem"):
         """
         Initialize the system builder.
-        
+
         Parameters
         ----------
         name : str
@@ -59,11 +60,15 @@ class SystemBuilder:
             # Add more components as they are created
         }
 
-    def add_component(self, name: str, component_type: str,
-                     parameters: Optional[Dict[str, Any]] = None) -> "SystemBuilder":
+    def add_component(
+        self,
+        name: str,
+        component_type: str,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> "SystemBuilder":
         """
         Add a component to the system.
-        
+
         Parameters
         ----------
         name : str
@@ -72,7 +77,7 @@ class SystemBuilder:
             Type of component to add
         parameters : Dict[str, Any], optional
             Component parameters
-            
+
         Returns
         -------
         SystemBuilder
@@ -93,11 +98,12 @@ class SystemBuilder:
         log.debug(f"Added component {name} of type {component_type}")
         return self
 
-    def connect_components(self, from_component: str, to_component: str,
-                          connection_type: str = "data_flow") -> "SystemBuilder":
+    def connect_components(
+        self, from_component: str, to_component: str, connection_type: str = "data_flow",
+    ) -> "SystemBuilder":
         """
         Connect components in the system.
-        
+
         Parameters
         ----------
         from_component : str
@@ -106,7 +112,7 @@ class SystemBuilder:
             Target component name
         connection_type : str
             Type of connection
-            
+
         Returns
         -------
         SystemBuilder
@@ -117,11 +123,13 @@ class SystemBuilder:
         if to_component not in self.components:
             raise ValueError(f"Target component {to_component} not found")
 
-        self.connections.append({
-            "from": from_component,
-            "to": to_component,
-            "type": connection_type,
-        })
+        self.connections.append(
+            {
+                "from": from_component,
+                "to": to_component,
+                "type": connection_type,
+            },
+        )
 
         log.debug(f"Connected {from_component} -> {to_component} ({connection_type})")
         return self
@@ -129,12 +137,12 @@ class SystemBuilder:
     def set_parameters(self, parameters: Dict[str, Any]) -> "SystemBuilder":
         """
         Set system-level parameters.
-        
+
         Parameters
         ----------
         parameters : Dict[str, Any]
             System parameters
-            
+
         Returns
         -------
         SystemBuilder
@@ -144,18 +152,19 @@ class SystemBuilder:
         log.debug(f"Set system parameters: {list(parameters.keys())}")
         return self
 
-    def build_cam_ring_system(self, base_radius: float = 10.0,
-                             connecting_rod_length: float = 25.0) -> "SystemBuilder":
+    def build_cam_ring_system(
+        self, base_radius: float = 10.0, connecting_rod_length: float = 25.0,
+    ) -> "SystemBuilder":
         """
         Build a standard cam-ring system configuration.
-        
+
         Parameters
         ----------
         base_radius : float
             Cam base radius
         connecting_rod_length : float
             Connecting rod length
-            
+
         Returns
         -------
         SystemBuilder
@@ -187,11 +196,13 @@ class SystemBuilder:
         self.connect_components("curvature", "meshing_law")
 
         # Set system parameters
-        self.set_parameters({
-            "base_radius": base_radius,
-            "connecting_rod_length": connecting_rod_length,
-            "system_type": "cam_ring",
-        })
+        self.set_parameters(
+            {
+                "base_radius": base_radius,
+                "connecting_rod_length": connecting_rod_length,
+                "system_type": "cam_ring",
+            },
+        )
 
         log.info(f"Built cam-ring system with base_radius={base_radius}")
         return self
@@ -199,7 +210,7 @@ class SystemBuilder:
     def get_configuration(self) -> SystemConfiguration:
         """
         Get the current system configuration.
-        
+
         Returns
         -------
         SystemConfiguration
@@ -215,7 +226,7 @@ class SystemBuilder:
     def create_system(self) -> BaseSystem:
         """
         Create the configured system.
-        
+
         Returns
         -------
         BaseSystem
@@ -230,16 +241,19 @@ class SystemBuilder:
 
         # Create system (this would be implemented in a specific system class)
         # For now, return a placeholder
-        log.info(f"Created system {self.name} with {len(component_instances)} components")
+        log.info(
+            f"Created system {self.name} with {len(component_instances)} components",
+        )
 
         # This would be replaced with actual system creation
         from ..physics.base import BaseSystem
+
         return BaseSystem(component_instances, name=self.name)
 
     def validate_configuration(self) -> bool:
         """
         Validate the current configuration.
-        
+
         Returns
         -------
         bool
@@ -275,4 +289,3 @@ class SystemBuilder:
     def __repr__(self) -> str:
         """String representation of builder."""
         return f"SystemBuilder(name='{self.name}', components={len(self.components)})"
-

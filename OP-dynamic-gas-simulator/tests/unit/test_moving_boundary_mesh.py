@@ -130,7 +130,9 @@ class TestMovingBoundaryMesh:
         """Test error handling for invalid boundaries."""
         mesh = MovingBoundaryMesh(n_cells=5, x_left=0.0, x_right=1.0)
 
-        with pytest.raises(ValueError, match="Right boundary must be greater than left boundary"):
+        with pytest.raises(
+            ValueError, match="Right boundary must be greater than left boundary",
+        ):
             mesh.update_piston_boundaries(0.5, 0.3, 0.0, 0.0)
 
 
@@ -224,9 +226,13 @@ class TestGasStructureCoupling:
         mesh = MovingBoundaryMesh(n_cells=5, x_left=0.0, x_right=1.0)
 
         # Create test state
-        U = np.array([[1.0, 1.0, 1.0, 1.0, 1.0],  # density
-                      [0.0, 0.0, 0.0, 0.0, 0.0],  # momentum
-                      [2.5, 2.5, 2.5, 2.5, 2.5]])  # energy
+        U = np.array(
+            [
+                [1.0, 1.0, 1.0, 1.0, 1.0],  # density
+                [0.0, 0.0, 0.0, 0.0, 0.0],  # momentum
+                [2.5, 2.5, 2.5, 2.5, 2.5],
+            ],
+        )  # energy
 
         # Create piston forces
         piston_forces = {
@@ -264,9 +270,13 @@ class TestGasStructureCoupling:
         mesh = MovingBoundaryMesh(n_cells=3, x_left=0.0, x_right=1.0)
 
         # Create test state
-        U = np.array([[1.0, 1.0, 1.0],  # density
-                      [0.0, 0.0, 0.0],  # momentum
-                      [2.5, 2.5, 2.5]])  # energy
+        U = np.array(
+            [
+                [1.0, 1.0, 1.0],  # density
+                [0.0, 0.0, 0.0],  # momentum
+                [2.5, 2.5, 2.5],
+            ],
+        )  # energy
 
         # Create time step parameters
         params = TimeStepParameters()
@@ -286,9 +296,13 @@ class TestGasStructureCoupling:
         mesh.volume_change_rate = np.array([0.1, 0.1, 0.1])
 
         # Create test state
-        U = np.array([[1.0, 1.0, 1.0],  # density
-                      [0.0, 0.0, 0.0],  # momentum
-                      [2.5, 2.5, 2.5]])  # energy
+        U = np.array(
+            [
+                [1.0, 1.0, 1.0],  # density
+                [0.0, 0.0, 0.0],  # momentum
+                [2.5, 2.5, 2.5],
+            ],
+        )  # energy
 
         # Create time step parameters
         params = TimeStepParameters()
@@ -308,9 +322,13 @@ class TestGasStructureCoupling:
         mesh.piston_velocities = {"left": 0.5, "right": -0.5}
 
         # Create test state
-        U = np.array([[1.0, 1.0, 1.0],  # density
-                      [0.0, 0.0, 0.0],  # momentum
-                      [2.5, 2.5, 2.5]])  # energy
+        U = np.array(
+            [
+                [1.0, 1.0, 1.0],  # density
+                [0.0, 0.0, 0.0],  # momentum
+                [2.5, 2.5, 2.5],
+            ],
+        )  # energy
 
         # Create time step parameters
         params = TimeStepParameters()
@@ -364,7 +382,10 @@ class TestConservativeRemapping:
 
         # Perform piston boundary motion
         mesh_new, U_new = piston_boundary_ale_motion(
-            mesh_old, (0.0, 1.0), (0.1, 0.9), U_old,
+            mesh_old,
+            (0.0, 1.0),
+            (0.1, 0.9),
+            U_old,
         )
 
         assert mesh_new.n_cells == 5

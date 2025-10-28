@@ -5,7 +5,6 @@ This module contains comprehensive tests for the CamPro_OptimalMotion module,
 including unit tests, integration tests, and property-based tests.
 """
 
-
 import numpy as np
 import pytest
 from hypothesis import given
@@ -146,7 +145,11 @@ class TestMinimumTimeMotion:
         max_jerk = 1.0
 
         solution = solver.solve_minimum_time(
-            basic_constraints, distance, max_velocity, max_acceleration, max_jerk,
+            basic_constraints,
+            distance,
+            max_velocity,
+            max_acceleration,
+            max_jerk,
         )
 
         # Check solution structure
@@ -176,7 +179,11 @@ class TestMinimumTimeMotion:
         max_jerk = 1.0
 
         solution = solver.solve_minimum_time(
-            basic_constraints, distance, max_velocity, max_acceleration, max_jerk,
+            basic_constraints,
+            distance,
+            max_velocity,
+            max_acceleration,
+            max_jerk,
         )
 
         # Check velocity constraints
@@ -216,7 +223,11 @@ class TestMinimumEnergyMotion:
         max_acceleration = 2.0
 
         solution = solver.solve_minimum_energy(
-            basic_constraints, distance, time_horizon, max_velocity, max_acceleration,
+            basic_constraints,
+            distance,
+            time_horizon,
+            max_velocity,
+            max_acceleration,
         )
 
         # Check solution structure
@@ -266,7 +277,11 @@ class TestMinimumJerkMotion:
         max_acceleration = 2.0
 
         solution = solver.solve_minimum_jerk(
-            basic_constraints, distance, time_horizon, max_velocity, max_acceleration,
+            basic_constraints,
+            distance,
+            time_horizon,
+            max_velocity,
+            max_acceleration,
         )
 
         # Check solution structure
@@ -297,7 +312,10 @@ class TestConvenienceFunctions:
         max_jerk = 1.0
 
         solution = solve_minimum_time_motion(
-            distance, max_velocity, max_acceleration, max_jerk,
+            distance,
+            max_velocity,
+            max_acceleration,
+            max_jerk,
         )
 
         assert isinstance(solution, dict)
@@ -315,7 +333,10 @@ class TestConvenienceFunctions:
         max_acceleration = 2.0
 
         solution = solve_minimum_energy_motion(
-            distance, time_horizon, max_velocity, max_acceleration,
+            distance,
+            time_horizon,
+            max_velocity,
+            max_acceleration,
         )
 
         assert isinstance(solution, dict)
@@ -333,7 +354,10 @@ class TestConvenienceFunctions:
         max_acceleration = 2.0
 
         solution = solve_minimum_jerk_motion(
-            distance, time_horizon, max_velocity, max_acceleration,
+            distance,
+            time_horizon,
+            max_velocity,
+            max_acceleration,
         )
 
         assert isinstance(solution, dict)
@@ -353,7 +377,9 @@ class TestPropertyBasedTests:
         max_acceleration=st.floats(min_value=0.1, max_value=20.0),
         max_jerk=st.floats(min_value=0.1, max_value=10.0),
     )
-    def test_minimum_time_properties(self, distance, max_velocity, max_acceleration, max_jerk):
+    def test_minimum_time_properties(
+        self, distance, max_velocity, max_acceleration, max_jerk,
+    ):
         """Test properties of minimum time solutions."""
         # Ensure reasonable parameter relationships
         if max_velocity > 0 and max_acceleration > 0 and max_jerk > 0:
@@ -368,7 +394,11 @@ class TestPropertyBasedTests:
 
             try:
                 solution = solver.solve_minimum_time(
-                    constraints, distance, max_velocity, max_acceleration, max_jerk,
+                    constraints,
+                    distance,
+                    max_velocity,
+                    max_acceleration,
+                    max_jerk,
                 )
 
                 # Property: Final position should match target
@@ -391,7 +421,9 @@ class TestPropertyBasedTests:
         max_velocity=st.floats(min_value=0.1, max_value=50.0),
         max_acceleration=st.floats(min_value=0.1, max_value=20.0),
     )
-    def test_minimum_energy_properties(self, distance, time_horizon, max_velocity, max_acceleration):
+    def test_minimum_energy_properties(
+        self, distance, time_horizon, max_velocity, max_acceleration,
+    ):
         """Test properties of minimum energy solutions."""
         # Ensure reasonable parameter relationships
         if max_velocity > 0 and max_acceleration > 0:
@@ -406,7 +438,11 @@ class TestPropertyBasedTests:
 
             try:
                 solution = solver.solve_minimum_energy(
-                    constraints, distance, time_horizon, max_velocity, max_acceleration,
+                    constraints,
+                    distance,
+                    time_horizon,
+                    max_velocity,
+                    max_acceleration,
                 )
 
                 # Property: Final position should match target
@@ -470,22 +506,32 @@ class TestCamMotionConstraints:
 
     def test_invalid_upstroke_duration(self):
         """Test that invalid upstroke duration raises ValueError."""
-        with pytest.raises(ValueError, match="Upstroke duration percent must be between 0 and 100"):
+        with pytest.raises(
+            ValueError, match="Upstroke duration percent must be between 0 and 100",
+        ):
             CamMotionConstraints(stroke=10.0, upstroke_duration_percent=-10.0)
 
-        with pytest.raises(ValueError, match="Upstroke duration percent must be between 0 and 100"):
+        with pytest.raises(
+            ValueError, match="Upstroke duration percent must be between 0 and 100",
+        ):
             CamMotionConstraints(stroke=10.0, upstroke_duration_percent=150.0)
 
     def test_invalid_zero_accel_duration(self):
         """Test that invalid zero acceleration duration raises ValueError."""
-        with pytest.raises(ValueError, match="Zero acceleration duration percent must be between 0 and 100"):
+        with pytest.raises(
+            ValueError,
+            match="Zero acceleration duration percent must be between 0 and 100",
+        ):
             CamMotionConstraints(
                 stroke=10.0,
                 upstroke_duration_percent=60.0,
                 zero_accel_duration_percent=-5.0,
             )
 
-        with pytest.raises(ValueError, match="Zero acceleration duration percent must be between 0 and 100"):
+        with pytest.raises(
+            ValueError,
+            match="Zero acceleration duration percent must be between 0 and 100",
+        ):
             CamMotionConstraints(
                 stroke=10.0,
                 upstroke_duration_percent=60.0,
@@ -539,7 +585,14 @@ class TestCamMotionSolver:
         assert "control" in solution
 
         # Check solution arrays
-        for key in ["time", "cam_angle", "position", "velocity", "acceleration", "control"]:
+        for key in [
+            "time",
+            "cam_angle",
+            "position",
+            "velocity",
+            "acceleration",
+            "control",
+        ]:
             assert isinstance(solution[key], np.ndarray)
             assert len(solution[key]) > 0
 

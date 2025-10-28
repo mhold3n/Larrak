@@ -20,8 +20,3 @@ def get_logger(name: str) -> logging.Logger:
     # Do not configure handlers here; respect application-level config.
     logger.setLevel(_PACKAGE_LOGGER_LEVEL)
     return logger
-
-
-
-
-

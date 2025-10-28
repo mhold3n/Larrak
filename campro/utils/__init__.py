@@ -14,15 +14,11 @@ __all__ = [
     "plot_solution",
     "create_smart_scaled_plots",
     "apply_smart_scaling",
-
     # Validation utilities
     "validate_inputs",
     "validate_constraints",
-
     # Conversion utilities
     "convert_units",
     "time_to_cam_angle",
     "cam_angle_to_time",
 ]
-
-

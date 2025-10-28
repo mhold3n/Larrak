@@ -3,5 +3,4 @@
 Exports helpers for deterministic runs and per-run artifact paths.
 """
 
-from .run_metadata import RUN_ID, set_global_seeds, log_run_metadata  # noqa: F401
-
+from .run_metadata import RUN_ID, log_run_metadata, set_global_seeds  # noqa: F401

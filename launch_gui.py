@@ -13,22 +13,25 @@ from pathlib import Path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
+
 def validate_environment_before_launch():
     """Validate environment before launching GUI."""
     try:
         # TEMPORARILY DISABLE VALIDATION TO PREVENT UNEXPECTED LINEAR SOLVER CHANGES
         # The validation process may create solvers that conflict with the MA27/MA57 policy
-        print("⚠️  Environment validation temporarily disabled to avoid linear-solver conflicts")
+        print(
+            "⚠️  Environment validation temporarily disabled to avoid linear-solver conflicts",
+        )
         print("Continuing with GUI launch...")
         return
-        
+
         # Original validation code (commented out to avoid unintended solver initialization)
         # from campro.environment.validator import validate_environment
-        # 
+        #
         # print("Validating environment...")
         # results = validate_environment()
         # overall_status = results["summary"]["overall_status"]
-        # 
+        #
         # if overall_status.value == "error":
         #     print("❌ Environment validation failed!")
         #     print("Required dependencies are missing or incompatible.")
@@ -51,6 +54,7 @@ def validate_environment_before_launch():
         print(f"⚠️  Warning: Error during environment validation: {e}")
         print("Environment validation failed.")
 
+
 try:
     # Validate environment first
     validate_environment_before_launch()
@@ -70,7 +74,3 @@ except ImportError as e:
 except Exception as e:
     print(f"❌ Error starting GUI: {e}")
     sys.exit(1)
-
-
-
-

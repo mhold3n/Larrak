@@ -19,15 +19,16 @@ def woschni_h(*, p: float, T: float, B: float, w: float) -> float:
         return 0.0
     a, b, c, d = 0.8, -0.53, 0.8, -0.2
     C = 2.8
-    return C * (p ** a) * (T ** b) * (w ** c) * (B ** d)
+    return C * (p**a) * (T**b) * (w**c) * (B**d)
 
 
-def woschni_huber_h(*, p: float, T: float, B: float, w: float,
-                    C1: float = 130.0, C2: float = 1.4) -> float:
+def woschni_huber_h(
+    *, p: float, T: float, B: float, w: float, C1: float = 130.0, C2: float = 1.4,
+) -> float:
     """Calibrated Woschni-Huber correlation for OP engines.
-    
+
     h = C1 * p^0.8 * T^-0.53 * w^0.8 * B^-0.2 * (1 + C2 * w_m/sw)
-    
+
     Parameters
     ----------
     p : float
@@ -42,7 +43,7 @@ def woschni_huber_h(*, p: float, T: float, B: float, w: float,
         Primary coefficient (default: 130.0 for OP engines)
     C2 : float
         Swirl enhancement factor (default: 1.4)
-        
+
     Returns
     -------
     h : float
@@ -52,7 +53,7 @@ def woschni_huber_h(*, p: float, T: float, B: float, w: float,
         return 0.0
 
     # Base Woschni correlation
-    h_base = C1 * (p ** 0.8) * (T ** -0.53) * (w ** 0.8) * (B ** -0.2)
+    h_base = C1 * (p**0.8) * (T**-0.53) * (w**0.8) * (B**-0.2)
 
     # Swirl enhancement (simplified - assumes w_m/sw = 1.0 for now)
     swirl_factor = 1.0 + C2 * 1.0  # TODO: Add proper swirl ratio calculation
@@ -60,12 +61,13 @@ def woschni_huber_h(*, p: float, T: float, B: float, w: float,
     return h_base * swirl_factor
 
 
-def hohenberg_h(*, p: float, T: float, B: float, w: float,
-                rho: float, mu: float) -> float:
+def hohenberg_h(
+    *, p: float, T: float, B: float, w: float, rho: float, mu: float,
+) -> float:
     """Hohenberg correlation for wall heat transfer.
-    
+
     Nu = 0.130 * Re^0.8 * Pr^0.4 * (V/V_ref)^-0.06
-    
+
     Parameters
     ----------
     p : float
@@ -80,7 +82,7 @@ def hohenberg_h(*, p: float, T: float, B: float, w: float,
         Gas density [kg/m^3]
     mu : float
         Dynamic viscosity [Pa s]
-        
+
     Returns
     -------
     h : float
@@ -96,11 +98,11 @@ def hohenberg_h(*, p: float, T: float, B: float, w: float,
     Pr = 0.7
 
     # Nusselt number
-    Nu = 0.130 * (Re ** 0.8) * (Pr ** 0.4)
+    Nu = 0.130 * (Re**0.8) * (Pr**0.4)
 
     # Volume ratio (simplified - assume V/V_ref = 1.0)
     V_ratio = 1.0
-    Nu *= (V_ratio ** -0.06)
+    Nu *= V_ratio**-0.06
 
     # Heat transfer coefficient
     k = mu * 1005.0 / Pr  # Thermal conductivity from Prandtl number
@@ -109,13 +111,22 @@ def hohenberg_h(*, p: float, T: float, B: float, w: float,
     return h
 
 
-def compressible_wall_function_h(*, rho: float, u: float, mu: float, k: float,
-                                y_plus: float, T_wall: float, T_gas: float,
-                                p: float, R: float) -> float:
+def compressible_wall_function_h(
+    *,
+    rho: float,
+    u: float,
+    mu: float,
+    k: float,
+    y_plus: float,
+    T_wall: float,
+    T_gas: float,
+    p: float,
+    R: float,
+) -> float:
     """Compressible law-of-the-wall heat transfer coefficient.
-    
+
     Accounts for compressibility effects in boundary layer heat transfer.
-    
+
     Parameters
     ----------
     rho : float
@@ -136,7 +147,7 @@ def compressible_wall_function_h(*, rho: float, u: float, mu: float, k: float,
         Pressure [Pa]
     R : float
         Gas constant [J/(kg K)]
-        
+
     Returns
     -------
     h : float
@@ -146,7 +157,7 @@ def compressible_wall_function_h(*, rho: float, u: float, mu: float, k: float,
         return 0.0
 
     # Friction velocity
-    tau_wall = rho * (u ** 2) * 0.0225 * (y_plus ** -0.25)  # Blasius correlation
+    tau_wall = rho * (u**2) * 0.0225 * (y_plus**-0.25)  # Blasius correlation
     u_tau = math.sqrt(tau_wall / rho)
 
     # Thermal boundary layer thickness
@@ -164,12 +175,13 @@ def compressible_wall_function_h(*, rho: float, u: float, mu: float, k: float,
     return h
 
 
-def radiation_heat_transfer(*, T_gas: float, T_wall: float,
-                           emissivity: float = 0.8) -> float:
+def radiation_heat_transfer(
+    *, T_gas: float, T_wall: float, emissivity: float = 0.8,
+) -> float:
     """Radiation heat transfer between gas and wall.
-    
+
     q_rad = sigma * epsilon * (T_gas^4 - T_wall^4)
-    
+
     Parameters
     ----------
     T_gas : float
@@ -178,7 +190,7 @@ def radiation_heat_transfer(*, T_gas: float, T_wall: float,
         Wall temperature [K]
     emissivity : float
         Surface emissivity (default: 0.8)
-        
+
     Returns
     -------
     q_rad : float
@@ -192,13 +204,20 @@ def radiation_heat_transfer(*, T_gas: float, T_wall: float,
     return sigma * emissivity * (T_gas**4 - T_wall**4)
 
 
-def conjugate_heat_transfer(*, h_conv: float, h_rad: float,
-                           wall_thickness: float, wall_conductivity: float,
-                           T_gas: float, T_wall_inner: float, T_wall_outer: float) -> float:
+def conjugate_heat_transfer(
+    *,
+    h_conv: float,
+    h_rad: float,
+    wall_thickness: float,
+    wall_conductivity: float,
+    T_gas: float,
+    T_wall_inner: float,
+    T_wall_outer: float,
+) -> float:
     """Conjugate heat transfer across wall with conduction.
-    
+
     Accounts for heat conduction through wall thickness.
-    
+
     Parameters
     ----------
     h_conv : float
@@ -215,7 +234,7 @@ def conjugate_heat_transfer(*, h_conv: float, h_rad: float,
         Inner wall temperature [K]
     T_wall_outer : float
         Outer wall temperature [K]
-        
+
     Returns
     -------
     q_total : float
@@ -241,7 +260,7 @@ def conjugate_heat_transfer(*, h_conv: float, h_rad: float,
 
 def heat_loss_rate(*, h: float, area: float, T: float, Tw: float) -> float:
     """Basic heat loss rate calculation.
-    
+
     Parameters
     ----------
     h : float
@@ -252,7 +271,7 @@ def heat_loss_rate(*, h: float, area: float, T: float, Tw: float) -> float:
         Gas temperature [K]
     Tw : float
         Wall temperature [K]
-        
+
     Returns
     -------
     q : float
@@ -265,7 +284,7 @@ def heat_loss_rate(*, h: float, area: float, T: float, Tw: float) -> float:
 
 def get_heat_transfer_coefficient(*, method: str, **kwargs) -> float:
     """Unified interface for heat transfer coefficient calculations.
-    
+
     Parameters
     ----------
     method : str
@@ -276,7 +295,7 @@ def get_heat_transfer_coefficient(*, method: str, **kwargs) -> float:
         - 'compressible_wall': Compressible law-of-the-wall
     **kwargs
         Method-specific parameters
-        
+
     Returns
     -------
     h : float
@@ -291,6 +310,3 @@ def get_heat_transfer_coefficient(*, method: str, **kwargs) -> float:
     if method == "compressible_wall":
         return compressible_wall_function_h(**kwargs)
     raise ValueError(f"Unknown heat transfer method: {method}")
-
-
-

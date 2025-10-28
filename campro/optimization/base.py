@@ -85,7 +85,7 @@ class OptimizationResult:
 class BaseOptimizer(ABC):
     """
     Base class for all optimization methods.
-    
+
     Provides a common interface for optimization problems across different
     domains (motion, cam, physics) and methods (collocation, direct methods).
     """
@@ -100,24 +100,28 @@ class BaseOptimizer(ABC):
     def configure(self, **kwargs) -> None:
         """
         Configure the optimizer with problem-specific parameters.
-        
+
         Args:
             **kwargs: Configuration parameters
         """
 
     @abstractmethod
-    def optimize(self, objective: Callable, constraints: Any,
-                initial_guess: Optional[Dict[str, np.ndarray]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        objective: Callable,
+        constraints: Any,
+        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Solve an optimization problem.
-        
+
         Args:
             objective: Objective function to minimize
             constraints: Constraint system
             initial_guess: Initial guess for optimization variables
             **kwargs: Additional optimization parameters
-            
+
         Returns:
             OptimizationResult object
         """
@@ -145,13 +149,18 @@ class BaseOptimizer(ABC):
         self._current_result = result
         return result
 
-    def _finish_optimization(self, result: OptimizationResult,
-                           solution: Dict[str, np.ndarray],
-                           objective_value: Optional[float] = None,
-                           convergence_info: Optional[Dict[str, Any]] = None,
-                           error_message: Optional[str] = None) -> OptimizationResult:
+    def _finish_optimization(
+        self,
+        result: OptimizationResult,
+        solution: Dict[str, np.ndarray],
+        objective_value: Optional[float] = None,
+        convergence_info: Optional[Dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+    ) -> OptimizationResult:
         """Finish an optimization process."""
-        result.solve_time = time.time() - result.solve_time if result.solve_time else None
+        result.solve_time = (
+            time.time() - result.solve_time if result.solve_time else None
+        )
         result.solution = solution
         result.objective_value = objective_value
         result.convergence_info = convergence_info or {}
@@ -185,14 +194,18 @@ class BaseOptimizer(ABC):
             raise ValueError("Constraints cannot be None")
 
         if not self._is_configured:
-            raise RuntimeError(f"Optimizer {self.name} is not configured. Call configure() first.")
+            raise RuntimeError(
+                f"Optimizer {self.name} is not configured. Call configure() first.",
+            )
 
     def get_performance_summary(self) -> Dict[str, Any]:
         """Get performance summary across all optimizations."""
         if not self._optimization_history:
             return {}
 
-        successful_results = [r for r in self._optimization_history if r.is_successful()]
+        successful_results = [
+            r for r in self._optimization_history if r.is_successful()
+        ]
 
         summary = {
             "total_optimizations": len(self._optimization_history),
@@ -201,18 +214,22 @@ class BaseOptimizer(ABC):
         }
 
         if successful_results:
-            solve_times = [r.solve_time for r in successful_results if r.solve_time is not None]
+            solve_times = [
+                r.solve_time for r in successful_results if r.solve_time is not None
+            ]
             if solve_times:
                 summary["avg_solve_time"] = np.mean(solve_times)
                 summary["min_solve_time"] = np.min(solve_times)
                 summary["max_solve_time"] = np.max(solve_times)
 
-            objective_values = [r.objective_value for r in successful_results if r.objective_value is not None]
+            objective_values = [
+                r.objective_value
+                for r in successful_results
+                if r.objective_value is not None
+            ]
             if objective_values:
                 summary["avg_objective_value"] = np.mean(objective_values)
                 summary["min_objective_value"] = np.min(objective_values)
                 summary["max_objective_value"] = np.max(objective_values)
 
         return summary
-
-

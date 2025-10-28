@@ -15,7 +15,7 @@ Key Features:
 
 Usage:
     from campro.freepiston.opt.optimization_lib import MotionLawOptimizer
-    
+
     optimizer = MotionLawOptimizer(config)
     result = optimizer.optimize()
 """
@@ -54,7 +54,9 @@ class OptimizationConfig:
     # Optimization parameters
     num: Dict[str, int] = field(default_factory=lambda: {"K": 20, "C": 3})
     solver: Dict[str, Any] = field(default_factory=dict)
-    objective: Dict[str, Any] = field(default_factory=lambda: {"method": "indicated_work"})
+    objective: Dict[str, Any] = field(
+        default_factory=lambda: {"method": "indicated_work"},
+    )
 
     # Model configuration
     model_type: str = "0d"  # "0d" or "1d"
@@ -131,11 +133,17 @@ class IPOPTBackend:
             return OptimizationResult(
                 success=result.meta.get("optimization", {}).get("success", False),
                 solution=result,
-                objective_value=result.meta.get("optimization", {}).get("f_opt", float("inf")),
+                objective_value=result.meta.get("optimization", {}).get(
+                    "f_opt", float("inf"),
+                ),
                 iterations=result.meta.get("optimization", {}).get("iterations", 0),
                 cpu_time=cpu_time,
-                kkt_error=result.meta.get("optimization", {}).get("kkt_error", float("inf")),
-                feasibility_error=result.meta.get("optimization", {}).get("feasibility_error", float("inf")),
+                kkt_error=result.meta.get("optimization", {}).get(
+                    "kkt_error", float("inf"),
+                ),
+                feasibility_error=result.meta.get("optimization", {}).get(
+                    "feasibility_error", float("inf"),
+                ),
                 message=result.meta.get("optimization", {}).get("message", ""),
                 status=result.meta.get("optimization", {}).get("status", -1),
             )
@@ -166,11 +174,17 @@ class RobustIPOPTBackend:
             return OptimizationResult(
                 success=result.meta.get("optimization", {}).get("success", False),
                 solution=result,
-                objective_value=result.meta.get("optimization", {}).get("f_opt", float("inf")),
+                objective_value=result.meta.get("optimization", {}).get(
+                    "f_opt", float("inf"),
+                ),
                 iterations=result.meta.get("optimization", {}).get("iterations", 0),
                 cpu_time=cpu_time,
-                kkt_error=result.meta.get("optimization", {}).get("kkt_error", float("inf")),
-                feasibility_error=result.meta.get("optimization", {}).get("feasibility_error", float("inf")),
+                kkt_error=result.meta.get("optimization", {}).get(
+                    "kkt_error", float("inf"),
+                ),
+                feasibility_error=result.meta.get("optimization", {}).get(
+                    "feasibility_error", float("inf"),
+                ),
                 message=result.meta.get("optimization", {}).get("message", ""),
                 status=result.meta.get("optimization", {}).get("status", -1),
             )
@@ -187,7 +201,9 @@ class RobustIPOPTBackend:
 class AdaptiveBackend:
     """Adaptive solver backend with refinement strategy."""
 
-    def __init__(self, max_refinements: int = 3, options: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, max_refinements: int = 3, options: Optional[Dict[str, Any]] = None,
+    ):
         self.max_refinements = max_refinements
         self.options = options or {}
 
@@ -202,11 +218,17 @@ class AdaptiveBackend:
             return OptimizationResult(
                 success=result.meta.get("optimization", {}).get("success", False),
                 solution=result,
-                objective_value=result.meta.get("optimization", {}).get("f_opt", float("inf")),
+                objective_value=result.meta.get("optimization", {}).get(
+                    "f_opt", float("inf"),
+                ),
                 iterations=result.meta.get("optimization", {}).get("iterations", 0),
                 cpu_time=cpu_time,
-                kkt_error=result.meta.get("optimization", {}).get("kkt_error", float("inf")),
-                feasibility_error=result.meta.get("optimization", {}).get("feasibility_error", float("inf")),
+                kkt_error=result.meta.get("optimization", {}).get(
+                    "kkt_error", float("inf"),
+                ),
+                feasibility_error=result.meta.get("optimization", {}).get(
+                    "feasibility_error", float("inf"),
+                ),
                 message=result.meta.get("optimization", {}).get("message", ""),
                 status=result.meta.get("optimization", {}).get("status", -1),
             )
@@ -385,11 +407,14 @@ class ResultProcessor:
 class MotionLawOptimizer:
     """Main optimization class for motion law optimization."""
 
-    def __init__(self, config: Union[OptimizationConfig, Dict[str, Any]],
-                 solver_backend: Optional[SolverBackend] = None):
+    def __init__(
+        self,
+        config: Union[OptimizationConfig, Dict[str, Any]],
+        solver_backend: Optional[SolverBackend] = None,
+    ):
         """
         Initialize the motion law optimizer.
-        
+
         Args:
             config: Optimization configuration
             solver_backend: Solver backend to use (default: IPOPT)
@@ -408,7 +433,7 @@ class MotionLawOptimizer:
     def optimize(self) -> OptimizationResult:
         """
         Run the optimization.
-        
+
         Returns:
             OptimizationResult with complete optimization results
         """
@@ -429,7 +454,9 @@ class MotionLawOptimizer:
             if result.success:
                 log.info(f"Optimization successful: {result.message}")
                 log.info(f"Objective value: {result.objective_value:.6e}")
-                log.info(f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s")
+                log.info(
+                    f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s",
+                )
             else:
                 log.warning(f"Optimization failed: {result.message}")
                 if result.errors:
@@ -448,10 +475,10 @@ class MotionLawOptimizer:
     def optimize_with_validation(self, validate: bool = True) -> OptimizationResult:
         """
         Run optimization with optional validation.
-        
+
         Args:
             validate: Whether to perform validation
-            
+
         Returns:
             OptimizationResult with validation results
         """
@@ -493,31 +520,38 @@ class MotionLawOptimizer:
 
 # Convenience functions for common use cases
 
-def create_standard_optimizer(config: Union[OptimizationConfig, Dict[str, Any]]) -> MotionLawOptimizer:
+
+def create_standard_optimizer(
+    config: Union[OptimizationConfig, Dict[str, Any]],
+) -> MotionLawOptimizer:
     """Create a standard optimizer with IPOPT backend."""
     return MotionLawOptimizer(config, IPOPTBackend())
 
 
-def create_robust_optimizer(config: Union[OptimizationConfig, Dict[str, Any]]) -> MotionLawOptimizer:
+def create_robust_optimizer(
+    config: Union[OptimizationConfig, Dict[str, Any]],
+) -> MotionLawOptimizer:
     """Create a robust optimizer with conservative IPOPT settings."""
     return MotionLawOptimizer(config, RobustIPOPTBackend())
 
 
-def create_adaptive_optimizer(config: Union[OptimizationConfig, Dict[str, Any]],
-                             max_refinements: int = 3) -> MotionLawOptimizer:
+def create_adaptive_optimizer(
+    config: Union[OptimizationConfig, Dict[str, Any]], max_refinements: int = 3,
+) -> MotionLawOptimizer:
     """Create an adaptive optimizer with refinement strategy."""
     return MotionLawOptimizer(config, AdaptiveBackend(max_refinements))
 
 
-def quick_optimize(config: Union[OptimizationConfig, Dict[str, Any]],
-                  backend: str = "standard") -> OptimizationResult:
+def quick_optimize(
+    config: Union[OptimizationConfig, Dict[str, Any]], backend: str = "standard",
+) -> OptimizationResult:
     """
     Quick optimization with minimal setup.
-    
+
     Args:
         config: Optimization configuration
         backend: Solver backend ("standard", "robust", "adaptive")
-        
+
     Returns:
         OptimizationResult
     """

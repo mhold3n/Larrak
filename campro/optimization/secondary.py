@@ -23,15 +23,18 @@ log = get_logger(__name__)
 class SecondaryOptimizer(BaseOptimizer):
     """
     Secondary collocation optimizer shell for cascaded optimization.
-    
+
     This is a generic shell that can perform secondary optimization tasks
     based on externally provided constraints, relationships, and optimization targets.
     The specific implementation details are passed in during optimization.
     """
 
-    def __init__(self, name: str = "SecondaryOptimizer",
-                 registry: Optional[OptimizationRegistry] = None,
-                 settings: Optional[CollocationSettings] = None):
+    def __init__(
+        self,
+        name: str = "SecondaryOptimizer",
+        registry: Optional[OptimizationRegistry] = None,
+        settings: Optional[CollocationSettings] = None,
+    ):
         super().__init__(name)
         self.registry = registry or OptimizationRegistry()
         self.collocation_optimizer = CollocationOptimizer(settings)
@@ -40,7 +43,7 @@ class SecondaryOptimizer(BaseOptimizer):
     def configure(self, **kwargs) -> None:
         """
         Configure the secondary optimizer.
-        
+
         Args:
             **kwargs: Configuration parameters
                 - registry: Optimization registry
@@ -56,12 +59,16 @@ class SecondaryOptimizer(BaseOptimizer):
         self._is_configured = True
         log.info(f"Configured secondary optimizer: {self.name}")
 
-    def optimize(self, objective: Callable, constraints: Any,
-                initial_guess: Optional[Dict[str, np.ndarray]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        objective: Callable,
+        constraints: Any,
+        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Solve a secondary optimization problem using primary results and external specifications.
-        
+
         Args:
             objective: Objective function to minimize
             constraints: Constraint system
@@ -72,7 +79,7 @@ class SecondaryOptimizer(BaseOptimizer):
                 - secondary_relationships: Relationships between primary and secondary optimization
                 - optimization_targets: Specific targets for secondary optimization
                 - processing_function: Function to process primary results
-                
+
         Returns:
             OptimizationResult object
         """
@@ -83,13 +90,19 @@ class SecondaryOptimizer(BaseOptimizer):
 
         try:
             # Get primary optimization result
-            primary_optimizer_id = kwargs.get("primary_optimizer_id", "motion_optimizer")
+            primary_optimizer_id = kwargs.get(
+                "primary_optimizer_id", "motion_optimizer",
+            )
             primary_result = self.registry.get_result(primary_optimizer_id)
 
             if primary_result is None:
-                raise ValueError(f"No primary result found for optimizer '{primary_optimizer_id}'")
+                raise ValueError(
+                    f"No primary result found for optimizer '{primary_optimizer_id}'",
+                )
 
-            log.info(f"Using primary result from '{primary_optimizer_id}' for secondary optimization")
+            log.info(
+                f"Using primary result from '{primary_optimizer_id}' for secondary optimization",
+            )
 
             # Extract external specifications
             secondary_constraints = kwargs.get("secondary_constraints", {})
@@ -108,21 +121,31 @@ class SecondaryOptimizer(BaseOptimizer):
             else:
                 # Default: return primary solution unchanged (no processing)
                 processed_solution = primary_result.data.copy()
-                log.warning("No processing function provided - returning primary solution unchanged")
+                log.warning(
+                    "No processing function provided - returning primary solution unchanged",
+                )
 
             # Calculate objective value
-            objective_value = self._calculate_objective_value(objective, processed_solution)
+            objective_value = self._calculate_objective_value(
+                objective, processed_solution,
+            )
 
             # Finish optimization
             result = self._finish_optimization(
-                result, processed_solution, objective_value,
+                result,
+                processed_solution,
+                objective_value,
                 convergence_info={
                     "primary_optimizer_id": primary_optimizer_id,
                     "secondary_constraints": secondary_constraints,
                     "secondary_relationships": secondary_relationships,
                     "optimization_targets": optimization_targets,
-                    "processing_function": processing_function.__name__ if processing_function else None,
-                    "primary_objective_value": primary_result.metadata.get("objective_value"),
+                    "processing_function": processing_function.__name__
+                    if processing_function
+                    else None,
+                    "primary_objective_value": primary_result.metadata.get(
+                        "objective_value",
+                    ),
                 },
             )
 
@@ -143,17 +166,22 @@ class SecondaryOptimizer(BaseOptimizer):
         #     raise ValueError("Constraints cannot be None")
 
         if not self._is_configured:
-            raise RuntimeError(f"Optimizer {self.name} is not configured. Call configure() first.")
+            raise RuntimeError(
+                f"Optimizer {self.name} is not configured. Call configure() first.",
+            )
 
-    def process_primary_result(self, primary_optimizer_id: str = "motion_optimizer",
-                              secondary_constraints: Optional[Dict[str, Any]] = None,
-                              secondary_relationships: Optional[Dict[str, Any]] = None,
-                              optimization_targets: Optional[Dict[str, Any]] = None,
-                              processing_function: Optional[Callable] = None,
-                              objective_function: Optional[Callable] = None) -> OptimizationResult:
+    def process_primary_result(
+        self,
+        primary_optimizer_id: str = "motion_optimizer",
+        secondary_constraints: Optional[Dict[str, Any]] = None,
+        secondary_relationships: Optional[Dict[str, Any]] = None,
+        optimization_targets: Optional[Dict[str, Any]] = None,
+        processing_function: Optional[Callable] = None,
+        objective_function: Optional[Callable] = None,
+    ) -> OptimizationResult:
         """
         Process primary optimization result using external specifications.
-        
+
         Args:
             primary_optimizer_id: ID of primary optimizer
             secondary_constraints: Specific constraints for secondary optimization
@@ -161,14 +189,17 @@ class SecondaryOptimizer(BaseOptimizer):
             optimization_targets: Specific targets for secondary optimization
             processing_function: Function to process primary results
             objective_function: Objective function for secondary optimization
-            
+
         Returns:
             OptimizationResult object
         """
-        log.info(f"Processing primary result from '{primary_optimizer_id}' with external specifications")
+        log.info(
+            f"Processing primary result from '{primary_optimizer_id}' with external specifications",
+        )
 
         # Use default objective if none provided
         if objective_function is None:
+
             def objective_function(t, x, v, a, u):
                 return np.trapz(u**2, t)  # Default: minimize jerk
 
@@ -182,9 +213,9 @@ class SecondaryOptimizer(BaseOptimizer):
             processing_function=processing_function,
         )
 
-
-    def _calculate_objective_value(self, objective: Callable,
-                                 solution: Dict[str, np.ndarray]) -> Optional[float]:
+    def _calculate_objective_value(
+        self, objective: Callable, solution: Dict[str, np.ndarray],
+    ) -> Optional[float]:
         """Calculate the objective value for the solution."""
         try:
             # Extract arrays from solution

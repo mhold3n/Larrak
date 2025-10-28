@@ -21,7 +21,7 @@ class PlanetToothProfile:
     points: Sequence[Tuple[float, float]]
 
 
- # Config imported from campro.litvin.config
+# Config imported from campro.litvin.config
 
 
 def _rotate(theta: float, x: float, y: float) -> Tuple[float, float]:
@@ -30,7 +30,9 @@ def _rotate(theta: float, x: float, y: float) -> Tuple[float, float]:
     return c * x - s * y, s * x + c * y
 
 
-def _interpolate_flank(flank: InvoluteFlank, phi: float) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+def _interpolate_flank(
+    flank: InvoluteFlank, phi: float,
+) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     phis = flank.phi
     if phi <= phis[0]:
         return flank.points[0], flank.tangents[0]
@@ -51,7 +53,9 @@ def _interpolate_flank(flank: InvoluteFlank, phi: float) -> Tuple[Tuple[float, f
     return (x, y), (tx, ty)
 
 
-def _planet_coords(flank: InvoluteFlank, kin: PlanetKinematics, phi: float, theta_r: float) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+def _planet_coords(
+    flank: InvoluteFlank, kin: PlanetKinematics, phi: float, theta_r: float,
+) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     (x_ring, y_ring), (tx_ring, ty_ring) = _interpolate_flank(flank, phi)
 
     x_world, y_world = _rotate(theta_r, x_ring, y_ring)
@@ -67,7 +71,9 @@ def _planet_coords(flank: InvoluteFlank, kin: PlanetKinematics, phi: float, thet
     return (x_planet, y_planet), (tx_planet, ty_planet)
 
 
-def _partial_theta(flank: InvoluteFlank, kin: PlanetKinematics, phi: float, theta_r: float, h: float) -> Tuple[float, float]:
+def _partial_theta(
+    flank: InvoluteFlank, kin: PlanetKinematics, phi: float, theta_r: float, h: float,
+) -> Tuple[float, float]:
     x1, _ = _planet_coords(flank, kin, phi, theta_r + h)
     x0, _ = _planet_coords(flank, kin, phi, theta_r - h)
     return ((x1[0] - x0[0]) / (2 * h), (x1[1] - x0[1]) / (2 * h))
@@ -111,7 +117,9 @@ def _newton_solve_phi(
 def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothProfile:
     params = InternalGearParams(
         teeth=config.ring_teeth,
-        module=config.base_center_radius * 2.0 / max(config.ring_teeth - config.planet_teeth, 1),
+        module=config.base_center_radius
+        * 2.0
+        / max(config.ring_teeth - config.planet_teeth, 1),
         pressure_angle_deg=config.pressure_angle_deg,
         addendum_factor=config.addendum_factor,
     )
@@ -175,7 +183,11 @@ def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothP
     x1, y1 = pts[-1]
     dist = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
     if dist > PROFILE_CLOSURE_TOL:
-        log.warning("Planet profile closure residual %.3e exceeds tolerance %.3e", dist, PROFILE_CLOSURE_TOL)
+        log.warning(
+            "Planet profile closure residual %.3e exceeds tolerance %.3e",
+            dist,
+            PROFILE_CLOSURE_TOL,
+        )
 
     # Replicate single-contact path into tooth profile over z_p teeth by rotating
     # The current pts trace one flank path over θ_r∈[0,2π]. Use z_p copies spaced by 2π/z_p.
@@ -187,10 +199,7 @@ def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothP
         ang = 2.0 * pi * k / config.planet_teeth
         c = cos(ang)
         s = sin(ang)
-        for (x, y) in pts:
+        for x, y in pts:
             replicated.append((c * x - s * y, s * x + c * y))
 
     return PlanetToothProfile(points=replicated)
-
-
-

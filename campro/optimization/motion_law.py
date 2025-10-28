@@ -19,6 +19,7 @@ log = get_logger(__name__)
 
 class MotionType(Enum):
     """Types of motion law optimization."""
+
     MINIMUM_JERK = "minimum_jerk"
     MINIMUM_TIME = "minimum_time"
     MINIMUM_ENERGY = "minimum_energy"
@@ -29,14 +30,14 @@ class MotionLawConstraints:
     """Constraints for motion law optimization."""
 
     # User-defined constraints
-    stroke: float                    # Total displacement (mm)
-    upstroke_duration_percent: float # % of cycle for upstroke (0-100)
-    zero_accel_duration_percent: float # % of cycle with zero acceleration (0-100)
+    stroke: float  # Total displacement (mm)
+    upstroke_duration_percent: float  # % of cycle for upstroke (0-100)
+    zero_accel_duration_percent: float  # % of cycle with zero acceleration (0-100)
 
     # Physical limits (optional)
-    max_velocity: Optional[float] = None      # mm/rad
+    max_velocity: Optional[float] = None  # mm/rad
     max_acceleration: Optional[float] = None  # mm/rad²
-    max_jerk: Optional[float] = None          # mm/rad³
+    max_jerk: Optional[float] = None  # mm/rad³
 
     def __post_init__(self):
         """Validate and sanitize constraints after initialization."""
@@ -47,16 +48,30 @@ class MotionLawConstraints:
         # Clamp percentages to [0, 100]
         if self.upstroke_duration_percent < 0 or self.upstroke_duration_percent > 100:
             log.warning("Upstroke duration percent out of range; clamping to [0, 100]")
-            self.upstroke_duration_percent = float(np.clip(self.upstroke_duration_percent, 0.0, 100.0))
-        if self.zero_accel_duration_percent < 0 or self.zero_accel_duration_percent > 100:
-            log.warning("Zero acceleration duration percent out of range; clamping to [0, 100]")
-            self.zero_accel_duration_percent = float(np.clip(self.zero_accel_duration_percent, 0.0, 100.0))
+            self.upstroke_duration_percent = float(
+                np.clip(self.upstroke_duration_percent, 0.0, 100.0),
+            )
+        if (
+            self.zero_accel_duration_percent < 0
+            or self.zero_accel_duration_percent > 100
+        ):
+            log.warning(
+                "Zero acceleration duration percent out of range; clamping to [0, 100]",
+            )
+            self.zero_accel_duration_percent = float(
+                np.clip(self.zero_accel_duration_percent, 0.0, 100.0),
+            )
         # Ensure total does not exceed 100%
         total = self.upstroke_duration_percent + self.zero_accel_duration_percent
         if total > 100.0:
             excess = total - 100.0
-            log.warning("Sum of upstroke and zero-accel durations exceeds 100%; reducing zero-accel by %.2f%%", excess)
-            self.zero_accel_duration_percent = max(0.0, self.zero_accel_duration_percent - excess)
+            log.warning(
+                "Sum of upstroke and zero-accel durations exceeds 100%; reducing zero-accel by %.2f%%",
+                excess,
+            )
+            self.zero_accel_duration_percent = max(
+                0.0, self.zero_accel_duration_percent - excess,
+            )
 
     @property
     def upstroke_angle(self) -> float:
@@ -90,17 +105,17 @@ class MotionLawResult:
     """Result of motion law optimization."""
 
     # Motion law data (vs cam angle)
-    cam_angle: np.ndarray        # Cam angles (0° to 360°)
-    position: np.ndarray         # Linear follower position (mm)
-    velocity: np.ndarray         # Linear follower velocity (mm/rad)
-    acceleration: np.ndarray     # Linear follower acceleration (mm/rad²)
-    jerk: np.ndarray            # Linear follower jerk (mm/rad³)
+    cam_angle: np.ndarray  # Cam angles (0° to 360°)
+    position: np.ndarray  # Linear follower position (mm)
+    velocity: np.ndarray  # Linear follower velocity (mm/rad)
+    acceleration: np.ndarray  # Linear follower acceleration (mm/rad²)
+    jerk: np.ndarray  # Linear follower jerk (mm/rad³)
 
     # Optimization info
-    objective_value: float       # Final objective function value
-    convergence_status: str      # "converged", "failed", etc.
-    solve_time: float           # Time to solve (seconds)
-    iterations: int             # Number of iterations
+    objective_value: float  # Final objective function value
+    convergence_status: str  # "converged", "failed", etc.
+    solve_time: float  # Time to solve (seconds)
+    iterations: int  # Number of iterations
 
     # User constraints used
     stroke: float
@@ -199,10 +214,10 @@ class MotionLawValidator:
     def validate(self, result: MotionLawResult) -> ValidationResult:
         """
         Validate the motion law result.
-        
+
         Args:
             result: Motion law result to validate
-            
+
         Returns:
             ValidationResult with validation status and issues
         """
@@ -247,10 +262,14 @@ class MotionLawValidator:
 
             # Check acceleration boundaries
             if abs(result.acceleration[0]) > self.tolerance:
-                log.warning(f"Acceleration at start: {result.acceleration[0]}, expected: 0")
+                log.warning(
+                    f"Acceleration at start: {result.acceleration[0]}, expected: 0",
+                )
                 return False
             if abs(result.acceleration[-1]) > self.tolerance:
-                log.warning(f"Acceleration at end: {result.acceleration[-1]}, expected: 0")
+                log.warning(
+                    f"Acceleration at end: {result.acceleration[-1]}, expected: 0",
+                )
                 return False
 
             return True
@@ -276,7 +295,10 @@ class MotionLawValidator:
             dtheta_mean = float(np.mean(dtheta))
             log.debug(
                 "Continuity check: n=%d, dtheta[min,mean,max]=[%.4g, %.4g, %.4g] rad",
-                len(theta), dtheta_min, dtheta_mean, dtheta_max,
+                len(theta),
+                dtheta_min,
+                dtheta_mean,
+                dtheta_max,
             )
 
             base_tol = 100.0 * self.tolerance
@@ -284,23 +306,37 @@ class MotionLawValidator:
             amax = float(np.max(np.abs(acc))) if len(acc) == len(theta) else 0.0
 
             # Position continuity: per-segment tolerance using local dtheta
-            pos_tol_seg = np.maximum.reduce((
-                np.full_like(dtheta, base_tol, dtype=float),
-                np.full_like(dtheta, self.continuity_factor * float(result.stroke), dtype=float),
-                0.5 * vmax * dtheta,
-            ))
+            pos_tol_seg = np.maximum.reduce(
+                (
+                    np.full_like(dtheta, base_tol, dtype=float),
+                    np.full_like(
+                        dtheta,
+                        self.continuity_factor * float(result.stroke),
+                        dtype=float,
+                    ),
+                    0.5 * vmax * dtheta,
+                ),
+            )
             pos_diff = np.diff(pos)
             if len(pos_diff) and np.any(np.abs(pos_diff) > pos_tol_seg):
                 idx = int(np.argmax(np.abs(pos_diff) - pos_tol_seg))
                 log.debug(
                     "Position continuity worst @seg=%d: theta=[%.3f deg, %.3f deg], delta_x=%.4g, tol=%.4g, dtheta=%.4g, vmax=%.4g, stroke=%.4g, base_tol=%.4g",
-                    idx, float(np.degrees(theta[idx])), float(np.degrees(theta[idx+1])),
-                    float(pos_diff[idx]), float(pos_tol_seg[idx]), float(dtheta[idx]),
-                    vmax, float(result.stroke), base_tol,
+                    idx,
+                    float(np.degrees(theta[idx])),
+                    float(np.degrees(theta[idx + 1])),
+                    float(pos_diff[idx]),
+                    float(pos_tol_seg[idx]),
+                    float(dtheta[idx]),
+                    vmax,
+                    float(result.stroke),
+                    base_tol,
                 )
                 max_pos_step = float(np.max(np.abs(pos_diff)))
                 pos_step_tol = float(np.max(pos_tol_seg))
-                log.warning(f"Position not continuous (max step {max_pos_step:.3g} > tol {pos_step_tol:.3g})")
+                log.warning(
+                    f"Position not continuous (max step {max_pos_step:.3g} > tol {pos_step_tol:.3g})",
+                )
                 return False
 
             # Velocity continuity: global tolerance; emit segment context for worst offender
@@ -310,11 +346,18 @@ class MotionLawValidator:
                 idx = int(np.argmax(np.abs(vel_diff)))
                 log.debug(
                     "Velocity continuity worst @seg=%d: theta=[%.3f deg, %.3f deg], delta_v=%.4g, tol=%.4g, dtheta=%.4g, amax=%.4g",
-                    idx, float(np.degrees(theta[idx])), float(np.degrees(theta[idx+1])),
-                    float(vel_diff[idx]), float(vel_step_tol), float(dtheta[idx]), amax,
+                    idx,
+                    float(np.degrees(theta[idx])),
+                    float(np.degrees(theta[idx + 1])),
+                    float(vel_diff[idx]),
+                    float(vel_step_tol),
+                    float(dtheta[idx]),
+                    amax,
                 )
                 max_vel_step = float(np.max(np.abs(vel_diff)))
-                log.warning(f"Velocity not continuous (max step {max_vel_step:.3g} > tol {vel_step_tol:.3g})")
+                log.warning(
+                    f"Velocity not continuous (max step {max_vel_step:.3g} > tol {vel_step_tol:.3g})",
+                )
                 return False
 
             # Acceleration continuity: global tolerance; emit segment context
@@ -324,11 +367,17 @@ class MotionLawValidator:
                 idx = int(np.argmax(np.abs(acc_diff)))
                 log.debug(
                     "Acceleration continuity worst @seg=%d: theta=[%.3f deg, %.3f deg], delta_a=%.4g, tol=%.4g, dtheta=%.4g",
-                    idx, float(np.degrees(theta[idx])), float(np.degrees(theta[idx+1])),
-                    float(acc_diff[idx]), float(acc_step_tol), float(dtheta[idx]),
+                    idx,
+                    float(np.degrees(theta[idx])),
+                    float(np.degrees(theta[idx + 1])),
+                    float(acc_diff[idx]),
+                    float(acc_step_tol),
+                    float(dtheta[idx]),
                 )
                 max_acc_step = float(np.max(np.abs(acc_diff)))
-                log.warning(f"Acceleration not continuous (max step {max_acc_step:.3g} > tol {acc_step_tol:.3g})")
+                log.warning(
+                    f"Acceleration not continuous (max step {max_acc_step:.3g} > tol {acc_step_tol:.3g})",
+                )
                 return False
 
             return True
@@ -342,7 +391,9 @@ class MotionLawValidator:
             # Check stroke constraint (more lenient for optimization results)
             max_position = np.max(result.position)
             if abs(max_position - result.stroke) > 0.1:  # Allow 0.1mm tolerance
-                log.warning(f"Max position: {max_position}, expected stroke: {result.stroke}")
+                log.warning(
+                    f"Max position: {max_position}, expected stroke: {result.stroke}",
+                )
                 return False
 
             # Check upstroke timing constraint (more lenient for optimization results)
@@ -350,7 +401,9 @@ class MotionLawValidator:
             upstroke_idx = np.argmin(np.abs(result.cam_angle - upstroke_angle))
             upstroke_position = result.position[upstroke_idx]
             if abs(upstroke_position - result.stroke) > 0.1:  # Allow 0.1mm tolerance
-                log.warning(f"Position at upstroke end: {upstroke_position}, expected: {result.stroke}")
+                log.warning(
+                    f"Position at upstroke end: {upstroke_position}, expected: {result.stroke}",
+                )
                 return False
 
             return True
@@ -373,7 +426,9 @@ class MotionLawValidator:
             if np.any(np.isinf(result.velocity)) or np.any(np.isnan(result.velocity)):
                 log.warning("Infinite or NaN velocities detected")
                 return False
-            if np.any(np.isinf(result.acceleration)) or np.any(np.isnan(result.acceleration)):
+            if np.any(np.isinf(result.acceleration)) or np.any(
+                np.isnan(result.acceleration),
+            ):
                 log.warning("Infinite or NaN accelerations detected")
                 return False
             if np.any(np.isinf(result.jerk)) or np.any(np.isnan(result.jerk)):

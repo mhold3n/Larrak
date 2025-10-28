@@ -99,7 +99,10 @@ def load_warmstart(
         try:
             if int(data.get("n_x", -1)) != int(n_x):
                 continue
-            if n_lam_g is not None and int(data.get("n_lam_g", -2)) not in (int(n_lam_g), 0):
+            if n_lam_g is not None and int(data.get("n_lam_g", -2)) not in (
+                int(n_lam_g),
+                0,
+            ):
                 continue
             out: Dict[str, np.ndarray] = {}
             for key in ("x0", "lam_g0", "lam_x0", "zl0", "zu0"):
@@ -111,4 +114,3 @@ def load_warmstart(
         except Exception:
             continue
     return {}
-

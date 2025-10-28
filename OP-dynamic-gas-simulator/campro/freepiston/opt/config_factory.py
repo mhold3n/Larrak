@@ -53,14 +53,22 @@ class ConfigFactory:
                 "cv": 717.5,  # J/(kg K)
             },
             bounds={
-                "xL_min": -0.1, "xL_max": 0.1,
-                "xR_min": 0.0, "xR_max": 0.2,
-                "vL_min": -50.0, "vL_max": 50.0,
-                "vR_min": -50.0, "vR_max": 50.0,
-                "rho_min": 0.1, "rho_max": 10.0,
-                "T_min": 200.0, "T_max": 2000.0,
-                "p_min": 1e4, "p_max": 1e7,
-                "Ain_max": 0.01, "Aex_max": 0.01,
+                "xL_min": -0.1,
+                "xL_max": 0.1,
+                "xR_min": 0.0,
+                "xR_max": 0.2,
+                "vL_min": -50.0,
+                "vL_max": 50.0,
+                "vR_min": -50.0,
+                "vR_max": 50.0,
+                "rho_min": 0.1,
+                "rho_max": 10.0,
+                "T_min": 200.0,
+                "T_max": 2000.0,
+                "p_min": 1e4,
+                "p_max": 1e7,
+                "Ain_max": 0.01,
+                "Aex_max": 0.01,
                 "Q_comb_max": 10000.0,
                 "dA_dt_max": 0.02,
                 "a_max": 1000.0,
@@ -109,19 +117,23 @@ class ConfigFactory:
         config.num = {"K": 50, "C": 4}
 
         # More aggressive solver settings
-        config.solver["ipopt"].update({
-            "max_iter": 5000,
-            "tol": 1e-8,
-            "linear_solver": "ma57",
-            "hessian_approximation": "exact",
-        })
+        config.solver["ipopt"].update(
+            {
+                "max_iter": 5000,
+                "tol": 1e-8,
+                "linear_solver": "ma57",
+                "hessian_approximation": "exact",
+            },
+        )
 
         # Stricter constraints
-        config.constraints.update({
-            "short_circuit_max": 0.05,
-            "scavenging_min": 0.9,
-            "trapping_min": 0.95,
-        })
+        config.constraints.update(
+            {
+                "short_circuit_max": 0.05,
+                "scavenging_min": 0.9,
+                "trapping_min": 0.95,
+            },
+        )
 
         return config
 
@@ -134,18 +146,22 @@ class ConfigFactory:
         config.num = {"K": 10, "C": 2}
 
         # Relaxed solver settings
-        config.solver["ipopt"].update({
-            "max_iter": 500,
-            "tol": 1e-4,
-            "linear_solver": "ma27",
-        })
+        config.solver["ipopt"].update(
+            {
+                "max_iter": 500,
+                "tol": 1e-4,
+                "linear_solver": "ma27",
+            },
+        )
 
         # Relaxed constraints
-        config.constraints.update({
-            "short_circuit_max": 0.2,
-            "scavenging_min": 0.7,
-            "trapping_min": 0.8,
-        })
+        config.constraints.update(
+            {
+                "short_circuit_max": 0.2,
+                "scavenging_min": 0.7,
+                "trapping_min": 0.8,
+            },
+        )
 
         return config
 
@@ -162,11 +178,13 @@ class ConfigFactory:
         config.num = {"K": 30, "C": 3}
 
         # More conservative solver settings for 1D
-        config.solver["ipopt"].update({
-            "max_iter": 2000,
-            "tol": 1e-6,
-            "linear_solver": "ma57",
-        })
+        config.solver["ipopt"].update(
+            {
+                "max_iter": 2000,
+                "tol": 1e-6,
+                "linear_solver": "ma57",
+            },
+        )
 
         return config
 
@@ -176,14 +194,16 @@ class ConfigFactory:
         config = ConfigFactory.create_default_config()
 
         # Conservative solver settings
-        config.solver["ipopt"].update({
-            "max_iter": 10000,
-            "tol": 1e-4,
-            "linear_solver": "ma57",
-            "hessian_approximation": "limited-memory",
-            "mu_strategy": "adaptive",
-            "mu_init": 1e-3,
-        })
+        config.solver["ipopt"].update(
+            {
+                "max_iter": 10000,
+                "tol": 1e-4,
+                "linear_solver": "ma57",
+                "hessian_approximation": "limited-memory",
+                "mu_strategy": "adaptive",
+                "mu_init": 1e-3,
+            },
+        )
 
         # Enable adaptive refinement
         config.refinement_strategy = "adaptive"
@@ -281,14 +301,15 @@ class ConfigFactory:
 
 # Preset configurations for common scenarios
 
+
 def get_preset_config(preset_name: str) -> OptimizationConfig:
     """
     Get a preset configuration by name.
-    
+
     Args:
-        preset_name: Name of the preset ("default", "high_performance", 
+        preset_name: Name of the preset ("default", "high_performance",
                     "quick_test", "1d", "robust")
-        
+
     Returns:
         OptimizationConfig
     """
@@ -310,11 +331,11 @@ def get_preset_config(preset_name: str) -> OptimizationConfig:
 def create_engine_config(engine_type: str, **kwargs) -> OptimizationConfig:
     """
     Create configuration for specific engine types.
-    
+
     Args:
         engine_type: Type of engine ("opposed_piston", "free_piston", "conventional")
         **kwargs: Additional configuration overrides
-        
+
     Returns:
         OptimizationConfig
     """
@@ -322,42 +343,60 @@ def create_engine_config(engine_type: str, **kwargs) -> OptimizationConfig:
 
     if engine_type == "opposed_piston":
         # Opposed piston specific settings
-        base_config.geometry.update({
-            "bore": 0.12,
-            "stroke": 0.08,
-            "compression_ratio": 12.0,
-            "mass": 1.2,
-        })
-        base_config.bounds.update({
-            "xL_min": -0.05, "xL_max": 0.05,
-            "xR_min": 0.05, "xR_max": 0.15,
-        })
+        base_config.geometry.update(
+            {
+                "bore": 0.12,
+                "stroke": 0.08,
+                "compression_ratio": 12.0,
+                "mass": 1.2,
+            },
+        )
+        base_config.bounds.update(
+            {
+                "xL_min": -0.05,
+                "xL_max": 0.05,
+                "xR_min": 0.05,
+                "xR_max": 0.15,
+            },
+        )
 
     elif engine_type == "free_piston":
         # Free piston specific settings
-        base_config.geometry.update({
-            "bore": 0.08,
-            "stroke": 0.06,
-            "compression_ratio": 15.0,
-            "mass": 0.8,
-        })
-        base_config.bounds.update({
-            "xL_min": -0.03, "xL_max": 0.03,
-            "xR_min": 0.03, "xR_max": 0.09,
-        })
+        base_config.geometry.update(
+            {
+                "bore": 0.08,
+                "stroke": 0.06,
+                "compression_ratio": 15.0,
+                "mass": 0.8,
+            },
+        )
+        base_config.bounds.update(
+            {
+                "xL_min": -0.03,
+                "xL_max": 0.03,
+                "xR_min": 0.03,
+                "xR_max": 0.09,
+            },
+        )
 
     elif engine_type == "conventional":
         # Conventional engine settings
-        base_config.geometry.update({
-            "bore": 0.1,
-            "stroke": 0.1,
-            "compression_ratio": 10.0,
-            "mass": 1.0,
-        })
-        base_config.bounds.update({
-            "xL_min": -0.1, "xL_max": 0.1,
-            "xR_min": 0.0, "xR_max": 0.2,
-        })
+        base_config.geometry.update(
+            {
+                "bore": 0.1,
+                "stroke": 0.1,
+                "compression_ratio": 10.0,
+                "mass": 1.0,
+            },
+        )
+        base_config.bounds.update(
+            {
+                "xL_min": -0.1,
+                "xL_max": 0.1,
+                "xR_min": 0.0,
+                "xR_max": 0.2,
+            },
+        )
 
     else:
         raise ValueError(f"Unknown engine type: {engine_type}")
@@ -373,11 +412,11 @@ def create_engine_config(engine_type: str, **kwargs) -> OptimizationConfig:
 def create_optimization_scenario(scenario: str, **kwargs) -> OptimizationConfig:
     """
     Create configuration for specific optimization scenarios.
-    
+
     Args:
         scenario: Optimization scenario ("efficiency", "power", "emissions", "durability")
         **kwargs: Additional configuration overrides
-        
+
     Returns:
         OptimizationConfig
     """
@@ -393,10 +432,12 @@ def create_optimization_scenario(scenario: str, **kwargs) -> OptimizationConfig:
                 "eta_th": 1.0,
             },
         }
-        base_config.constraints.update({
-            "short_circuit_max": 0.05,
-            "scavenging_min": 0.9,
-        })
+        base_config.constraints.update(
+            {
+                "short_circuit_max": 0.05,
+                "scavenging_min": 0.9,
+            },
+        )
 
     elif scenario == "power":
         # Focus on power output
@@ -408,10 +449,12 @@ def create_optimization_scenario(scenario: str, **kwargs) -> OptimizationConfig:
                 "eta_th": 0.1,
             },
         }
-        base_config.bounds.update({
-            "Q_comb_max": 20000.0,
-            "p_max": 2e7,
-        })
+        base_config.bounds.update(
+            {
+                "Q_comb_max": 20000.0,
+                "p_max": 2e7,
+            },
+        )
 
     elif scenario == "emissions":
         # Focus on emissions reduction
@@ -423,11 +466,13 @@ def create_optimization_scenario(scenario: str, **kwargs) -> OptimizationConfig:
                 "eta_th": 0.05,
             },
         }
-        base_config.constraints.update({
-            "short_circuit_max": 0.02,
-            "scavenging_min": 0.95,
-            "trapping_min": 0.98,
-        })
+        base_config.constraints.update(
+            {
+                "short_circuit_max": 0.02,
+                "scavenging_min": 0.95,
+                "trapping_min": 0.98,
+            },
+        )
 
     elif scenario == "durability":
         # Focus on mechanical durability
@@ -439,11 +484,13 @@ def create_optimization_scenario(scenario: str, **kwargs) -> OptimizationConfig:
                 "eta_th": 0.01,
             },
         }
-        base_config.bounds.update({
-            "v_max": 30.0,
-            "a_max": 500.0,
-            "dA_dt_max": 0.01,
-        })
+        base_config.bounds.update(
+            {
+                "v_max": 30.0,
+                "a_max": 500.0,
+                "dA_dt_max": 0.01,
+            },
+        )
 
     else:
         raise ValueError(f"Unknown scenario: {scenario}")

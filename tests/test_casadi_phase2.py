@@ -7,16 +7,16 @@ to ensure numeric parity and proper automatic differentiation.
 
 from unittest.mock import Mock
 
+import casadi as ca
 import numpy as np
 import pytest
-
-import casadi as ca
 from campro.physics.casadi import (
     create_phase_masks,
     create_side_load_penalty,
     create_side_load_pointwise,
     create_side_load_profile,
 )
+
 from campro.physics.geometry.litvin import LitvinGearGeometry
 from campro.physics.mechanics.side_loading import SideLoadAnalyzer
 
@@ -39,7 +39,7 @@ class TestCasadiSideLoading:
         self.F = 1000.0  # N
 
         # Test data (limit to 10 for fixed-size functions)
-        self.theta = np.linspace(0, 2*np.pi, 10)
+        self.theta = np.linspace(0, 2 * np.pi, 10)
         self.F_vec = 1000.0 * np.ones(10)  # N
 
     def test_side_load_pointwise_function_creation(self):
@@ -60,7 +60,12 @@ class TestCasadiSideLoading:
     def test_side_load_pointwise_outputs(self):
         """Test side load pointwise function outputs."""
         F_side = self.side_load_point_fn(
-            self.theta[0], self.r, self.l, self.F, self.x_off, self.y_off,
+            self.theta[0],
+            self.r,
+            self.l,
+            self.F,
+            self.x_off,
+            self.y_off,
         )
 
         # Check output shape
@@ -76,8 +81,12 @@ class TestCasadiSideLoading:
     def test_side_load_profile_outputs(self):
         """Test side load profile function outputs."""
         F_side_vec, F_side_max, F_side_avg, ripple = self.side_load_profile_fn(
-            self.theta, self.F_vec, self.r, self.l,
-            self.x_off, self.y_off,
+            self.theta,
+            self.F_vec,
+            self.r,
+            self.l,
+            self.x_off,
+            self.y_off,
         )
 
         # Check output shapes
@@ -112,7 +121,10 @@ class TestCasadiSideLoading:
         combustion_mask = ca.DM([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
 
         penalty = self.side_load_penalty_fn(
-            F_side_vec, max_threshold, compression_mask, combustion_mask,
+            F_side_vec,
+            max_threshold,
+            compression_mask,
+            combustion_mask,
         )
 
         # Check output shape
@@ -136,10 +148,16 @@ class TestCasadiSideLoading:
         combustion_mask = ca.DM([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
 
         penalty_low = self.side_load_penalty_fn(
-            F_side_low, max_threshold, compression_mask, combustion_mask,
+            F_side_low,
+            max_threshold,
+            compression_mask,
+            combustion_mask,
         )
         penalty_high = self.side_load_penalty_fn(
-            F_side_high, max_threshold, compression_mask, combustion_mask,
+            F_side_high,
+            max_threshold,
+            compression_mask,
+            combustion_mask,
         )
 
         # Higher forces should result in higher penalty
@@ -151,7 +169,12 @@ class TestCasadiSideLoading:
         r_singular = 149.9  # mm, very close to l=150
 
         F_side = self.side_load_point_fn(
-            self.theta[0], r_singular, self.l, self.F, self.x_off, self.y_off,
+            self.theta[0],
+            r_singular,
+            self.l,
+            self.F,
+            self.x_off,
+            self.y_off,
         )
 
         # Should not produce NaN/Inf even near singularity
@@ -169,21 +192,30 @@ class TestCasadiSideLoading:
         compression_mask = ca.DM([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
         combustion_mask = ca.DM([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
         penalty_comp = self.side_load_penalty_fn(
-            F_side_vec, max_threshold, compression_mask, combustion_mask,
+            F_side_vec,
+            max_threshold,
+            compression_mask,
+            combustion_mask,
         )
 
         # All combustion
         compression_mask = ca.DM([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
         combustion_mask = ca.DM([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
         penalty_comb = self.side_load_penalty_fn(
-            F_side_vec, max_threshold, compression_mask, combustion_mask,
+            F_side_vec,
+            max_threshold,
+            compression_mask,
+            combustion_mask,
         )
 
         # All normal
         compression_mask = ca.DM([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
         combustion_mask = ca.DM([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
         penalty_normal = self.side_load_penalty_fn(
-            F_side_vec, max_threshold, compression_mask, combustion_mask,
+            F_side_vec,
+            max_threshold,
+            compression_mask,
+            combustion_mask,
         )
 
         # Check that penalties scale with weights
@@ -218,11 +250,25 @@ class TestCasadiSideLoadingParityWithPython:
         self.y_off = 2.0  # mm
 
         # Test data (pad to 10 elements for fixed-size functions)
-        self.theta_test = np.array([0.0, np.pi/4, np.pi/2, 3*np.pi/4, np.pi,
-                                   5*np.pi/4, 3*np.pi/2, 7*np.pi/4, 2*np.pi, 9*np.pi/4])
+        self.theta_test = np.array(
+            [
+                0.0,
+                np.pi / 4,
+                np.pi / 2,
+                3 * np.pi / 4,
+                np.pi,
+                5 * np.pi / 4,
+                3 * np.pi / 2,
+                7 * np.pi / 4,
+                2 * np.pi,
+                9 * np.pi / 4,
+            ],
+        )
         self.F_test = 1000.0  # N
 
-    @pytest.mark.xfail(reason="Python implementation has different offset handling - needs investigation")
+    @pytest.mark.xfail(
+        reason="Python implementation has different offset handling - needs investigation",
+    )
     def test_side_load_parity_single_point(self):
         """Test side load calculation parity at single points."""
         rtol = 1e-3  # Relaxed tolerance due to different offset handling
@@ -237,16 +283,25 @@ class TestCasadiSideLoadingParityWithPython:
 
             # CasADi calculation
             casadi_side_load = self.side_load_point_fn(
-                theta, self.r, self.l, self.F_test, self.x_off, self.y_off,
+                theta,
+                self.r,
+                self.l,
+                self.F_test,
+                self.x_off,
+                self.y_off,
             )
 
             # Compare
             np.testing.assert_allclose(
-                casadi_side_load, python_side_load, rtol=rtol,
+                casadi_side_load,
+                python_side_load,
+                rtol=rtol,
                 err_msg=f"Side load mismatch at theta={theta}",
             )
 
-    @pytest.mark.xfail(reason="Python implementation has different offset handling - needs investigation")
+    @pytest.mark.xfail(
+        reason="Python implementation has different offset handling - needs investigation",
+    )
     def test_side_load_parity_profile(self):
         """Test side load profile parity over full cycle."""
         rtol = 1e-3  # Relaxed tolerance due to different offset handling
@@ -254,9 +309,13 @@ class TestCasadiSideLoadingParityWithPython:
         # Create motion law data for Python analyzer
         motion_law_data = {
             "theta": self.theta_test,
-            "displacement": np.zeros_like(self.theta_test),  # Not used in side load calc
-            "velocity": np.zeros_like(self.theta_test),      # Not used in side load calc
-            "acceleration": np.zeros_like(self.theta_test),  # Not used in side load calc
+            "displacement": np.zeros_like(
+                self.theta_test,
+            ),  # Not used in side load calc
+            "velocity": np.zeros_like(self.theta_test),  # Not used in side load calc
+            "acceleration": np.zeros_like(
+                self.theta_test,
+            ),  # Not used in side load calc
         }
         load_profile = self.F_test * np.ones_like(self.theta_test)
 
@@ -269,19 +328,27 @@ class TestCasadiSideLoadingParityWithPython:
 
         # CasADi calculation
         F_side_vec, F_side_max, F_side_avg, ripple = self.side_load_profile_fn(
-            self.theta_test, load_profile, self.r, self.l,
-            self.x_off, self.y_off,
+            self.theta_test,
+            load_profile,
+            self.r,
+            self.l,
+            self.x_off,
+            self.y_off,
         )
 
         # Compare maximum side load
         np.testing.assert_allclose(
-            F_side_max, python_profile["max_side_load"], rtol=rtol,
+            F_side_max,
+            python_profile["max_side_load"],
+            rtol=rtol,
             err_msg="Maximum side load mismatch",
         )
 
         # Compare average side load
         np.testing.assert_allclose(
-            F_side_avg, python_profile["avg_side_load"], rtol=rtol,
+            F_side_avg,
+            python_profile["avg_side_load"],
+            rtol=rtol,
             err_msg="Average side load mismatch",
         )
 
@@ -295,7 +362,7 @@ class TestCasadiSideLoadingGradients:
         self.side_load_penalty_fn = create_side_load_penalty()
 
         # Test parameters
-        self.theta = np.pi/4
+        self.theta = np.pi / 4
         self.r = 50.0
         self.l = 150.0
         self.F = 1000.0
@@ -312,7 +379,12 @@ class TestCasadiSideLoadingGradients:
 
         # Compute side load
         F_side = self.side_load_point_fn(
-            self.theta, r_sym, l_sym, self.F, self.x_off, self.y_off,
+            self.theta,
+            r_sym,
+            l_sym,
+            self.F,
+            self.x_off,
+            self.y_off,
         )
 
         # Compute gradients
@@ -320,7 +392,9 @@ class TestCasadiSideLoadingGradients:
         dF_side_dl = ca.jacobian(F_side, l_sym)
 
         # Create gradient function
-        grad_fn = ca.Function("side_load_gradients", [r_sym, l_sym], [dF_side_dr, dF_side_dl])
+        grad_fn = ca.Function(
+            "side_load_gradients", [r_sym, l_sym], [dF_side_dr, dF_side_dl],
+        )
 
         # Evaluate gradients
         grad_r, grad_l = grad_fn(self.r, self.l)
@@ -336,29 +410,53 @@ class TestCasadiSideLoadingGradients:
 
         # Forward difference for dF_side/dr
         F_side_plus = self.side_load_point_fn(
-            self.theta, self.r + eps, self.l, self.F, self.x_off, self.y_off,
+            self.theta,
+            self.r + eps,
+            self.l,
+            self.F,
+            self.x_off,
+            self.y_off,
         )
         F_side_minus = self.side_load_point_fn(
-            self.theta, self.r - eps, self.l, self.F, self.x_off, self.y_off,
+            self.theta,
+            self.r - eps,
+            self.l,
+            self.F,
+            self.x_off,
+            self.y_off,
         )
         dF_side_dr_fd = (F_side_plus - F_side_minus) / (2 * eps)
 
         np.testing.assert_allclose(
-            grad_r, dF_side_dr_fd, rtol=rtol,
+            grad_r,
+            dF_side_dr_fd,
+            rtol=rtol,
             err_msg="Gradient dF_side/dr mismatch",
         )
 
         # Forward difference for dF_side/dl
         F_side_plus = self.side_load_point_fn(
-            self.theta, self.r, self.l + eps, self.F, self.x_off, self.y_off,
+            self.theta,
+            self.r,
+            self.l + eps,
+            self.F,
+            self.x_off,
+            self.y_off,
         )
         F_side_minus = self.side_load_point_fn(
-            self.theta, self.r, self.l - eps, self.F, self.x_off, self.y_off,
+            self.theta,
+            self.r,
+            self.l - eps,
+            self.F,
+            self.x_off,
+            self.y_off,
         )
         dF_side_dl_fd = (F_side_plus - F_side_minus) / (2 * eps)
 
         np.testing.assert_allclose(
-            grad_l, dF_side_dl_fd, rtol=rtol,
+            grad_l,
+            dF_side_dl_fd,
+            rtol=rtol,
             err_msg="Gradient dF_side/dl mismatch",
         )
 
@@ -377,14 +475,19 @@ class TestCasadiSideLoadingGradients:
 
         # Compute penalty
         penalty = self.side_load_penalty_fn(
-            F_side_vec, threshold_sym, compression_mask, combustion_mask,
+            F_side_vec,
+            threshold_sym,
+            compression_mask,
+            combustion_mask,
         )
 
         # Compute gradient
         dpenalty_dthreshold = ca.jacobian(penalty, threshold_sym)
 
         # Create gradient function
-        grad_fn = ca.Function("penalty_gradient", [threshold_sym], [dpenalty_dthreshold])
+        grad_fn = ca.Function(
+            "penalty_gradient", [threshold_sym], [dpenalty_dthreshold],
+        )
 
         # Evaluate gradient
         grad = grad_fn(max_threshold)
@@ -397,14 +500,22 @@ class TestCasadiSideLoadingGradients:
         eps = 1e-6
 
         penalty_plus = self.side_load_penalty_fn(
-            F_side_vec, max_threshold + eps, compression_mask, combustion_mask,
+            F_side_vec,
+            max_threshold + eps,
+            compression_mask,
+            combustion_mask,
         )
         penalty_minus = self.side_load_penalty_fn(
-            F_side_vec, max_threshold - eps, compression_mask, combustion_mask,
+            F_side_vec,
+            max_threshold - eps,
+            compression_mask,
+            combustion_mask,
         )
         grad_fd = (penalty_plus - penalty_minus) / (2 * eps)
 
         np.testing.assert_allclose(
-            grad, grad_fd, rtol=rtol,
+            grad,
+            grad_fd,
+            rtol=rtol,
             err_msg="Gradient dpenalty/dthreshold mismatch",
         )

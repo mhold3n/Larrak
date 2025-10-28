@@ -11,5 +11,3 @@ def append_run_log(path: str | Path, message: str) -> None:
     ts = datetime.utcnow().isoformat()
     with (p / "run.log").open("a", encoding="utf-8") as f:
         f.write(f"{ts} {message}\n")
-
-

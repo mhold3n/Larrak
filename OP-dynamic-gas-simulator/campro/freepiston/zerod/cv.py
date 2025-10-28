@@ -118,7 +118,9 @@ def volume_from_pistons(*, B: float, Vc: float, x_L: float, x_R: float) -> float
     return chamber_volume(B=B, Vc=Vc, x_L=x_L, x_R=x_R)
 
 
-def cv_residual(mech: MechState, gas: Dict[str, float], params: Dict[str, object]) -> Dict[str, float]:
+def cv_residual(
+    mech: MechState, gas: Dict[str, float], params: Dict[str, object],
+) -> Dict[str, float]:
     """Enhanced 0D control-volume residuals for mass and total energy.
 
     This enhanced version includes:
@@ -183,8 +185,13 @@ def cv_residual(mech: MechState, gas: Dict[str, float], params: Dict[str, object
             L_gap = float(blow_by_params.get("L_gap", 0.1))
             mu = float(flows.get("mu", 1.8e-5))
             mdot_blow_by = blow_by_mdot(
-                gap=gap, p_cyl=p, p_crank=p_crank, T_cyl=T, rho_cyl=rho,
-                mu=mu, L_gap=L_gap,
+                gap=gap,
+                p_cyl=p,
+                p_crank=p_crank,
+                T_cyl=T,
+                rho_cyl=rho,
+                mu=mu,
+                L_gap=L_gap,
             )
         else:
             mdot_blow_by = 0.0
@@ -209,8 +216,14 @@ def cv_residual(mech: MechState, gas: Dict[str, float], params: Dict[str, object
             Re_in = rho_in * math.sqrt(2.0 * (p_in - p) / rho_in) * D_orifice / mu
             Cd_in = discharge_coefficient(Re=Re_in)
             mdot_in = advanced_orifice_mdot(
-                A=Ain, Cd=Cd_in, rho_up=rho_in, p_up=p_in, p_down=p,
-                T_up=T_in, gamma=gamma, R=R,
+                A=Ain,
+                Cd=Cd_in,
+                rho_up=rho_in,
+                p_up=p_in,
+                p_down=p,
+                T_up=T_in,
+                gamma=gamma,
+                R=R,
             )
         else:
             mdot_in = 0.0
@@ -220,8 +233,14 @@ def cv_residual(mech: MechState, gas: Dict[str, float], params: Dict[str, object
             Re_ex = rho * math.sqrt(2.0 * (p - p_ex) / rho) * D_orifice / mu
             Cd_ex = discharge_coefficient(Re=Re_ex)
             mdot_ex = advanced_orifice_mdot(
-                A=Aex, Cd=Cd_ex, rho_up=rho, p_up=p, p_down=p_ex,
-                T_up=T, gamma=gamma, R=R,
+                A=Aex,
+                Cd=Cd_ex,
+                rho_up=rho,
+                p_up=p,
+                p_down=p_ex,
+                T_up=T,
+                gamma=gamma,
+                R=R,
             )
         else:
             mdot_ex = 0.0
@@ -230,11 +249,18 @@ def cv_residual(mech: MechState, gas: Dict[str, float], params: Dict[str, object
         if "blow_by" in params:
             blow_by_params = params.get("blow_by", {})
             gap = float(blow_by_params.get("gap", 1e-6))  # Ring gap [m]
-            p_crank = float(blow_by_params.get("p_crank", p * 0.8))  # Crankcase pressure [Pa]
+            p_crank = float(
+                blow_by_params.get("p_crank", p * 0.8),
+            )  # Crankcase pressure [Pa]
             L_gap = float(blow_by_params.get("L_gap", 0.1))  # Gap length [m]
             mdot_blow_by = blow_by_mdot(
-                gap=gap, p_cyl=p, p_crank=p_crank, T_cyl=T, rho_cyl=rho,
-                mu=mu, L_gap=L_gap,
+                gap=gap,
+                p_cyl=p,
+                p_crank=p_crank,
+                T_cyl=T,
+                rho_cyl=rho,
+                mu=mu,
+                L_gap=L_gap,
             )
         else:
             mdot_blow_by = 0.0
@@ -265,22 +291,43 @@ def cv_residual(mech: MechState, gas: Dict[str, float], params: Dict[str, object
     Q_comb = float(chem.get("Q_comb", 0.0))  # Heat release rate [W]
 
     # Energy balance
-    dU_dt = (-p * dV_dt) + h_in * mdot_in - h_ex * mdot_ex - h_blow_by * mdot_blow_by - q_wall + Q_comb
+    dU_dt = (
+        (-p * dV_dt)
+        + h_in * mdot_in
+        - h_ex * mdot_ex
+        - h_blow_by * mdot_blow_by
+        - q_wall
+        + Q_comb
+    )
 
     # Composition evolution (simplified)
     # Fresh air fraction change due to intake and exhaust
     if m > 0:
         # Intake adds fresh air
-        dY_fresh_dt = (mdot_in * 1.0 - mdot_ex * composition.fresh_air - mdot_blow_by * composition.fresh_air) / m
+        dY_fresh_dt = (
+            mdot_in * 1.0
+            - mdot_ex * composition.fresh_air
+            - mdot_blow_by * composition.fresh_air
+        ) / m
 
         # Exhaust gas fraction change
-        dY_exhaust_dt = (mdot_in * 0.0 - mdot_ex * composition.exhaust_gas - mdot_blow_by * composition.exhaust_gas) / m
+        dY_exhaust_dt = (
+            mdot_in * 0.0
+            - mdot_ex * composition.exhaust_gas
+            - mdot_blow_by * composition.exhaust_gas
+        ) / m
 
         # Fuel fraction change (simplified)
-        dY_fuel_dt = (mdot_in * 0.0 - mdot_ex * composition.fuel - mdot_blow_by * composition.fuel) / m
+        dY_fuel_dt = (
+            mdot_in * 0.0 - mdot_ex * composition.fuel - mdot_blow_by * composition.fuel
+        ) / m
 
         # Burned gas fraction change
-        dY_burned_dt = (mdot_in * 0.0 - mdot_ex * composition.burned_gas - mdot_blow_by * composition.burned_gas) / m
+        dY_burned_dt = (
+            mdot_in * 0.0
+            - mdot_ex * composition.burned_gas
+            - mdot_blow_by * composition.burned_gas
+        ) / m
     else:
         dY_fresh_dt = 0.0
         dY_exhaust_dt = 0.0
@@ -328,9 +375,9 @@ def advanced_orifice_mdot(
 ) -> float:
     """
     Advanced orifice mass flow with compressible flow corrections.
-    
+
     Handles both subsonic and choked flow conditions.
-    
+
     Args:
         A: Orifice area [m^2]
         Cd: Discharge coefficient [-]
@@ -340,7 +387,7 @@ def advanced_orifice_mdot(
         T_up: Upstream temperature [K]
         gamma: Heat capacity ratio [-]
         R: Gas constant [J/(kg·K)]
-        
+
     Returns:
         Mass flow rate [kg/s]
     """
@@ -395,13 +442,13 @@ def discharge_coefficient(
 ) -> float:
     """
     Calculate discharge coefficient based on Reynolds number and geometry.
-    
+
     Args:
         Re: Reynolds number [-]
         L_D: Length to diameter ratio [-]
         beta: Beta ratio (orifice diameter / pipe diameter) [-]
         roughness: Relative roughness [-]
-        
+
     Returns:
         Discharge coefficient [-]
     """
@@ -420,7 +467,7 @@ def discharge_coefficient(
     Cd_length = 1.0 - 0.1 * L_D
 
     # Beta ratio correction
-    Cd_beta = 1.0 - 0.2 * beta ** 2
+    Cd_beta = 1.0 - 0.2 * beta**2
 
     # Roughness correction
     Cd_rough = 1.0 - 0.05 * roughness
@@ -443,7 +490,7 @@ def blow_by_mdot(
 ) -> float:
     """
     Calculate blow-by mass flow rate through piston ring gap.
-    
+
     Args:
         gap: Ring gap [m]
         p_cyl: Cylinder pressure [Pa]
@@ -452,7 +499,7 @@ def blow_by_mdot(
         rho_cyl: Cylinder density [kg/m^3]
         mu: Dynamic viscosity [Pa·s]
         L_gap: Gap length [m]
-        
+
     Returns:
         Blow-by mass flow rate [kg/s]
     """
@@ -493,14 +540,14 @@ def create_control_volume_state(
 ) -> ControlVolumeState:
     """
     Create a control volume state from basic thermodynamic properties.
-    
+
     Args:
         rho: Density [kg/m^3]
         T: Temperature [K]
         V: Volume [m^3]
         dV_dt: Volume rate [m^3/s]
         composition: Gas composition (defaults to fresh air)
-        
+
     Returns:
         ControlVolumeState object
     """
@@ -525,10 +572,17 @@ def create_control_volume_state(
     H = m * h
 
     return ControlVolumeState(
-        rho=rho, T=T, p=p, u=u, h=h,
+        rho=rho,
+        T=T,
+        p=p,
+        u=u,
+        h=h,
         composition=composition,
-        m=m, U=U, H=H,
-        V=V, dV_dt=dV_dt,
+        m=m,
+        U=U,
+        H=H,
+        V=V,
+        dV_dt=dV_dt,
     )
 
 
@@ -540,13 +594,13 @@ def update_control_volume_state(
 ) -> ControlVolumeState:
     """
     Update control volume state using residuals from cv_residual.
-    
+
     Args:
         state: Current control volume state
         dt: Time step [s]
         residuals: Residuals from cv_residual function
         eos: Equation of state (optional, uses ideal gas if None)
-        
+
     Returns:
         Updated ControlVolumeState
     """
@@ -601,10 +655,17 @@ def update_control_volume_state(
 
     # Create new state
     new_state = ControlVolumeState(
-        rho=rho_new, T=T_new, p=p_new, u=u_new, h=h_new,
+        rho=rho_new,
+        T=T_new,
+        p=p_new,
+        u=u_new,
+        h=h_new,
         composition=comp_new,
-        m=m_new, U=U_new, H=m_new * h_new,
-        V=V_new, dV_dt=state.dV_dt,
+        m=m_new,
+        U=U_new,
+        H=m_new * h_new,
+        V=V_new,
+        dV_dt=state.dV_dt,
     )
 
     return new_state
@@ -640,8 +701,9 @@ class ScavengingState:
     scavenging_uniformity: float = 0.0  # Fresh charge distribution uniformity [-]
     mixing_index: float = 0.0  # Mixing quality index [-]
 
-    def update_mass_flows(self, mdot_in: float, mdot_ex: float, dt: float,
-                         composition: GasComposition) -> None:
+    def update_mass_flows(
+        self, mdot_in: float, mdot_ex: float, dt: float, composition: GasComposition,
+    ) -> None:
         """Update mass flow tracking."""
         # Fresh charge delivered
         self.m_fresh_delivered += mdot_in * dt
@@ -674,7 +736,9 @@ class ScavengingState:
 
         # Blowdown efficiency (exhaust removed / initial exhaust)
         if self.m_exhaust_trapped > 0:
-            self.eta_blowdown = self.m_exhaust_removed / (self.m_exhaust_trapped + self.m_exhaust_removed)
+            self.eta_blowdown = self.m_exhaust_removed / (
+                self.m_exhaust_trapped + self.m_exhaust_removed
+            )
         else:
             self.eta_blowdown = 0.0
 
@@ -686,19 +750,22 @@ class ScavengingState:
 
 
 def detect_scavenging_phases(
-    A_in: float, A_ex: float, A_in_max: float, A_ex_max: float,
+    A_in: float,
+    A_ex: float,
+    A_in_max: float,
+    A_ex_max: float,
     threshold: float = 0.01,
 ) -> Dict[str, bool]:
     """
     Detect current scavenging phase based on valve areas.
-    
+
     Args:
         A_in: Current intake valve area [m^2]
         A_ex: Current exhaust valve area [m^2]
         A_in_max: Maximum intake valve area [m^2]
         A_ex_max: Maximum exhaust valve area [m^2]
         threshold: Area threshold for phase detection [-]
-        
+
     Returns:
         Dictionary of phase flags
     """
@@ -729,13 +796,13 @@ def calculate_scavenging_metrics(
 ) -> Dict[str, float]:
     """
     Calculate scavenging efficiency metrics for two-stroke engines.
-    
+
     Args:
         state: Current control volume state
         mdot_in: Intake mass flow rate [kg/s]
         mdot_ex: Exhaust mass flow rate [kg/s]
         dt: Time step [s]
-        
+
     Returns:
         Dictionary of scavenging metrics
     """
@@ -789,7 +856,7 @@ def enhanced_scavenging_tracking(
 ) -> ScavengingState:
     """
     Enhanced scavenging state tracking with phase detection.
-    
+
     Args:
         state: Current control volume state
         mdot_in: Intake mass flow rate [kg/s]
@@ -801,7 +868,7 @@ def enhanced_scavenging_tracking(
         dt: Time step [s]
         scavenging_state: Current scavenging state
         time: Current time [s]
-        
+
     Returns:
         Updated scavenging state
     """
@@ -835,36 +902,55 @@ def enhanced_scavenging_tracking(
 
     # Calculate quality metrics (simplified for 0D model)
     scavenging_state.scavenging_uniformity = 1.0 - scavenging_state.eta_short_circuit
-    scavenging_state.mixing_index = 1.0 - abs(scavenging_state.eta_scavenging - 0.5) * 2.0
+    scavenging_state.mixing_index = (
+        1.0 - abs(scavenging_state.eta_scavenging - 0.5) * 2.0
+    )
 
     return scavenging_state
 
 
-def calculate_phase_timing_metrics(scavenging_state: ScavengingState) -> Dict[str, float]:
+def calculate_phase_timing_metrics(
+    scavenging_state: ScavengingState,
+) -> Dict[str, float]:
     """
     Calculate phase timing metrics for scavenging optimization.
-    
+
     Args:
         scavenging_state: Current scavenging state
-        
+
     Returns:
         Dictionary of phase timing metrics
     """
     metrics = {}
 
     # Phase durations
-    if scavenging_state.phase_intake_start > 0.0 and scavenging_state.phase_intake_end > 0.0:
-        metrics["intake_duration"] = scavenging_state.phase_intake_end - scavenging_state.phase_intake_start
+    if (
+        scavenging_state.phase_intake_start > 0.0
+        and scavenging_state.phase_intake_end > 0.0
+    ):
+        metrics["intake_duration"] = (
+            scavenging_state.phase_intake_end - scavenging_state.phase_intake_start
+        )
     else:
         metrics["intake_duration"] = 0.0
 
-    if scavenging_state.phase_exhaust_start > 0.0 and scavenging_state.phase_exhaust_end > 0.0:
-        metrics["exhaust_duration"] = scavenging_state.phase_exhaust_end - scavenging_state.phase_exhaust_start
+    if (
+        scavenging_state.phase_exhaust_start > 0.0
+        and scavenging_state.phase_exhaust_end > 0.0
+    ):
+        metrics["exhaust_duration"] = (
+            scavenging_state.phase_exhaust_end - scavenging_state.phase_exhaust_start
+        )
     else:
         metrics["exhaust_duration"] = 0.0
 
-    if scavenging_state.phase_overlap_start > 0.0 and scavenging_state.phase_overlap_end > 0.0:
-        metrics["overlap_duration"] = scavenging_state.phase_overlap_end - scavenging_state.phase_overlap_start
+    if (
+        scavenging_state.phase_overlap_start > 0.0
+        and scavenging_state.phase_overlap_end > 0.0
+    ):
+        metrics["overlap_duration"] = (
+            scavenging_state.phase_overlap_end - scavenging_state.phase_overlap_start
+        )
     else:
         metrics["overlap_duration"] = 0.0
 
@@ -880,6 +966,3 @@ def calculate_phase_timing_metrics(scavenging_state: ScavengingState) -> Dict[st
         metrics["overlap_ratio"] = 0.0
 
     return metrics
-
-
-

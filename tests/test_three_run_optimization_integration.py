@@ -3,7 +3,7 @@ Integration tests for three-run optimization system.
 
 Tests the complete three-run optimization pipeline with Phase 3 integration:
 - Run 1: Motion law optimization (primary)
-- Run 2: Litvin profile synthesis (secondary) 
+- Run 2: Litvin profile synthesis (secondary)
 - Run 3: Crank center optimization (tertiary)
 """
 
@@ -47,6 +47,7 @@ class TestThreeRunOptimizationIntegration:
 
         # Verify tertiary optimizer is CrankCenterOptimizer
         from campro.optimization.crank_center_optimizer import CrankCenterOptimizer
+
         assert isinstance(self.framework.tertiary_optimizer, CrankCenterOptimizer)
 
         # Verify framework is configured
@@ -174,10 +175,10 @@ class TestThreeRunOptimizationIntegration:
         mock_primary = Mock()
         mock_primary.status = OptimizationStatus.CONVERGED
         mock_primary.solution = {
-            "cam_angle": np.linspace(0, 2*np.pi, 100),
-            "position": np.sin(np.linspace(0, 2*np.pi, 100)),
-            "velocity": np.cos(np.linspace(0, 2*np.pi, 100)),
-            "acceleration": -np.sin(np.linspace(0, 2*np.pi, 100)),
+            "cam_angle": np.linspace(0, 2 * np.pi, 100),
+            "position": np.sin(np.linspace(0, 2 * np.pi, 100)),
+            "velocity": np.cos(np.linspace(0, 2 * np.pi, 100)),
+            "acceleration": -np.sin(np.linspace(0, 2 * np.pi, 100)),
         }
         mock_primary.objective_value = 0.1
         mock_primary.iterations = 10
@@ -187,7 +188,7 @@ class TestThreeRunOptimizationIntegration:
         mock_secondary.status = OptimizationStatus.CONVERGED
         mock_secondary.solution = {
             "optimized_parameters": {"base_radius": 25.0},
-            "psi": np.linspace(0, 2*np.pi, 100),
+            "psi": np.linspace(0, 2 * np.pi, 100),
             "R_psi": 25.0 * np.ones(100),
         }
         mock_secondary.objective_value = 0.2

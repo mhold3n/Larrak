@@ -35,13 +35,14 @@ class CombustionParameters:
     alpha_turbulence: float  # Turbulence factor
 
 
-def wiebe_function(*, theta: float, theta_start: float, theta_duration: float,
-                  m: float, a: float) -> float:
+def wiebe_function(
+    *, theta: float, theta_start: float, theta_duration: float, m: float, a: float,
+) -> float:
     """Wiebe function for heat release rate.
-    
+
     Computes the cumulative heat release fraction using the Wiebe function:
     x_b = 1 - exp(-a * ((theta - theta_start) / theta_duration)^(m+1))
-    
+
     Parameters
     ----------
     theta : float
@@ -54,7 +55,7 @@ def wiebe_function(*, theta: float, theta_start: float, theta_duration: float,
         Wiebe shape factor
     a : float
         Wiebe efficiency factor
-        
+
     Returns
     -------
     x_b : float
@@ -77,17 +78,17 @@ def wiebe_function(*, theta: float, theta_start: float, theta_duration: float,
 
 def wiebe_heat_release_rate(*, theta: float, params: CombustionParameters) -> float:
     """Heat release rate from Wiebe function.
-    
+
     Computes the instantaneous heat release rate by differentiating
     the Wiebe function.
-    
+
     Parameters
     ----------
     theta : float
         Current crank angle [deg]
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     dQ_dtheta : float
@@ -104,21 +105,26 @@ def wiebe_heat_release_rate(*, theta: float, params: CombustionParameters) -> fl
     # = a * (m+1) * theta_norm^m * exp(-a * theta_norm^(m+1)) / theta_duration
 
     exponent = -params.a_wiebe * (theta_norm ** (params.m_wiebe + 1.0))
-    dQ_dtheta = (params.a_wiebe * (params.m_wiebe + 1.0) *
-                (theta_norm ** params.m_wiebe) *
-                math.exp(exponent) *
-                params.Q_total / params.theta_duration)
+    dQ_dtheta = (
+        params.a_wiebe
+        * (params.m_wiebe + 1.0)
+        * (theta_norm**params.m_wiebe)
+        * math.exp(exponent)
+        * params.Q_total
+        / params.theta_duration
+    )
 
     return dQ_dtheta
 
 
-def ignition_delay_correlation(*, p: float, T: float, phi: float = 1.0,
-                              params: CombustionParameters) -> float:
+def ignition_delay_correlation(
+    *, p: float, T: float, phi: float = 1.0, params: CombustionParameters,
+) -> float:
     """Ignition delay correlation.
-    
+
     Computes ignition delay based on pressure, temperature, and equivalence ratio.
     Uses simplified Arrhenius-type correlation.
-    
+
     Parameters
     ----------
     p : float
@@ -129,7 +135,7 @@ def ignition_delay_correlation(*, p: float, T: float, phi: float = 1.0,
         Equivalence ratio
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     tau_ignition : float
@@ -139,22 +145,23 @@ def ignition_delay_correlation(*, p: float, T: float, phi: float = 1.0,
     # tau = A * p^(-n) * exp(E_a / (R * T)) * phi^(-m)
 
     A = 1e-6  # Pre-exponential factor [s]
-    n = 1.0   # Pressure exponent
+    n = 1.0  # Pressure exponent
     E_a = 15000.0  # Activation energy [J/mol]
     R = 8.314  # Gas constant [J/(mol K)]
-    m = 0.5   # Equivalence ratio exponent
+    m = 0.5  # Equivalence ratio exponent
 
     tau_ignition = A * (p ** (-n)) * math.exp(E_a / (R * T)) * (phi ** (-m))
 
     return tau_ignition
 
 
-def laminar_flame_speed(*, phi: float, T: float, p: float,
-                       params: CombustionParameters) -> float:
+def laminar_flame_speed(
+    *, phi: float, T: float, p: float, params: CombustionParameters,
+) -> float:
     """Laminar flame speed correlation.
-    
+
     Computes laminar flame speed based on equivalence ratio, temperature, and pressure.
-    
+
     Parameters
     ----------
     phi : float
@@ -165,7 +172,7 @@ def laminar_flame_speed(*, phi: float, T: float, p: float,
         Pressure [Pa]
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     S_L : float
@@ -175,9 +182,9 @@ def laminar_flame_speed(*, phi: float, T: float, p: float,
     # S_L = S_L0 * (T/T_ref)^alpha * (p/p_ref)^beta * f(phi)
 
     T_ref = 300.0  # K
-    p_ref = 1e5    # Pa
-    alpha = 2.0    # Temperature exponent
-    beta = -0.5    # Pressure exponent
+    p_ref = 1e5  # Pa
+    alpha = 2.0  # Temperature exponent
+    beta = -0.5  # Pressure exponent
 
     # Equivalence ratio dependence (simplified)
     if phi < 0.5 or phi > 1.5:
@@ -185,20 +192,18 @@ def laminar_flame_speed(*, phi: float, T: float, p: float,
     else:
         f_phi = 4.0 * phi * (1.0 - phi)  # Parabolic dependence
 
-    S_L = (params.S_L0 *
-           ((T / T_ref) ** alpha) *
-           ((p / p_ref) ** beta) *
-           f_phi)
+    S_L = params.S_L0 * ((T / T_ref) ** alpha) * ((p / p_ref) ** beta) * f_phi
 
     return S_L
 
 
-def turbulent_flame_speed(*, S_L: float, u_turb: float,
-                         params: CombustionParameters) -> float:
+def turbulent_flame_speed(
+    *, S_L: float, u_turb: float, params: CombustionParameters,
+) -> float:
     """Turbulent flame speed.
-    
+
     Computes turbulent flame speed from laminar flame speed and turbulence intensity.
-    
+
     Parameters
     ----------
     S_L : float
@@ -207,7 +212,7 @@ def turbulent_flame_speed(*, S_L: float, u_turb: float,
         Turbulence intensity [m/s]
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     S_T : float
@@ -226,38 +231,42 @@ def turbulent_flame_speed(*, S_L: float, u_turb: float,
 
 def combustion_efficiency(*, theta: float, params: CombustionParameters) -> float:
     """Combustion efficiency from Wiebe function.
-    
+
     Computes the combustion efficiency based on the Wiebe function.
-    
+
     Parameters
     ----------
     theta : float
         Current crank angle [deg]
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     eta_comb : float
         Combustion efficiency [0-1]
     """
-    return wiebe_function(theta=theta, theta_start=params.theta_start,
-                         theta_duration=params.theta_duration,
-                         m=params.m_wiebe, a=params.a_wiebe)
+    return wiebe_function(
+        theta=theta,
+        theta_start=params.theta_start,
+        theta_duration=params.theta_duration,
+        m=params.m_wiebe,
+        a=params.a_wiebe,
+    )
 
 
 def heat_release_from_fuel(*, m_fuel: float, params: CombustionParameters) -> float:
     """Heat release from fuel mass.
-    
+
     Computes heat release based on fuel mass and lower heating value.
-    
+
     Parameters
     ----------
     m_fuel : float
         Fuel mass [kg]
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     Q_release : float
@@ -268,16 +277,16 @@ def heat_release_from_fuel(*, m_fuel: float, params: CombustionParameters) -> fl
 
 def fuel_mass_from_heat(*, Q_release: float, params: CombustionParameters) -> float:
     """Fuel mass from heat release.
-    
+
     Computes fuel mass based on heat release and lower heating value.
-    
+
     Parameters
     ----------
     Q_release : float
         Heat release [J]
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     m_fuel : float
@@ -286,19 +295,20 @@ def fuel_mass_from_heat(*, Q_release: float, params: CombustionParameters) -> fl
     return Q_release / params.LHV_fuel
 
 
-def multi_zone_combustion(*, zones: Dict[str, Dict[str, float]],
-                         params: CombustionParameters) -> Dict[str, float]:
+def multi_zone_combustion(
+    *, zones: Dict[str, Dict[str, float]], params: CombustionParameters,
+) -> Dict[str, float]:
     """Multi-zone combustion model.
-    
+
     Computes heat release for multiple combustion zones.
-    
+
     Parameters
     ----------
     zones : Dict[str, Dict[str, float]]
         Zone data with 'mass', 'temperature', 'pressure', 'equivalence_ratio'
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     zone_results : Dict[str, float]
@@ -322,12 +332,13 @@ def multi_zone_combustion(*, zones: Dict[str, Dict[str, float]],
     return zone_results
 
 
-def combustion_timing_optimization(*, theta_start: float, theta_duration: float,
-                                  params: CombustionParameters) -> Dict[str, float]:
+def combustion_timing_optimization(
+    *, theta_start: float, theta_duration: float, params: CombustionParameters,
+) -> Dict[str, float]:
     """Combustion timing optimization.
-    
+
     Optimizes combustion timing for maximum efficiency.
-    
+
     Parameters
     ----------
     theta_start : float
@@ -336,7 +347,7 @@ def combustion_timing_optimization(*, theta_start: float, theta_duration: float,
         Combustion duration [deg]
     params : CombustionParameters
         Combustion parameters
-        
+
     Returns
     -------
     optimization_results : Dict[str, float]
@@ -354,10 +365,13 @@ def combustion_timing_optimization(*, theta_start: float, theta_duration: float,
     peak_angle = theta_test[burn_rates.index(peak_rate)]
 
     # Compute combustion efficiency
-    eta_comb = wiebe_function(theta=theta_start + theta_duration,
-                             theta_start=theta_start,
-                             theta_duration=theta_duration,
-                             m=params.m_wiebe, a=params.a_wiebe)
+    eta_comb = wiebe_function(
+        theta=theta_start + theta_duration,
+        theta_start=theta_start,
+        theta_duration=theta_duration,
+        m=params.m_wiebe,
+        a=params.a_wiebe,
+    )
 
     return {
         "peak_burn_rate": peak_rate,
@@ -370,7 +384,7 @@ def combustion_timing_optimization(*, theta_start: float, theta_duration: float,
 
 def get_combustion_function(method: str = "wiebe"):
     """Get combustion function by name.
-    
+
     Parameters
     ----------
     method : str
@@ -379,7 +393,7 @@ def get_combustion_function(method: str = "wiebe"):
         - 'ignition_delay': Ignition delay correlation
         - 'flame_speed': Flame speed correlation
         - 'multi_zone': Multi-zone combustion
-        
+
     Returns
     -------
     combustion_func : callable
@@ -398,12 +412,12 @@ def get_combustion_function(method: str = "wiebe"):
 
 def create_combustion_parameters(fuel_type: str = "gasoline") -> CombustionParameters:
     """Create combustion parameters for different fuel types.
-    
+
     Parameters
     ----------
     fuel_type : str
         Fuel type: 'gasoline', 'diesel', 'natural_gas', 'hydrogen'
-        
+
     Returns
     -------
     params : CombustionParameters

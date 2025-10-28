@@ -39,7 +39,7 @@ class MotionConstraintType(Enum):
 class MotionConstraints(BaseConstraints):
     """
     Constraints for optimal motion law problems.
-    
+
     This class defines all constraints that can be applied to motion law
     optimization problems, including state bounds and boundary conditions.
     """
@@ -89,7 +89,7 @@ class MotionConstraints(BaseConstraints):
     def validate(self) -> bool:
         """
         Validate all motion constraints.
-        
+
         Returns:
             bool: True if all constraints are valid, False otherwise
         """
@@ -148,10 +148,12 @@ class MotionConstraints(BaseConstraints):
         log.info(f"Motion constraints validation: {'PASSED' if is_valid else 'FAILED'}")
         return is_valid
 
-    def check_violations(self, solution: Dict[str, np.ndarray]) -> List[ConstraintViolation]:
+    def check_violations(
+        self, solution: Dict[str, np.ndarray],
+    ) -> List[ConstraintViolation]:
         """
         Check for constraint violations in a motion law solution.
-        
+
         Args:
             solution: Dictionary containing solution arrays
                 - 'time': Time array
@@ -159,7 +161,7 @@ class MotionConstraints(BaseConstraints):
                 - 'velocity': Velocity array
                 - 'acceleration': Acceleration array
                 - 'control': Control (jerk) array
-                
+
         Returns:
             List of constraint violations found
         """
@@ -168,37 +170,47 @@ class MotionConstraints(BaseConstraints):
         # Check state bounds
         if "position" in solution:
             violations = self._check_bounds(
-                solution["position"], self.position_bounds,
-                ConstraintType.POSITION, "position",
+                solution["position"],
+                self.position_bounds,
+                ConstraintType.POSITION,
+                "position",
             )
             self._violations.extend(violations)
 
         if "velocity" in solution:
             violations = self._check_bounds(
-                solution["velocity"], self.velocity_bounds,
-                ConstraintType.VELOCITY, "velocity",
+                solution["velocity"],
+                self.velocity_bounds,
+                ConstraintType.VELOCITY,
+                "velocity",
             )
             self._violations.extend(violations)
 
         if "acceleration" in solution:
             violations = self._check_bounds(
-                solution["acceleration"], self.acceleration_bounds,
-                ConstraintType.ACCELERATION, "acceleration",
+                solution["acceleration"],
+                self.acceleration_bounds,
+                ConstraintType.ACCELERATION,
+                "acceleration",
             )
             self._violations.extend(violations)
 
         if "control" in solution:
             violations = self._check_bounds(
-                solution["control"], self.jerk_bounds,
-                ConstraintType.JERK, "jerk",
+                solution["control"],
+                self.jerk_bounds,
+                ConstraintType.JERK,
+                "jerk",
             )
             self._violations.extend(violations)
 
             # Also check control bounds if different from jerk bounds
             if self.control_bounds != self.jerk_bounds:
                 violations = self._check_bounds(
-                    solution["control"], self.control_bounds,
-                    ConstraintType.CONTROL, "control",
+                    solution["control"],
+                    self.control_bounds,
+                    ConstraintType.CONTROL,
+                    "control",
                 )
                 self._violations.extend(violations)
 
@@ -207,8 +219,10 @@ class MotionConstraints(BaseConstraints):
             # Initial position
             if self.initial_position is not None:
                 violation = self._check_boundary_condition(
-                    solution["position"][0], self.initial_position,
-                    ConstraintType.INITIAL_STATE, "initial_position",
+                    solution["position"][0],
+                    self.initial_position,
+                    ConstraintType.INITIAL_STATE,
+                    "initial_position",
                 )
                 if violation:
                     self._violations.append(violation)
@@ -216,8 +230,10 @@ class MotionConstraints(BaseConstraints):
             # Final position
             if self.final_position is not None:
                 violation = self._check_boundary_condition(
-                    solution["position"][-1], self.final_position,
-                    ConstraintType.FINAL_STATE, "final_position",
+                    solution["position"][-1],
+                    self.final_position,
+                    ConstraintType.FINAL_STATE,
+                    "final_position",
                 )
                 if violation:
                     self._violations.append(violation)
@@ -226,8 +242,10 @@ class MotionConstraints(BaseConstraints):
             # Initial velocity
             if self.initial_velocity is not None:
                 violation = self._check_boundary_condition(
-                    solution["velocity"][0], self.initial_velocity,
-                    ConstraintType.INITIAL_STATE, "initial_velocity",
+                    solution["velocity"][0],
+                    self.initial_velocity,
+                    ConstraintType.INITIAL_STATE,
+                    "initial_velocity",
                 )
                 if violation:
                     self._violations.append(violation)
@@ -235,8 +253,10 @@ class MotionConstraints(BaseConstraints):
             # Final velocity
             if self.final_velocity is not None:
                 violation = self._check_boundary_condition(
-                    solution["velocity"][-1], self.final_velocity,
-                    ConstraintType.FINAL_STATE, "final_velocity",
+                    solution["velocity"][-1],
+                    self.final_velocity,
+                    ConstraintType.FINAL_STATE,
+                    "final_velocity",
                 )
                 if violation:
                     self._violations.append(violation)
@@ -245,8 +265,10 @@ class MotionConstraints(BaseConstraints):
             # Initial acceleration
             if self.initial_acceleration is not None:
                 violation = self._check_boundary_condition(
-                    solution["acceleration"][0], self.initial_acceleration,
-                    ConstraintType.INITIAL_STATE, "initial_acceleration",
+                    solution["acceleration"][0],
+                    self.initial_acceleration,
+                    ConstraintType.INITIAL_STATE,
+                    "initial_acceleration",
                 )
                 if violation:
                     self._violations.append(violation)
@@ -254,8 +276,10 @@ class MotionConstraints(BaseConstraints):
             # Final acceleration
             if self.final_acceleration is not None:
                 violation = self._check_boundary_condition(
-                    solution["acceleration"][-1], self.final_acceleration,
-                    ConstraintType.FINAL_STATE, "final_acceleration",
+                    solution["acceleration"][-1],
+                    self.final_acceleration,
+                    ConstraintType.FINAL_STATE,
+                    "final_acceleration",
                 )
                 if violation:
                     self._violations.append(violation)

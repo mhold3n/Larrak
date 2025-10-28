@@ -15,5 +15,3 @@ def test_effective_area_linear_and_clamp():
     assert A_hi == Ain_max
     # Direct clamp
     assert clamp_area(2.0 * Ain_max, Ain_max) == Ain_max
-
-

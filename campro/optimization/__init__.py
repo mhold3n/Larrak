@@ -51,34 +51,27 @@ __all__ = [
     "BaseOptimizer",
     "OptimizationResult",
     "OptimizationStatus",
-
     # Collocation
     "CollocationSettings",
     "CollocationMethod",
     "CollocationOptimizer",
-
     # Motion optimization
     "MotionOptimizer",
     "MotionObjectiveType",
-
     # Secondary optimization
     "SecondaryOptimizer",
-
     # Tertiary optimization
     "TertiaryOptimizer",
     "LinkageParameters",
-
     # Cam-ring optimization
     "CamRingOptimizer",
     "CamRingOptimizationConstraints",
     "CamRingOptimizationTargets",
-
     # Sun gear optimization
     "SunGearOptimizer",
     "SunGearParameters",
     "SunGearOptimizationConstraints",
     "SunGearOptimizationTargets",
-
     # Unified optimization framework
     "UnifiedOptimizationFramework",
     "UnifiedOptimizationSettings",
@@ -87,14 +80,12 @@ __all__ = [
     "UnifiedOptimizationData",
     "OptimizationMethod",
     "OptimizationLayer",
-
     # Motion law optimization
     "MotionLawConstraints",
     "MotionLawResult",
     "MotionLawValidator",
     "MotionType",
     "MotionLawOptimizer",
-
     # Cam-ring processing
     "process_linear_to_ring_follower",
     "process_ring_optimization",

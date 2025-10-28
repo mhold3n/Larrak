@@ -29,15 +29,17 @@ log = get_logger(__name__)
 class Phase2AnimationInputs:
     """Container for deterministic Phase-2 animation inputs."""
 
-    theta_deg: np.ndarray            # Primary motion θ grid [deg]
-    x_theta_mm: np.ndarray           # Primary motion x(θ) [mm]
-    base_radius_mm: float            # Optimized base radius r_b [mm] (used as C0)
-    psi_rad: np.ndarray              # Synthesized ring angle ψ [rad]
-    R_psi_mm: np.ndarray             # Ring instantaneous radius R(ψ) [mm]
-    gear_geometry: Dict[str, Any]    # Gear bases and optional flanks/metadata
-    contact_type: str = "internal"   # "internal" or "external"
-    constrain_center_to_x_axis: bool = False  # If True, fix orbit angle to 0 (horizontal axis)
-    align_tdc_at_theta0: bool = False        # If True, rotate ψ so max R occurs at θ=0
+    theta_deg: np.ndarray  # Primary motion θ grid [deg]
+    x_theta_mm: np.ndarray  # Primary motion x(θ) [mm]
+    base_radius_mm: float  # Optimized base radius r_b [mm] (used as C0)
+    psi_rad: np.ndarray  # Synthesized ring angle ψ [rad]
+    R_psi_mm: np.ndarray  # Ring instantaneous radius R(ψ) [mm]
+    gear_geometry: Dict[str, Any]  # Gear bases and optional flanks/metadata
+    contact_type: str = "internal"  # "internal" or "external"
+    constrain_center_to_x_axis: bool = (
+        False  # If True, fix orbit angle to 0 (horizontal axis)
+    )
+    align_tdc_at_theta0: bool = False  # If True, rotate ψ so max R occurs at θ=0
 
 
 def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
@@ -60,7 +62,9 @@ def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
     R_psi = np.asarray(inputs.R_psi_mm).flatten()
 
     if theta_deg.size == 0 or x_theta.size == 0:
-        raise ValueError("Primary motion arrays (theta_deg, x_theta_mm) must be non-empty")
+        raise ValueError(
+            "Primary motion arrays (theta_deg, x_theta_mm) must be non-empty",
+        )
     if psi.size == 0 or R_psi.size == 0:
         raise ValueError("Secondary arrays (psi_rad, R_psi_mm) must be non-empty")
     if theta_deg.size != x_theta.size:
@@ -75,8 +79,12 @@ def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
 
     # Extract base circles from gear geometry if present, otherwise infer reasonable defaults
     gg = inputs.gear_geometry or {}
-    base_circle_cam = float(gg.get("base_circle_cam", max(1e-6, inputs.base_radius_mm * 0.95)))
-    base_circle_ring = float(gg.get("base_circle_ring", max(1e-6, np.mean(R_psi) * 0.95)))
+    base_circle_cam = float(
+        gg.get("base_circle_cam", max(1e-6, inputs.base_radius_mm * 0.95)),
+    )
+    base_circle_ring = float(
+        gg.get("base_circle_ring", max(1e-6, np.mean(R_psi) * 0.95)),
+    )
     z_cam = int(gg.get("z_cam", 20))
 
     # Align theta domain to radians for assembly inputs (optional for downstream tools)
@@ -119,5 +127,3 @@ def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
         pass
 
     return state
-
-

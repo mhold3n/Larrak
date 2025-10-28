@@ -10,12 +10,14 @@ from pathlib import Path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
+
 def test_imports():
     """Test that all required modules can be imported."""
     print("Testing imports...")
 
     try:
         import tkinter as tk
+
         print("+ tkinter imported successfully")
     except ImportError as e:
         print(f"- tkinter import failed: {e}")
@@ -23,6 +25,7 @@ def test_imports():
 
     try:
         import matplotlib.pyplot as plt
+
         print("+ matplotlib imported successfully")
     except ImportError as e:
         print(f"- matplotlib import failed: {e}")
@@ -30,6 +33,7 @@ def test_imports():
 
     try:
         import numpy as np
+
         print("+ numpy imported successfully")
     except ImportError as e:
         print(f"- numpy import failed: {e}")
@@ -37,6 +41,7 @@ def test_imports():
 
     try:
         from CamPro_OptimalMotion import CollocationSettings, solve_cam_motion_law
+
         print("+ CamPro_OptimalMotion imported successfully")
     except ImportError as e:
         print(f"- CamPro_OptimalMotion import failed: {e}")
@@ -44,12 +49,14 @@ def test_imports():
 
     try:
         from campro.logging import get_logger
+
         print("+ campro.logging imported successfully")
     except ImportError as e:
         print(f"- campro.logging import failed: {e}")
         return False
 
     return True
+
 
 def test_cam_motion_law():
     """Test basic cam motion law functionality."""
@@ -68,15 +75,20 @@ def test_cam_motion_law():
 
         print("+ Basic cam motion law solved successfully")
         print(f"  - Generated {len(solution['cam_angle'])} points")
-        print(f"  - Cam angle range: {solution['cam_angle'][0]:.1f}° to {solution['cam_angle'][-1]:.1f}°")
+        print(
+            f"  - Cam angle range: {solution['cam_angle'][0]:.1f}° to {solution['cam_angle'][-1]:.1f}°",
+        )
         print(f"  - Max velocity: {max(abs(v) for v in solution['velocity']):.3f} mm/s")
-        print(f"  - Max acceleration: {max(abs(a) for a in solution['acceleration']):.3f} mm/s²")
+        print(
+            f"  - Max acceleration: {max(abs(a) for a in solution['acceleration']):.3f} mm/s²",
+        )
 
         return True
 
     except Exception as e:
         print(f"- Cam motion law solving failed: {e}")
         return False
+
 
 def test_gui_creation():
     """Test GUI creation without showing it."""
@@ -97,14 +109,18 @@ def test_gui_creation():
         print("+ GUI created successfully")
         print(f"  - Variables created: {len(app.variables)}")
         print(f"  - Default stroke: {app.variables['stroke'].get()}")
-        print(f"  - Default upstroke duration: {app.variables['upstroke_duration'].get()}")
+        print(
+            f"  - Default upstroke duration: {app.variables['upstroke_duration'].get()}",
+        )
 
         # Test parameter setting
         app.variables["stroke"].set(25.0)
         app.variables["upstroke_duration"].set(50.0)
 
         print(f"  - Updated stroke: {app.variables['stroke'].get()}")
-        print(f"  - Updated upstroke duration: {app.variables['upstroke_duration'].get()}")
+        print(
+            f"  - Updated upstroke duration: {app.variables['upstroke_duration'].get()}",
+        )
 
         # Clean up
         root.destroy()
@@ -114,8 +130,10 @@ def test_gui_creation():
     except Exception as e:
         print(f"- GUI creation failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 def test_matplotlib_integration():
     """Test matplotlib integration."""
@@ -149,6 +167,7 @@ def test_matplotlib_integration():
         print(f"- Matplotlib integration failed: {e}")
         return False
 
+
 def main():
     """Run all tests."""
     print("Cam Motion Law GUI Test Suite")
@@ -177,6 +196,7 @@ def main():
         return True
     print("- Some tests failed. Check the errors above.")
     return False
+
 
 if __name__ == "__main__":
     success = main()

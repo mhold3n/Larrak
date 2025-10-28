@@ -82,20 +82,30 @@ def verify_ipopt_with_solver(solver_name: str) -> int:
 
     if linear_solver is None:
         # Not all builds expose 'linear_solver' in stats; emit keys for debugging
-        log.warning(f"'linear_solver' not present in stats. Keys: {sorted(stats.keys())}")
+        log.warning(
+            f"'linear_solver' not present in stats. Keys: {sorted(stats.keys())}",
+        )
 
     # Verification: we expect the requested solver to be active
     if str(linear_solver).lower() == solver_name.lower():
-        log.info(f"Verification OK: Ipopt reports {solver_name.upper()} as the active linear solver.")
+        log.info(
+            f"Verification OK: Ipopt reports {solver_name.upper()} as the active linear solver.",
+        )
         return 0
 
-    log.error(f"Verification FAILED: Ipopt did not report {solver_name.upper()} as the linear solver.")
+    log.error(
+        f"Verification FAILED: Ipopt did not report {solver_name.upper()} as the linear solver.",
+    )
     return 5
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Verify Ipopt linear solver initialization")
-    parser.add_argument("--solver", default="ma57", help="Linear solver to verify (e.g., ma57, ma27)")
+    parser = argparse.ArgumentParser(
+        description="Verify Ipopt linear solver initialization",
+    )
+    parser.add_argument(
+        "--solver", default="ma57", help="Linear solver to verify (e.g., ma57, ma27)",
+    )
     args = parser.parse_args()
 
     exit_code = verify_ipopt_with_solver(args.solver)
@@ -107,4 +117,3 @@ def main() -> None:
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint
     main()
-

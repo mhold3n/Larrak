@@ -89,7 +89,7 @@ def example_minimum_energy():
     )
 
     # Results
-    energy = np.trapz(solution["control"]**2, solution["time"])
+    energy = np.trapz(solution["control"] ** 2, solution["time"])
     max_vel_achieved = np.max(np.abs(solution["velocity"]))
     max_acc_achieved = np.max(np.abs(solution["acceleration"]))
 
@@ -125,7 +125,7 @@ def example_minimum_jerk():
     )
 
     # Results
-    jerk_integral = np.trapz(solution["control"]**2, solution["time"])
+    jerk_integral = np.trapz(solution["control"] ** 2, solution["time"])
     max_vel_achieved = np.max(np.abs(solution["velocity"]))
     max_acc_achieved = np.max(np.abs(solution["acceleration"]))
     max_jerk_achieved = np.max(np.abs(solution["control"]))
@@ -147,7 +147,7 @@ def example_custom_objective():
 
     # Custom objective: minimize energy + smoothness penalty
     def custom_objective(t, x, v, a, u):
-        return ca.integral(u**2 + 0.1*v**2)
+        return ca.integral(u**2 + 0.1 * v**2)
 
     # Problem parameters
     distance = 18.0
@@ -183,8 +183,8 @@ def example_custom_objective():
     )
 
     # Results
-    energy = np.trapz(solution["control"]**2, solution["time"])
-    smoothness = np.trapz(solution["velocity"]**2, solution["time"])
+    energy = np.trapz(solution["control"] ** 2, solution["time"])
+    smoothness = np.trapz(solution["velocity"] ** 2, solution["time"])
     objective_value = energy + 0.1 * smoothness
 
     print("\nResults:")
@@ -233,7 +233,7 @@ def example_different_collocation_methods():
 
         solutions[method] = solution
 
-        energy = np.trapz(solution["control"]**2, solution["time"])
+        energy = np.trapz(solution["control"] ** 2, solution["time"])
         print(f"Energy: {energy:.6f}")
 
     return solutions
@@ -257,7 +257,9 @@ def plot_comparison(solutions_dict, title="Motion Law Comparison"):
         axes[0, 1].plot(t, solution["velocity"], color=color, label=name, linewidth=2)
 
         # Acceleration
-        axes[1, 0].plot(t, solution["acceleration"], color=color, label=name, linewidth=2)
+        axes[1, 0].plot(
+            t, solution["acceleration"], color=color, label=name, linewidth=2,
+        )
 
         # Control (Jerk)
         axes[1, 1].plot(t, solution["control"], color=color, label=name, linewidth=2)
@@ -320,12 +322,16 @@ def main():
         }
 
         fig1 = plot_comparison(motion_laws, "Motion Law Type Comparison")
-        fig1.savefig(output_dir / "motion_law_comparison.png", dpi=300, bbox_inches="tight")
+        fig1.savefig(
+            output_dir / "motion_law_comparison.png", dpi=300, bbox_inches="tight",
+        )
         print(f"Saved: {output_dir / 'motion_law_comparison.png'}")
 
         # Compare collocation methods
         fig2 = plot_comparison(collocation_sols, "Collocation Method Comparison")
-        fig2.savefig(output_dir / "collocation_comparison.png", dpi=300, bbox_inches="tight")
+        fig2.savefig(
+            output_dir / "collocation_comparison.png", dpi=300, bbox_inches="tight",
+        )
         print(f"Saved: {output_dir / 'collocation_comparison.png'}")
 
         # Show plots
@@ -340,8 +346,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-

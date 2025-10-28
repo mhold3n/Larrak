@@ -24,13 +24,13 @@ log = get_logger(__name__)
 def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
     """
     Solve OP engine cycle optimization using IPOPT.
-    
+
     This function builds the collocation NLP and solves it using IPOPT
     with appropriate options for OP engine optimization.
-    
+
     Args:
         P: Problem parameters dictionary
-        
+
     Returns:
         Solution object with optimization results
     """
@@ -65,7 +65,9 @@ def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
 
         if result.success:
             log.info(f"Optimization successful: {result.message}")
-            log.info(f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s")
+            log.info(
+                f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s",
+            )
             log.info(f"Objective value: {result.f_opt:.6e}")
             log.info(f"KKT error: {result.kkt_error:.2e}")
             log.info(f"Feasibility error: {result.feasibility_error:.2e}")
@@ -90,7 +92,11 @@ def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
         run_dir = P.get("run_dir")
         if run_dir:
             try:
-                save_json({"meta": meta, "opt": optimization_result}, run_dir, filename="checkpoint.json")
+                save_json(
+                    {"meta": meta, "opt": optimization_result},
+                    run_dir,
+                    filename="checkpoint.json",
+                )
             except Exception as exc:  # pragma: no cover
                 log.warning(f"Checkpoint save failed: {exc}")
 
@@ -114,7 +120,9 @@ def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPOPTOptions:
+def _create_ipopt_options(
+    solver_opts: Dict[str, Any], P: Dict[str, Any],
+) -> IPOPTOptions:
     """Create IPOPT options from problem parameters."""
     # Get problem type to select appropriate options
     problem_type = P.get("problem_type", "default")
@@ -127,11 +135,11 @@ def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPO
     # Override with user-specified options
     for key, value in solver_opts.items():
         # Handle ipopt. prefix in config keys
-        if key.startswith('ipopt.'):
+        if key.startswith("ipopt."):
             attr_name = key[6:]  # Remove 'ipopt.' prefix
         else:
             attr_name = key
-            
+
         if hasattr(options, attr_name):
             setattr(options, attr_name, value)
         else:
@@ -143,14 +151,18 @@ def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPO
     C = int(num.get("C", 3))
 
     # Estimate problem size
-    n_vars = K * C * 6  # Rough estimate: K collocation points, C stages, 6 variables per point
+    n_vars = (
+        K * C * 6
+    )  # Rough estimate: K collocation points, C stages, 6 variables per point
     n_constraints = K * C * 4  # Rough estimate: 4 constraints per collocation point
 
     if n_vars > 1000 or n_constraints > 1000:
         # Large problem - use more robust settings
         options.hessian_approximation = "limited-memory"
         options.max_iter = 10000
-        log.info(f"Large problem detected ({n_vars} vars, {n_constraints} constraints), using robust settings")
+        log.info(
+            f"Large problem detected ({n_vars} vars, {n_constraints} constraints), using robust settings",
+        )
 
     return options
 
@@ -206,57 +218,61 @@ def _setup_optimization_bounds(
 def _generate_physics_based_initial_guess(n_vars: int, P: Dict[str, Any]) -> np.ndarray:
     """Generate physics-based initial guess for better thermal efficiency convergence."""
     x0 = np.zeros(n_vars)
-    
+
     # Get geometry and thermodynamics from problem parameters
     geom = P.get("geometry", {})
     thermo = P.get("thermodynamics", {})
     bounds = P.get("bounds", {})
-    
+
     # Extract key parameters
     stroke = geom.get("stroke", 0.1)  # m
     bore = geom.get("bore", 0.1)  # m
     compression_ratio = geom.get("compression_ratio", 10.0)
     clearance_volume = geom.get("clearance_volume", 1e-4)  # m^3
-    
+
     # Thermodynamic properties
     gamma = thermo.get("gamma", 1.4)
     R = thermo.get("R", 287.0)  # J/(kg K)
     cp = thermo.get("cp", 1005.0)  # J/(kg K)
-    
+
     # Estimate initial conditions based on geometry
     # Piston positions: ensure minimum gap is maintained
     gap_min = bounds.get("gap_min", 0.0008)  # Minimum gap constraint
     x_L_initial = stroke * 0.1  # Start at 10% of stroke
-    x_R_initial = x_L_initial + gap_min + stroke * 0.6  # Ensure minimum gap + 60% stroke range
-    
+    x_R_initial = (
+        x_L_initial + gap_min + stroke * 0.6
+    )  # Ensure minimum gap + 60% stroke range
+
     # Initial gas state (intake conditions)
     p_initial = 1e5  # Pa (atmospheric pressure)
     T_initial = 300.0  # K (room temperature)
     rho_initial = p_initial / (R * T_initial)  # kg/m^3
-    
+
     # Estimate compression pressure and temperature
-    p_compressed = p_initial * (compression_ratio ** gamma)
+    p_compressed = p_initial * (compression_ratio**gamma)
     T_compressed = T_initial * (compression_ratio ** (gamma - 1))
     rho_compressed = p_compressed / (R * T_compressed)
-    
+
     # Estimate velocities based on stroke and cycle time
     cycle_time = 1.0  # s (default)
     avg_velocity = stroke / (cycle_time / 2)  # m/s
-    
+
     # Apply initial guess to variables (assuming ordering: x_L, v_L, x_R, v_R, rho, T)
     n_per_point = 6
     n_points = n_vars // n_per_point
-    
+
     for i in range(n_points):
         idx = i * n_per_point
-        
+
         # Interpolate between initial and compressed states
         progress = i / max(1, n_points - 1)
-        
+
         if idx < n_vars:
             x0[idx] = x_L_initial + (stroke * 0.4) * progress  # x_L (reduced range)
         if idx + 1 < n_vars:
-            x0[idx + 1] = avg_velocity * (1 - 2 * progress)  # v_L (smooth velocity profile)
+            x0[idx + 1] = avg_velocity * (
+                1 - 2 * progress
+            )  # v_L (smooth velocity profile)
         if idx + 2 < n_vars:
             x0[idx + 2] = x_R_initial - (stroke * 0.4) * progress  # x_R (reduced range)
         if idx + 3 < n_vars:
@@ -265,7 +281,7 @@ def _generate_physics_based_initial_guess(n_vars: int, P: Dict[str, Any]) -> np.
             x0[idx + 4] = rho_initial + (rho_compressed - rho_initial) * progress  # rho
         if idx + 5 < n_vars:
             x0[idx + 5] = T_initial + (T_compressed - T_initial) * progress  # T
-    
+
     # Safety check: ensure gap constraint is satisfied
     for i in range(n_points):
         idx = i * n_per_point
@@ -274,13 +290,19 @@ def _generate_physics_based_initial_guess(n_vars: int, P: Dict[str, Any]) -> np.
             if gap < gap_min:
                 # Adjust x_R to maintain minimum gap
                 x0[idx + 2] = x0[idx] + gap_min
-                log.debug(f"Adjusted piston gap at point {i}: gap={gap:.6f} -> {gap_min:.6f}")
-    
+                log.debug(
+                    f"Adjusted piston gap at point {i}: gap={gap:.6f} -> {gap_min:.6f}",
+                )
+
     log.debug(f"Generated physics-based initial guess for {n_vars} variables")
-    log.debug(f"Initial conditions: p={p_initial:.0f} Pa, T={T_initial:.0f} K, rho={rho_initial:.3f} kg/m³")
-    log.debug(f"Compressed conditions: p={p_compressed:.0f} Pa, T={T_compressed:.0f} K, rho={rho_compressed:.3f} kg/m³")
+    log.debug(
+        f"Initial conditions: p={p_initial:.0f} Pa, T={T_initial:.0f} K, rho={rho_initial:.3f} kg/m³",
+    )
+    log.debug(
+        f"Compressed conditions: p={p_compressed:.0f} Pa, T={T_compressed:.0f} K, rho={rho_compressed:.3f} kg/m³",
+    )
     log.debug(f"Piston gap range: {gap_min:.6f} m minimum")
-    
+
     return x0
 
 
@@ -320,34 +342,34 @@ def _apply_problem_bounds(
 
     for i in range(0, n_vars, n_per_point):
         if i < n_vars:
-            lbx[i] = x_L_min      # x_L
+            lbx[i] = x_L_min  # x_L
             ubx[i] = x_L_max
-        if i+1 < n_vars:
-            lbx[i+1] = -v_max     # v_L
-            ubx[i+1] = v_max
-        if i+2 < n_vars:
-            lbx[i+2] = x_R_min    # x_R
-            ubx[i+2] = x_R_max
-        if i+3 < n_vars:
-            lbx[i+3] = -v_max     # v_R
-            ubx[i+3] = v_max
-        if i+4 < n_vars:
-            lbx[i+4] = 0.1        # rho (density)
-            ubx[i+4] = 100.0
-        if i+5 < n_vars:
-            lbx[i+5] = T_min      # T (temperature)
-            ubx[i+5] = T_max
+        if i + 1 < n_vars:
+            lbx[i + 1] = -v_max  # v_L
+            ubx[i + 1] = v_max
+        if i + 2 < n_vars:
+            lbx[i + 2] = x_R_min  # x_R
+            ubx[i + 2] = x_R_max
+        if i + 3 < n_vars:
+            lbx[i + 3] = -v_max  # v_R
+            ubx[i + 3] = v_max
+        if i + 4 < n_vars:
+            lbx[i + 4] = 0.1  # rho (density)
+            ubx[i + 4] = 100.0
+        if i + 5 < n_vars:
+            lbx[i + 5] = T_min  # T (temperature)
+            ubx[i + 5] = T_max
 
 
 def solve_cycle_robust(P: Dict[str, Any]) -> Dict[str, Any]:
     """
     Solve OP engine cycle with robust IPOPT settings.
-    
+
     This function uses more conservative IPOPT settings for difficult problems.
-    
+
     Args:
         P: Problem parameters dictionary
-        
+
     Returns:
         Solution object with optimization results
     """
@@ -364,11 +386,11 @@ def solve_cycle_with_warm_start(
 ) -> Dict[str, Any]:
     """
     Solve OP engine cycle with warm start.
-    
+
     Args:
         P: Problem parameters dictionary
         x0: Initial guess for optimization variables
-        
+
     Returns:
         Solution object with optimization results
     """
@@ -385,11 +407,11 @@ def solve_cycle_with_refinement(
 ) -> Dict[str, Any]:
     """
     Solve cycle with 0D to 1D refinement switching.
-    
+
     Args:
         P: Problem parameters
         refinement_strategy: Refinement strategy ("adaptive", "fixed", "error_based")
-        
+
     Returns:
         Solution dictionary
     """
@@ -550,11 +572,11 @@ def solve_cycle_adaptive(
 ) -> Dict[str, Any]:
     """
     Solve cycle with adaptive refinement strategy.
-    
+
     Args:
         P: Problem parameters
         max_refinements: Maximum number of refinements
-        
+
     Returns:
         Solution dictionary
     """
@@ -610,10 +632,10 @@ def solve_cycle_adaptive(
 def get_driver_function(driver_type: str = "standard"):
     """
     Get driver function by type.
-    
+
     Args:
         driver_type: Type of driver function
-        
+
     Returns:
         Driver function
     """
@@ -629,5 +651,3 @@ def get_driver_function(driver_type: str = "standard"):
         raise ValueError(f"Unknown driver type: {driver_type}")
 
     return functions[driver_type]
-
-

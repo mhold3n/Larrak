@@ -14,6 +14,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+
 def main():
     """Launch the enhanced GUI with preset parameters."""
     try:
@@ -65,8 +66,12 @@ def main():
 
         print("GUI launched successfully!")
         print("Instructions:")
-        print("1. Go to Tab 1 and click 'Solve Motion Law' to create the linear follower motion")
-        print("2. Go to Tab 2 and click 'Design Ring Follower' to create the circular follower")
+        print(
+            "1. Go to Tab 1 and click 'Solve Motion Law' to create the linear follower motion",
+        )
+        print(
+            "2. Go to Tab 2 and click 'Design Ring Follower' to create the circular follower",
+        )
         print("3. The plot will show polar plots of the cam and ring follower profiles")
         print("4. Use the 'Save Plot' button to export your results")
         print()
@@ -83,10 +88,12 @@ def main():
     except Exception as e:
         print(f"Error launching GUI: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

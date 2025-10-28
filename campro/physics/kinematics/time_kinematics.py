@@ -18,7 +18,7 @@ log = get_logger(__name__)
 class TimeKinematicsComponent(BaseComponent):
     """
     Component for time-based kinematic analysis.
-    
+
     This component computes time derivatives and kinematic relationships
     for cam-ring systems.
     """
@@ -29,12 +29,12 @@ class TimeKinematicsComponent(BaseComponent):
     def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute time kinematics.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             Input data
-            
+
         Returns
         -------
         ComponentResult
@@ -66,4 +66,3 @@ class TimeKinematicsComponent(BaseComponent):
     def get_outputs(self) -> List[str]:
         """Get list of output names."""
         return []
-

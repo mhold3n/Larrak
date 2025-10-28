@@ -40,11 +40,15 @@ class CamRingOptimizationConstraints:
 
     # Physical constraints
     min_curvature_radius: float = 1.0  # Minimum osculating radius
-    max_curvature: float = 10.0        # Maximum curvature
+    max_curvature: float = 10.0  # Maximum curvature
 
     # NEW: Gear geometry constraints
-    ring_teeth_candidates: List[int] = field(default_factory=lambda: [40, 50, 60, 70, 80])
-    planet_teeth_candidates: List[int] = field(default_factory=lambda: [20, 25, 30, 35, 40])
+    ring_teeth_candidates: List[int] = field(
+        default_factory=lambda: [40, 50, 60, 70, 80],
+    )
+    planet_teeth_candidates: List[int] = field(
+        default_factory=lambda: [20, 25, 30, 35, 40],
+    )
     pressure_angle_min: float = 15.0
     pressure_angle_max: float = 30.0
     addendum_factor_min: float = 0.8
@@ -84,15 +88,18 @@ class CamRingOptimizationTargets:
 class CamRingOptimizer(BaseOptimizer):
     """
     Cam-ring system optimizer using collocation methods.
-    
+
     This optimizer takes the linear follower motion law from primary optimization
     and optimizes the cam-ring system parameters to achieve specific objectives
     while maintaining the required motion law.
     """
 
-    def __init__(self, name: str = "CamRingOptimizer",
-                 settings: Optional[CollocationSettings] = None,
-                 enable_order2_micro: Optional[bool] = None):
+    def __init__(
+        self,
+        name: str = "CamRingOptimizer",
+        settings: Optional[CollocationSettings] = None,
+        enable_order2_micro: Optional[bool] = None,
+    ):
         super().__init__(name)
         self.settings = settings or CollocationSettings()
         self.constraints = CamRingOptimizationConstraints()
@@ -105,12 +112,15 @@ class CamRingOptimizer(BaseOptimizer):
             self.enable_order2_micro = bool(enable_order2_micro)
         self._is_configured = True
 
-    def configure(self, constraints: Optional[CamRingOptimizationConstraints] = None,
-                 targets: Optional[CamRingOptimizationTargets] = None,
-                 **kwargs) -> None:
+    def configure(
+        self,
+        constraints: Optional[CamRingOptimizationConstraints] = None,
+        targets: Optional[CamRingOptimizationTargets] = None,
+        **kwargs,
+    ) -> None:
         """
         Configure the optimizer.
-        
+
         Parameters
         ----------
         constraints : CamRingOptimizationConstraints, optional
@@ -136,12 +146,15 @@ class CamRingOptimizer(BaseOptimizer):
         self._is_configured = True
         log.info(f"Configured {self.name} with constraints and targets")
 
-    def optimize(self, primary_data: Dict[str, np.ndarray],
-                initial_guess: Optional[Dict[str, float]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        primary_data: Dict[str, np.ndarray],
+        initial_guess: Optional[Dict[str, float]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Optimize cam-ring system parameters using multi-order Litvin optimization.
-        
+
         Parameters
         ----------
         primary_data : Dict[str, np.ndarray]
@@ -150,7 +163,7 @@ class CamRingOptimizer(BaseOptimizer):
             Initial parameter values
         **kwargs
             Additional optimization parameters
-            
+
         Returns
         -------
         OptimizationResult
@@ -159,7 +172,9 @@ class CamRingOptimizer(BaseOptimizer):
         if not self._is_configured:
             raise RuntimeError("Optimizer must be configured before optimization")
 
-        log.info(f"Starting multi-order Litvin cam-ring system optimization with {self.name}")
+        log.info(
+            f"Starting multi-order Litvin cam-ring system optimization with {self.name}",
+        )
 
         # Initialize result
         result = OptimizationResult(
@@ -179,7 +194,9 @@ class CamRingOptimizer(BaseOptimizer):
             x_theta = primary_data.get("position", np.array([]))
 
             if len(theta) == 0 or len(x_theta) == 0:
-                raise ValueError("Primary data must contain cam_angle and position arrays")
+                raise ValueError(
+                    "Primary data must contain cam_angle and position arrays",
+                )
 
             # Set up initial guess
             if initial_guess is None:
@@ -194,8 +211,14 @@ class CamRingOptimizer(BaseOptimizer):
             geometry_config = GeometrySearchConfig(
                 ring_teeth_candidates=self.constraints.ring_teeth_candidates,
                 planet_teeth_candidates=self.constraints.planet_teeth_candidates,
-                pressure_angle_deg_bounds=(self.constraints.pressure_angle_min, self.constraints.pressure_angle_max),
-                addendum_factor_bounds=(self.constraints.addendum_factor_min, self.constraints.addendum_factor_max),
+                pressure_angle_deg_bounds=(
+                    self.constraints.pressure_angle_min,
+                    self.constraints.pressure_angle_max,
+                ),
+                addendum_factor_bounds=(
+                    self.constraints.addendum_factor_min,
+                    self.constraints.addendum_factor_max,
+                ),
                 base_center_radius=initial_guess["base_radius"],
                 samples_per_rev=self.constraints.samples_per_rev,
                 motion=motion,
@@ -203,29 +226,62 @@ class CamRingOptimizer(BaseOptimizer):
 
             # Perform multi-order optimization (0→1→2→3)
             log.info("Starting ORDER0_EVALUATE...")
-            order0_result = optimize_geometry(geometry_config, OptimizationOrder.ORDER0_EVALUATE)
+            order0_result = optimize_geometry(
+                geometry_config, OptimizationOrder.ORDER0_EVALUATE,
+            )
 
             log.info("Starting ORDER1_GEOMETRY...")
-            order1_result = optimize_geometry(geometry_config, OptimizationOrder.ORDER1_GEOMETRY)
+            order1_result = optimize_geometry(
+                geometry_config, OptimizationOrder.ORDER1_GEOMETRY,
+            )
 
             if self.enable_order2_micro:
                 log.info("Starting ORDER2_MICRO (CasADi + Ipopt, scaled)")
                 try:
-                    order2_result = optimize_geometry(geometry_config, OptimizationOrder.ORDER2_MICRO)
+                    order2_result = optimize_geometry(
+                        geometry_config, OptimizationOrder.ORDER2_MICRO,
+                    )
                 except Exception as e:
                     log.warning(f"ORDER2_MICRO failed: {e}; falling back to ORDER1/0")
-                    order2_result = type('MockResult', (), {'feasible': False, 'best_config': None, 'objective_value': None, 'ipopt_analysis': None})()
+                    order2_result = type(
+                        "MockResult",
+                        (),
+                        {
+                            "feasible": False,
+                            "best_config": None,
+                            "objective_value": None,
+                            "ipopt_analysis": None,
+                        },
+                    )()
             else:
-                log.info("ORDER2_MICRO disabled (set enable_order2_micro=True or CAMPRO_ENABLE_ORDER2_MICRO=1 to enable)")
-                order2_result = type('MockResult', (), {'feasible': False, 'best_config': None, 'objective_value': None, 'ipopt_analysis': None})()
+                log.info(
+                    "ORDER2_MICRO disabled (set enable_order2_micro=True or CAMPRO_ENABLE_ORDER2_MICRO=1 to enable)",
+                )
+                order2_result = type(
+                    "MockResult",
+                    (),
+                    {
+                        "feasible": False,
+                        "best_config": None,
+                        "objective_value": None,
+                        "ipopt_analysis": None,
+                    },
+                )()
 
             # Use the best result from the optimization orders
-            best_result = order2_result if order2_result.feasible else (order1_result if order1_result.feasible else order0_result)
+            best_result = (
+                order2_result
+                if order2_result.feasible
+                else (order1_result if order1_result.feasible else order0_result)
+            )
 
             if best_result.feasible and best_result.best_config is not None:
                 # Generate final ring design with optimized gear geometry
                 final_design = self._generate_final_design_from_gear_config(
-                    best_result.best_config, theta, x_theta, primary_data,
+                    best_result.best_config,
+                    theta,
+                    x_theta,
+                    primary_data,
                 )
 
                 # Update result
@@ -249,31 +305,37 @@ class CamRingOptimizer(BaseOptimizer):
                     },
                     "initial_guess": initial_guess,
                     # Pass through analysis from litvin optimization (ORDER2_MICRO uses Ipopt)
-                    "ipopt_analysis": order2_result.ipopt_analysis if hasattr(order2_result, 'ipopt_analysis') else None,
+                    "ipopt_analysis": order2_result.ipopt_analysis
+                    if hasattr(order2_result, "ipopt_analysis")
+                    else None,
                 }
 
                 log.info("Multi-order optimization completed successfully")
                 log.info(f"Final objective value: {best_result.objective_value:.6f}")
-                log.info(f"Optimized gear config: {result.metadata['optimized_gear_config']}")
+                log.info(
+                    f"Optimized gear config: {result.metadata['optimized_gear_config']}",
+                )
 
             else:
                 # Provide fallback result to allow cascaded optimization to continue
                 # This is a temporary workaround while CasADi issues are resolved
                 log.warning("All optimization orders failed, providing fallback result")
-                
+
                 # Create a simple fallback design with proper structure
                 fallback_design = {
                     "optimized_parameters": {
-                        "base_radius": initial_guess.get("base_radius", 20.0),  # Use initial guess or default
+                        "base_radius": initial_guess.get(
+                            "base_radius", 20.0,
+                        ),  # Use initial guess or default
                     },
                     "gear_geometry": {
                         "ring_teeth": 50,  # Default values
                         "planet_teeth": 25,
                         "pressure_angle_deg": 20.0,
                         "addendum_factor": 1.0,
-                    }
+                    },
                 }
-                
+
                 result.status = OptimizationStatus.CONVERGED
                 result.solution = fallback_design
                 result.objective_value = float("inf")  # Indicate suboptimal
@@ -282,10 +344,18 @@ class CamRingOptimizer(BaseOptimizer):
                     "optimization_method": "MultiOrderLitvin_Fallback",
                     "optimized_gear_config": {
                         "ring_teeth": fallback_design["gear_geometry"]["ring_teeth"],
-                        "planet_teeth": fallback_design["gear_geometry"]["planet_teeth"],
-                        "pressure_angle_deg": fallback_design["gear_geometry"]["pressure_angle_deg"],
-                        "addendum_factor": fallback_design["gear_geometry"]["addendum_factor"],
-                        "base_center_radius": fallback_design["optimized_parameters"]["base_radius"],
+                        "planet_teeth": fallback_design["gear_geometry"][
+                            "planet_teeth"
+                        ],
+                        "pressure_angle_deg": fallback_design["gear_geometry"][
+                            "pressure_angle_deg"
+                        ],
+                        "addendum_factor": fallback_design["gear_geometry"][
+                            "addendum_factor"
+                        ],
+                        "base_center_radius": fallback_design["optimized_parameters"][
+                            "base_radius"
+                        ],
                     },
                     "order_results": {
                         "order0_feasible": order0_result.feasible,
@@ -295,13 +365,16 @@ class CamRingOptimizer(BaseOptimizer):
                     "fallback": True,
                     "error_message": "All optimization orders failed, using fallback values",
                 }
-                log.warning("Using fallback secondary optimization result to continue cascaded optimization")
+                log.warning(
+                    "Using fallback secondary optimization result to continue cascaded optimization",
+                )
 
         except Exception as e:
             result.status = OptimizationStatus.FAILED
             result.metadata = {"error_message": str(e)}
             log.error(f"Optimization error: {e}")
             import traceback
+
             log.error(f"Traceback: {traceback.format_exc()}")
 
         finally:
@@ -309,16 +382,22 @@ class CamRingOptimizer(BaseOptimizer):
 
         return result
 
-    def _get_default_initial_guess(self, primary_data: Dict[str, np.ndarray]) -> Dict[str, float]:
+    def _get_default_initial_guess(
+        self, primary_data: Dict[str, np.ndarray],
+    ) -> Dict[str, float]:
         """Get default initial guess based on primary data."""
         # Use stroke-based initial guesses
-        stroke = np.max(primary_data.get("position", [20.0])) - np.min(primary_data.get("position", [0.0]))
+        stroke = np.max(primary_data.get("position", [20.0])) - np.min(
+            primary_data.get("position", [0.0]),
+        )
 
         return {
             "base_radius": float(stroke),
         }
 
-    def _create_radial_slot_motion(self, primary_data: Dict[str, np.ndarray]) -> RadialSlotMotion:
+    def _create_radial_slot_motion(
+        self, primary_data: Dict[str, np.ndarray],
+    ) -> RadialSlotMotion:
         """Convert primary motion law to RadialSlotMotion for Litvin synthesis."""
         from scipy.interpolate import interp1d
 
@@ -327,7 +406,9 @@ class CamRingOptimizer(BaseOptimizer):
 
         # Create interpolators for center offset and planet angle
         theta_rad = np.deg2rad(theta)
-        center_offset_interp = interp1d(theta_rad, x_theta, kind="cubic", fill_value="extrapolate")
+        center_offset_interp = interp1d(
+            theta_rad, x_theta, kind="cubic", fill_value="extrapolate",
+        )
 
         # Planet angle: θ_p = 2·θ_r (standard Litvin planetary relation)
         planet_angle_fn = lambda th: 2.0 * th
@@ -337,8 +418,13 @@ class CamRingOptimizer(BaseOptimizer):
             planet_angle_fn=planet_angle_fn,
         )
 
-    def _generate_final_design_from_gear_config(self, gear_config, theta: np.ndarray, x_theta: np.ndarray,
-                                               primary_data: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    def _generate_final_design_from_gear_config(
+        self,
+        gear_config,
+        theta: np.ndarray,
+        x_theta: np.ndarray,
+        primary_data: Dict[str, np.ndarray],
+    ) -> Dict[str, Any]:
         """Generate final design using optimized gear geometry."""
         from campro.litvin.planetary_synthesis import synthesize_planet_from_motion
 
@@ -401,8 +487,12 @@ class CamRingOptimizer(BaseOptimizer):
             "litvin_result": litvin_result,
         }
 
-    def _define_constraints(self, theta: np.ndarray, x_theta: np.ndarray,
-                          primary_data: Dict[str, np.ndarray]) -> List[Dict]:
+    def _define_constraints(
+        self,
+        theta: np.ndarray,
+        x_theta: np.ndarray,
+        primary_data: Dict[str, np.ndarray],
+    ) -> List[Dict]:
         """Define optimization constraints."""
         constraints = []
 
@@ -411,9 +501,11 @@ class CamRingOptimizer(BaseOptimizer):
             base_radius = params[0]
             return base_radius - 1.0
 
-        constraints.append({
-            "type": "ineq",
-            "fun": positive_radii_constraint,
-        })
+        constraints.append(
+            {
+                "type": "ineq",
+                "fun": positive_radii_constraint,
+            },
+        )
 
         return constraints

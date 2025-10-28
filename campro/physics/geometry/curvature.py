@@ -19,7 +19,7 @@ log = get_logger(__name__)
 class CurvatureComponent(BaseComponent):
     """
     Component for computing curvature and osculating radius of cam curves.
-    
+
     This component computes the curvature κ(θ) and osculating radius ρ(θ)
     for polar curves defined by r(θ).
     """
@@ -31,14 +31,14 @@ class CurvatureComponent(BaseComponent):
     def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute curvature and osculating radius.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             Input data containing:
             - 'theta': Cam angles (radians)
             - 'r_theta': Radius values r(θ)
-            
+
         Returns
         -------
         ComponentResult
@@ -68,17 +68,20 @@ class CurvatureComponent(BaseComponent):
             r_prime_squared = r_prime**2
 
             numerator = r_squared + 2 * r_prime_squared - r_theta * r_double_prime
-            denominator = (r_squared + r_prime_squared)**(3/2)
+            denominator = (r_squared + r_prime_squared) ** (3 / 2)
 
             # Avoid division by zero
-            kappa = np.divide(numerator, denominator,
-                            out=np.zeros_like(numerator),
-                            where=denominator != 0)
+            kappa = np.divide(
+                numerator,
+                denominator,
+                out=np.zeros_like(numerator),
+                where=denominator != 0,
+            )
 
             # Compute osculating radius: ρ = 1/κ
-            rho = np.divide(1.0, kappa,
-                          out=np.full_like(kappa, np.inf),
-                          where=kappa != 0)
+            rho = np.divide(
+                1.0, kappa, out=np.full_like(kappa, np.inf), where=kappa != 0,
+            )
 
             # Prepare outputs
             outputs = {
@@ -97,7 +100,9 @@ class CurvatureComponent(BaseComponent):
                 "max_osculating_radius": float(np.max(rho[np.isfinite(rho)])),
             }
 
-            log.info(f"Curvature computed successfully: kappa range [{metadata['min_curvature']:.3f}, {metadata['max_curvature']:.3f}]")
+            log.info(
+                f"Curvature computed successfully: kappa range [{metadata['min_curvature']:.3f}, {metadata['max_curvature']:.3f}]",
+            )
 
             return ComponentResult(
                 status=ComponentStatus.COMPLETED,
@@ -117,14 +122,14 @@ class CurvatureComponent(BaseComponent):
     def _compute_derivative(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         """
         Compute derivative using finite differences.
-        
+
         Parameters
         ----------
         x : np.ndarray
             Independent variable
         y : np.ndarray
             Dependent variable
-            
+
         Returns
         -------
         np.ndarray

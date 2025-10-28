@@ -11,5 +11,3 @@ def test_smoothness_penalty_basic():
     # non-negative and zero only if all accels are zero
     assert J >= 0.0
     assert smoothness_penalty(accel=[0.0, 0.0], weights=[0.5, 0.5]) == 0.0
-
-

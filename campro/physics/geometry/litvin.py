@@ -27,9 +27,9 @@ log = get_logger(__name__)
 
 @dataclass
 class LitvinSynthesisResult:
-    psi: np.ndarray           # ψ(θ) mapping, θ-domain grid
-    R_psi: np.ndarray         # R(ψ(θ)) sampled over θ grid
-    rho_c: np.ndarray         # ρ_c(θ) cam osculating radius
+    psi: np.ndarray  # ψ(θ) mapping, θ-domain grid
+    R_psi: np.ndarray  # R(ψ(θ)) sampled over θ grid
+    rho_c: np.ndarray  # ρ_c(θ) cam osculating radius
     metadata: Dict[str, Any]
 
 
@@ -83,7 +83,16 @@ class LitvinSynthesis:
         dpsi_dtheta_initial = rho_c / max(np.mean(rho_c), 1e-9)
 
         # Integrate to get preliminary ψ(θ)
-        psi = np.cumsum(np.concatenate([[0.0], 0.5 * (dpsi_dtheta_initial[1:] + dpsi_dtheta_initial[:-1]) * np.diff(theta)]))
+        psi = np.cumsum(
+            np.concatenate(
+                [
+                    [0.0],
+                    0.5
+                    * (dpsi_dtheta_initial[1:] + dpsi_dtheta_initial[:-1])
+                    * np.diff(theta),
+                ],
+            ),
+        )
         psi = psi[: theta.shape[0]]
 
         # Enforce periodicity: span should be 2π
@@ -114,14 +123,26 @@ class LitvinSynthesis:
         for i in range(1, len(psi_grid)):
             if psi_grid[i] <= psi_grid[i - 1]:
                 psi_grid[i] = psi_grid[i - 1] + eps
-        R_interp = interp1d(psi_grid, R_theta, kind="cubic", fill_value="extrapolate", assume_sorted=True)
+        R_interp = interp1d(
+            psi_grid,
+            R_theta,
+            kind="cubic",
+            fill_value="extrapolate",
+            assume_sorted=True,
+        )
 
         # Iterate a couple of times to reduce residual in the conjugacy relation
         for _ in range(2):
             dpsi_dtheta = np.gradient(psi, theta)
             R_theta = np.divide(rho_c, np.maximum(dpsi_dtheta, 1e-9))
             R_theta = np.maximum(R_theta, min_radius)
-            R_interp = interp1d(psi_grid, R_theta, kind="cubic", fill_value="extrapolate", assume_sorted=True)
+            R_interp = interp1d(
+                psi_grid,
+                R_theta,
+                kind="cubic",
+                fill_value="extrapolate",
+                assume_sorted=True,
+            )
 
         # Sample final R at ψ(θ) honoring conjugacy
         dpsi_dtheta = np.gradient(psi, theta)
@@ -133,7 +154,13 @@ class LitvinSynthesis:
         for i in range(1, len(psi_grid)):
             if psi_grid[i] <= psi_grid[i - 1]:
                 psi_grid[i] = psi_grid[i - 1] + eps
-        R_interp = interp1d(psi_grid, R_theta, kind="cubic", fill_value="extrapolate", assume_sorted=True)
+        R_interp = interp1d(
+            psi_grid,
+            R_theta,
+            kind="cubic",
+            fill_value="extrapolate",
+            assume_sorted=True,
+        )
         R_psi = np.maximum(R_interp(psi), min_radius)
 
         # Metadata
@@ -142,7 +169,9 @@ class LitvinSynthesis:
             "normalized_ratio": float(target_ratio),
         }
 
-        return LitvinSynthesisResult(psi=psi, R_psi=R_psi, rho_c=rho_c, metadata=metadata)
+        return LitvinSynthesisResult(
+            psi=psi, R_psi=R_psi, rho_c=rho_c, metadata=metadata,
+        )
 
 
 @dataclass
@@ -161,8 +190,10 @@ class LitvinGearGeometry:
     z_ring: int  # teeth count ring gear
     interference_flag: bool
     # Manufacturing flanks and detailed checks
-    flanks: Dict[str, np.ndarray] | None = None  # {'addendum': Nx2, 'dedendum': Mx2, 'fillet': Kx2}
-    undercut_flags: np.ndarray | None = None     # per tooth flag
+    flanks: Dict[str, np.ndarray] | None = (
+        None  # {'addendum': Nx2, 'dedendum': Mx2, 'fillet': Kx2}
+    )
+    undercut_flags: np.ndarray | None = None  # per tooth flag
 
     @property
     def pressure_angle_deg(self) -> np.ndarray:
@@ -237,12 +268,18 @@ class LitvinGearGeometry:
         # Discrete flank samples over one tooth space
         tooth_span = 2.0 * np.pi / max(z_ring, 1)
         psi_tooth = np.linspace(0.0, tooth_span, 50)
-        addendum_xy = np.column_stack([r_add * np.cos(psi_tooth), r_add * np.sin(psi_tooth)])
-        dedendum_xy = np.column_stack([r_ded * np.cos(psi_tooth), r_ded * np.sin(psi_tooth)])
+        addendum_xy = np.column_stack(
+            [r_add * np.cos(psi_tooth), r_add * np.sin(psi_tooth)],
+        )
+        dedendum_xy = np.column_stack(
+            [r_ded * np.cos(psi_tooth), r_ded * np.sin(psi_tooth)],
+        )
         # Fillet as small arc at dedendum radius
         fillet_span = 0.2 * tooth_span
         psi_fillet = np.linspace(0.0, fillet_span, 16)
-        fillet_xy = np.column_stack([r_ded * np.cos(psi_fillet), r_ded * np.sin(psi_fillet)])
+        fillet_xy = np.column_stack(
+            [r_ded * np.cos(psi_fillet), r_ded * np.sin(psi_fillet)],
+        )
 
         # Per-tooth undercut: mark if base circle exceeds dedendum
         undercut_flags = np.zeros(z_ring, dtype=bool)
@@ -258,8 +295,10 @@ class LitvinGearGeometry:
             z_cam=int(z_cam),
             z_ring=int(z_ring),
             interference_flag=interference,
-            flanks={"addendum": addendum_xy, "dedendum": dedendum_xy, "fillet": fillet_xy},
+            flanks={
+                "addendum": addendum_xy,
+                "dedendum": dedendum_xy,
+                "fillet": fillet_xy,
+            },
             undercut_flags=undercut_flags,
         )
-
-

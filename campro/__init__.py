@@ -3,8 +3,8 @@
 import os
 from typing import Optional
 
-from campro.logging import get_logger
 from campro.diagnostics.run_metadata import set_global_seeds
+from campro.logging import get_logger
 
 __version__ = "0.1.0"
 
@@ -43,10 +43,13 @@ def _check_ipopt_availability() -> bool:
             # Try a direct instantiation as a secondary check
             try:
                 x = ca.SX.sym("x")
-                f = x ** 2
+                f = x**2
                 # Use the centralized factory with explicit linear solver
                 from campro.optimization.ipopt_factory import create_ipopt_solver
-                create_ipopt_solver("ipopt_probe", {"x": x, "f": f}, linear_solver="ma27")
+
+                create_ipopt_solver(
+                    "ipopt_probe", {"x": x, "f": f}, linear_solver="ma27",
+                )
                 _IPOPT_AVAILABLE = True
                 log.info("IPOPT availability check completed with MA27 linear solver")
             except Exception as e:
@@ -71,7 +74,7 @@ def _check_ipopt_availability() -> bool:
 def is_ipopt_available() -> bool:
     """
     Check if ipopt solver is available.
-    
+
     Returns:
         True if ipopt is available, False otherwise
     """
@@ -87,7 +90,3 @@ try:
 except Exception:
     # Seeding should never fail import; ignore in edge environments.
     pass
-
-
-
-

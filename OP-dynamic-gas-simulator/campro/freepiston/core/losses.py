@@ -40,15 +40,21 @@ def coulomb_friction(*, v: float, muN: float) -> float:
     return -muN if v > 0.0 else muN
 
 
-def piston_ring_friction(*, v: float, p_gas: float, p_crankcase: float,
-                        geometry: Dict[str, float], params: FrictionParameters) -> float:
+def piston_ring_friction(
+    *,
+    v: float,
+    p_gas: float,
+    p_crankcase: float,
+    geometry: Dict[str, float],
+    params: FrictionParameters,
+) -> float:
     """Piston ring friction model.
-    
+
     Computes friction force from piston rings considering:
     - Ring tension
     - Gas pressure differential
     - Velocity-dependent friction
-    
+
     Parameters
     ----------
     v : float
@@ -61,7 +67,7 @@ def piston_ring_friction(*, v: float, p_gas: float, p_crankcase: float,
         Piston geometry parameters
     params : FrictionParameters
         Friction model parameters
-        
+
     Returns
     -------
     F_ring : float
@@ -72,7 +78,13 @@ def piston_ring_friction(*, v: float, p_gas: float, p_crankcase: float,
 
     # Ring normal force
     F_ring_tension = params.ring_count * params.ring_tension
-    F_ring_pressure = params.ring_count * (p_gas - p_crankcase) * geometry.get("ring_width", 0.002) * math.pi * geometry.get("bore", 0.1)
+    F_ring_pressure = (
+        params.ring_count
+        * (p_gas - p_crankcase)
+        * geometry.get("ring_width", 0.002)
+        * math.pi
+        * geometry.get("bore", 0.1)
+    )
 
     F_ring_normal = F_ring_tension + F_ring_pressure
 
@@ -89,9 +101,9 @@ def piston_ring_friction(*, v: float, p_gas: float, p_crankcase: float,
 
 def bearing_friction(*, omega: float, load: float, params: FrictionParameters) -> float:
     """Bearing friction model.
-    
+
     Computes friction torque from main and connecting rod bearings.
-    
+
     Parameters
     ----------
     omega : float
@@ -100,7 +112,7 @@ def bearing_friction(*, omega: float, load: float, params: FrictionParameters) -
         Bearing load [N]
     params : FrictionParameters
         Friction model parameters
-        
+
     Returns
     -------
     T_bearing : float
@@ -117,12 +129,18 @@ def bearing_friction(*, omega: float, load: float, params: FrictionParameters) -
     return T_bearing
 
 
-def pumping_losses(*, v: float, p_gas: float, V_chamber: float,
-                  geometry: Dict[str, float], params: FrictionParameters) -> float:
+def pumping_losses(
+    *,
+    v: float,
+    p_gas: float,
+    V_chamber: float,
+    geometry: Dict[str, float],
+    params: FrictionParameters,
+) -> float:
     """Pumping losses in gas flow.
-    
+
     Computes pressure losses due to gas flow through valves and passages.
-    
+
     Parameters
     ----------
     v : float
@@ -135,7 +153,7 @@ def pumping_losses(*, v: float, p_gas: float, V_chamber: float,
         Geometry parameters
     params : FrictionParameters
         Friction model parameters
-        
+
     Returns
     -------
     F_pumping : float
@@ -156,12 +174,18 @@ def pumping_losses(*, v: float, p_gas: float, V_chamber: float,
     return F_pumping
 
 
-def viscous_losses(*, v: float, rho: float, mu: float, geometry: Dict[str, float],
-                  params: FrictionParameters) -> float:
+def viscous_losses(
+    *,
+    v: float,
+    rho: float,
+    mu: float,
+    geometry: Dict[str, float],
+    params: FrictionParameters,
+) -> float:
     """Viscous losses in gas flow.
-    
+
     Computes viscous drag forces on piston and gas flow.
-    
+
     Parameters
     ----------
     v : float
@@ -174,7 +198,7 @@ def viscous_losses(*, v: float, rho: float, mu: float, geometry: Dict[str, float
         Geometry parameters
     params : FrictionParameters
         Friction model parameters
-        
+
     Returns
     -------
     F_viscous : float
@@ -194,11 +218,13 @@ def viscous_losses(*, v: float, rho: float, mu: float, geometry: Dict[str, float
     return F_viscous
 
 
-def blow_by_losses(*, p_gas: float, p_crankcase: float, geometry: Dict[str, float]) -> Tuple[float, float]:
+def blow_by_losses(
+    *, p_gas: float, p_crankcase: float, geometry: Dict[str, float],
+) -> Tuple[float, float]:
     """Blow-by losses through piston rings.
-    
+
     Computes mass flow rate and energy loss due to blow-by.
-    
+
     Parameters
     ----------
     p_gas : float
@@ -207,7 +233,7 @@ def blow_by_losses(*, p_gas: float, p_crankcase: float, geometry: Dict[str, floa
         Crankcase pressure [Pa]
     geometry : Dict[str, float]
         Geometry parameters
-        
+
     Returns
     -------
     mdot_blowby : float
@@ -241,13 +267,22 @@ def blow_by_losses(*, p_gas: float, p_crankcase: float, geometry: Dict[str, floa
     return mdot_blowby, E_loss_blowby
 
 
-def total_friction_force(*, v: float, omega: float, p_gas: float, p_crankcase: float,
-                        rho: float, mu: float, V_chamber: float,
-                        geometry: Dict[str, float], params: FrictionParameters) -> Dict[str, float]:
+def total_friction_force(
+    *,
+    v: float,
+    omega: float,
+    p_gas: float,
+    p_crankcase: float,
+    rho: float,
+    mu: float,
+    V_chamber: float,
+    geometry: Dict[str, float],
+    params: FrictionParameters,
+) -> Dict[str, float]:
     """Total friction force from all sources.
-    
+
     Computes combined friction force from all loss mechanisms.
-    
+
     Parameters
     ----------
     v : float
@@ -268,25 +303,29 @@ def total_friction_force(*, v: float, omega: float, p_gas: float, p_crankcase: f
         Geometry parameters
     params : FrictionParameters
         Friction model parameters
-        
+
     Returns
     -------
     friction_forces : Dict[str, float]
         Individual and total friction forces
     """
     # Individual friction components
-    F_ring = piston_ring_friction(v=v, p_gas=p_gas, p_crankcase=p_crankcase,
-                                geometry=geometry, params=params)
+    F_ring = piston_ring_friction(
+        v=v, p_gas=p_gas, p_crankcase=p_crankcase, geometry=geometry, params=params,
+    )
 
-    F_pumping = pumping_losses(v=v, p_gas=p_gas, V_chamber=V_chamber,
-                             geometry=geometry, params=params)
+    F_pumping = pumping_losses(
+        v=v, p_gas=p_gas, V_chamber=V_chamber, geometry=geometry, params=params,
+    )
 
     F_viscous = viscous_losses(v=v, rho=rho, mu=mu, geometry=geometry, params=params)
 
     # Bearing friction (converted to linear force)
     load = p_gas * math.pi * (geometry.get("bore", 0.1) / 2.0) ** 2
     T_bearing = bearing_friction(omega=omega, load=load, params=params)
-    F_bearing = T_bearing / (geometry.get("stroke", 0.1) / 2.0)  # Convert to linear force
+    F_bearing = T_bearing / (
+        geometry.get("stroke", 0.1) / 2.0
+    )  # Convert to linear force
 
     # Total friction
     F_total = F_ring + F_pumping + F_viscous + F_bearing
@@ -300,11 +339,13 @@ def total_friction_force(*, v: float, omega: float, p_gas: float, p_crankcase: f
     }
 
 
-def friction_power_loss(*, v: float, omega: float, friction_forces: Dict[str, float]) -> Dict[str, float]:
+def friction_power_loss(
+    *, v: float, omega: float, friction_forces: Dict[str, float],
+) -> Dict[str, float]:
     """Friction power losses.
-    
+
     Computes power losses from friction forces.
-    
+
     Parameters
     ----------
     v : float
@@ -313,7 +354,7 @@ def friction_power_loss(*, v: float, omega: float, friction_forces: Dict[str, fl
         Angular velocity [rad/s]
     friction_forces : Dict[str, float]
         Friction forces
-        
+
     Returns
     -------
     power_losses : Dict[str, float]
@@ -337,7 +378,7 @@ def friction_power_loss(*, v: float, omega: float, friction_forces: Dict[str, fl
 
 def get_friction_function(method: str = "full"):
     """Get friction function by name.
-    
+
     Parameters
     ----------
     method : str
@@ -345,7 +386,7 @@ def get_friction_function(method: str = "full"):
         - 'full': Full friction model with all components
         - 'simple': Simple Coulomb friction only
         - 'ring': Ring friction only
-        
+
     Returns
     -------
     friction_func : callable
@@ -357,11 +398,19 @@ def get_friction_function(method: str = "full"):
         return lambda v, **kwargs: {"total_friction": coulomb_friction(v=v, muN=100.0)}
     if method == "ring":
         return lambda v, p_gas, p_crankcase, geometry, params, **kwargs: {
-            "ring_friction": piston_ring_friction(v=v, p_gas=p_gas, p_crankcase=p_crankcase,
-                                                geometry=geometry, params=params),
-            "total_friction": piston_ring_friction(v=v, p_gas=p_gas, p_crankcase=p_crankcase,
-                                                 geometry=geometry, params=params),
+            "ring_friction": piston_ring_friction(
+                v=v,
+                p_gas=p_gas,
+                p_crankcase=p_crankcase,
+                geometry=geometry,
+                params=params,
+            ),
+            "total_friction": piston_ring_friction(
+                v=v,
+                p_gas=p_gas,
+                p_crankcase=p_crankcase,
+                geometry=geometry,
+                params=params,
+            ),
         }
     raise ValueError(f"Unknown friction method: {method}")
-
-

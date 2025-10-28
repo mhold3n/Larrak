@@ -45,6 +45,3 @@ class GasState:
 
     def dof(self) -> int:
         return len(self.data)
-
-
-

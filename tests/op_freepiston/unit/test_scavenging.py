@@ -24,7 +24,9 @@ class TestScavengingState:
         state = ScavengingState()
         composition = GasComposition(fresh_air=0.8, exhaust_gas=0.2)
 
-        state.update_mass_flows(mdot_in=0.1, mdot_ex=0.05, dt=0.01, composition=composition)
+        state.update_mass_flows(
+            mdot_in=0.1, mdot_ex=0.05, dt=0.01, composition=composition,
+        )
 
         assert state.m_fresh_delivered == 0.1 * 0.01
         assert state.m_exhaust_removed == 0.05 * 0.01 * 0.2
@@ -35,9 +37,17 @@ class TestScavengingState:
         state = ScavengingState()
         composition = GasComposition(fresh_air=0.7, exhaust_gas=0.3)
         cv_state = ControlVolumeState(
-            rho=1.0, T=1000.0, p=1e5, u=1000.0, h=1500.0,
-            composition=composition, m=0.1, U=100.0, H=150.0,
-            V=0.1, dV_dt=0.0,
+            rho=1.0,
+            T=1000.0,
+            p=1e5,
+            u=1000.0,
+            h=1500.0,
+            composition=composition,
+            m=0.1,
+            U=100.0,
+            H=150.0,
+            V=0.1,
+            dV_dt=0.0,
         )
 
         state.update_trapped_masses(cv_state)
@@ -103,12 +113,16 @@ class TestScavengingPhaseDetection:
         A_ex_max = 0.008
 
         # Test with higher threshold
-        phases = detect_scavenging_phases(0.0005, 0.0004, A_in_max, A_ex_max, threshold=0.1)
+        phases = detect_scavenging_phases(
+            0.0005, 0.0004, A_in_max, A_ex_max, threshold=0.1,
+        )
         assert not phases["intake_open"]
         assert not phases["exhaust_open"]
 
         # Test with lower threshold
-        phases = detect_scavenging_phases(0.0005, 0.0004, A_in_max, A_ex_max, threshold=0.01)
+        phases = detect_scavenging_phases(
+            0.0005, 0.0004, A_in_max, A_ex_max, threshold=0.01,
+        )
         assert phases["intake_open"]
         assert phases["exhaust_open"]
 
@@ -119,9 +133,17 @@ class TestEnhancedScavengingTracking:
         # Create test state
         composition = GasComposition(fresh_air=0.8, exhaust_gas=0.2)
         cv_state = ControlVolumeState(
-            rho=1.0, T=1000.0, p=1e5, u=1000.0, h=1500.0,
-            composition=composition, m=0.1, U=100.0, H=150.0,
-            V=0.1, dV_dt=0.0,
+            rho=1.0,
+            T=1000.0,
+            p=1e5,
+            u=1000.0,
+            h=1500.0,
+            composition=composition,
+            m=0.1,
+            U=100.0,
+            H=150.0,
+            V=0.1,
+            dV_dt=0.0,
         )
 
         scavenging_state = ScavengingState()
@@ -129,10 +151,15 @@ class TestEnhancedScavengingTracking:
         # Test with overlap phase
         updated_state = enhanced_scavenging_tracking(
             state=cv_state,
-            mdot_in=0.1, mdot_ex=0.05,
-            A_in=0.005, A_ex=0.004,
-            A_in_max=0.01, A_ex_max=0.008,
-            dt=0.01, scavenging_state=scavenging_state, time=0.1,
+            mdot_in=0.1,
+            mdot_ex=0.05,
+            A_in=0.005,
+            A_ex=0.004,
+            A_in_max=0.01,
+            A_ex_max=0.008,
+            dt=0.01,
+            scavenging_state=scavenging_state,
+            time=0.1,
         )
 
         # Check phase timing
@@ -155,18 +182,33 @@ class TestEnhancedScavengingTracking:
         """Test phase transition tracking."""
         composition = GasComposition(fresh_air=1.0, exhaust_gas=0.0)
         cv_state = ControlVolumeState(
-            rho=1.0, T=1000.0, p=1e5, u=1000.0, h=1500.0,
-            composition=composition, m=0.1, U=100.0, H=150.0,
-            V=0.1, dV_dt=0.0,
+            rho=1.0,
+            T=1000.0,
+            p=1e5,
+            u=1000.0,
+            h=1500.0,
+            composition=composition,
+            m=0.1,
+            U=100.0,
+            H=150.0,
+            V=0.1,
+            dV_dt=0.0,
         )
 
         scavenging_state = ScavengingState()
 
         # Start with intake only
         enhanced_scavenging_tracking(
-            state=cv_state, mdot_in=0.1, mdot_ex=0.0,
-            A_in=0.005, A_ex=0.0, A_in_max=0.01, A_ex_max=0.008,
-            dt=0.01, scavenging_state=scavenging_state, time=0.1,
+            state=cv_state,
+            mdot_in=0.1,
+            mdot_ex=0.0,
+            A_in=0.005,
+            A_ex=0.0,
+            A_in_max=0.01,
+            A_ex_max=0.008,
+            dt=0.01,
+            scavenging_state=scavenging_state,
+            time=0.1,
         )
 
         assert scavenging_state.phase_intake_start == 0.1
@@ -174,9 +216,16 @@ class TestEnhancedScavengingTracking:
 
         # Transition to overlap
         enhanced_scavenging_tracking(
-            state=cv_state, mdot_in=0.1, mdot_ex=0.05,
-            A_in=0.005, A_ex=0.004, A_in_max=0.01, A_ex_max=0.008,
-            dt=0.01, scavenging_state=scavenging_state, time=0.2,
+            state=cv_state,
+            mdot_in=0.1,
+            mdot_ex=0.05,
+            A_in=0.005,
+            A_ex=0.004,
+            A_in_max=0.01,
+            A_ex_max=0.008,
+            dt=0.01,
+            scavenging_state=scavenging_state,
+            time=0.2,
         )
 
         assert scavenging_state.phase_exhaust_start == 0.2
@@ -184,9 +233,16 @@ class TestEnhancedScavengingTracking:
 
         # Close intake
         enhanced_scavenging_tracking(
-            state=cv_state, mdot_in=0.0, mdot_ex=0.05,
-            A_in=0.0, A_ex=0.004, A_in_max=0.01, A_ex_max=0.008,
-            dt=0.01, scavenging_state=scavenging_state, time=0.3,
+            state=cv_state,
+            mdot_in=0.0,
+            mdot_ex=0.05,
+            A_in=0.0,
+            A_ex=0.004,
+            A_in_max=0.01,
+            A_ex_max=0.008,
+            dt=0.01,
+            scavenging_state=scavenging_state,
+            time=0.3,
         )
 
         assert scavenging_state.phase_intake_end == 0.3
@@ -234,13 +290,24 @@ class TestScavengingMetrics:
         """Test basic scavenging metrics calculation."""
         composition = GasComposition(fresh_air=0.8, exhaust_gas=0.2)
         cv_state = ControlVolumeState(
-            rho=1.0, T=1000.0, p=1e5, u=1000.0, h=1500.0,
-            composition=composition, m=0.1, U=100.0, H=150.0,
-            V=0.1, dV_dt=0.0,
+            rho=1.0,
+            T=1000.0,
+            p=1e5,
+            u=1000.0,
+            h=1500.0,
+            composition=composition,
+            m=0.1,
+            U=100.0,
+            H=150.0,
+            V=0.1,
+            dV_dt=0.0,
         )
 
         metrics = calculate_scavenging_metrics(
-            state=cv_state, mdot_in=0.1, mdot_ex=0.05, dt=0.01,
+            state=cv_state,
+            mdot_in=0.1,
+            mdot_ex=0.05,
+            dt=0.01,
         )
 
         assert abs(metrics["fresh_charge_trapped"] - 0.1 * 0.8) < 1e-9
@@ -252,13 +319,24 @@ class TestScavengingMetrics:
         """Test scavenging metrics with zero mass."""
         composition = GasComposition(fresh_air=1.0, exhaust_gas=0.0)
         cv_state = ControlVolumeState(
-            rho=1.0, T=1000.0, p=1e5, u=1000.0, h=1500.0,
-            composition=composition, m=0.0, U=0.0, H=0.0,
-            V=0.1, dV_dt=0.0,
+            rho=1.0,
+            T=1000.0,
+            p=1e5,
+            u=1000.0,
+            h=1500.0,
+            composition=composition,
+            m=0.0,
+            U=0.0,
+            H=0.0,
+            V=0.1,
+            dV_dt=0.0,
         )
 
         metrics = calculate_scavenging_metrics(
-            state=cv_state, mdot_in=0.0, mdot_ex=0.0, dt=0.01,
+            state=cv_state,
+            mdot_in=0.0,
+            mdot_ex=0.0,
+            dt=0.01,
         )
 
         assert metrics["scavenging_efficiency"] == 0.0
@@ -269,10 +347,17 @@ class TestScavengingMetrics:
 class TestGasComposition:
     def test_gas_composition_normalization(self):
         """Test gas composition normalization."""
-        composition = GasComposition(fresh_air=0.4, exhaust_gas=0.3, fuel=0.2, burned_gas=0.1)
+        composition = GasComposition(
+            fresh_air=0.4, exhaust_gas=0.3, fuel=0.2, burned_gas=0.1,
+        )
         composition.normalize()
 
-        total = composition.fresh_air + composition.exhaust_gas + composition.fuel + composition.burned_gas
+        total = (
+            composition.fresh_air
+            + composition.exhaust_gas
+            + composition.fuel
+            + composition.burned_gas
+        )
         assert abs(total - 1.0) < 1e-9
 
     def test_gas_composition_mixture_properties(self):
@@ -287,4 +372,3 @@ class TestGasComposition:
         assert props["R"] > 0
         assert props["cp"] > 0
         assert props["gamma"] > 1.0
-

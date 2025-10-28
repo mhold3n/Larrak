@@ -25,20 +25,20 @@ Usage Examples:
 
 Basic optimization:
     from campro.freepiston.opt import MotionLawOptimizer, ConfigFactory
-    
+
     config = ConfigFactory.create_default_config()
     optimizer = MotionLawOptimizer(config)
     result = optimizer.optimize()
 
 Quick optimization:
     from campro.freepiston.opt import quick_optimize, get_preset_config
-    
+
     config = get_preset_config("high_performance")
     result = quick_optimize(config, backend="robust")
 
 Custom configuration:
     from campro.freepiston.opt import create_engine_config, create_optimization_scenario
-    
+
     config = create_engine_config("opposed_piston")
     config = create_optimization_scenario("efficiency", **config.__dict__)
     result = quick_optimize(config)
@@ -88,19 +88,16 @@ __all__ = [
     "AdaptiveBackend",
     "ProblemBuilder",
     "ResultProcessor",
-
     # Convenience functions
     "create_standard_optimizer",
     "create_robust_optimizer",
     "create_adaptive_optimizer",
     "quick_optimize",
-
     # Configuration factory
     "ConfigFactory",
     "get_preset_config",
     "create_engine_config",
     "create_optimization_scenario",
-
     # Legacy imports for backward compatibility
     "solve_cycle",
     "solve_cycle_robust",

@@ -32,7 +32,11 @@ class Order0Metrics:
 
 def evaluate_order0_metrics(config: PlanetSynthesisConfig) -> Order0Metrics:
     # Build flank and kinematics identically to synthesis
-    module = config.base_center_radius * 2.0 / max(config.ring_teeth - config.planet_teeth, 1)
+    module = (
+        config.base_center_radius
+        * 2.0
+        / max(config.ring_teeth - config.planet_teeth, 1)
+    )
     params = InternalGearParams(
         teeth=config.ring_teeth,
         module=module,
@@ -90,7 +94,9 @@ def evaluate_order0_metrics(config: PlanetSynthesisConfig) -> Order0Metrics:
     phi_max = flank.phi[-1]
     span = max(1e-12, phi_max - phi_min)
     edge_eps = 0.05 * span
-    edge_hits = sum(1 for p in phi_hits if (p - phi_min) < edge_eps or (phi_max - p) < edge_eps)
+    edge_hits = sum(
+        1 for p in phi_hits if (p - phi_min) < edge_eps or (phi_max - p) < edge_eps
+    )
     edge_frac = edge_hits / max(1, len(phi_hits))
 
     feasible = (closure <= PROFILE_CLOSURE_TOL) and (edge_frac < 0.2)
@@ -113,7 +119,11 @@ def evaluate_order0_metrics_given_phi(
     config: PlanetSynthesisConfig,
     phi_values: Sequence[float],
 ) -> Order0Metrics:
-    module = config.base_center_radius * 2.0 / max(config.ring_teeth - config.planet_teeth, 1)
+    module = (
+        config.base_center_radius
+        * 2.0
+        / max(config.ring_teeth - config.planet_teeth, 1)
+    )
     params = InternalGearParams(
         teeth=config.ring_teeth,
         module=module,
@@ -160,7 +170,9 @@ def evaluate_order0_metrics_given_phi(
     phi_max = flank.phi[-1]
     span = max(1e-12, phi_max - phi_min)
     edge_eps = 0.05 * span
-    edge_hits = sum(1 for p in phi_hits if (p - phi_min) < edge_eps or (phi_max - p) < edge_eps)
+    edge_hits = sum(
+        1 for p in phi_hits if (p - phi_min) < edge_eps or (phi_max - p) < edge_eps
+    )
     edge_frac = edge_hits / max(1, len(phi_hits))
 
     feasible = (closure <= PROFILE_CLOSURE_TOL) and (edge_frac < 0.2)
@@ -176,5 +188,3 @@ def evaluate_order0_metrics_given_phi(
         samples=len(theta_vals),
         feasible=feasible,
     )
-
-

@@ -43,7 +43,7 @@ class OPEngineOptimizationPipeline:
 
     def __init__(self, config_path: Path, output_dir: Path, verbose: bool = False):
         """Initialize the optimization pipeline.
-        
+
         Args:
             config_path: Path to configuration file
             output_dir: Output directory for results
@@ -134,10 +134,10 @@ class OPEngineOptimizationPipeline:
 
     def _validate_solution(self, solution: Solution) -> Dict[str, Any]:
         """Validate optimization solution.
-        
+
         Args:
             solution: Optimization solution
-            
+
         Returns:
             Validation metrics
         """
@@ -173,10 +173,14 @@ class OPEngineOptimizationPipeline:
                     min_pressure = min(pressures)
 
                     if max_pressure > 1e7:  # 100 bar
-                        validation_metrics["warnings"].append(f"High pressure detected: {max_pressure:.0f} Pa")
+                        validation_metrics["warnings"].append(
+                            f"High pressure detected: {max_pressure:.0f} Pa",
+                        )
 
                     if min_pressure < 1e3:  # 0.01 bar
-                        validation_metrics["warnings"].append(f"Low pressure detected: {min_pressure:.0f} Pa")
+                        validation_metrics["warnings"].append(
+                            f"Low pressure detected: {min_pressure:.0f} Pa",
+                        )
 
                 # Check temperature bounds
                 if "temperature" in states:
@@ -185,10 +189,14 @@ class OPEngineOptimizationPipeline:
                     min_temp = min(temperatures)
 
                     if max_temp > 2000.0:  # K
-                        validation_metrics["warnings"].append(f"High temperature detected: {max_temp:.0f} K")
+                        validation_metrics["warnings"].append(
+                            f"High temperature detected: {max_temp:.0f} K",
+                        )
 
                     if min_temp < 200.0:  # K
-                        validation_metrics["warnings"].append(f"Low temperature detected: {min_temp:.0f} K")
+                        validation_metrics["warnings"].append(
+                            f"Low temperature detected: {min_temp:.0f} K",
+                        )
 
                 # Check piston clearance
                 if "x_L" in states and "x_R" in states:
@@ -198,14 +206,18 @@ class OPEngineOptimizationPipeline:
                     min_gap = min(gaps)
 
                     if min_gap < 0.0008:  # 0.8 mm
-                        validation_metrics["errors"].append(f"Piston clearance violation: {min_gap:.6f} m")
+                        validation_metrics["errors"].append(
+                            f"Piston clearance violation: {min_gap:.6f} m",
+                        )
                     else:
                         validation_metrics["physical_constraints"] = True
 
                 validation_metrics["performance_metrics"] = {
                     "max_pressure": max_pressure if "pressure" in states else 0.0,
                     "max_temperature": max_temp if "temperature" in states else 0.0,
-                    "min_piston_gap": min_gap if "x_L" in states and "x_R" in states else 0.0,
+                    "min_piston_gap": min_gap
+                    if "x_L" in states and "x_R" in states
+                    else 0.0,
                 }
 
             # Check scavenging metrics
@@ -219,9 +231,9 @@ class OPEngineOptimizationPipeline:
 
             # Overall success
             validation_metrics["success"] = (
-                validation_metrics["convergence"] and
-                validation_metrics["physical_constraints"] and
-                len(validation_metrics["errors"]) == 0
+                validation_metrics["convergence"]
+                and validation_metrics["physical_constraints"]
+                and len(validation_metrics["errors"]) == 0
             )
 
             if validation_metrics["success"]:
@@ -231,7 +243,9 @@ class OPEngineOptimizationPipeline:
                 if validation_metrics["errors"]:
                     log.error(f"Validation errors: {validation_metrics['errors']}")
                 if validation_metrics["warnings"]:
-                    log.warning(f"Validation warnings: {validation_metrics['warnings']}")
+                    log.warning(
+                        f"Validation warnings: {validation_metrics['warnings']}",
+                    )
 
         except Exception as e:
             log.error(f"Solution validation failed: {e}")
@@ -241,10 +255,10 @@ class OPEngineOptimizationPipeline:
 
     def _generate_report(self, validation_metrics: Dict[str, Any]) -> str:
         """Generate optimization report.
-        
+
         Args:
             validation_metrics: Validation metrics
-            
+
         Returns:
             Report text
         """
@@ -261,15 +275,21 @@ class OPEngineOptimizationPipeline:
         report.append(f"Output directory: {self.output_dir}")
         report.append(f"Optimization method: {self.config['optimization']['method']}")
         report.append(f"Tolerance: {self.config['optimization']['tolerance']}")
-        report.append(f"Max iterations: {self.config['optimization']['max_iterations']}")
+        report.append(
+            f"Max iterations: {self.config['optimization']['max_iterations']}",
+        )
         report.append("")
 
         # Solution validation
         report.append("SOLUTION VALIDATION:")
         report.append("-" * 40)
         report.append(f"Success: {'✓' if validation_metrics['success'] else '✗'}")
-        report.append(f"Convergence: {'✓' if validation_metrics['convergence'] else '✗'}")
-        report.append(f"Physical constraints: {'✓' if validation_metrics['physical_constraints'] else '✗'}")
+        report.append(
+            f"Convergence: {'✓' if validation_metrics['convergence'] else '✗'}",
+        )
+        report.append(
+            f"Physical constraints: {'✓' if validation_metrics['physical_constraints'] else '✗'}",
+        )
         report.append("")
 
         # Performance metrics
@@ -278,8 +298,12 @@ class OPEngineOptimizationPipeline:
             report.append("-" * 40)
             perf = validation_metrics["performance_metrics"]
             report.append(f"Maximum pressure: {perf.get('max_pressure', 0.0):.0f} Pa")
-            report.append(f"Maximum temperature: {perf.get('max_temperature', 0.0):.0f} K")
-            report.append(f"Minimum piston gap: {perf.get('min_piston_gap', 0.0):.6f} m")
+            report.append(
+                f"Maximum temperature: {perf.get('max_temperature', 0.0):.0f} K",
+            )
+            report.append(
+                f"Minimum piston gap: {perf.get('min_piston_gap', 0.0):.6f} m",
+            )
             report.append("")
 
         # Scavenging metrics
@@ -287,10 +311,18 @@ class OPEngineOptimizationPipeline:
             report.append("SCAVENGING METRICS:")
             report.append("-" * 40)
             scav = validation_metrics["scavenging_metrics"]
-            report.append(f"Scavenging efficiency: {scav.get('scavenging_efficiency', 0.0):.3f}")
-            report.append(f"Trapping efficiency: {scav.get('trapping_efficiency', 0.0):.3f}")
-            report.append(f"Blowdown efficiency: {scav.get('blowdown_efficiency', 0.0):.3f}")
-            report.append(f"Short-circuit loss: {scav.get('short_circuit_loss', 0.0):.3f}")
+            report.append(
+                f"Scavenging efficiency: {scav.get('scavenging_efficiency', 0.0):.3f}",
+            )
+            report.append(
+                f"Trapping efficiency: {scav.get('trapping_efficiency', 0.0):.3f}",
+            )
+            report.append(
+                f"Blowdown efficiency: {scav.get('blowdown_efficiency', 0.0):.3f}",
+            )
+            report.append(
+                f"Short-circuit loss: {scav.get('short_circuit_loss', 0.0):.3f}",
+            )
             report.append("")
 
         # Warnings and errors
@@ -324,7 +356,7 @@ class OPEngineOptimizationPipeline:
 
     def _save_results(self, validation_metrics: Dict[str, Any]) -> None:
         """Save optimization results.
-        
+
         Args:
             validation_metrics: Validation metrics
         """
@@ -367,7 +399,7 @@ class OPEngineOptimizationPipeline:
 
     def run_optimization(self) -> bool:
         """Run the complete optimization pipeline.
-        
+
         Returns:
             True if optimization was successful, False otherwise
         """
@@ -387,7 +419,9 @@ class OPEngineOptimizationPipeline:
 
             setup_time = time.time() - start_time
             self.optimization_metrics["setup_time"] = setup_time
-            log.info(f"Optimization problem setup completed in {setup_time:.2f} seconds")
+            log.info(
+                f"Optimization problem setup completed in {setup_time:.2f} seconds",
+            )
 
             # Step 2: Run optimization
             log.info("Running optimization...")
@@ -442,21 +476,24 @@ Examples:
     )
 
     parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         type=Path,
         default=Path("cfg/defaults.yaml"),
         help="Configuration file path (default: cfg/defaults.yaml)",
     )
 
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         default=Path("runs/op_optimization"),
         help="Output directory for results (default: runs/op_optimization)",
     )
 
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -490,4 +527,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

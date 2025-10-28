@@ -31,11 +31,11 @@ log = get_logger(__name__)
 def colorize(text: str, color: str) -> str:
     """
     Add color to text for terminal output.
-    
+
     Args:
         text: Text to colorize
         color: Color name (red, green, yellow, blue)
-        
+
     Returns:
         Colorized text (or original if colors not supported)
     """
@@ -67,7 +67,7 @@ def print_status_icon(status: ValidationStatus) -> str:
 def print_validation_result(result: ValidationResult, indent: str = "") -> None:
     """
     Print a validation result in a formatted way.
-    
+
     Args:
         result: Validation result to print
         indent: Indentation string
@@ -92,10 +92,12 @@ def print_validation_result(result: ValidationResult, indent: str = "") -> None:
         print(f"{indent}  Suggestion: {colorize(result.suggestion, 'blue')}")
 
 
-def print_environment_report(results: Dict[str, Any], json_output: bool = False) -> None:
+def print_environment_report(
+    results: Dict[str, Any], json_output: bool = False,
+) -> None:
     """
     Print comprehensive environment validation report.
-    
+
     Args:
         results: Validation results dictionary
         json_output: Whether to output in JSON format
@@ -107,7 +109,9 @@ def print_environment_report(results: Dict[str, Any], json_output: bool = False)
             if key == "summary":
                 json_results[key] = {
                     "overall_status": value["overall_status"].value,
-                    "status_counts": {k.value: v for k, v in value["status_counts"].items()},
+                    "status_counts": {
+                        k.value: v for k, v in value["status_counts"].items()
+                    },
                     "total_checks": value["total_checks"],
                 }
             elif isinstance(value, list):
@@ -149,9 +153,11 @@ def print_environment_report(results: Dict[str, Any], json_output: bool = False)
 
     # Status summary
     counts = results["summary"]["status_counts"]
-    print(f"Checks: {counts[ValidationStatus.PASS]} passed, "
-          f"{counts[ValidationStatus.WARNING]} warnings, "
-          f"{counts[ValidationStatus.ERROR]} errors")
+    print(
+        f"Checks: {counts[ValidationStatus.PASS]} passed, "
+        f"{counts[ValidationStatus.WARNING]} warnings, "
+        f"{counts[ValidationStatus.ERROR]} errors",
+    )
 
     # Detailed results
     print("\nDetailed Results:")
@@ -207,6 +213,7 @@ def main():
     # Set up logging level
     if args.verbose:
         import logging
+
         logging.getLogger().setLevel(logging.DEBUG)
 
     try:
@@ -233,7 +240,9 @@ def main():
                 print(f"\n{colorize('Environment validation failed!', 'red')}")
                 print("Please fix the errors above and run this script again.")
             else:
-                print(f"\n{colorize('Environment validation passed with warnings.', 'yellow')}")
+                print(
+                    f"\n{colorize('Environment validation passed with warnings.', 'yellow')}",
+                )
                 print("Run without --strict to treat warnings as non-fatal.")
 
         sys.exit(exit_code)
@@ -247,4 +256,5 @@ def main():
 
 if __name__ == "__main__":
     import os
+
     main()

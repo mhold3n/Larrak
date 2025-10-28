@@ -1,6 +1,10 @@
 import numpy as np
 
-from campro.diagnostics.scaling import compute_scaling_vector, scale_value, unscale_value
+from campro.diagnostics.scaling import (
+    compute_scaling_vector,
+    scale_value,
+    unscale_value,
+)
 
 
 def test_compute_scaling_vector_basic():
@@ -15,4 +19,3 @@ def test_scale_unscale_roundtrip():
     z = scale_value(x, s)
     x2 = unscale_value(z, s)
     assert np.allclose(x, x2)
-

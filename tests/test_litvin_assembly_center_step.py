@@ -50,7 +50,5 @@ def test_center_stepping_and_no_slip():
     dphi_dt = dphi / np.maximum(dt, 1e-9)
     sign = -1.0 if contact_type == "internal" else 1.0
     residual = rb_cam * dphi_dt - sign * rb_ring * 1.0
-    rms = np.sqrt(np.mean(residual ** 2))
+    rms = np.sqrt(np.mean(residual**2))
     assert rms < 1e-6
-
-

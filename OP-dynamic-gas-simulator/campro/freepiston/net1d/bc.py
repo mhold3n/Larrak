@@ -8,9 +8,11 @@ from campro.logging import get_logger
 log = get_logger(__name__)
 
 
-def characteristic_variables(rho: float, u: float, p: float, gamma: float = 1.4) -> Tuple[float, float, float]:
+def characteristic_variables(
+    rho: float, u: float, p: float, gamma: float = 1.4,
+) -> Tuple[float, float, float]:
     """Compute characteristic variables for 1D Euler equations.
-    
+
     Parameters
     ----------
     rho : float
@@ -21,7 +23,7 @@ def characteristic_variables(rho: float, u: float, p: float, gamma: float = 1.4)
         Pressure [Pa]
     gamma : float
         Heat capacity ratio
-        
+
     Returns
     -------
     R1 : float
@@ -34,16 +36,18 @@ def characteristic_variables(rho: float, u: float, p: float, gamma: float = 1.4)
     c = math.sqrt(gamma * p / rho)  # Speed of sound
 
     # Characteristic variables
-    R1 = p / (rho ** gamma)  # Entropy
+    R1 = p / (rho**gamma)  # Entropy
     R2 = u + 2 * c / (gamma - 1.0)  # Right-going Riemann invariant
     R3 = u - 2 * c / (gamma - 1.0)  # Left-going Riemann invariant
 
     return R1, R2, R3
 
 
-def primitive_from_characteristics(R1: float, R2: float, R3: float, gamma: float = 1.4) -> Tuple[float, float, float]:
+def primitive_from_characteristics(
+    R1: float, R2: float, R3: float, gamma: float = 1.4,
+) -> Tuple[float, float, float]:
     """Convert characteristic variables back to primitive variables.
-    
+
     Parameters
     ----------
     R1 : float
@@ -54,7 +58,7 @@ def primitive_from_characteristics(R1: float, R2: float, R3: float, gamma: float
         Third characteristic variable (Riemann invariant)
     gamma : float
         Heat capacity ratio
-        
+
     Returns
     -------
     rho : float
@@ -69,20 +73,23 @@ def primitive_from_characteristics(R1: float, R2: float, R3: float, gamma: float
     c = 0.25 * (gamma - 1.0) * (R2 - R3)
 
     # Pressure and density from entropy and speed of sound
-    p = (c ** 2) * (R1 ** (1.0 / gamma)) / gamma
+    p = (c**2) * (R1 ** (1.0 / gamma)) / gamma
     rho = (p / R1) ** (1.0 / gamma)
 
     return rho, u, p
 
 
-def non_reflecting_inlet_bc(U_interior: Tuple[float, float, float],
-                           p_target: float, T_target: float,
-                           gamma: float = 1.4) -> Tuple[float, float, float]:
+def non_reflecting_inlet_bc(
+    U_interior: Tuple[float, float, float],
+    p_target: float,
+    T_target: float,
+    gamma: float = 1.4,
+) -> Tuple[float, float, float]:
     """Non-reflecting inlet boundary condition using characteristics.
-    
+
     Prescribes target pressure and temperature while allowing outgoing waves
     to pass through without reflection.
-    
+
     Parameters
     ----------
     U_interior : Tuple[float, float, float]
@@ -93,7 +100,7 @@ def non_reflecting_inlet_bc(U_interior: Tuple[float, float, float],
         Target temperature [K]
     gamma : float
         Heat capacity ratio
-        
+
     Returns
     -------
     U_boundary : Tuple[float, float, float]
@@ -111,12 +118,14 @@ def non_reflecting_inlet_bc(U_interior: Tuple[float, float, float],
     u_target = 0.0
 
     # Compute target characteristics
-    R1_target, R2_target, R3_target = characteristic_variables(rho_target, u_target, p_target, gamma)
+    R1_target, R2_target, R3_target = characteristic_variables(
+        rho_target, u_target, p_target, gamma,
+    )
 
     # Non-reflecting condition: use incoming characteristic from target,
     # outgoing characteristics from interior
     R1_bc = R1_target  # Entropy from target
-    R2_bc = R2_int     # Right-going wave from interior
+    R2_bc = R2_int  # Right-going wave from interior
     R3_bc = R3_target  # Left-going wave from target
 
     # Convert back to primitive variables
@@ -126,14 +135,16 @@ def non_reflecting_inlet_bc(U_interior: Tuple[float, float, float],
     return _primitive_to_conservative(rho_bc, u_bc, p_bc, gamma)
 
 
-def non_reflecting_outlet_bc(U_interior: Tuple[float, float, float],
-                            p_target: Optional[float] = None,
-                            gamma: float = 1.4) -> Tuple[float, float, float]:
+def non_reflecting_outlet_bc(
+    U_interior: Tuple[float, float, float],
+    p_target: Optional[float] = None,
+    gamma: float = 1.4,
+) -> Tuple[float, float, float]:
     """Non-reflecting outlet boundary condition using characteristics.
-    
+
     Allows outgoing waves to pass through without reflection.
     Optionally prescribes target pressure.
-    
+
     Parameters
     ----------
     U_interior : Tuple[float, float, float]
@@ -142,7 +153,7 @@ def non_reflecting_outlet_bc(U_interior: Tuple[float, float, float],
         Target pressure [Pa]. If None, extrapolates from interior.
     gamma : float
         Heat capacity ratio
-        
+
     Returns
     -------
     U_boundary : Tuple[float, float, float]
@@ -171,7 +182,7 @@ def non_reflecting_outlet_bc(U_interior: Tuple[float, float, float],
         # Adjust entropy to match target pressure
         c_int = math.sqrt(gamma * p_int / rho_int)
         c_target = math.sqrt(gamma * p_target / rho_int)
-        R1_bc = p_target / (rho_int ** gamma)
+        R1_bc = p_target / (rho_int**gamma)
 
     # Convert back to primitive variables
     rho_bc, u_bc, p_bc = primitive_from_characteristics(R1_bc, R2_bc, R3_bc, gamma)
@@ -180,14 +191,17 @@ def non_reflecting_outlet_bc(U_interior: Tuple[float, float, float],
     return _primitive_to_conservative(rho_bc, u_bc, p_bc, gamma)
 
 
-def pressure_velocity_switching_bc(U_interior: Tuple[float, float, float],
-                                  bc_type: str, bc_value: float,
-                                  gamma: float = 1.4) -> Tuple[float, float, float]:
+def pressure_velocity_switching_bc(
+    U_interior: Tuple[float, float, float],
+    bc_type: str,
+    bc_value: float,
+    gamma: float = 1.4,
+) -> Tuple[float, float, float]:
     """Pressure/velocity switching boundary condition.
-    
+
     Automatically switches between pressure and velocity boundary conditions
     based on flow direction.
-    
+
     Parameters
     ----------
     U_interior : Tuple[float, float, float]
@@ -198,7 +212,7 @@ def pressure_velocity_switching_bc(U_interior: Tuple[float, float, float],
         Boundary condition value [Pa] or [m/s]
     gamma : float
         Heat capacity ratio
-        
+
     Returns
     -------
     U_boundary : Tuple[float, float, float]
@@ -224,7 +238,9 @@ def pressure_velocity_switching_bc(U_interior: Tuple[float, float, float],
     return _primitive_to_conservative(rho_bc, u_bc, p_bc, gamma)
 
 
-def _conservative_to_primitive(U: Tuple[float, float, float], gamma: float = 1.4) -> Tuple[float, float, float]:
+def _conservative_to_primitive(
+    U: Tuple[float, float, float], gamma: float = 1.4,
+) -> Tuple[float, float, float]:
     """Convert conservative to primitive variables."""
     rho, rhou, rhoE = U
 
@@ -238,7 +254,9 @@ def _conservative_to_primitive(U: Tuple[float, float, float], gamma: float = 1.4
     return rho, u, p
 
 
-def _primitive_to_conservative(rho: float, u: float, p: float, gamma: float = 1.4) -> Tuple[float, float, float]:
+def _primitive_to_conservative(
+    rho: float, u: float, p: float, gamma: float = 1.4,
+) -> Tuple[float, float, float]:
     """Convert primitive to conservative variables."""
     e = p / ((gamma - 1.0) * rho)
     E = e + 0.5 * u**2
@@ -262,7 +280,7 @@ def outlet_bc(p_out: float) -> Tuple[float, float, float]:
 
 def get_boundary_condition(method: str = "non_reflecting"):
     """Get boundary condition function by name.
-    
+
     Parameters
     ----------
     method : str
@@ -270,7 +288,7 @@ def get_boundary_condition(method: str = "non_reflecting"):
         - 'non_reflecting': Non-reflecting characteristic-based
         - 'pressure_velocity': Pressure/velocity switching
         - 'simple': Simple inlet/outlet (legacy)
-        
+
     Returns
     -------
     bc_func : callable

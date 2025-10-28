@@ -24,7 +24,3 @@ __all__ = [
     "optimize_geometry",
     "synthesize_planet_from_motion",
 ]
-
-
-
-

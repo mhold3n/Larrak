@@ -13,7 +13,9 @@ def _simple_profile(n: int = 360):
 
 def test_flank_generation_and_pressure_angle_limits():
     theta, r = _simple_profile(720)
-    syn = LitvinSynthesis().synthesize_from_cam_profile(theta=theta, r_profile=r, target_ratio=2.0)
+    syn = LitvinSynthesis().synthesize_from_cam_profile(
+        theta=theta, r_profile=r, target_ratio=2.0,
+    )
 
     geom = LitvinGearGeometry.from_synthesis(
         theta=theta,
@@ -38,5 +40,3 @@ def test_flank_generation_and_pressure_angle_limits():
     # Interference/undercut detailed report present per flank
     assert isinstance(geom.undercut_flags, np.ndarray)
     assert geom.undercut_flags.shape[0] == geom.z_ring
-
-

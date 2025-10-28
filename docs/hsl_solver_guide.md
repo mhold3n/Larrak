@@ -202,3 +202,4 @@ HSL solvers require a commercial license from STFC. The CoinHSL package includes
 - [Ipopt Documentation](https://coin-or.github.io/Ipopt/)
 - [CasADi Documentation](https://web.casadi.org/)
 
+

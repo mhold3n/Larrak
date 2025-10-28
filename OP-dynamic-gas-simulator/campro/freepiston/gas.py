@@ -9,14 +9,34 @@ log = get_logger(__name__)
 
 
 class MassFlowFunction(Protocol):
-    def __call__(self, *, ca: Any, p_up: Any, T_up: Any, rho_up: Any,
-                 p_down: Any, T_down: Any, A_eff: Any, gamma: float, R: float) -> Any:  # pragma: no cover - protocol
+    def __call__(
+        self,
+        *,
+        ca: Any,
+        p_up: Any,
+        T_up: Any,
+        rho_up: Any,
+        p_down: Any,
+        T_down: Any,
+        A_eff: Any,
+        gamma: float,
+        R: float,
+    ) -> Any:  # pragma: no cover - protocol
         ...
 
 
 class HeatTransferFunction(Protocol):
-    def __call__(self, *, ca: Any, p_gas: Any, T_gas: Any, T_wall: Any,
-                 B: float, x_L: Any, x_R: Any) -> Any:  # pragma: no cover - protocol
+    def __call__(
+        self,
+        *,
+        ca: Any,
+        p_gas: Any,
+        T_gas: Any,
+        T_wall: Any,
+        B: float,
+        x_L: Any,
+        x_R: Any,
+    ) -> Any:  # pragma: no cover - protocol
         ...
 
 
@@ -29,8 +49,18 @@ class GasModel:
 
 
 def _mdot_orifice() -> MassFlowFunction:
-    def fn(*, ca: Any, p_up: Any, T_up: Any, rho_up: Any,
-           p_down: Any, T_down: Any, A_eff: Any, gamma: float, R: float) -> Any:
+    def fn(
+        *,
+        ca: Any,
+        p_up: Any,
+        T_up: Any,
+        rho_up: Any,
+        p_down: Any,
+        T_down: Any,
+        A_eff: Any,
+        gamma: float,
+        R: float,
+    ) -> Any:
         # Compressible orifice with choked flow handling (symbolic-friendly)
         eps = 1e-12
         pr = (p_down + eps) / (p_up + eps)
@@ -49,16 +79,19 @@ def _mdot_orifice() -> MassFlowFunction:
         # Select based on critical pressure ratio
         use_choked = ca.if_else(pr <= pr_crit, 1.0, 0.0)
         return use_choked * mdot_choked + (1.0 - use_choked) * mdot_sub
+
     return fn
 
 
 def _q_woschni_like() -> HeatTransferFunction:
-    def fn(*, ca: Any, p_gas: Any, T_gas: Any, T_wall: Any,
-           B: float, x_L: Any, x_R: Any) -> Any:
+    def fn(
+        *, ca: Any, p_gas: Any, T_gas: Any, T_wall: Any, B: float, x_L: Any, x_R: Any,
+    ) -> Any:
         # Simple Woschni-like h and area model
         h = 130.0 * (p_gas / 1.0e5) ** 0.8 * (T_gas / 1000.0) ** 0.55
         A_wall = ca.pi * B * ca.fmax(0.0, x_R - x_L) + 2.0 * ca.pi * (B / 2.0) ** 2
         return h * A_wall * (T_gas - T_wall)
+
     return fn
 
 
@@ -80,6 +113,3 @@ def build_gas_model(P: Dict[str, Any]) -> GasModel:
     qwall = _q_woschni_like()
 
     return GasModel(mode=mode, mdot_in=mdot, mdot_out=mdot, qdot_wall=qwall)
-
-
-

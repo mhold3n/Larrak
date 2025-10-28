@@ -7,4 +7,3 @@ def export_gear_profiles_dxf(planet: dict, ring: dict, path: str) -> None:
     This function is a stub until Litvin synthesis is integrated.
     """
     raise NotImplementedError("DXF export requires completed Litvin synthesis")
-

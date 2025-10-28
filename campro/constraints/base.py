@@ -57,7 +57,7 @@ class ConstraintViolation:
 class BaseConstraints(ABC):
     """
     Base class for all constraint systems.
-    
+
     Provides a common interface for constraint definition, validation,
     and violation checking across different domains (motion, cam, physics).
     """
@@ -70,19 +70,21 @@ class BaseConstraints(ABC):
     def validate(self) -> bool:
         """
         Validate all constraints.
-        
+
         Returns:
             bool: True if all constraints are valid, False otherwise
         """
 
     @abstractmethod
-    def check_violations(self, solution: Dict[str, np.ndarray]) -> List[ConstraintViolation]:
+    def check_violations(
+        self, solution: Dict[str, np.ndarray],
+    ) -> List[ConstraintViolation]:
         """
         Check for constraint violations in a solution.
-        
+
         Args:
             solution: Dictionary containing solution arrays (time, position, velocity, etc.)
-            
+
         Returns:
             List of constraint violations found
         """
@@ -123,17 +125,22 @@ class BaseConstraints(ABC):
         self._violations.append(violation)
         log.warning(f"Constraint violation: {violation.message}")
 
-    def _check_bounds(self, values: np.ndarray, bounds: Tuple[float, float],
-                     constraint_type: ConstraintType, name: str) -> List[ConstraintViolation]:
+    def _check_bounds(
+        self,
+        values: np.ndarray,
+        bounds: Tuple[float, float],
+        constraint_type: ConstraintType,
+        name: str,
+    ) -> List[ConstraintViolation]:
         """
         Check if values are within specified bounds.
-        
+
         Args:
             values: Array of values to check
             bounds: (min, max) bounds
             constraint_type: Type of constraint being checked
             name: Name of the constraint
-            
+
         Returns:
             List of violations found
         """
@@ -174,19 +181,24 @@ class BaseConstraints(ABC):
 
         return violations
 
-    def _check_boundary_condition(self, actual: float, expected: float,
-                                 constraint_type: ConstraintType, name: str,
-                                 tolerance: float = 1e-6) -> Optional[ConstraintViolation]:
+    def _check_boundary_condition(
+        self,
+        actual: float,
+        expected: float,
+        constraint_type: ConstraintType,
+        name: str,
+        tolerance: float = 1e-6,
+    ) -> Optional[ConstraintViolation]:
         """
         Check if a boundary condition is satisfied.
-        
+
         Args:
             actual: Actual value
             expected: Expected value
             constraint_type: Type of constraint
             name: Name of the constraint
             tolerance: Tolerance for equality check
-            
+
         Returns:
             ConstraintViolation if violated, None otherwise
         """
@@ -199,5 +211,3 @@ class BaseConstraints(ABC):
                 message=f"{name} boundary condition violation: {actual:.3f} != {expected:.3f}",
             )
         return None
-
-

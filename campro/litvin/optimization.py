@@ -1,27 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Tuple, Optional, Any
+from typing import Any, Optional
 
 import numpy as np
 
-from campro.logging import get_logger
 from campro.diagnostics.scaling import build_scaled_nlp, scale_bounds, scale_value
-from campro.constants import HSLLIB_PATH
-from campro.freepiston.opt.ipopt_solver import IPOPTSolver, IPOPTOptions
+from campro.freepiston.opt.ipopt_solver import IPOPTOptions, IPOPTSolver
+from campro.logging import get_logger
 
+from .config import GeometrySearchConfig, OptimizationOrder, PlanetSynthesisConfig
 from .involute_internal import InternalGearParams, sample_internal_flank
 from .kinematics import PlanetKinematics
 from .metrics import evaluate_order0_metrics, evaluate_order0_metrics_given_phi
-from .motion import RadialSlotMotion
 from .opt.collocation import make_uniform_grid
 from .planetary_synthesis import _newton_solve_phi
-from .config import GeometrySearchConfig, OptimizationOrder, PlanetSynthesisConfig
 
 log = get_logger(__name__)
-
-
 
 
 @dataclass(frozen=True)
@@ -42,7 +37,9 @@ def _order0_objective(cfg: PlanetSynthesisConfig) -> float:
     return m.slip_integral - 0.1 * m.contact_length + penalty
 
 
-def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrder.ORDER0_EVALUATE) -> OptimResult:
+def optimize_geometry(
+    config: GeometrySearchConfig, order: int = OptimizationOrder.ORDER0_EVALUATE,
+) -> OptimResult:
     if order == OptimizationOrder.ORDER0_EVALUATE:
         # Evaluate first candidate deterministically
         if not config.ring_teeth_candidates or not config.planet_teeth_candidates:
@@ -122,7 +119,11 @@ def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrd
                         motion=config.motion,
                     )
 
-        return OptimResult(best_config=best_cfg, objective_value=best_obj, feasible=best_cfg is not None)
+        return OptimResult(
+            best_config=best_cfg,
+            objective_value=best_obj,
+            feasible=best_cfg is not None,
+        )
 
     if order == OptimizationOrder.ORDER2_MICRO:
         # Ipopt-based NLP optimization of the contact parameter sequence phi(θ)
@@ -135,7 +136,7 @@ def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrd
 def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     """
     Ipopt-based NLP optimization of the contact parameter sequence phi(θ).
-    
+
     This replaces the simple smoothing approach with a proper constrained optimization
     that handles smoothness, contact constraints, and periodicity.
     """
@@ -144,13 +145,17 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     except ImportError:
         log.error("CasADi not available for ORDER2_MICRO Ipopt optimization")
         return OptimResult(best_config=None, objective_value=None, feasible=False)
-    
+
     # Set up problem dimensions
     n = max(64, config.samples_per_rev)
     grid = make_uniform_grid(n)
-    
+
     # Construct flank/kinematics once
-    module = config.base_center_radius * 2.0 / max(config.ring_teeth_candidates[0] - config.planet_teeth_candidates[0], 1)
+    module = (
+        config.base_center_radius
+        * 2.0
+        / max(config.ring_teeth_candidates[0] - config.planet_teeth_candidates[0], 1)
+    )
     zr = config.ring_teeth_candidates[0]
     zp = config.planet_teeth_candidates[0]
     pa = sum(config.pressure_angle_deg_bounds) / 2.0
@@ -164,7 +169,9 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         samples_per_rev=config.samples_per_rev,
         motion=config.motion,
     )
-    params = InternalGearParams(teeth=zr, module=module, pressure_angle_deg=pa, addendum_factor=af)
+    params = InternalGearParams(
+        teeth=zr, module=module, pressure_angle_deg=pa, addendum_factor=af,
+    )
     flank = sample_internal_flank(params, n=256)
     kin = PlanetKinematics(R0=config.base_center_radius, motion=config.motion)
 
@@ -175,13 +182,13 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         phi = _newton_solve_phi(flank, kin, theta, seed) or seed
         phi_vals.append(phi)
         seed = phi
-    
+
     # Convert to numpy array for CasADi
     phi_init = np.array(phi_vals)
-    
+
     # Create CasADi variables
-    phi = ca.SX.sym('phi', n)
-    
+    phi = ca.SX.sym("phi", n)
+
     # Objective function: slip integral - 0.1 * contact_length + feasibility penalty
     # We'll approximate this using the existing metrics function
     def objective_function_with_physics(phi_vec):
@@ -189,39 +196,39 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         m = evaluate_order0_metrics_given_phi(cand, phi_vec.tolist())
         penalty = 0.0 if m.feasible else 1e3
         return m.slip_integral - 0.1 * m.contact_length + penalty
-    
+
     # Store reference for final validation
     objective_with_physics = objective_function_with_physics
-    
+
     # Create CasADi function for objective (placeholder - not used in hybrid approach)
     # obj_func = ca.Function('obj', [phi], [ca.SX.sym('obj_val')])
-    
+
     # For CasADi: use smoothness penalty as proxy, validate with physics
     # This is a hybrid approach - CasADi smoothness + Python physics validation
     smoothness_penalty = 0.0
     for i in range(n):
         im = (i - 1) % n
         ip = (i + 1) % n
-        smoothness_penalty += (phi[i] - 0.5 * (phi[im] + phi[ip]))**2
-    
+        smoothness_penalty += (phi[i] - 0.5 * (phi[im] + phi[ip])) ** 2
+
     # Periodicity constraint: phi[n-1] should be close to phi[0]
-    periodicity_constraint = phi[n-1] - phi[0]
-    
+    periodicity_constraint = phi[n - 1] - phi[0]
+
     # Bounds on phi values (based on flank geometry)
     phi_min = float(np.min(flank.phi))
     phi_max = float(np.max(flank.phi))
-    
+
     # Create NLP problem (unscaled)
     nlp = {
-        'x': phi,
-        'f': smoothness_penalty,
-        'g': periodicity_constraint,
+        "x": phi,
+        "f": smoothness_penalty,
+        "g": periodicity_constraint,
     }
 
     # Scaling for phi decision variable (keep z = s*phi ~ O(1))
     magnitude = max(abs(phi_min), abs(phi_max))
     s_phi = (1.0 / magnitude) if magnitude > 1e-6 else 1.0
-    nlp_scaled = build_scaled_nlp(nlp, s_phi, kind='SX')
+    nlp_scaled = build_scaled_nlp(nlp, s_phi, kind="SX")
 
     # Create Ipopt options
     solver_options = IPOPTOptions(
@@ -229,12 +236,12 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         tol=1e-6,
         linear_solver="ma27",
         enable_analysis=True,
-        print_level=3
+        print_level=3,
     )
-    
+
     # Set up Ipopt solver wrapper
     solver = IPOPTSolver(solver_options)
-    
+
     # Solve the NLP
     try:
         # Scale x0/lbx/ubx into z-domain: z = s*phi
@@ -249,58 +256,65 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
             lbg=np.array([0.0]),  # periodicity constraint: remains 0 after scaling
             ubg=np.array([0.0]),
         )
-        
+
         if result.success:
             # Extract optimized phi values
             phi_opt = result.x_opt
-            
+
             # Validate with full physics
             physics_obj_val = objective_with_physics(phi_opt)
             log.info(f"Physics objective validation: {physics_obj_val:.6f}")
-            
+
             # Check if physics-based objective is acceptable
             if physics_obj_val > 1e3:  # Infeasible
                 log.warning("Optimized solution failed physics feasibility check")
-            
+
             # Evaluate final metrics
             m = evaluate_order0_metrics_given_phi(cand, phi_opt.tolist())
-            obj = m.slip_integral - 0.1 * m.contact_length + (0.0 if m.feasible else 1e3)
-            
+            obj = (
+                m.slip_integral - 0.1 * m.contact_length + (0.0 if m.feasible else 1e3)
+            )
+
             # Perform analysis
             from campro.optimization.solver_analysis import analyze_ipopt_run
-            analysis = analyze_ipopt_run({
-                'success': result.success,
-                'iterations': result.iterations,
-                'primal_inf': result.primal_inf,
-                'dual_inf': result.dual_inf,
-                'return_status': result.status
-            }, None)  # No log file for now
-            
+
+            analysis = analyze_ipopt_run(
+                {
+                    "success": result.success,
+                    "iterations": result.iterations,
+                    "primal_inf": result.primal_inf,
+                    "dual_inf": result.dual_inf,
+                    "return_status": result.status,
+                },
+                None,
+            )  # No log file for now
+
             # Add physics validation to analysis
-            analysis.stats['physics_objective'] = physics_obj_val
-            analysis.stats['physics_feasible'] = physics_obj_val < 1e3
-            
+            analysis.stats["physics_objective"] = physics_obj_val
+            analysis.stats["physics_feasible"] = physics_obj_val < 1e3
+
             return OptimResult(
                 best_config=cand,
                 objective_value=obj,
                 feasible=m.feasible,
-                ipopt_analysis=analysis
+                ipopt_analysis=analysis,
             )
-        else:
-            log.warning(f"ORDER2_MICRO Ipopt optimization failed: {result.message}")
-            # Fall back to simple smoothing
-            return _order2_fallback_smoothing(config, phi_init, cand)
-            
+        log.warning(f"ORDER2_MICRO Ipopt optimization failed: {result.message}")
+        # Fall back to simple smoothing
+        return _order2_fallback_smoothing(config, phi_init, cand)
+
     except Exception as e:
         log.error(f"ORDER2_MICRO Ipopt optimization error: {e}")
         # Fall back to simple smoothing
         return _order2_fallback_smoothing(config, phi_init, cand)
 
 
-def _order2_fallback_smoothing(config: GeometrySearchConfig, phi_init: np.ndarray, cand: PlanetSynthesisConfig) -> OptimResult:
+def _order2_fallback_smoothing(
+    config: GeometrySearchConfig, phi_init: np.ndarray, cand: PlanetSynthesisConfig,
+) -> OptimResult:
     """Fallback to simple smoothing if Ipopt fails."""
     phi_vals = phi_init.tolist()
-    
+
     # Simple smoothing (quadratic penalty) with few iterations
     lam = 1e-2
     for _ in range(5):
@@ -309,7 +323,9 @@ def _order2_fallback_smoothing(config: GeometrySearchConfig, phi_init: np.ndarra
         for i in range(len(phi_vals)):
             im = (i - 1) % len(phi_vals)
             ip = (i + 1) % len(phi_vals)
-            new_phi[i] = (phi_vals[i] + lam * (phi_vals[im] + phi_vals[ip])) / (1.0 + 2.0 * lam)
+            new_phi[i] = (phi_vals[i] + lam * (phi_vals[im] + phi_vals[ip])) / (
+                1.0 + 2.0 * lam
+            )
         phi_vals = new_phi
 
     m = evaluate_order0_metrics_given_phi(cand, phi_vals)

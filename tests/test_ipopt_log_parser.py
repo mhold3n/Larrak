@@ -3,7 +3,9 @@ import textwrap
 from campro.optimization.ipopt_log_parser import parse_ipopt_log_text
 
 
-def _sample_log(exit_status: str = "Optimal Solution Found", ls_ratio: float = 0.42) -> str:
+def _sample_log(
+    exit_status: str = "Optimal Solution Found", ls_ratio: float = 0.42,
+) -> str:
     """Return minimal synthetic Ipopt log covering key metrics."""
     return textwrap.dedent(
         f"""
@@ -23,7 +25,7 @@ def _sample_log(exit_status: str = "Optimal Solution Found", ls_ratio: float = 0
         Restoration phase start
 
         Number of Iterative Refinements: 4
-        """
+        """,
     )
 
 

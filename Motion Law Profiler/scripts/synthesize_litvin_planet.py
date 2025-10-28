@@ -16,7 +16,9 @@ from CamPro_LitvinPlanetary import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Synthesize Litvin planet from motion law")
+    parser = argparse.ArgumentParser(
+        description="Synthesize Litvin planet from motion law",
+    )
     parser.add_argument("--ring-teeth", type=int, default=60)
     parser.add_argument("--planet-teeth", type=int, default=30)
     parser.add_argument("--pressure-angle", type=float, default=20.0)
@@ -56,7 +58,10 @@ def main() -> None:
     gcfg = GeometrySearchConfig(
         ring_teeth_candidates=ring_c,
         planet_teeth_candidates=planet_c,
-        pressure_angle_deg_bounds=(args.pressure_angle - 2.0, args.pressure_angle + 2.0),
+        pressure_angle_deg_bounds=(
+            args.pressure_angle - 2.0,
+            args.pressure_angle + 2.0,
+        ),
         addendum_factor_bounds=(args.addendum_factor - 0.1, args.addendum_factor + 0.1),
         base_center_radius=args.R0,
         samples_per_rev=args.samples,
@@ -66,7 +71,9 @@ def main() -> None:
     out = {
         "feasible": res.feasible,
         "objective": res.objective_value,
-        "best_config": None if res.best_config is None else {
+        "best_config": None
+        if res.best_config is None
+        else {
             "ring_teeth": res.best_config.ring_teeth,
             "planet_teeth": res.best_config.planet_teeth,
             "pressure_angle_deg": res.best_config.pressure_angle_deg,
@@ -80,5 +87,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

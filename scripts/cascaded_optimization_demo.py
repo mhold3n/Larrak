@@ -228,7 +228,9 @@ def compare_results(primary_result, secondary_results):
     primary_summary = primary_result.get_solution_summary()
     print("Primary optimization solution:")
     for key, stats in primary_summary.items():
-        print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+        print(
+            f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+        )
 
     # Compare with secondary results
     for result_type, result in secondary_results.items():
@@ -238,13 +240,30 @@ def compare_results(primary_result, secondary_results):
             for key, stats in secondary_summary.items():
                 if key in primary_summary:
                     primary_stats = primary_summary[key]
-                    print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+                    print(
+                        f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+                    )
 
                     # Compare with primary
-                    range_change = ((stats["max"] - stats["min"]) - (primary_stats["max"] - primary_stats["min"])) / (primary_stats["max"] - primary_stats["min"]) * 100
-                    mean_change = (stats["mean"] - primary_stats["mean"]) / abs(primary_stats["mean"]) * 100 if primary_stats["mean"] != 0 else 0
+                    range_change = (
+                        (
+                            (stats["max"] - stats["min"])
+                            - (primary_stats["max"] - primary_stats["min"])
+                        )
+                        / (primary_stats["max"] - primary_stats["min"])
+                        * 100
+                    )
+                    mean_change = (
+                        (stats["mean"] - primary_stats["mean"])
+                        / abs(primary_stats["mean"])
+                        * 100
+                        if primary_stats["mean"] != 0
+                        else 0
+                    )
 
-                    print(f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%")
+                    print(
+                        f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%",
+                    )
 
 
 def create_comparison_plots(primary_result, secondary_results):
@@ -320,7 +339,9 @@ def main():
 
     try:
         # Setup cascaded optimization system
-        registry, cam_constraints, primary_optimizer, secondary_optimizer = demo_cascaded_optimization()
+        registry, cam_constraints, primary_optimizer, secondary_optimizer = (
+            demo_cascaded_optimization()
+        )
 
         # Run primary optimization
         primary_result = run_primary_optimization(cam_constraints, primary_optimizer)
@@ -342,17 +363,18 @@ def main():
         print("\nThe cascaded optimization system provides:")
         print("  + Result sharing between optimizers")
         print("  + Secondary optimization using primary results")
-        print("  + Multiple optimization strategies (refinement, multi-objective, constraint tightening)")
+        print(
+            "  + Multiple optimization strategies (refinement, multi-objective, constraint tightening)",
+        )
         print("  + Centralized result storage and management")
         print("  + Performance tracking across optimization chains")
 
     except Exception as e:
         print(f"\nDemo failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 if __name__ == "__main__":
     main()
-
-

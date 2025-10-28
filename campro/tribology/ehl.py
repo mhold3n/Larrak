@@ -11,4 +11,3 @@ def hamrock_dowson_hmin(W: float, U: float, G: float, kappa: float) -> float:
 def lambda_map(contact_series: np.ndarray) -> np.ndarray:
     """Placeholder: Λ(θ) = h_min/σ over contact cycle."""
     raise NotImplementedError("EHL scheduled for future sprint")
-

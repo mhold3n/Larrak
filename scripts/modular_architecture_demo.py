@@ -30,10 +30,12 @@ def demo_modular_components():
     print("=" * 60)
 
     # Create test data
-    theta = np.linspace(0, 2*np.pi, 100)
+    theta = np.linspace(0, 2 * np.pi, 100)
     x_theta = 5 * np.sin(theta)  # Simple sinusoidal motion
 
-    print(f"Test data: {len(theta)} points, theta range: [{theta[0]:.2f}, {theta[-1]:.2f}] rad")
+    print(
+        f"Test data: {len(theta)} points, theta range: [{theta[0]:.2f}, {theta[-1]:.2f}] rad",
+    )
 
     # 1. Cam Curve Component
     print("\n1. Cam Curve Component")
@@ -48,8 +50,12 @@ def demo_modular_components():
 
     if result.is_successful:
         print("+ Cam curves computed successfully")
-        print(f"  - Pitch radius range: [{np.min(result.outputs['pitch_radius']):.2f}, {np.max(result.outputs['pitch_radius']):.2f}]")
-        print(f"  - Profile radius range: [{np.min(result.outputs['profile_radius']):.2f}, {np.max(result.outputs['profile_radius']):.2f}]")
+        print(
+            f"  - Pitch radius range: [{np.min(result.outputs['pitch_radius']):.2f}, {np.max(result.outputs['pitch_radius']):.2f}]",
+        )
+        print(
+            f"  - Profile radius range: [{np.min(result.outputs['profile_radius']):.2f}, {np.max(result.outputs['profile_radius']):.2f}]",
+        )
         print(f"  - Metadata: {result.metadata}")
     else:
         print(f"- Cam curve computation failed: {result.error_message}")
@@ -65,15 +71,21 @@ def demo_modular_components():
 
     # Use the profile radius from cam curve as input
     if result.is_successful:
-        curvature_result = curvature.compute({
-            "theta": theta,
-            "r_theta": result.outputs["profile_radius"],
-        })
+        curvature_result = curvature.compute(
+            {
+                "theta": theta,
+                "r_theta": result.outputs["profile_radius"],
+            },
+        )
 
         if curvature_result.is_successful:
             print("+ Curvature computed successfully")
-            print(f"  - Curvature range: [{np.min(curvature_result.outputs['kappa']):.3f}, {np.max(curvature_result.outputs['kappa']):.3f}]")
-            print(f"  - Osculating radius range: [{np.min(curvature_result.outputs['rho'][np.isfinite(curvature_result.outputs['rho'])]):.2f}, {np.max(curvature_result.outputs['rho'][np.isfinite(curvature_result.outputs['rho'])]):.2f}]")
+            print(
+                f"  - Curvature range: [{np.min(curvature_result.outputs['kappa']):.3f}, {np.max(curvature_result.outputs['kappa']):.3f}]",
+            )
+            print(
+                f"  - Osculating radius range: [{np.min(curvature_result.outputs['rho'][np.isfinite(curvature_result.outputs['rho'])]):.2f}, {np.max(curvature_result.outputs['rho'][np.isfinite(curvature_result.outputs['rho'])]):.2f}]",
+            )
         else:
             print(f"- Curvature computation failed: {curvature_result.error_message}")
 
@@ -87,17 +99,23 @@ def demo_modular_components():
     )
 
     if result.is_successful and curvature_result.is_successful:
-        meshing_result = meshing_law.compute({
-            "theta": theta,
-            "rho_c": curvature_result.outputs["rho"],
-            "psi_initial": 0.0,
-            "R_psi": 20.0,  # Constant ring radius
-        })
+        meshing_result = meshing_law.compute(
+            {
+                "theta": theta,
+                "rho_c": curvature_result.outputs["rho"],
+                "psi_initial": 0.0,
+                "R_psi": 20.0,  # Constant ring radius
+            },
+        )
 
         if meshing_result.is_successful:
             print("+ Meshing law solved successfully")
-            print(f"  - Ring angle range: [{np.min(meshing_result.outputs['psi']):.2f}, {np.max(meshing_result.outputs['psi']):.2f}] rad")
-            print(f"  - Ring angle range: [{np.min(meshing_result.outputs['psi'])*180/np.pi:.1f}, {np.max(meshing_result.outputs['psi'])*180/np.pi:.1f}] deg")
+            print(
+                f"  - Ring angle range: [{np.min(meshing_result.outputs['psi']):.2f}, {np.max(meshing_result.outputs['psi']):.2f}] rad",
+            )
+            print(
+                f"  - Ring angle range: [{np.min(meshing_result.outputs['psi']) * 180 / np.pi:.1f}, {np.max(meshing_result.outputs['psi']) * 180 / np.pi:.1f}] deg",
+            )
         else:
             print(f"- Meshing law solution failed: {meshing_result.error_message}")
 
@@ -124,10 +142,12 @@ def demo_system_builder():
     builder.connect_components("curvature", "meshing_law")
 
     # Set system parameters
-    builder.set_parameters({
-        "connecting_rod_length": 30.0,
-        "contact_type": "external",
-    })
+    builder.set_parameters(
+        {
+            "connecting_rod_length": 30.0,
+            "contact_type": "external",
+        },
+    )
 
     # Validate configuration
     if builder.validate_configuration():
@@ -194,7 +214,9 @@ def demo_adaptability():
         )
 
         if builder.validate_configuration():
-            print(f"+ {config['name']}: base_radius={config['base_radius']}, rod_length={config['connecting_rod_length']}")
+            print(
+                f"+ {config['name']}: base_radius={config['base_radius']}, rod_length={config['connecting_rod_length']}",
+            )
         else:
             print(f"- {config['name']}: configuration invalid")
 
@@ -235,6 +257,7 @@ def main():
     except Exception as e:
         print(f"\n- Demonstration failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 

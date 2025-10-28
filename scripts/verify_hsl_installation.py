@@ -4,13 +4,15 @@ Verification script for CasADi with HSL solvers (MA27/MA57) installation.
 Run this script to verify that CasADi can access the HSL linear solvers.
 """
 
-import sys
 import os
+import sys
+
 
 def test_casadi_import():
     """Test if CasADi can be imported."""
     try:
         import casadi as ca
+
         print(f"[OK] CasADi version: {ca.__version__}")
         print(f"[OK] CasADi path: {ca.__file__}")
         return True
@@ -18,61 +20,73 @@ def test_casadi_import():
         print(f"[FAIL] Failed to import CasADi: {e}")
         return False
 
+
 def test_hsl_solvers():
     """Test if all HSL solvers (MA27, MA57, MA77, MA86, MA97) are available."""
     try:
-        import casadi as ca
         import time
-        
+
+        import casadi as ca
+
         # Create a simple optimization problem
-        x = ca.MX.sym('x')
-        nlp = {'x': x, 'f': x**2, 'g': x}
-        
+        x = ca.MX.sym("x")
+        nlp = {"x": x, "f": x**2, "g": x}
+
         # Test all HSL solvers
-        hsl_solvers = ['ma27', 'ma57', 'ma77', 'ma86', 'ma97']
+        hsl_solvers = ["ma27", "ma57", "ma77", "ma86", "ma97"]
         available_solvers = []
         solver_times = {}
-        
+
         print("Testing HSL solvers:")
         for solver_name in hsl_solvers:
             try:
                 start_time = time.time()
-                solver = ca.nlpsol(f'solver_{solver_name}', 'ipopt', nlp, {
-                    'ipopt.linear_solver': solver_name,
-                    'ipopt.print_level': 0,
-                    'ipopt.sb': 'yes'
-                })
+                solver = ca.nlpsol(
+                    f"solver_{solver_name}",
+                    "ipopt",
+                    nlp,
+                    {
+                        "ipopt.linear_solver": solver_name,
+                        "ipopt.print_level": 0,
+                        "ipopt.sb": "yes",
+                    },
+                )
                 end_time = time.time()
-                
-                print(f"[OK] {solver_name.upper()}: Available (creation time: {end_time - start_time:.3f}s)")
+
+                print(
+                    f"[OK] {solver_name.upper()}: Available (creation time: {end_time - start_time:.3f}s)",
+                )
                 available_solvers.append(solver_name)
                 solver_times[solver_name] = end_time - start_time
-                
+
             except Exception as e:
                 print(f"[FAIL] {solver_name.upper()}: Failed - {e}")
-        
+
         # Note: Solver creation test is sufficient to verify HSL availability
         # The optimization test may fail due to problem formulation, but solver creation
         # confirms that the HSL linear solvers are properly accessible to Ipopt
-        
-        print(f"\nSummary: {len(available_solvers)}/{len(hsl_solvers)} HSL solvers available")
+
+        print(
+            f"\nSummary: {len(available_solvers)}/{len(hsl_solvers)} HSL solvers available",
+        )
         return len(available_solvers) > 0
-        
+
     except Exception as e:
         print(f"[FAIL] HSL solver test failed: {e}")
         return False
 
+
 def test_hsl_libraries():
     """Test if HSL libraries are accessible."""
     hsl_path = r"C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5\bin"
-    
+
     required_dlls = [
         "libcoinhsl.dll",
         "libhsl.dll",
         "libgfortran-5.dll",
-        "libopenblas.dll"
+        "libopenblas.dll",
     ]
-    
+
     all_found = True
     for dll in required_dlls:
         dll_path = os.path.join(hsl_path, dll)
@@ -81,39 +95,42 @@ def test_hsl_libraries():
         else:
             print(f"[FAIL] {dll}: Not found at {dll_path}")
             all_found = False
-    
+
     return all_found
+
 
 def main():
     """Main verification function."""
     print("CasADi HSL Installation Verification")
     print("=" * 50)
-    
+
     # Test 1: CasADi import
     print("\n1. Testing CasADi import...")
     casadi_ok = test_casadi_import()
-    
+
     # Test 2: HSL libraries
     print("\n2. Testing HSL libraries...")
     hsl_libs_ok = test_hsl_libraries()
-    
+
     # Test 3: HSL solvers
     print("\n3. Testing HSL solvers...")
     hsl_solvers_ok = test_hsl_solvers()
-    
+
     # Summary
     print("\n" + "=" * 50)
     print("VERIFICATION SUMMARY:")
     print(f"CasADi import: {'[OK] PASS' if casadi_ok else '[FAIL] FAIL'}")
     print(f"HSL libraries: {'[OK] PASS' if hsl_libs_ok else '[FAIL] FAIL'}")
     print(f"HSL solvers:   {'[OK] PASS' if hsl_solvers_ok else '[FAIL] FAIL'}")
-    
+
     if casadi_ok and hsl_libs_ok and hsl_solvers_ok:
-        print("\n[SUCCESS] All tests passed! CasADi with HSL solvers is properly configured.")
+        print(
+            "\n[SUCCESS] All tests passed! CasADi with HSL solvers is properly configured.",
+        )
         return 0
-    else:
-        print("\n[ERROR] Some tests failed. Please check the installation.")
-        return 1
+    print("\n[ERROR] Some tests failed. Please check the installation.")
+    return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

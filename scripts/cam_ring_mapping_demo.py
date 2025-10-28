@@ -28,31 +28,33 @@ log = get_logger(__name__)
 def create_sample_linear_follower_motion():
     """
     Create a sample linear follower motion law for demonstration.
-    
+
     Returns
     -------
     Dict[str, np.ndarray]
         Sample motion law data
     """
     # Create a realistic cam motion law
-    theta = np.linspace(0, 2*np.pi, 200)
+    theta = np.linspace(0, 2 * np.pi, 200)
 
     # Simple harmonic motion with dwell periods
     x_theta = np.zeros_like(theta)
 
     # Upstroke (0 to π/2)
-    upstroke_mask = (theta >= 0) & (theta < np.pi/2)
+    upstroke_mask = (theta >= 0) & (theta < np.pi / 2)
     upstroke_theta = theta[upstroke_mask]
     x_theta[upstroke_mask] = 10.0 * (1 - np.cos(2 * upstroke_theta))
 
     # Dwell at top (π/2 to 3π/2)
-    dwell_mask = (theta >= np.pi/2) & (theta < 3*np.pi/2)
+    dwell_mask = (theta >= np.pi / 2) & (theta < 3 * np.pi / 2)
     x_theta[dwell_mask] = 20.0
 
     # Downstroke (3π/2 to 2π)
-    downstroke_mask = (theta >= 3*np.pi/2) & (theta < 2*np.pi)
+    downstroke_mask = (theta >= 3 * np.pi / 2) & (theta < 2 * np.pi)
     downstroke_theta = theta[downstroke_mask]
-    x_theta[downstroke_mask] = 10.0 * (1 + np.cos(2 * (downstroke_theta - 3*np.pi/2)))
+    x_theta[downstroke_mask] = 10.0 * (
+        1 + np.cos(2 * (downstroke_theta - 3 * np.pi / 2))
+    )
 
     # Convert to time-based motion (assuming constant cam speed)
     omega = 2.0  # rad/s
@@ -128,7 +130,9 @@ def demo_basic_cam_ring_mapping():
         validation = mapper.validate_design(result)
 
         print(f"Design valid: {all(validation.values())}")
-        print(f"Ring radius range: {np.min(result['R_psi']):.2f} - {np.max(result['R_psi']):.2f} mm")
+        print(
+            f"Ring radius range: {np.min(result['R_psi']):.2f} - {np.max(result['R_psi']):.2f} mm",
+        )
         print(f"Max cam curvature: {np.max(np.abs(result['kappa_c'])):.4f} mm^-1")
 
         results[design["name"]] = result
@@ -147,11 +151,15 @@ def demo_secondary_optimizer_integration():
     motion_data = create_sample_linear_follower_motion()
 
     # Store as primary optimization result
-    registry.store_result("motion_optimizer", motion_data, {
-        "objective_value": 100.0,
-        "solve_time": 2.5,
-        "constraints": {"max_velocity": 50.0, "max_acceleration": 100.0},
-    })
+    registry.store_result(
+        "motion_optimizer",
+        motion_data,
+        {
+            "objective_value": 100.0,
+            "solve_time": 2.5,
+            "constraints": {"max_velocity": 50.0, "max_acceleration": 100.0},
+        },
+    )
 
     print("Stored primary optimization result")
 
@@ -221,26 +229,36 @@ def demo_multi_objective_ring_design():
             {"design_type": "constant", "base_radius": 15.0},
             {"design_type": "constant", "base_radius": 20.0},
             {"design_type": "linear", "base_radius": 15.0, "slope": 0.5},
-            {"design_type": "sinusoidal", "base_radius": 18.0, "amplitude": 2.0, "frequency": 1.0},
+            {
+                "design_type": "sinusoidal",
+                "base_radius": 18.0,
+                "amplitude": 2.0,
+                "frequency": 1.0,
+            },
         ],
     }
 
     targets = {
         "weights": {
-            "ring_size": 0.4,      # Minimize ring size
-            "efficiency": 0.3,     # Maximize efficiency
-            "smoothness": 0.2,     # Maximize smoothness
-            "stress": 0.1,          # Minimize stress
+            "ring_size": 0.4,  # Minimize ring size
+            "efficiency": 0.3,  # Maximize efficiency
+            "smoothness": 0.2,  # Maximize smoothness
+            "stress": 0.1,  # Minimize stress
         },
     }
 
     result = process_multi_objective_ring_design(
-        motion_data, constraints, {}, targets,
+        motion_data,
+        constraints,
+        {},
+        targets,
     )
 
     print(f"Best design alternative: {result['design_alternative']}")
     print(f"Multi-objective score: {result['multi_objective_score']:.4f}")
-    print(f"Ring radius range: {np.min(result['R_psi']):.2f} - {np.max(result['R_psi']):.2f} mm")
+    print(
+        f"Ring radius range: {np.min(result['R_psi']):.2f} - {np.max(result['R_psi']):.2f} mm",
+    )
 
     return result
 
@@ -253,8 +271,20 @@ def plot_results(results_dict, save_path=None):
     # Plot 1: Linear follower motion law
     ax1 = axes[0, 0]
     motion_data = create_sample_linear_follower_motion()
-    ax1.plot(motion_data["theta"], motion_data["position"], "b-", linewidth=2, label="Position")
-    ax1.plot(motion_data["theta"], motion_data["velocity"], "r--", linewidth=2, label="Velocity")
+    ax1.plot(
+        motion_data["theta"],
+        motion_data["position"],
+        "b-",
+        linewidth=2,
+        label="Position",
+    )
+    ax1.plot(
+        motion_data["theta"],
+        motion_data["velocity"],
+        "r--",
+        linewidth=2,
+        label="Velocity",
+    )
     ax1.set_xlabel("Cam Angle (rad)")
     ax1.set_ylabel("Displacement (mm)")
     ax1.set_title("Linear Follower Motion Law")
@@ -265,9 +295,24 @@ def plot_results(results_dict, save_path=None):
     ax2 = axes[0, 1]
     if "Constant Radius" in results_dict:
         result = results_dict["Constant Radius"]
-        ax2.plot(result["theta"], result["cam_curves"]["pitch_radius"], "b-", label="Pitch Curve")
-        ax2.plot(result["theta"], result["cam_curves"]["profile_radius"], "r-", label="Profile")
-        ax2.plot(result["theta"], result["cam_curves"]["contact_radius"], "g-", label="Contact")
+        ax2.plot(
+            result["theta"],
+            result["cam_curves"]["pitch_radius"],
+            "b-",
+            label="Pitch Curve",
+        )
+        ax2.plot(
+            result["theta"],
+            result["cam_curves"]["profile_radius"],
+            "r-",
+            label="Profile",
+        )
+        ax2.plot(
+            result["theta"],
+            result["cam_curves"]["contact_radius"],
+            "g-",
+            label="Contact",
+        )
         ax2.set_xlabel("Cam Angle (rad)")
         ax2.set_ylabel("Radius (mm)")
         ax2.set_title("Cam Curves")
@@ -278,8 +323,13 @@ def plot_results(results_dict, save_path=None):
     ax3 = axes[1, 0]
     colors = ["b-", "r-", "g-", "m-"]
     for i, (name, result) in enumerate(results_dict.items()):
-        ax3.plot(result["psi"], result["R_psi"], colors[i % len(colors)],
-                linewidth=2, label=name)
+        ax3.plot(
+            result["psi"],
+            result["R_psi"],
+            colors[i % len(colors)],
+            linewidth=2,
+            label=name,
+        )
     ax3.set_xlabel("Ring Angle (rad)")
     ax3.set_ylabel("Ring Radius (mm)")
     ax3.set_title("Ring Radius Designs")

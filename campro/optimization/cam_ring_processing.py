@@ -25,11 +25,11 @@ def process_linear_to_ring_follower(
 ) -> Dict[str, np.ndarray]:
     """
     Process primary linear follower motion law to create ring follower design.
-    
+
     This function takes the linear follower motion law from primary optimization
     and uses the cam-ring mapping framework to design the corresponding ring
     follower (circular follower) system.
-    
+
     Parameters
     ----------
     primary_data : Dict[str, np.ndarray]
@@ -50,7 +50,7 @@ def process_linear_to_ring_follower(
         Specific targets for ring optimization
     **kwargs
         Additional parameters
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -79,7 +79,9 @@ def process_linear_to_ring_follower(
         theta = cam_angle  # Use provided cam angles (in degrees)
     else:
         # Convert time-based motion to cam angle-based motion
-        cam_angular_velocity = secondary_constraints.get("cam_angular_velocity", 1.0)  # rad/s
+        cam_angular_velocity = secondary_constraints.get(
+            "cam_angular_velocity", 1.0,
+        )  # rad/s
         theta = cam_angular_velocity * time  # Cam angles
 
     # Linear follower displacement vs cam angle
@@ -105,7 +107,8 @@ def process_linear_to_ring_follower(
     # Perform the mapping
     try:
         results = mapper.map_linear_to_ring_follower(
-            theta, x_theta,
+            theta,
+            x_theta,
             ring_design={
                 "design_type": ring_design_type,
                 **ring_design_params,
@@ -139,10 +142,10 @@ def process_ring_optimization(
 ) -> Dict[str, np.ndarray]:
     """
     Optimize ring follower design based on primary motion law.
-    
+
     This function performs optimization of the ring follower design parameters
     to achieve specific objectives while maintaining the linear follower motion law.
-    
+
     Parameters
     ----------
     primary_data : Dict[str, np.ndarray]
@@ -155,7 +158,7 @@ def process_ring_optimization(
         Optimization targets (e.g., minimize ring size, maximize efficiency)
     **kwargs
         Additional parameters
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -172,8 +175,11 @@ def process_ring_optimization(
     # For now, use the basic processing and add optimization logic
     # This is a placeholder for more sophisticated optimization
     results = process_linear_to_ring_follower(
-        primary_data, secondary_constraints, secondary_relationships,
-        optimization_targets, **kwargs,
+        primary_data,
+        secondary_constraints,
+        secondary_relationships,
+        optimization_targets,
+        **kwargs,
     )
 
     # Add optimization metadata
@@ -193,13 +199,13 @@ def process_multi_objective_ring_design(
 ) -> Dict[str, np.ndarray]:
     """
     Multi-objective ring follower design optimization.
-    
+
     Balances multiple objectives such as:
     - Minimize ring size
     - Maximize efficiency
     - Minimize stress
     - Maximize smoothness
-    
+
     Parameters
     ----------
     primary_data : Dict[str, np.ndarray]
@@ -212,7 +218,7 @@ def process_multi_objective_ring_design(
         Multiple optimization targets with weights
     **kwargs
         Additional parameters
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -221,19 +227,25 @@ def process_multi_objective_ring_design(
     log.info("Performing multi-objective ring follower design")
 
     # Get objective weights
-    weights = optimization_targets.get("weights", {
-        "ring_size": 0.3,
-        "efficiency": 0.3,
-        "smoothness": 0.2,
-        "stress": 0.2,
-    })
+    weights = optimization_targets.get(
+        "weights",
+        {
+            "ring_size": 0.3,
+            "efficiency": 0.3,
+            "smoothness": 0.2,
+            "stress": 0.2,
+        },
+    )
 
     # Get multiple design alternatives
-    design_alternatives = secondary_constraints.get("design_alternatives", [
-        {"design_type": "constant"},
-        {"design_type": "linear"},
-        {"design_type": "sinusoidal"},
-    ])
+    design_alternatives = secondary_constraints.get(
+        "design_alternatives",
+        [
+            {"design_type": "constant"},
+            {"design_type": "linear"},
+            {"design_type": "sinusoidal"},
+        ],
+    )
 
     best_result = None
     best_score = float("inf")
@@ -248,8 +260,11 @@ def process_multi_objective_ring_design(
 
             # Process this design
             result = process_linear_to_ring_follower(
-                primary_data, alt_constraints, secondary_relationships,
-                optimization_targets, **kwargs,
+                primary_data,
+                alt_constraints,
+                secondary_relationships,
+                optimization_targets,
+                **kwargs,
             )
 
             # Calculate multi-objective score
@@ -273,18 +288,19 @@ def process_multi_objective_ring_design(
     return best_result
 
 
-def _calculate_multi_objective_score(result: Dict[str, np.ndarray],
-                                   weights: Dict[str, float]) -> float:
+def _calculate_multi_objective_score(
+    result: Dict[str, np.ndarray], weights: Dict[str, float],
+) -> float:
     """
     Calculate multi-objective score for ring design.
-    
+
     Parameters
     ----------
     result : Dict[str, np.ndarray]
         Ring design result
     weights : Dict[str, float]
         Objective weights
-        
+
     Returns
     -------
     float
@@ -324,12 +340,15 @@ def _calculate_multi_objective_score(result: Dict[str, np.ndarray],
 
 # Convenience functions for common processing scenarios
 
-def create_constant_ring_design(primary_data: Dict[str, np.ndarray],
-                               ring_radius: float = 15.0,
-                               cam_parameters: Optional[Dict[str, Any]] = None) -> Dict[str, np.ndarray]:
+
+def create_constant_ring_design(
+    primary_data: Dict[str, np.ndarray],
+    ring_radius: float = 15.0,
+    cam_parameters: Optional[Dict[str, Any]] = None,
+) -> Dict[str, np.ndarray]:
     """
     Create a constant radius ring design from linear follower motion.
-    
+
     Parameters
     ----------
     primary_data : Dict[str, np.ndarray]
@@ -338,7 +357,7 @@ def create_constant_ring_design(primary_data: Dict[str, np.ndarray],
         Constant ring radius
     cam_parameters : Dict[str, Any], optional
         Cam-ring system parameters
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -351,16 +370,21 @@ def create_constant_ring_design(primary_data: Dict[str, np.ndarray],
     }
 
     return process_linear_to_ring_follower(
-        primary_data, constraints, {}, {},
+        primary_data,
+        constraints,
+        {},
+        {},
     )
 
 
-def create_optimized_ring_design(primary_data: Dict[str, np.ndarray],
-                                optimization_objective: str = "minimize_ring_size",
-                                cam_parameters: Optional[Dict[str, Any]] = None) -> Dict[str, np.ndarray]:
+def create_optimized_ring_design(
+    primary_data: Dict[str, np.ndarray],
+    optimization_objective: str = "minimize_ring_size",
+    cam_parameters: Optional[Dict[str, Any]] = None,
+) -> Dict[str, np.ndarray]:
     """
     Create an optimized ring design from linear follower motion.
-    
+
     Parameters
     ----------
     primary_data : Dict[str, np.ndarray]
@@ -369,7 +393,7 @@ def create_optimized_ring_design(primary_data: Dict[str, np.ndarray],
         Optimization objective
     cam_parameters : Dict[str, Any], optional
         Cam-ring system parameters
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -385,5 +409,8 @@ def create_optimized_ring_design(primary_data: Dict[str, np.ndarray],
     }
 
     return process_ring_optimization(
-        primary_data, constraints, {}, targets,
+        primary_data,
+        constraints,
+        {},
+        targets,
     )

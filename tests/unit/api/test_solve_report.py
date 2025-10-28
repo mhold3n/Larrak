@@ -9,4 +9,3 @@ def test_solve_report_defaults():
     assert isinstance(r.residuals, dict)
     assert isinstance(r.scaling_stats, dict)
     assert isinstance(r.artifacts, dict)
-

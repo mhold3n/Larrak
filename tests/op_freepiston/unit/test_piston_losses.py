@@ -19,5 +19,3 @@ def test_coulomb_friction_direction():
     assert coulomb_friction(v=1.0, muN=muN) == -muN
     assert coulomb_friction(v=-2.0, muN=muN) == muN
     assert coulomb_friction(v=0.0, muN=muN) == 0.0
-
-

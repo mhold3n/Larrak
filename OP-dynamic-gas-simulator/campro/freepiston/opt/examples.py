@@ -74,8 +74,10 @@ def example_custom_configuration():
             "mass": 1.5,  # Heavier piston
         },
         bounds={
-            "xL_min": -0.05, "xL_max": 0.05,
-            "xR_min": 0.05, "xR_max": 0.15,
+            "xL_min": -0.05,
+            "xL_max": 0.05,
+            "xR_min": 0.05,
+            "xR_max": 0.15,
             "v_max": 40.0,  # Lower max velocity
         },
         num={"K": 30, "C": 4},  # Higher resolution
@@ -256,20 +258,26 @@ def example_problem_builder():
 
     # Use problem builder to modify configuration
     builder = optimizer.get_problem_builder()
-    builder.with_geometry({
-        "bore": 0.15,
-        "stroke": 0.1,
-        "compression_ratio": 12.0,
-    }).with_bounds({
-        "v_max": 30.0,
-        "a_max": 800.0,
-    }).with_objective({
-        "method": "indicated_work",
-        "w": {
-            "smooth": 0.01,
-            "short_circuit": 1.0,
+    builder.with_geometry(
+        {
+            "bore": 0.15,
+            "stroke": 0.1,
+            "compression_ratio": 12.0,
         },
-    })
+    ).with_bounds(
+        {
+            "v_max": 30.0,
+            "a_max": 800.0,
+        },
+    ).with_objective(
+        {
+            "method": "indicated_work",
+            "w": {
+                "smooth": 0.01,
+                "short_circuit": 1.0,
+            },
+        },
+    )
 
     # Run optimization with modified configuration
     result = optimizer.optimize()
@@ -349,9 +357,11 @@ def example_comparison_study():
     print("=" * 40)
 
     for name, result in results.items():
-        print(f"{name:15} | Success: {result.success:5} | "
-              f"Objective: {result.objective_value:12.6e} | "
-              f"Time: {result.cpu_time:6.2f}s")
+        print(
+            f"{name:15} | Success: {result.success:5} | "
+            f"Objective: {result.objective_value:12.6e} | "
+            f"Time: {result.cpu_time:6.2f}s",
+        )
 
     return results
 

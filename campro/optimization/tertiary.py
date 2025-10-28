@@ -64,7 +64,7 @@ class LinkageParameters:
 class TertiaryOptimizer(BaseOptimizer):
     """
     Tertiary collocation optimizer shell for advanced optimization.
-    
+
     This is a generic shell that can perform tertiary optimization tasks
     based on externally provided constraints, relationships, and optimization targets.
     The specific implementation details are passed in during optimization.
@@ -72,9 +72,12 @@ class TertiaryOptimizer(BaseOptimizer):
     constraints, and optimization rules from previous layers.
     """
 
-    def __init__(self, name: str = "TertiaryOptimizer",
-                 registry: Optional[OptimizationRegistry] = None,
-                 settings: Optional[CollocationSettings] = None):
+    def __init__(
+        self,
+        name: str = "TertiaryOptimizer",
+        registry: Optional[OptimizationRegistry] = None,
+        settings: Optional[CollocationSettings] = None,
+    ):
         super().__init__(name)
         self.registry = registry or OptimizationRegistry()
         self.collocation_optimizer = CollocationOptimizer(settings)
@@ -83,7 +86,7 @@ class TertiaryOptimizer(BaseOptimizer):
     def configure(self, **kwargs) -> None:
         """
         Configure the tertiary optimizer.
-        
+
         Args:
             **kwargs: Configuration parameters
                 - registry: Optimization registry
@@ -104,12 +107,16 @@ class TertiaryOptimizer(BaseOptimizer):
         self._is_configured = True
         log.info(f"Configured tertiary optimizer: {self.name}")
 
-    def optimize(self, objective: Callable, constraints: Any,
-                initial_guess: Optional[Dict[str, np.ndarray]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        objective: Callable,
+        constraints: Any,
+        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Solve a tertiary optimization problem with full context visibility and external specifications.
-        
+
         Args:
             objective: Objective function to minimize
             constraints: Constraint system
@@ -121,7 +128,7 @@ class TertiaryOptimizer(BaseOptimizer):
                 - tertiary_relationships: Relationships between all optimization layers
                 - optimization_targets: Specific targets for tertiary optimization
                 - processing_function: Function to process optimization context
-                
+
         Returns:
             OptimizationResult object
         """
@@ -135,8 +142,12 @@ class TertiaryOptimizer(BaseOptimizer):
             optimization_context = self._get_complete_optimization_context(**kwargs)
 
             log.info("Using complete optimization context for tertiary optimization")
-            log.info(f"  - Primary results: {list(optimization_context['primary_results'].keys())}")
-            log.info(f"  - Secondary results: {list(optimization_context['secondary_results'].keys())}")
+            log.info(
+                f"  - Primary results: {list(optimization_context['primary_results'].keys())}",
+            )
+            log.info(
+                f"  - Secondary results: {list(optimization_context['secondary_results'].keys())}",
+            )
 
             # Extract external specifications
             tertiary_constraints = kwargs.get("tertiary_constraints", {})
@@ -160,22 +171,36 @@ class TertiaryOptimizer(BaseOptimizer):
                     processed_solution = list(primary_results.values())[0].data.copy()
                 else:
                     processed_solution = {}
-                log.warning("No processing function provided - returning primary solution unchanged")
+                log.warning(
+                    "No processing function provided - returning primary solution unchanged",
+                )
 
             # Calculate objective value
-            objective_value = self._calculate_objective_value(objective, processed_solution)
+            objective_value = self._calculate_objective_value(
+                objective, processed_solution,
+            )
 
             # Finish optimization
             result = self._finish_optimization(
-                result, processed_solution, objective_value,
+                result,
+                processed_solution,
+                objective_value,
                 convergence_info={
                     "tertiary_constraints": tertiary_constraints,
                     "tertiary_relationships": tertiary_relationships,
                     "optimization_targets": optimization_targets,
-                    "processing_function": processing_function.__name__ if processing_function else None,
-                    "context_optimizers": list(optimization_context["primary_results"].keys()) +
-                                        list(optimization_context["secondary_results"].keys()),
-                    "linkage_parameters": getattr(self, "linkage_parameters", {}).to_dict() if hasattr(self, "linkage_parameters") else {},
+                    "processing_function": processing_function.__name__
+                    if processing_function
+                    else None,
+                    "context_optimizers": list(
+                        optimization_context["primary_results"].keys(),
+                    )
+                    + list(optimization_context["secondary_results"].keys()),
+                    "linkage_parameters": getattr(
+                        self, "linkage_parameters", {},
+                    ).to_dict()
+                    if hasattr(self, "linkage_parameters")
+                    else {},
                 },
             )
 
@@ -186,16 +211,19 @@ class TertiaryOptimizer(BaseOptimizer):
 
         return result
 
-    def process_optimization_context(self, primary_optimizer_id: str = "motion_optimizer",
-                                   secondary_optimizer_id: str = "secondary_optimizer",
-                                   tertiary_constraints: Optional[Dict[str, Any]] = None,
-                                   tertiary_relationships: Optional[Dict[str, Any]] = None,
-                                   optimization_targets: Optional[Dict[str, Any]] = None,
-                                   processing_function: Optional[Callable] = None,
-                                   objective_function: Optional[Callable] = None) -> OptimizationResult:
+    def process_optimization_context(
+        self,
+        primary_optimizer_id: str = "motion_optimizer",
+        secondary_optimizer_id: str = "secondary_optimizer",
+        tertiary_constraints: Optional[Dict[str, Any]] = None,
+        tertiary_relationships: Optional[Dict[str, Any]] = None,
+        optimization_targets: Optional[Dict[str, Any]] = None,
+        processing_function: Optional[Callable] = None,
+        objective_function: Optional[Callable] = None,
+    ) -> OptimizationResult:
         """
         Process optimization context using external specifications.
-        
+
         Args:
             primary_optimizer_id: ID of primary optimizer
             secondary_optimizer_id: ID of secondary optimizer
@@ -204,14 +232,17 @@ class TertiaryOptimizer(BaseOptimizer):
             optimization_targets: Specific targets for tertiary optimization
             processing_function: Function to process optimization context
             objective_function: Objective function for tertiary optimization
-            
+
         Returns:
             OptimizationResult object
         """
-        log.info(f"Processing optimization context from '{primary_optimizer_id}' and '{secondary_optimizer_id}' with external specifications")
+        log.info(
+            f"Processing optimization context from '{primary_optimizer_id}' and '{secondary_optimizer_id}' with external specifications",
+        )
 
         # Use default objective if none provided
         if objective_function is None:
+
             def objective_function(t, x, v, a, u):
                 return np.trapz(u**2, t)  # Default: minimize jerk
 
@@ -226,24 +257,27 @@ class TertiaryOptimizer(BaseOptimizer):
             processing_function=processing_function,
         )
 
-
     def _get_complete_optimization_context(self, **kwargs) -> Dict[str, Any]:
         """
         Get complete optimization context including results, constraints, and rules.
-        
+
         Args:
             **kwargs: Optimization parameters
-            
+
         Returns:
             Dictionary containing complete optimization context
         """
         primary_optimizer_id = kwargs.get("primary_optimizer_id", "motion_optimizer")
-        secondary_optimizer_id = kwargs.get("secondary_optimizer_id", "secondary_optimizer")
+        secondary_optimizer_id = kwargs.get(
+            "secondary_optimizer_id", "secondary_optimizer",
+        )
 
         # Get primary optimization context
         primary_result = self.registry.get_result(primary_optimizer_id)
         if primary_result is None:
-            raise ValueError(f"No primary result found for optimizer '{primary_optimizer_id}'")
+            raise ValueError(
+                f"No primary result found for optimizer '{primary_optimizer_id}'",
+            )
 
         # Get secondary optimization context
         secondary_result = self.registry.get_result(secondary_optimizer_id)
@@ -251,13 +285,21 @@ class TertiaryOptimizer(BaseOptimizer):
         # Build complete context
         context = {
             "primary_results": {primary_optimizer_id: primary_result},
-            "secondary_results": {secondary_optimizer_id: secondary_result} if secondary_result else {},
+            "secondary_results": {secondary_optimizer_id: secondary_result}
+            if secondary_result
+            else {},
             "primary_constraints": primary_result.constraints,
             "primary_rules": primary_result.optimization_rules,
             "primary_settings": primary_result.solver_settings,
-            "secondary_constraints": secondary_result.constraints if secondary_result else None,
-            "secondary_rules": secondary_result.optimization_rules if secondary_result else None,
-            "secondary_settings": secondary_result.solver_settings if secondary_result else None,
+            "secondary_constraints": secondary_result.constraints
+            if secondary_result
+            else None,
+            "secondary_rules": secondary_result.optimization_rules
+            if secondary_result
+            else None,
+            "secondary_settings": secondary_result.solver_settings
+            if secondary_result
+            else None,
         }
 
         # Add linkage parameters if available
@@ -268,9 +310,9 @@ class TertiaryOptimizer(BaseOptimizer):
 
         return context
 
-
-    def _calculate_objective_value(self, objective: Callable,
-                                 solution: Dict[str, np.ndarray]) -> Optional[float]:
+    def _calculate_objective_value(
+        self, objective: Callable, solution: Dict[str, np.ndarray],
+    ) -> Optional[float]:
         """Calculate the objective value for the solution."""
         try:
             # Extract arrays from solution
@@ -296,10 +338,15 @@ class TertiaryOptimizer(BaseOptimizer):
         #     raise ValueError("Constraints cannot be None")
 
         if not self._is_configured:
-            raise RuntimeError(f"Optimizer {self.name} is not configured. Call configure() first.")
+            raise RuntimeError(
+                f"Optimizer {self.name} is not configured. Call configure() first.",
+            )
 
-    def get_complete_context(self, primary_optimizer_id: str = "motion_optimizer",
-                           secondary_optimizer_id: str = "secondary_optimizer") -> Dict[str, Any]:
+    def get_complete_context(
+        self,
+        primary_optimizer_id: str = "motion_optimizer",
+        secondary_optimizer_id: str = "secondary_optimizer",
+    ) -> Dict[str, Any]:
         """Get complete optimization context for analysis."""
         return self._get_complete_optimization_context(
             primary_optimizer_id=primary_optimizer_id,

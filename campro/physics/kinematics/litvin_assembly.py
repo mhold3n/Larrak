@@ -20,6 +20,7 @@ log = get_logger(__name__)
 @dataclass
 class AssemblyInputs:
     """Inputs required to compute Litvin assembly state."""
+
     base_circle_cam: float  # planet (cam) base circle radius (mm)
     base_circle_ring: float  # ring base circle radius (mm)
     z_cam: int  # number of planet teeth
@@ -28,7 +29,9 @@ class AssemblyInputs:
     R_psi: np.ndarray  # ring instantaneous radius [mm]
     theta_cam_rad: np.ndarray  # cam profile theta [rad], aligned with psi if available
     # Center stepping inputs (Phase 2)
-    center_base_radius: Optional[float] = None  # C0 [mm], user-provided initial planet center radius
+    center_base_radius: Optional[float] = (
+        None  # C0 [mm], user-provided initial planet center radius
+    )
     motion_theta_deg: Optional[np.ndarray] = None  # θ grid (deg) of primary motion
     motion_offset_mm: Optional[np.ndarray] = None  # x(θ) in mm (≥0)
 
@@ -36,6 +39,7 @@ class AssemblyInputs:
 @dataclass
 class AssemblyState:
     """Per-frame assembly state arrays for animation/drawing."""
+
     center_distance: float
     planet_center_angle: np.ndarray  # radians (same as psi)
     planet_center_radius: np.ndarray  # constant = C
@@ -51,7 +55,9 @@ def _center_distance(rb_ring: float, rb_cam: float, contact_type: str) -> float:
     return float(rb_ring - rb_cam)
 
 
-def compute_assembly_state(inputs: AssemblyInputs, ring_omega: Optional[float] = None) -> AssemblyState:
+def compute_assembly_state(
+    inputs: AssemblyInputs, ring_omega: Optional[float] = None,
+) -> AssemblyState:
     """Compute assembly kinematics from Litvin results.
 
     The no-slip base-circle relationship gives dphi = (rb_ring/rb_cam) dpsi
@@ -71,7 +77,9 @@ def compute_assembly_state(inputs: AssemblyInputs, ring_omega: Optional[float] =
         th = np.asarray(inputs.motion_theta_deg).flatten()
         off = np.asarray(inputs.motion_offset_mm).flatten()
         if th.size != off.size or th.size == 0:
-            raise ValueError("motion_theta_deg and motion_offset_mm must be same non-zero length")
+            raise ValueError(
+                "motion_theta_deg and motion_offset_mm must be same non-zero length",
+            )
         xsrc = np.linspace(0.0, 1.0, th.size)
         xdst = np.linspace(0.0, 1.0, psi.size)
         offset = np.interp(xdst, xsrc, off)
@@ -80,7 +88,11 @@ def compute_assembly_state(inputs: AssemblyInputs, ring_omega: Optional[float] =
 
     # Default base center distance if not supplied
     C_default = _center_distance(rb_ring, rb_cam, inputs.contact_type)
-    C0 = float(inputs.center_base_radius) if inputs.center_base_radius is not None else float(C_default)
+    C0 = (
+        float(inputs.center_base_radius)
+        if inputs.center_base_radius is not None
+        else float(C_default)
+    )
     planet_center_radius = C0 + offset
 
     # Spin sign: internal meshes reverse spin relative to ring rotation.
@@ -144,5 +156,3 @@ def compute_global_rmax(state: AssemblyState) -> float:
     # Max distance of farthest planet point is center distance + rb_cam (approx upper bound)
     approx_planet_max = float(state.center_distance) + 1.0 * max_contact
     return 1.1 * max(max_contact, approx_planet_max)
-
-

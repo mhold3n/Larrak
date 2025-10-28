@@ -16,7 +16,9 @@ from CamPro_LitvinPlanetary import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Litvin planetary synthesis and optimization")
+    parser = argparse.ArgumentParser(
+        description="Litvin planetary synthesis and optimization",
+    )
     parser.add_argument("--order", type=int, default=0)
     parser.add_argument("--ring-teeth", type=int, default=60)
     parser.add_argument("--planet-teeth", type=int, default=30)
@@ -31,7 +33,9 @@ def main() -> None:
 
     log = get_logger(__name__)
 
-    motion = RadialSlotMotion(center_offset_fn=lambda th: 0.0, planet_angle_fn=lambda th: 2.0 * th)
+    motion = RadialSlotMotion(
+        center_offset_fn=lambda th: 0.0, planet_angle_fn=lambda th: 2.0 * th,
+    )
 
     if args.order == OptimizationOrder.ORDER0_EVALUATE:
         cfg = PlanetSynthesisConfig(
@@ -53,7 +57,10 @@ def main() -> None:
     gcfg = GeometrySearchConfig(
         ring_teeth_candidates=ring_c,
         planet_teeth_candidates=planet_c,
-        pressure_angle_deg_bounds=(args.pressure_angle - 2.0, args.pressure_angle + 2.0),
+        pressure_angle_deg_bounds=(
+            args.pressure_angle - 2.0,
+            args.pressure_angle + 2.0,
+        ),
         addendum_factor_bounds=(args.addendum_factor - 0.1, args.addendum_factor + 0.1),
         base_center_radius=args.R0,
         samples_per_rev=args.samples,
@@ -63,7 +70,9 @@ def main() -> None:
     out = {
         "feasible": res.feasible,
         "objective": res.objective_value,
-        "best_config": None if res.best_config is None else {
+        "best_config": None
+        if res.best_config is None
+        else {
             "ring_teeth": res.best_config.ring_teeth,
             "planet_teeth": res.best_config.planet_teeth,
             "pressure_angle_deg": res.best_config.pressure_angle_deg,
@@ -76,5 +85,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

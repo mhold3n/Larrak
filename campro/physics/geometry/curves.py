@@ -19,7 +19,7 @@ log = get_logger(__name__)
 class CamCurveComponent(BaseComponent):
     """
     Component for computing cam curves from linear follower motion law.
-    
+
     This component computes the cam pitch curve, profile curve, and contact curve
     based on the linear follower displacement and system parameters.
     """
@@ -37,14 +37,14 @@ class CamCurveComponent(BaseComponent):
     def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute cam curves from linear follower motion law.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             Input data containing:
             - 'theta': Cam angles (radians)
             - 'x_theta': Linear follower displacement vs cam angle
-            
+
         Returns
         -------
         ComponentResult
@@ -95,7 +95,9 @@ class CamCurveComponent(BaseComponent):
                 "radius_range": float(np.max(profile_radius) - np.min(profile_radius)),
             }
 
-            log.info(f"Cam curves computed successfully: radius range {metadata['radius_range']:.3f}")
+            log.info(
+                f"Cam curves computed successfully: radius range {metadata['radius_range']:.3f}",
+            )
 
             return ComponentResult(
                 status=ComponentStatus.COMPLETED,
@@ -119,4 +121,3 @@ class CamCurveComponent(BaseComponent):
     def get_outputs(self) -> List[str]:
         """Get list of output names."""
         return ["pitch_radius", "profile_radius", "contact_radius"]
-

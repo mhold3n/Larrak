@@ -31,10 +31,16 @@ def demo_basic_cam():
     )
 
     print(f"Solution generated with {len(solution['cam_angle'])} points")
-    print(f"Cam angle range: {solution['cam_angle'][0]:.1f}° to {solution['cam_angle'][-1]:.1f}°")
-    print(f"Position range: {solution['position'][0]:.3f} to {solution['position'][-1]:.3f} mm")
+    print(
+        f"Cam angle range: {solution['cam_angle'][0]:.1f}° to {solution['cam_angle'][-1]:.1f}°",
+    )
+    print(
+        f"Position range: {solution['position'][0]:.3f} to {solution['position'][-1]:.3f} mm",
+    )
     print(f"Max velocity: {max(abs(v) for v in solution['velocity']):.3f} mm/s")
-    print(f"Max acceleration: {max(abs(a) for a in solution['acceleration']):.3f} mm/s²")
+    print(
+        f"Max acceleration: {max(abs(a) for a in solution['acceleration']):.3f} mm/s²",
+    )
     print(f"Max jerk: {max(abs(j) for j in solution['control']):.3f} mm/s³")
 
 
@@ -55,8 +61,12 @@ def demo_constrained_cam():
     )
 
     print(f"Solution generated with {len(solution['cam_angle'])} points")
-    print(f"Max velocity: {max(abs(v) for v in solution['velocity']):.3f} mm/s (limit: 100.0)")
-    print(f"Max acceleration: {max(abs(a) for a in solution['acceleration']):.3f} mm/s² (limit: 500.0)")
+    print(
+        f"Max velocity: {max(abs(v) for v in solution['velocity']):.3f} mm/s (limit: 100.0)",
+    )
+    print(
+        f"Max acceleration: {max(abs(a) for a in solution['acceleration']):.3f} mm/s² (limit: 500.0)",
+    )
 
     # Check if constraints are satisfied
     max_vel = max(abs(v) for v in solution["velocity"])
@@ -182,13 +192,9 @@ def main():
     except Exception as e:
         print(f"Error in demo: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 if __name__ == "__main__":
     main()
-
-
-
-
-

@@ -14,6 +14,7 @@ log = get_logger(__name__)
 @dataclass
 class IPOPTOptions:
     """IPOPT solver options."""
+
     # Basic solver options
     max_iter: int = 3000
     max_cpu_time: float = 3600.0  # 1 hour
@@ -65,6 +66,7 @@ class IPOPTOptions:
 @dataclass
 class IPOPTResult:
     """Result of IPOPT optimization."""
+
     success: bool
     x_opt: np.ndarray
     f_opt: float
@@ -89,7 +91,7 @@ class IPOPTResult:
 class IPOPTSolver:
     """
     IPOPT solver wrapper for large-scale nonlinear optimization.
-    
+
     This class provides a Python interface to the IPOPT solver for solving
     the collocation-based NLP problems in the OP engine optimization.
     """
@@ -97,7 +99,7 @@ class IPOPTSolver:
     def __init__(self, options: Optional[IPOPTOptions] = None):
         """
         Initialize IPOPT solver.
-        
+
         Args:
             options: IPOPT solver options
         """
@@ -108,6 +110,7 @@ class IPOPTSolver:
         """Check if IPOPT is available."""
         try:
             import casadi as ca
+
             # Check if IPOPT is available in CasADi
             if "ipopt" not in ca.nlpsol_plugins():
                 log.warning("IPOPT not available in CasADi. Using alternative solver.")
@@ -130,7 +133,7 @@ class IPOPTSolver:
     ) -> IPOPTResult:
         """
         Solve NLP using IPOPT.
-        
+
         Args:
             nlp: CasADi NLP object
             x0: Initial guess for variables
@@ -139,7 +142,7 @@ class IPOPTSolver:
             lbg: Lower bounds on constraints
             ubg: Upper bounds on constraints
             p: Parameters
-            
+
         Returns:
             IPOPT result
         """
@@ -271,12 +274,18 @@ class IPOPTSolver:
         # Warm start
         opts["ipopt.warm_start_init_point"] = self.options.warm_start_init_point
         opts["ipopt.warm_start_bound_push"] = self.options.warm_start_bound_push
-        opts["ipopt.warm_start_mult_bound_push"] = self.options.warm_start_mult_bound_push
+        opts["ipopt.warm_start_mult_bound_push"] = (
+            self.options.warm_start_mult_bound_push
+        )
 
         # Advanced options
         opts["ipopt.hessian_approximation"] = self.options.hessian_approximation
-        opts["ipopt.limited_memory_max_history"] = self.options.limited_memory_max_history
-        opts["ipopt.limited_memory_update_type"] = self.options.limited_memory_update_type
+        opts["ipopt.limited_memory_max_history"] = (
+            self.options.limited_memory_max_history
+        )
+        opts["ipopt.limited_memory_update_type"] = (
+            self.options.limited_memory_update_type
+        )
 
         return opts
 
@@ -289,7 +298,6 @@ class IPOPTSolver:
     ) -> float:
         """Compute KKT error for solution quality assessment."""
         try:
-
             # Evaluate gradient of objective
             grad_f = nlp.grad_f(x, p)["grad_f_x"].full().flatten()
 
@@ -418,7 +426,7 @@ def solve_with_ipopt(
 ) -> IPOPTResult:
     """
     Convenience function to solve NLP with IPOPT.
-    
+
     Args:
         nlp: CasADi NLP object
         options: IPOPT solver options
@@ -428,7 +436,7 @@ def solve_with_ipopt(
         lbg: Lower bounds on constraints
         ubg: Upper bounds on constraints
         p: Parameters
-        
+
     Returns:
         IPOPT result
     """
@@ -439,10 +447,10 @@ def solve_with_ipopt(
 def create_ipopt_options_from_dict(options_dict: Dict[str, Any]) -> IPOPTOptions:
     """
     Create IPOPTOptions from dictionary.
-    
+
     Args:
         options_dict: Dictionary of options
-        
+
     Returns:
         IPOPTOptions object
     """

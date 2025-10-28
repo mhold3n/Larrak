@@ -13,5 +13,3 @@ def test_orifice_mdot_simple_proportional():
     # Halving area halves mass flow
     md2 = orifice_mdot(A=0.5 * A, Cd=Cd, rho=rho, dp=dp)
     assert abs(md2 - 0.5 * md) / md < 1e-12
-
-

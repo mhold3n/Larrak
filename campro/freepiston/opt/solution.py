@@ -57,5 +57,3 @@ class Solution:
         with (p / "meta.txt").open("w", encoding="utf-8") as f:
             for k, v in self.meta.items():
                 f.write(f"{k}: {v}\n")
-
-

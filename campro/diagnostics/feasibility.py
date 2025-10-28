@@ -62,15 +62,17 @@ def check_feasibility(constraints: Dict, bounds: Dict) -> FeasibilityReport:
                     recs.append("Increase max_velocity or upstroke duration/cycle time")
 
             # Simple bound for acceleration: triangular profile
-            a_req = 4.0 * stroke / (up_time ** 2)
+            a_req = 4.0 * stroke / (up_time**2)
             a_max = bounds.get("max_acceleration")
             if isinstance(a_max, (int, float)):
                 if a_req > float(a_max):
                     violations["acceleration_requirement"] = a_req - float(a_max)
-                    recs.append("Increase max_acceleration or upstroke duration/cycle time")
+                    recs.append(
+                        "Increase max_acceleration or upstroke duration/cycle time",
+                    )
 
             # Rough jerk estimate for bang-bang acceleration
-            j_req = 8.0 * stroke / (up_time ** 3)
+            j_req = 8.0 * stroke / (up_time**3)
             j_max = bounds.get("max_jerk")
             if isinstance(j_max, (int, float)):
                 if j_req > float(j_max):
@@ -114,7 +116,7 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
     """
     try:
         import casadi as ca  # type: ignore
-    except Exception as exc:  # pragma: no cover
+    except Exception:  # pragma: no cover
         # Fall back to heuristic if CasADi not available
         return check_feasibility(constraints, bounds)
 
@@ -177,7 +179,7 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
         if j is not None:
             # Third derivative central difference (approximate)
             j[i] = (x[ipp(i)] - 2.0 * x[ip(i)] + 2.0 * x[im(i)] - x[imm(i)]) / (
-                2.0 * (dtheta ** 3)
+                2.0 * (dtheta**3)
             )
 
     g_list: List[ca.SX] = []
@@ -289,11 +291,14 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
         # Try to load warm-start from previous run if shapes match
         try:
             from campro.diagnostics.warmstart import load_warmstart, save_warmstart
+
             warm_args = load_warmstart(total, len(lbg))
         except Exception:
             warm_args = {}
 
-        res = solver(x0=z0, lbx=lbx, ubx=ubx, lbg=np.array(lbg), ubg=np.array(ubg), **warm_args)
+        res = solver(
+            x0=z0, lbx=lbx, ubx=ubx, lbg=np.array(lbg), ubg=np.array(ubg), **warm_args,
+        )
         z_opt = np.array(res["x"]).reshape((-1,))
         # Extract slacks
         ptr = n_x

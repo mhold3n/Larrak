@@ -29,12 +29,16 @@ class ParameterValidator:
             return False
 
     @staticmethod
-    def validate_float_range(value: Any, name: str, min_val: float, max_val: float) -> bool:
+    def validate_float_range(
+        value: Any, name: str, min_val: float, max_val: float,
+    ) -> bool:
         """Validate that a value is within a float range."""
         try:
             float_val = float(value)
             if not (min_val <= float_val <= max_val):
-                log.error(f"{name} must be between {min_val} and {max_val}, got {float_val}")
+                log.error(
+                    f"{name} must be between {min_val} and {max_val}, got {float_val}",
+                )
                 return False
             return True
         except (ValueError, TypeError):
@@ -59,7 +63,9 @@ class ParameterManager:
         self.validators = {}
         self.log = get_logger(__name__)
 
-    def add_parameter(self, name: str, value: Any, validator: Optional[callable] = None) -> None:
+    def add_parameter(
+        self, name: str, value: Any, validator: Optional[callable] = None,
+    ) -> None:
         """Add a parameter with optional validation."""
         if validator and not validator(value):
             raise ValueError(f"Parameter {name} failed validation")
@@ -93,4 +99,3 @@ class ParameterManager:
     def get_all_parameters(self) -> Dict[str, Any]:
         """Get all parameters."""
         return self.parameters.copy()
-

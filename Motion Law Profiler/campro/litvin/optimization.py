@@ -54,7 +54,9 @@ def _order0_objective(cfg: PlanetSynthesisConfig) -> float:
     return m.slip_integral - 0.1 * m.contact_length + penalty
 
 
-def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrder.ORDER0_EVALUATE) -> OptimResult:
+def optimize_geometry(
+    config: GeometrySearchConfig, order: int = OptimizationOrder.ORDER0_EVALUATE,
+) -> OptimResult:
     if order == OptimizationOrder.ORDER0_EVALUATE:
         # Evaluate first candidate deterministically
         if not config.ring_teeth_candidates or not config.planet_teeth_candidates:
@@ -134,14 +136,24 @@ def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrd
                         motion=config.motion,
                     )
 
-        return OptimResult(best_config=best_cfg, objective_value=best_obj, feasible=best_cfg is not None)
+        return OptimResult(
+            best_config=best_cfg,
+            objective_value=best_obj,
+            feasible=best_cfg is not None,
+        )
 
     if order == OptimizationOrder.ORDER2_MICRO:
         # Collocation-based refinement of the contact parameter sequence phi(θ)
         n = max(64, config.samples_per_rev)
         grid = make_uniform_grid(n)
         # Construct flank/kinematics once
-        module = config.base_center_radius * 2.0 / max(config.ring_teeth_candidates[0] - config.planet_teeth_candidates[0], 1)
+        module = (
+            config.base_center_radius
+            * 2.0
+            / max(
+                config.ring_teeth_candidates[0] - config.planet_teeth_candidates[0], 1,
+            )
+        )
         zr = config.ring_teeth_candidates[0]
         zp = config.planet_teeth_candidates[0]
         pa = sum(config.pressure_angle_deg_bounds) / 2.0
@@ -155,7 +167,9 @@ def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrd
             samples_per_rev=config.samples_per_rev,
             motion=config.motion,
         )
-        params = InternalGearParams(teeth=zr, module=module, pressure_angle_deg=pa, addendum_factor=af)
+        params = InternalGearParams(
+            teeth=zr, module=module, pressure_angle_deg=pa, addendum_factor=af,
+        )
         flank = sample_internal_flank(params, n=256)
         kin = PlanetKinematics(R0=config.base_center_radius, motion=config.motion)
 
@@ -175,7 +189,9 @@ def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrd
             for i in range(len(phi_vals)):
                 im = (i - 1) % len(phi_vals)
                 ip = (i + 1) % len(phi_vals)
-                new_phi[i] = (phi_vals[i] + lam * (phi_vals[im] + phi_vals[ip])) / (1.0 + 2.0 * lam)
+                new_phi[i] = (phi_vals[i] + lam * (phi_vals[im] + phi_vals[ip])) / (
+                    1.0 + 2.0 * lam
+                )
             phi_vals = new_phi
 
         m = evaluate_order0_metrics_given_phi(cand, phi_vals)
@@ -184,5 +200,3 @@ def optimize_geometry(config: GeometrySearchConfig, order: int = OptimizationOrd
 
     # Higher orders will be implemented subsequently
     return OptimResult(best_config=None, objective_value=None, feasible=False)
-
-

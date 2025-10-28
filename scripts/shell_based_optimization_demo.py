@@ -118,7 +118,13 @@ def demo_shell_based_optimization():
     print(f"  - Degree: {tertiary_settings.degree}")
     print("  - No hardcoded implementations - receives external specifications")
 
-    return registry, cam_constraints, primary_optimizer, secondary_optimizer, tertiary_optimizer
+    return (
+        registry,
+        cam_constraints,
+        primary_optimizer,
+        secondary_optimizer,
+        tertiary_optimizer,
+    )
 
 
 def run_primary_optimization(cam_constraints, primary_optimizer):
@@ -183,7 +189,9 @@ def run_secondary_optimization_shell(secondary_optimizer):
     }
 
     # Define processing function (external specification)
-    def smoothness_refinement_processor(primary_solution, constraints, relationships, targets, **kwargs):
+    def smoothness_refinement_processor(
+        primary_solution, constraints, relationships, targets, **kwargs,
+    ):
         """External processing function for smoothness refinement."""
         print("  - Processing with external function: smoothness_refinement_processor")
         print(f"  - Constraints: {constraints}")
@@ -199,12 +207,17 @@ def run_secondary_optimization_shell(secondary_optimizer):
 
             # Simple smoothing (in real implementation, this would be more sophisticated)
             acceleration = primary_solution["acceleration"]
-            smoothed_acceleration = acceleration * (1 - refinement_factor) + np.roll(acceleration, 1) * refinement_factor
+            smoothed_acceleration = (
+                acceleration * (1 - refinement_factor)
+                + np.roll(acceleration, 1) * refinement_factor
+            )
             processed_solution["acceleration"] = smoothed_acceleration
 
             # Recalculate jerk from smoothed acceleration
             if "time" in primary_solution:
-                processed_solution["control"] = np.gradient(smoothed_acceleration, primary_solution["time"])
+                processed_solution["control"] = np.gradient(
+                    smoothed_acceleration, primary_solution["time"],
+                )
 
         return processed_solution
 
@@ -289,7 +302,9 @@ def run_tertiary_optimization_shell(tertiary_optimizer):
     }
 
     # Define processing function (external specification)
-    def combined_optimization_processor(optimization_context, constraints, relationships, targets, **kwargs):
+    def combined_optimization_processor(
+        optimization_context, constraints, relationships, targets, **kwargs,
+    ):
         """External processing function for combined optimization."""
         print("  - Processing with external function: combined_optimization_processor")
         print(f"  - Constraints: {constraints}")
@@ -315,8 +330,10 @@ def run_tertiary_optimization_shell(tertiary_optimizer):
 
             for key in ["position", "velocity", "acceleration", "control"]:
                 if key in primary_solution and key in secondary_solution:
-                    processed_solution[key] = (blend_factor * primary_solution[key] +
-                                             (1 - blend_factor) * secondary_solution[key])
+                    processed_solution[key] = (
+                        blend_factor * primary_solution[key]
+                        + (1 - blend_factor) * secondary_solution[key]
+                    )
                 elif key in primary_solution:
                     processed_solution[key] = primary_solution[key]
         else:
@@ -329,9 +346,11 @@ def run_tertiary_optimization_shell(tertiary_optimizer):
             optimal_linkage_length = 50.0 + (max_velocity / 100.0) * 10.0
 
             # Apply bounds
-            optimal_linkage_length = np.clip(optimal_linkage_length,
-                                           constraints["min_linkage_length"],
-                                           constraints["max_linkage_length"])
+            optimal_linkage_length = np.clip(
+                optimal_linkage_length,
+                constraints["min_linkage_length"],
+                constraints["max_linkage_length"],
+            )
 
             processed_solution["linkage_parameters"] = {
                 "linkage_length": optimal_linkage_length,
@@ -383,8 +402,12 @@ def run_tertiary_optimization_shell(tertiary_optimizer):
         # Show linkage optimization results
         if "linkage_parameters" in tertiary_result.solution:
             linkage_params = tertiary_result.solution["linkage_parameters"]
-            print(f"  - Optimized linkage length: {linkage_params['linkage_length']:.2f} mm")
-            print(f"  - Optimized linkage angle: {linkage_params['linkage_angle']:.2f}°")
+            print(
+                f"  - Optimized linkage length: {linkage_params['linkage_length']:.2f} mm",
+            )
+            print(
+                f"  - Optimized linkage angle: {linkage_params['linkage_angle']:.2f}°",
+            )
 
         return tertiary_result
 
@@ -405,7 +428,9 @@ def compare_shell_results(primary_result, secondary_result, tertiary_result):
     primary_summary = primary_result.get_solution_summary()
     print("Primary optimization solution:")
     for key, stats in primary_summary.items():
-        print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+        print(
+            f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+        )
 
     # Compare with secondary results
     if secondary_result and secondary_result.is_successful():
@@ -414,13 +439,30 @@ def compare_shell_results(primary_result, secondary_result, tertiary_result):
         for key, stats in secondary_summary.items():
             if key in primary_summary:
                 primary_stats = primary_summary[key]
-                print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+                print(
+                    f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+                )
 
                 # Compare with primary
-                range_change = ((stats["max"] - stats["min"]) - (primary_stats["max"] - primary_stats["min"])) / (primary_stats["max"] - primary_stats["min"]) * 100
-                mean_change = (stats["mean"] - primary_stats["mean"]) / abs(primary_stats["mean"]) * 100 if primary_stats["mean"] != 0 else 0
+                range_change = (
+                    (
+                        (stats["max"] - stats["min"])
+                        - (primary_stats["max"] - primary_stats["min"])
+                    )
+                    / (primary_stats["max"] - primary_stats["min"])
+                    * 100
+                )
+                mean_change = (
+                    (stats["mean"] - primary_stats["mean"])
+                    / abs(primary_stats["mean"])
+                    * 100
+                    if primary_stats["mean"] != 0
+                    else 0
+                )
 
-                print(f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%")
+                print(
+                    f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%",
+                )
 
     # Compare with tertiary results
     if tertiary_result and tertiary_result.is_successful():
@@ -429,13 +471,30 @@ def compare_shell_results(primary_result, secondary_result, tertiary_result):
         for key, stats in tertiary_summary.items():
             if key in primary_summary:
                 primary_stats = primary_summary[key]
-                print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+                print(
+                    f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+                )
 
                 # Compare with primary
-                range_change = ((stats["max"] - stats["min"]) - (primary_stats["max"] - primary_stats["min"])) / (primary_stats["max"] - primary_stats["min"]) * 100
-                mean_change = (stats["mean"] - primary_stats["mean"]) / abs(primary_stats["mean"]) * 100 if primary_stats["mean"] != 0 else 0
+                range_change = (
+                    (
+                        (stats["max"] - stats["min"])
+                        - (primary_stats["max"] - primary_stats["min"])
+                    )
+                    / (primary_stats["max"] - primary_stats["min"])
+                    * 100
+                )
+                mean_change = (
+                    (stats["mean"] - primary_stats["mean"])
+                    / abs(primary_stats["mean"])
+                    * 100
+                    if primary_stats["mean"] != 0
+                    else 0
+                )
 
-                print(f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%")
+                print(
+                    f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%",
+                )
 
 
 def create_shell_plots(primary_result, secondary_result, tertiary_result):
@@ -499,7 +558,13 @@ def main():
 
     try:
         # Setup shell-based optimization system
-        registry, cam_constraints, primary_optimizer, secondary_optimizer, tertiary_optimizer = demo_shell_based_optimization()
+        (
+            registry,
+            cam_constraints,
+            primary_optimizer,
+            secondary_optimizer,
+            tertiary_optimizer,
+        ) = demo_shell_based_optimization()
 
         # Run primary optimization (has implementation)
         primary_result = run_primary_optimization(cam_constraints, primary_optimizer)
@@ -531,10 +596,9 @@ def main():
     except Exception as e:
         print(f"\nDemo failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 if __name__ == "__main__":
     main()
-
-

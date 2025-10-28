@@ -38,7 +38,9 @@ def make_uniform_grid(n: int) -> CollocationGrid:
     return CollocationGrid(theta=theta)
 
 
-def central_diff(values: Sequence[float], h: float) -> Tuple[Sequence[float], Sequence[float]]:
+def central_diff(
+    values: Sequence[float], h: float,
+) -> Tuple[Sequence[float], Sequence[float]]:
     n = len(values)
     d = [0.0] * n
     d2 = [0.0] * n
@@ -48,6 +50,7 @@ def central_diff(values: Sequence[float], h: float) -> Tuple[Sequence[float], Se
         d[i] = (values[ip] - values[im]) / (2.0 * h)
         d2[i] = (values[ip] - 2.0 * values[i] + values[im]) / (h * h)
     return d, d2
+
 
 log = get_logger(__name__)
 
@@ -85,7 +88,7 @@ class CollocationSettings:
 class CollocationOptimizer(BaseOptimizer):
     """
     Optimizer using direct collocation methods with CasADi and Ipopt.
-    
+
     This optimizer implements various collocation schemes for solving
     optimal control problems with high accuracy.
     """
@@ -98,7 +101,7 @@ class CollocationOptimizer(BaseOptimizer):
     def configure(self, **kwargs) -> None:
         """
         Configure the collocation optimizer.
-        
+
         Args:
             **kwargs: Configuration parameters
                 - degree: Collocation degree
@@ -122,14 +125,20 @@ class CollocationOptimizer(BaseOptimizer):
         self.settings.__post_init__()
         self._is_configured = True
 
-        log.info(f"Configured collocation optimizer: {self.settings.method}, degree {self.settings.degree}")
+        log.info(
+            f"Configured collocation optimizer: {self.settings.method}, degree {self.settings.degree}",
+        )
 
-    def optimize(self, objective: Callable, constraints: Any,
-                initial_guess: Optional[Dict[str, np.ndarray]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        objective: Callable,
+        constraints: Any,
+        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Solve an optimization problem using collocation.
-        
+
         Args:
             objective: Objective function to minimize
             constraints: Constraint system
@@ -137,7 +146,7 @@ class CollocationOptimizer(BaseOptimizer):
             **kwargs: Additional optimization parameters
                 - time_horizon: Time horizon for optimization
                 - n_points: Number of collocation points
-                
+
         Returns:
             OptimizationResult object
         """
@@ -153,7 +162,11 @@ class CollocationOptimizer(BaseOptimizer):
 
             # Create collocation problem
             solution = self._solve_collocation_problem(
-                objective, constraints, time_horizon, n_points, initial_guess,
+                objective,
+                constraints,
+                time_horizon,
+                n_points,
+                initial_guess,
             )
 
             # Calculate objective value
@@ -161,8 +174,13 @@ class CollocationOptimizer(BaseOptimizer):
 
             # Finish optimization
             result = self._finish_optimization(
-                result, solution, objective_value,
-                convergence_info={"method": self.settings.method, "degree": self.settings.degree},
+                result,
+                solution,
+                objective_value,
+                convergence_info={
+                    "method": self.settings.method,
+                    "degree": self.settings.degree,
+                },
             )
 
         except Exception as e:
@@ -172,22 +190,35 @@ class CollocationOptimizer(BaseOptimizer):
 
         return result
 
-    def _solve_collocation_problem(self, objective: Callable, constraints: Any,
-                                 time_horizon: float, n_points: int,
-                                 initial_guess: Optional[Dict[str, np.ndarray]] = None) -> Dict[str, np.ndarray]:
+    def _solve_collocation_problem(
+        self,
+        objective: Callable,
+        constraints: Any,
+        time_horizon: float,
+        n_points: int,
+        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+    ) -> Dict[str, np.ndarray]:
         """
         Solve the collocation problem.
-        
+
         This implementation uses the new motion law optimizer for motion law problems
         and falls back to analytical solutions for other problems.
         """
-        log.info(f"Solving collocation problem: {self.settings.method}, degree {self.settings.degree}")
+        log.info(
+            f"Solving collocation problem: {self.settings.method}, degree {self.settings.degree}",
+        )
 
         # Allow generic constraints to supply their own collocation problem
-        if hasattr(constraints, "build_collocation_problem") and callable(constraints.build_collocation_problem):
-            return constraints.build_collocation_problem(objective, time_horizon, n_points, initial_guess)
+        if hasattr(constraints, "build_collocation_problem") and callable(
+            constraints.build_collocation_problem,
+        ):
+            return constraints.build_collocation_problem(
+                objective, time_horizon, n_points, initial_guess,
+            )
         # Otherwise, check if this is a motion law problem
-        if hasattr(constraints, "stroke") and hasattr(constraints, "upstroke_duration_percent"):
+        if hasattr(constraints, "stroke") and hasattr(
+            constraints, "upstroke_duration_percent",
+        ):
             # This is a motion law problem - use the new motion law optimizer
             return self._solve_motion_law_problem(constraints, time_horizon, n_points)
         # For non-motion law problems, raise an error to force proper implementation
@@ -196,15 +227,17 @@ class CollocationOptimizer(BaseOptimizer):
             f"is not yet implemented. Only motion law problems are supported.",
         )
 
-    def _solve_motion_law_problem(self, constraints: Any, time_horizon: float, n_points: int) -> Dict[str, np.ndarray]:
+    def _solve_motion_law_problem(
+        self, constraints: Any, time_horizon: float, n_points: int,
+    ) -> Dict[str, np.ndarray]:
         """
         Solve motion law problem using the new motion law optimizer.
-        
+
         Args:
             constraints: Motion law constraints
             time_horizon: Time horizon (cycle time)
             n_points: Number of points
-            
+
         Returns:
             Dictionary containing motion law solution
         """
@@ -236,7 +269,9 @@ class CollocationOptimizer(BaseOptimizer):
 
             # Convert result to expected format
             solution = {
-                "time": np.linspace(0, time_horizon, n_points),  # Keep time for compatibility
+                "time": np.linspace(
+                    0, time_horizon, n_points,
+                ),  # Keep time for compatibility
                 "position": result.position,
                 "velocity": result.velocity,
                 "acceleration": result.acceleration,
@@ -253,11 +288,12 @@ class CollocationOptimizer(BaseOptimizer):
             # Re-raise the exception instead of falling back to fake solutions
             raise RuntimeError(f"Motion law optimization failed: {e}") from e
 
-    def _generate_analytical_solution(self, t: np.ndarray, constraints: Any,
-                                    time_horizon: float) -> Dict[str, np.ndarray]:
+    def _generate_analytical_solution(
+        self, t: np.ndarray, constraints: Any, time_horizon: float,
+    ) -> Dict[str, np.ndarray]:
         """
         Generate analytical solutions based on motion type.
-        
+
         This creates different motion profiles based on the objective type.
         """
         n_points = len(t)
@@ -269,27 +305,57 @@ class CollocationOptimizer(BaseOptimizer):
             distance = 20.0  # Default stroke
 
         # Get timing parameters from constraints
-        upstroke_duration_percent = getattr(constraints, "upstroke_duration_percent", 60.0)
-        zero_accel_duration_percent = getattr(constraints, "zero_accel_duration_percent", 0.0)
+        upstroke_duration_percent = getattr(
+            constraints, "upstroke_duration_percent", 60.0,
+        )
+        zero_accel_duration_percent = getattr(
+            constraints, "zero_accel_duration_percent", 0.0,
+        )
 
         # Get objective type from constraints or use default
         objective_type = getattr(constraints, "objective_type", "minimum_jerk")
 
         if objective_type == "minimum_jerk":
-            return self._generate_minimum_jerk_profile(t, distance, time_horizon,
-                                                     upstroke_duration_percent, zero_accel_duration_percent)
+            return self._generate_minimum_jerk_profile(
+                t,
+                distance,
+                time_horizon,
+                upstroke_duration_percent,
+                zero_accel_duration_percent,
+            )
         if objective_type == "minimum_time":
-            return self._generate_minimum_time_profile(t, distance, time_horizon,
-                                                     upstroke_duration_percent, zero_accel_duration_percent)
+            return self._generate_minimum_time_profile(
+                t,
+                distance,
+                time_horizon,
+                upstroke_duration_percent,
+                zero_accel_duration_percent,
+            )
         if objective_type == "minimum_energy":
-            return self._generate_minimum_energy_profile(t, distance, time_horizon,
-                                                       upstroke_duration_percent, zero_accel_duration_percent)
+            return self._generate_minimum_energy_profile(
+                t,
+                distance,
+                time_horizon,
+                upstroke_duration_percent,
+                zero_accel_duration_percent,
+            )
         # Default to minimum jerk
-        return self._generate_minimum_jerk_profile(t, distance, time_horizon,
-                                                 upstroke_duration_percent, zero_accel_duration_percent)
+        return self._generate_minimum_jerk_profile(
+            t,
+            distance,
+            time_horizon,
+            upstroke_duration_percent,
+            zero_accel_duration_percent,
+        )
 
-    def _generate_minimum_jerk_profile(self, t: np.ndarray, distance: float, time_horizon: float,
-                                     upstroke_duration_percent: float, zero_accel_duration_percent: float) -> Dict[str, np.ndarray]:
+    def _generate_minimum_jerk_profile(
+        self,
+        t: np.ndarray,
+        distance: float,
+        time_horizon: float,
+        upstroke_duration_percent: float,
+        zero_accel_duration_percent: float,
+    ) -> Dict[str, np.ndarray]:
         """Generate a minimum jerk motion profile (smooth S-curve) with user-specified timing."""
         n_points = len(t)
 
@@ -312,18 +378,43 @@ class CollocationOptimizer(BaseOptimizer):
 
                 # Minimum jerk profile: smooth S-curve
                 position[i] = distance * (6 * tau**5 - 15 * tau**4 + 10 * tau**3)
-                velocity[i] = (distance / upstroke_time) * (30 * tau**4 - 60 * tau**3 + 30 * tau**2)
-                acceleration[i] = (distance / upstroke_time**2) * (120 * tau**3 - 180 * tau**2 + 60 * tau)
-                jerk[i] = (distance / upstroke_time**3) * (360 * tau**2 - 360 * tau + 60)
+                velocity[i] = (distance / upstroke_time) * (
+                    30 * tau**4 - 60 * tau**3 + 30 * tau**2
+                )
+                acceleration[i] = (distance / upstroke_time**2) * (
+                    120 * tau**3 - 180 * tau**2 + 60 * tau
+                )
+                jerk[i] = (distance / upstroke_time**3) * (
+                    360 * tau**2 - 360 * tau + 60
+                )
             else:
                 # Downstroke phase - mirror the upstroke
-                downstroke_tau = (time - upstroke_time) / downstroke_time  # Normalize to [0, 1] for downstroke
+                downstroke_tau = (
+                    time - upstroke_time
+                ) / downstroke_time  # Normalize to [0, 1] for downstroke
 
                 # Mirror the upstroke profile
-                position[i] = distance * (1 - (6 * downstroke_tau**5 - 15 * downstroke_tau**4 + 10 * downstroke_tau**3))
-                velocity[i] = -(distance / downstroke_time) * (30 * downstroke_tau**4 - 60 * downstroke_tau**3 + 30 * downstroke_tau**2)
-                acceleration[i] = -(distance / downstroke_time**2) * (120 * downstroke_tau**3 - 180 * downstroke_tau**2 + 60 * downstroke_tau)
-                jerk[i] = -(distance / downstroke_time**3) * (360 * downstroke_tau**2 - 360 * downstroke_tau + 60)
+                position[i] = distance * (
+                    1
+                    - (
+                        6 * downstroke_tau**5
+                        - 15 * downstroke_tau**4
+                        + 10 * downstroke_tau**3
+                    )
+                )
+                velocity[i] = -(distance / downstroke_time) * (
+                    30 * downstroke_tau**4
+                    - 60 * downstroke_tau**3
+                    + 30 * downstroke_tau**2
+                )
+                acceleration[i] = -(distance / downstroke_time**2) * (
+                    120 * downstroke_tau**3
+                    - 180 * downstroke_tau**2
+                    + 60 * downstroke_tau
+                )
+                jerk[i] = -(distance / downstroke_time**3) * (
+                    360 * downstroke_tau**2 - 360 * downstroke_tau + 60
+                )
 
         return {
             "time": t,
@@ -333,8 +424,14 @@ class CollocationOptimizer(BaseOptimizer):
             "control": jerk,
         }
 
-    def _generate_minimum_time_profile(self, t: np.ndarray, distance: float, time_horizon: float,
-                                     upstroke_duration_percent: float, zero_accel_duration_percent: float) -> Dict[str, np.ndarray]:
+    def _generate_minimum_time_profile(
+        self,
+        t: np.ndarray,
+        distance: float,
+        time_horizon: float,
+        upstroke_duration_percent: float,
+        zero_accel_duration_percent: float,
+    ) -> Dict[str, np.ndarray]:
         """Generate a minimum time motion profile (bang-bang control) with user-specified timing."""
         n_points = len(t)
 
@@ -353,7 +450,9 @@ class CollocationOptimizer(BaseOptimizer):
         t_decel_down = downstroke_time * 0.4  # 40% of downstroke for deceleration
 
         # Calculate maximum velocity to achieve the stroke
-        total_distance = 0.5 * t_accel_up + t_const_up + t_const_down + 0.5 * t_decel_down
+        total_distance = (
+            0.5 * t_accel_up + t_const_up + t_const_down + 0.5 * t_decel_down
+        )
         max_velocity = distance / total_distance
 
         # Generate position, velocity, acceleration
@@ -370,20 +469,30 @@ class CollocationOptimizer(BaseOptimizer):
             elif time <= t_accel_up + t_const_up:
                 # Upstroke constant velocity phase
                 velocity[i] = max_velocity
-                position[i] = 0.5 * max_velocity * t_accel_up + max_velocity * (time - t_accel_up)
+                position[i] = 0.5 * max_velocity * t_accel_up + max_velocity * (
+                    time - t_accel_up
+                )
                 acceleration[i] = 0
             elif time <= t_accel_up + t_const_up + t_const_down:
                 # Downstroke constant velocity phase
                 velocity[i] = max_velocity
-                position[i] = 0.5 * max_velocity * t_accel_up + max_velocity * t_const_up + max_velocity * (time - t_accel_up - t_const_up)
+                position[i] = (
+                    0.5 * max_velocity * t_accel_up
+                    + max_velocity * t_const_up
+                    + max_velocity * (time - t_accel_up - t_const_up)
+                )
                 acceleration[i] = 0
             else:
                 # Downstroke deceleration phase
                 decel_time = time - t_accel_up - t_const_up - t_const_down
                 velocity[i] = max_velocity * (1 - decel_time / t_decel_down)
-                position[i] = (0.5 * max_velocity * t_accel_up + max_velocity * t_const_up +
-                             max_velocity * t_const_down + max_velocity * decel_time -
-                             0.5 * max_velocity * decel_time**2 / t_decel_down)
+                position[i] = (
+                    0.5 * max_velocity * t_accel_up
+                    + max_velocity * t_const_up
+                    + max_velocity * t_const_down
+                    + max_velocity * decel_time
+                    - 0.5 * max_velocity * decel_time**2 / t_decel_down
+                )
                 acceleration[i] = -max_velocity / t_decel_down
 
         # Calculate jerk (derivative of acceleration)
@@ -397,8 +506,14 @@ class CollocationOptimizer(BaseOptimizer):
             "control": jerk,
         }
 
-    def _generate_minimum_energy_profile(self, t: np.ndarray, distance: float, time_horizon: float,
-                                       upstroke_duration_percent: float, zero_accel_duration_percent: float) -> Dict[str, np.ndarray]:
+    def _generate_minimum_energy_profile(
+        self,
+        t: np.ndarray,
+        distance: float,
+        time_horizon: float,
+        upstroke_duration_percent: float,
+        zero_accel_duration_percent: float,
+    ) -> Dict[str, np.ndarray]:
         """Generate a minimum energy motion profile (smooth acceleration) with user-specified timing."""
         n_points = len(t)
 
@@ -425,12 +540,20 @@ class CollocationOptimizer(BaseOptimizer):
                 jerk[i] = -12 * distance / upstroke_time**3
             else:
                 # Downstroke phase - mirror the upstroke
-                downstroke_tau = (time - upstroke_time) / downstroke_time  # Normalize to [0, 1] for downstroke
+                downstroke_tau = (
+                    time - upstroke_time
+                ) / downstroke_time  # Normalize to [0, 1] for downstroke
 
                 # Mirror the upstroke profile
-                position[i] = distance * (1 - (3 * downstroke_tau**2 - 2 * downstroke_tau**3))
-                velocity[i] = -(distance / downstroke_time) * (6 * downstroke_tau - 6 * downstroke_tau**2)
-                acceleration[i] = -(distance / downstroke_time**2) * (6 - 12 * downstroke_tau)
+                position[i] = distance * (
+                    1 - (3 * downstroke_tau**2 - 2 * downstroke_tau**3)
+                )
+                velocity[i] = -(distance / downstroke_time) * (
+                    6 * downstroke_tau - 6 * downstroke_tau**2
+                )
+                acceleration[i] = -(distance / downstroke_time**2) * (
+                    6 - 12 * downstroke_tau
+                )
                 jerk[i] = 12 * distance / downstroke_time**3
 
         return {
@@ -441,8 +564,9 @@ class CollocationOptimizer(BaseOptimizer):
             "control": jerk,
         }
 
-    def _calculate_objective_value(self, objective: Callable,
-                                 solution: Dict[str, np.ndarray]) -> Optional[float]:
+    def _calculate_objective_value(
+        self, objective: Callable, solution: Dict[str, np.ndarray],
+    ) -> Optional[float]:
         """Calculate the objective value for the solution."""
         try:
             # Prefer jerk-squared integral when available (common for smoothness minimization)

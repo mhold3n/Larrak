@@ -15,7 +15,7 @@ class PhysicsValidator:
 
     def __init__(self, config: Dict[str, Any]):
         """Initialize physics validator.
-        
+
         Args:
             config: Configuration dictionary
         """
@@ -39,15 +39,17 @@ class PhysicsValidator:
 
     def validate_physics(self, solution: Any) -> Dict[str, Any]:
         """Validate physics of optimization solution.
-        
+
         Args:
             solution: Optimization solution
-            
+
         Returns:
             Physics validation results
         """
         log.info("Starting physics validation...")
-        log.debug(f"Solution structure: meta keys={list(getattr(solution, 'meta', {}).keys())}, data keys={list(getattr(solution, 'data', {}).keys())}")
+        log.debug(
+            f"Solution structure: meta keys={list(getattr(solution, 'meta', {}).keys())}, data keys={list(getattr(solution, 'data', {}).keys())}",
+        )
 
         validation_results = {
             "success": False,
@@ -83,12 +85,12 @@ class PhysicsValidator:
 
             # Determine overall success
             validation_results["success"] = (
-                validation_results["mass_conservation"] and
-                validation_results["energy_conservation"] and
-                validation_results["momentum_conservation"] and
-                validation_results["entropy_increase"] and
-                validation_results["thermodynamic_consistency"] and
-                len(validation_results["errors"]) == 0
+                validation_results["mass_conservation"]
+                and validation_results["energy_conservation"]
+                and validation_results["momentum_conservation"]
+                and validation_results["entropy_increase"]
+                and validation_results["thermodynamic_consistency"]
+                and len(validation_results["errors"]) == 0
             )
 
             if validation_results["success"]:
@@ -96,9 +98,13 @@ class PhysicsValidator:
             else:
                 log.warning("Physics validation failed")
                 if validation_results["errors"]:
-                    log.error(f"Physics validation errors: {validation_results['errors']}")
+                    log.error(
+                        f"Physics validation errors: {validation_results['errors']}",
+                    )
                 if validation_results["warnings"]:
-                    log.warning(f"Physics validation warnings: {validation_results['warnings']}")
+                    log.warning(
+                        f"Physics validation warnings: {validation_results['warnings']}",
+                    )
 
         except Exception as e:
             log.error(f"Physics validation failed with exception: {e}")
@@ -106,7 +112,9 @@ class PhysicsValidator:
 
         return validation_results
 
-    def _validate_mass_conservation(self, solution: Any, results: Dict[str, Any]) -> None:
+    def _validate_mass_conservation(
+        self, solution: Any, results: Dict[str, Any],
+    ) -> None:
         """Validate mass conservation."""
         try:
             # Use property with fallback to dict access
@@ -114,15 +122,21 @@ class PhysicsValidator:
             if not states:
                 # Fallback to direct dict access
                 states = solution.data.get("states", {})
-            
+
             if not states:
-                results["warnings"].append("Mass conservation validation not implemented for current Solution structure")
-                results["mass_conservation"] = True  # Mark as passed to avoid blocking optimization
+                results["warnings"].append(
+                    "Mass conservation validation not implemented for current Solution structure",
+                )
+                results["mass_conservation"] = (
+                    True  # Mark as passed to avoid blocking optimization
+                )
                 return
 
             # Check if we have density and volume data
             if "rho" not in states or "V" not in states:
-                results["warnings"].append("Missing density or volume data for mass conservation")
+                results["warnings"].append(
+                    "Missing density or volume data for mass conservation",
+                )
                 return
 
             rho = states["rho"]
@@ -141,18 +155,24 @@ class PhysicsValidator:
                     results["mass_conservation"] = True
                     log.info("Mass conservation validated")
                 else:
-                    results["violations"].append(f"Mass conservation violation: {relative_change:.2e}")
+                    results["violations"].append(
+                        f"Mass conservation violation: {relative_change:.2e}",
+                    )
                     log.warning(f"Mass conservation violation: {relative_change:.2e}")
 
             # Store mass metrics
             results["metrics"]["mass_initial"] = masses[0] if masses else 0.0
             results["metrics"]["mass_final"] = masses[-1] if masses else 0.0
-            results["metrics"]["mass_change"] = abs(masses[-1] - masses[0]) if len(masses) > 1 else 0.0
+            results["metrics"]["mass_change"] = (
+                abs(masses[-1] - masses[0]) if len(masses) > 1 else 0.0
+            )
 
         except Exception as e:
             results["errors"].append(f"Mass conservation validation failed: {e!s}")
 
-    def _validate_energy_conservation(self, solution: Any, results: Dict[str, Any]) -> None:
+    def _validate_energy_conservation(
+        self, solution: Any, results: Dict[str, Any],
+    ) -> None:
         """Validate energy conservation."""
         try:
             # Use property with fallback to dict access
@@ -160,15 +180,21 @@ class PhysicsValidator:
             if not states:
                 # Fallback to direct dict access
                 states = solution.data.get("states", {})
-            
+
             if not states:
-                results["warnings"].append("Energy conservation validation not implemented for current Solution structure")
-                results["energy_conservation"] = True  # Mark as passed to avoid blocking optimization
+                results["warnings"].append(
+                    "Energy conservation validation not implemented for current Solution structure",
+                )
+                results["energy_conservation"] = (
+                    True  # Mark as passed to avoid blocking optimization
+                )
                 return
 
             # Check if we have energy data
             if "E" not in states and "T" not in states:
-                results["warnings"].append("Missing energy or temperature data for energy conservation")
+                results["warnings"].append(
+                    "Missing energy or temperature data for energy conservation",
+                )
                 return
 
             # Calculate total energy at each time step
@@ -194,18 +220,24 @@ class PhysicsValidator:
                     results["energy_conservation"] = True
                     log.info("Energy conservation validated")
                 else:
-                    results["violations"].append(f"Energy conservation violation: {relative_change:.2e}")
+                    results["violations"].append(
+                        f"Energy conservation violation: {relative_change:.2e}",
+                    )
                     log.warning(f"Energy conservation violation: {relative_change:.2e}")
 
             # Store energy metrics
             results["metrics"]["energy_initial"] = energies[0] if energies else 0.0
             results["metrics"]["energy_final"] = energies[-1] if energies else 0.0
-            results["metrics"]["energy_change"] = abs(energies[-1] - energies[0]) if len(energies) > 1 else 0.0
+            results["metrics"]["energy_change"] = (
+                abs(energies[-1] - energies[0]) if len(energies) > 1 else 0.0
+            )
 
         except Exception as e:
             results["errors"].append(f"Energy conservation validation failed: {e!s}")
 
-    def _validate_momentum_conservation(self, solution: Any, results: Dict[str, Any]) -> None:
+    def _validate_momentum_conservation(
+        self, solution: Any, results: Dict[str, Any],
+    ) -> None:
         """Validate momentum conservation."""
         try:
             # Use property with fallback to dict access
@@ -213,15 +245,21 @@ class PhysicsValidator:
             if not states:
                 # Fallback to direct dict access
                 states = solution.data.get("states", {})
-            
+
             if not states:
-                results["warnings"].append("Momentum conservation validation not implemented for current Solution structure")
-                results["momentum_conservation"] = True  # Mark as passed to avoid blocking optimization
+                results["warnings"].append(
+                    "Momentum conservation validation not implemented for current Solution structure",
+                )
+                results["momentum_conservation"] = (
+                    True  # Mark as passed to avoid blocking optimization
+                )
                 return
 
             # Check if we have velocity data
             if "v_L" not in states or "v_R" not in states:
-                results["warnings"].append("Missing velocity data for momentum conservation")
+                results["warnings"].append(
+                    "Missing velocity data for momentum conservation",
+                )
                 return
 
             v_L = states["v_L"]
@@ -235,24 +273,34 @@ class PhysicsValidator:
             if len(momenta) > 1:
                 momentum_change = abs(momenta[-1] - momenta[0])
                 momentum_avg = sum(momenta) / len(momenta)
-                relative_change = momentum_change / momentum_avg if momentum_avg > 0 else 0
+                relative_change = (
+                    momentum_change / momentum_avg if momentum_avg > 0 else 0
+                )
 
                 if relative_change < self.tolerances["momentum_conservation"]:
                     results["momentum_conservation"] = True
                     log.info("Momentum conservation validated")
                 else:
-                    results["violations"].append(f"Momentum conservation violation: {relative_change:.2e}")
-                    log.warning(f"Momentum conservation violation: {relative_change:.2e}")
+                    results["violations"].append(
+                        f"Momentum conservation violation: {relative_change:.2e}",
+                    )
+                    log.warning(
+                        f"Momentum conservation violation: {relative_change:.2e}",
+                    )
 
             # Store momentum metrics
             results["metrics"]["momentum_initial"] = momenta[0] if momenta else 0.0
             results["metrics"]["momentum_final"] = momenta[-1] if momenta else 0.0
-            results["metrics"]["momentum_change"] = abs(momenta[-1] - momenta[0]) if len(momenta) > 1 else 0.0
+            results["metrics"]["momentum_change"] = (
+                abs(momenta[-1] - momenta[0]) if len(momenta) > 1 else 0.0
+            )
 
         except Exception as e:
             results["errors"].append(f"Momentum conservation validation failed: {e!s}")
 
-    def _validate_entropy_increase(self, solution: Any, results: Dict[str, Any]) -> None:
+    def _validate_entropy_increase(
+        self, solution: Any, results: Dict[str, Any],
+    ) -> None:
         """Validate entropy increase (second law of thermodynamics)."""
         try:
             # Use property with fallback to dict access
@@ -260,15 +308,21 @@ class PhysicsValidator:
             if not states:
                 # Fallback to direct dict access
                 states = solution.data.get("states", {})
-            
+
             if not states:
-                results["warnings"].append("Entropy validation not implemented for current Solution structure")
-                results["entropy_increase"] = True  # Mark as passed to avoid blocking optimization
+                results["warnings"].append(
+                    "Entropy validation not implemented for current Solution structure",
+                )
+                results["entropy_increase"] = (
+                    True  # Mark as passed to avoid blocking optimization
+                )
                 return
 
             # Check if we have temperature and pressure data
             if "T" not in states or "p" not in states:
-                results["warnings"].append("Missing temperature or pressure data for entropy validation")
+                results["warnings"].append(
+                    "Missing temperature or pressure data for entropy validation",
+                )
                 return
 
             T = states["T"]
@@ -296,18 +350,24 @@ class PhysicsValidator:
                     results["entropy_increase"] = True
                     log.info("Entropy increase validated")
                 else:
-                    results["violations"].append(f"Entropy decrease violation: {entropy_change:.2e}")
+                    results["violations"].append(
+                        f"Entropy decrease violation: {entropy_change:.2e}",
+                    )
                     log.warning(f"Entropy decrease violation: {entropy_change:.2e}")
 
             # Store entropy metrics
             results["metrics"]["entropy_initial"] = entropies[0] if entropies else 0.0
             results["metrics"]["entropy_final"] = entropies[-1] if entropies else 0.0
-            results["metrics"]["entropy_change"] = entropies[-1] - entropies[0] if len(entropies) > 1 else 0.0
+            results["metrics"]["entropy_change"] = (
+                entropies[-1] - entropies[0] if len(entropies) > 1 else 0.0
+            )
 
         except Exception as e:
             results["errors"].append(f"Entropy validation failed: {e!s}")
 
-    def _validate_thermodynamic_consistency(self, solution: Any, results: Dict[str, Any]) -> None:
+    def _validate_thermodynamic_consistency(
+        self, solution: Any, results: Dict[str, Any],
+    ) -> None:
         """Validate thermodynamic consistency."""
         try:
             # Use property with fallback to dict access
@@ -315,17 +375,23 @@ class PhysicsValidator:
             if not states:
                 # Fallback to direct dict access
                 states = solution.data.get("states", {})
-            
+
             if not states:
-                results["warnings"].append("Thermodynamic consistency validation not implemented for current Solution structure")
-                results["thermodynamic_consistency"] = True  # Mark as passed to avoid blocking optimization
+                results["warnings"].append(
+                    "Thermodynamic consistency validation not implemented for current Solution structure",
+                )
+                results["thermodynamic_consistency"] = (
+                    True  # Mark as passed to avoid blocking optimization
+                )
                 return
 
             # Check if we have required thermodynamic data
             required_vars = ["T", "p", "rho"]
             missing_vars = [var for var in required_vars if var not in states]
             if missing_vars:
-                results["warnings"].append(f"Missing variables for thermodynamic consistency: {missing_vars}")
+                results["warnings"].append(
+                    f"Missing variables for thermodynamic consistency: {missing_vars}",
+                )
                 return
 
             T = states["T"]
@@ -349,17 +415,27 @@ class PhysicsValidator:
                 log.info("Thermodynamic consistency validated")
             else:
                 violation_rate = violations / len(T)
-                results["violations"].append(f"Thermodynamic consistency violation rate: {violation_rate:.2%}")
-                log.warning(f"Thermodynamic consistency violation rate: {violation_rate:.2%}")
+                results["violations"].append(
+                    f"Thermodynamic consistency violation rate: {violation_rate:.2%}",
+                )
+                log.warning(
+                    f"Thermodynamic consistency violation rate: {violation_rate:.2%}",
+                )
 
             # Store thermodynamic metrics
             results["metrics"]["thermodynamic_violations"] = violations
-            results["metrics"]["thermodynamic_violation_rate"] = violations / len(T) if T else 0.0
+            results["metrics"]["thermodynamic_violation_rate"] = (
+                violations / len(T) if T else 0.0
+            )
 
         except Exception as e:
-            results["errors"].append(f"Thermodynamic consistency validation failed: {e!s}")
+            results["errors"].append(
+                f"Thermodynamic consistency validation failed: {e!s}",
+            )
 
-    def _calculate_physics_metrics(self, solution: Any, results: Dict[str, Any]) -> None:
+    def _calculate_physics_metrics(
+        self, solution: Any, results: Dict[str, Any],
+    ) -> None:
         """Calculate additional physics metrics."""
         try:
             # Use property with fallback to dict access
@@ -367,7 +443,7 @@ class PhysicsValidator:
             if not states:
                 # Fallback to direct dict access
                 states = solution.data.get("states", {})
-            
+
             if not states:
                 return
 
@@ -398,8 +474,8 @@ class PhysicsValidator:
                 # Work done (simplified)
                 work = 0.0
                 for i in range(1, len(V)):
-                    dV = V[i] - V[i-1]
-                    p_avg = (p[i] + p[i-1]) / 2
+                    dV = V[i] - V[i - 1]
+                    p_avg = (p[i] + p[i - 1]) / 2
                     work += p_avg * dV
 
                 results["metrics"]["work_done"] = work
@@ -410,7 +486,9 @@ class PhysicsValidator:
                 v_R = states["v_R"]
 
                 # Average velocity
-                v_avg = sum(abs(v_L[i]) + abs(v_R[i]) for i in range(len(v_L))) / (2 * len(v_L))
+                v_avg = sum(abs(v_L[i]) + abs(v_R[i]) for i in range(len(v_L))) / (
+                    2 * len(v_L)
+                )
                 results["metrics"]["average_velocity"] = v_avg
 
                 # Maximum velocity
@@ -422,10 +500,10 @@ class PhysicsValidator:
 
     def generate_physics_report(self, validation_results: Dict[str, Any]) -> str:
         """Generate detailed physics validation report.
-        
+
         Args:
             validation_results: Physics validation results
-            
+
         Returns:
             Physics validation report text
         """
@@ -443,11 +521,21 @@ class PhysicsValidator:
         # Individual validation status
         report.append("PHYSICS VALIDATION STATUS:")
         report.append("-" * 40)
-        report.append(f"Mass Conservation: {'✅' if validation_results['mass_conservation'] else '❌'}")
-        report.append(f"Energy Conservation: {'✅' if validation_results['energy_conservation'] else '❌'}")
-        report.append(f"Momentum Conservation: {'✅' if validation_results['momentum_conservation'] else '❌'}")
-        report.append(f"Entropy Increase: {'✅' if validation_results['entropy_increase'] else '❌'}")
-        report.append(f"Thermodynamic Consistency: {'✅' if validation_results['thermodynamic_consistency'] else '❌'}")
+        report.append(
+            f"Mass Conservation: {'✅' if validation_results['mass_conservation'] else '❌'}",
+        )
+        report.append(
+            f"Energy Conservation: {'✅' if validation_results['energy_conservation'] else '❌'}",
+        )
+        report.append(
+            f"Momentum Conservation: {'✅' if validation_results['momentum_conservation'] else '❌'}",
+        )
+        report.append(
+            f"Entropy Increase: {'✅' if validation_results['entropy_increase'] else '❌'}",
+        )
+        report.append(
+            f"Thermodynamic Consistency: {'✅' if validation_results['thermodynamic_consistency'] else '❌'}",
+        )
         report.append("")
 
         # Physics metrics
@@ -491,4 +579,3 @@ class PhysicsValidator:
         report.append("=" * 80)
 
         return "\n".join(report)
-

@@ -30,6 +30,3 @@ def test_cv_residual_energy_only_no_flows():
     # With no sources/sinks, residuals near zero
     assert abs(r["dm_dt"]) < 1e-12
     assert abs(r["dU_dt"]) < 1e-8
-
-
-

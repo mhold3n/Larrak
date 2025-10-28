@@ -7,6 +7,7 @@ It may be removed in a future release.
 """
 
 import warnings
+
 warnings.warn(
     "cam_motion_gui_old is deprecated; use cam_motion_gui instead.",
     DeprecationWarning,
@@ -79,20 +80,16 @@ class CamMotionGUI:
             "upstroke_duration": tk.DoubleVar(value=60.0),
             "zero_accel_duration": tk.DoubleVar(value=0.0),
             "motion_type": tk.StringVar(value="minimum_jerk"),
-
             # Cam-ring system parameters
             "base_radius": tk.DoubleVar(value=15.0),
             "connecting_rod_length": tk.DoubleVar(value=25.0),
             "contact_type": tk.StringVar(value="external"),
-
             # Sun gear parameters (for complete system)
             "sun_gear_radius": tk.DoubleVar(value=15.0),
             "ring_gear_radius": tk.DoubleVar(value=45.0),
             "gear_ratio": tk.DoubleVar(value=3.0),
-
             # Optimization method
             "optimization_method": tk.StringVar(value="legendre_collocation"),
-
             # Animation settings
             "animation_frames": tk.IntVar(value=60),
             "animation_speed": tk.DoubleVar(value=1.0),
@@ -126,23 +123,39 @@ class CamMotionGUI:
         self.notebook.add(self.animation_frame, text="Animation")
 
         # Status bar
-        self.status_var = tk.StringVar(value="Ready - Configure parameters and run optimization")
-        self.status_bar = ttk.Label(self.main_frame, textvariable=self.status_var, relief=tk.SUNKEN)
+        self.status_var = tk.StringVar(
+            value="Ready - Configure parameters and run optimization",
+        )
+        self.status_bar = ttk.Label(
+            self.main_frame, textvariable=self.status_var, relief=tk.SUNKEN,
+        )
 
     def _create_control_panel(self):
         """Create the main control panel."""
-        self.control_frame = ttk.LabelFrame(self.main_frame, text="System Parameters", padding="10")
+        self.control_frame = ttk.LabelFrame(
+            self.main_frame, text="System Parameters", padding="10",
+        )
 
         # Row 1: Core parameters
-        ttk.Label(self.control_frame, text="Stroke (mm):").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.stroke_entry = ttk.Entry(self.control_frame, textvariable=self.variables["stroke"], width=8)
+        ttk.Label(self.control_frame, text="Stroke (mm):").grid(
+            row=0, column=0, sticky=tk.W, pady=2,
+        )
+        self.stroke_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["stroke"], width=8,
+        )
         self.stroke_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Cycle Time (s):").grid(row=0, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.cycle_time_entry = ttk.Entry(self.control_frame, textvariable=self.variables["cycle_time"], width=8)
+        ttk.Label(self.control_frame, text="Cycle Time (s):").grid(
+            row=0, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.cycle_time_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["cycle_time"], width=8,
+        )
         self.cycle_time_entry.grid(row=0, column=3, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Motion Type:").grid(row=0, column=4, sticky=tk.W, pady=2, padx=(20, 0))
+        ttk.Label(self.control_frame, text="Motion Type:").grid(
+            row=0, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        )
         self.motion_type_combo = ttk.Combobox(
             self.control_frame,
             textvariable=self.variables["motion_type"],
@@ -153,15 +166,27 @@ class CamMotionGUI:
         self.motion_type_combo.grid(row=0, column=5, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Row 2: Cam-ring parameters
-        ttk.Label(self.control_frame, text="Cam Base Radius (mm):").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.base_radius_entry = ttk.Entry(self.control_frame, textvariable=self.variables["base_radius"], width=8)
+        ttk.Label(self.control_frame, text="Cam Base Radius (mm):").grid(
+            row=1, column=0, sticky=tk.W, pady=2,
+        )
+        self.base_radius_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["base_radius"], width=8,
+        )
         self.base_radius_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Rod Length (mm):").grid(row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.rod_length_entry = ttk.Entry(self.control_frame, textvariable=self.variables["connecting_rod_length"], width=8)
+        ttk.Label(self.control_frame, text="Rod Length (mm):").grid(
+            row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.rod_length_entry = ttk.Entry(
+            self.control_frame,
+            textvariable=self.variables["connecting_rod_length"],
+            width=8,
+        )
         self.rod_length_entry.grid(row=1, column=3, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Contact Type:").grid(row=1, column=4, sticky=tk.W, pady=2, padx=(20, 0))
+        ttk.Label(self.control_frame, text="Contact Type:").grid(
+            row=1, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        )
         self.contact_type_combo = ttk.Combobox(
             self.control_frame,
             textvariable=self.variables["contact_type"],
@@ -172,16 +197,28 @@ class CamMotionGUI:
         self.contact_type_combo.grid(row=1, column=5, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Row 3: Sun gear parameters
-        ttk.Label(self.control_frame, text="Sun Gear Radius (mm):").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.sun_gear_entry = ttk.Entry(self.control_frame, textvariable=self.variables["sun_gear_radius"], width=8)
+        ttk.Label(self.control_frame, text="Sun Gear Radius (mm):").grid(
+            row=2, column=0, sticky=tk.W, pady=2,
+        )
+        self.sun_gear_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["sun_gear_radius"], width=8,
+        )
         self.sun_gear_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Ring Gear Radius (mm):").grid(row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.ring_gear_entry = ttk.Entry(self.control_frame, textvariable=self.variables["ring_gear_radius"], width=8)
+        ttk.Label(self.control_frame, text="Ring Gear Radius (mm):").grid(
+            row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.ring_gear_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["ring_gear_radius"], width=8,
+        )
         self.ring_gear_entry.grid(row=2, column=3, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Gear Ratio:").grid(row=2, column=4, sticky=tk.W, pady=2, padx=(20, 0))
-        self.gear_ratio_entry = ttk.Entry(self.control_frame, textvariable=self.variables["gear_ratio"], width=8)
+        ttk.Label(self.control_frame, text="Gear Ratio:").grid(
+            row=2, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.gear_ratio_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["gear_ratio"], width=8,
+        )
         self.gear_ratio_entry.grid(row=2, column=5, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Row 4: Control buttons
@@ -198,14 +235,18 @@ class CamMotionGUI:
             text="Reset Parameters",
             command=self._reset_parameters,
         )
-        self.reset_button.grid(row=3, column=2, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0))
+        self.reset_button.grid(
+            row=3, column=2, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0),
+        )
 
         self.save_button = ttk.Button(
             self.control_frame,
             text="Save Results",
             command=self._save_results,
         )
-        self.save_button.grid(row=3, column=4, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0))
+        self.save_button.grid(
+            row=3, column=4, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0),
+        )
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
@@ -225,12 +266,14 @@ class CamMotionGUI:
         # Optional constraints
         self._create_constraint_parameters()
 
-            # Solver settings (removed - now handled by unified settings)
+        # Solver settings (removed - now handled by unified settings)
 
     def _create_secondary_widgets(self):
         """Create widgets for secondary optimization (cam-ring mapping)."""
         # Input frame for secondary optimization
-        self.secondary_input_frame = ttk.LabelFrame(self.secondary_frame, text="Cam-Ring System Parameters", padding="10")
+        self.secondary_input_frame = ttk.LabelFrame(
+            self.secondary_frame, text="Cam-Ring System Parameters", padding="10",
+        )
         self.secondary_input_frame.pack(fill=tk.X, pady=(0, 10))
 
         # Cam parameters
@@ -242,30 +285,54 @@ class CamMotionGUI:
     def _create_core_parameters(self):
         """Create widgets for core cam parameters."""
         # Stroke
-        ttk.Label(self.primary_input_frame, text="Stroke (mm):").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.stroke_entry = ttk.Entry(self.primary_input_frame, textvariable=self.variables["stroke"], width=10)
+        ttk.Label(self.primary_input_frame, text="Stroke (mm):").grid(
+            row=0, column=0, sticky=tk.W, pady=2,
+        )
+        self.stroke_entry = ttk.Entry(
+            self.primary_input_frame, textvariable=self.variables["stroke"], width=10,
+        )
         self.stroke_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
 
         # Upstroke duration
-        ttk.Label(self.primary_input_frame, text="Upstroke Duration (%):").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.upstroke_entry = ttk.Entry(self.primary_input_frame, textvariable=self.variables["upstroke_duration"], width=10)
+        ttk.Label(self.primary_input_frame, text="Upstroke Duration (%):").grid(
+            row=1, column=0, sticky=tk.W, pady=2,
+        )
+        self.upstroke_entry = ttk.Entry(
+            self.primary_input_frame,
+            textvariable=self.variables["upstroke_duration"],
+            width=10,
+        )
         self.upstroke_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Zero acceleration duration
-        ttk.Label(self.primary_input_frame, text="Zero Accel Duration (%):").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.zero_accel_entry = ttk.Entry(self.primary_input_frame, textvariable=self.variables["zero_accel_duration"], width=10)
+        ttk.Label(self.primary_input_frame, text="Zero Accel Duration (%):").grid(
+            row=2, column=0, sticky=tk.W, pady=2,
+        )
+        self.zero_accel_entry = ttk.Entry(
+            self.primary_input_frame,
+            textvariable=self.variables["zero_accel_duration"],
+            width=10,
+        )
         self.zero_accel_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Cycle time
-        ttk.Label(self.primary_input_frame, text="Cycle Time (s):").grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.cycle_time_entry = ttk.Entry(self.primary_input_frame, textvariable=self.variables["cycle_time"], width=10)
+        ttk.Label(self.primary_input_frame, text="Cycle Time (s):").grid(
+            row=3, column=0, sticky=tk.W, pady=2,
+        )
+        self.cycle_time_entry = ttk.Entry(
+            self.primary_input_frame,
+            textvariable=self.variables["cycle_time"],
+            width=10,
+        )
         self.cycle_time_entry.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Motion type
-        ttk.Label(self.primary_input_frame, text="Motion Type:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Label(self.primary_input_frame, text="Motion Type:").grid(
+            row=4, column=0, sticky=tk.W, pady=2,
+        )
         self.motion_type_combo = ttk.Combobox(
             self.primary_input_frame,
             textvariable=self.variables["motion_type"],
@@ -278,22 +345,44 @@ class CamMotionGUI:
     def _create_constraint_parameters(self):
         """Create widgets for optional constraints."""
         # Max velocity
-        ttk.Label(self.primary_input_frame, text="Max Velocity (mm/s):").grid(row=0, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.max_vel_entry = ttk.Entry(self.primary_input_frame, textvariable=self.variables["max_velocity"], width=10)
+        ttk.Label(self.primary_input_frame, text="Max Velocity (mm/s):").grid(
+            row=0, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.max_vel_entry = ttk.Entry(
+            self.primary_input_frame,
+            textvariable=self.variables["max_velocity"],
+            width=10,
+        )
         self.max_vel_entry.grid(row=0, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Label(self.primary_input_frame, text="(0 = no limit)").grid(row=0, column=4, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.primary_input_frame, text="(0 = no limit)").grid(
+            row=0, column=4, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Max acceleration
-        ttk.Label(self.primary_input_frame, text="Max Acceleration (mm/s²):").grid(row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.max_acc_entry = ttk.Entry(self.primary_input_frame, textvariable=self.variables["max_acceleration"], width=10)
+        ttk.Label(self.primary_input_frame, text="Max Acceleration (mm/s²):").grid(
+            row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.max_acc_entry = ttk.Entry(
+            self.primary_input_frame,
+            textvariable=self.variables["max_acceleration"],
+            width=10,
+        )
         self.max_acc_entry.grid(row=1, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Label(self.primary_input_frame, text="(0 = no limit)").grid(row=1, column=4, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.primary_input_frame, text="(0 = no limit)").grid(
+            row=1, column=4, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Max jerk
-        ttk.Label(self.primary_input_frame, text="Max Jerk (mm/s³):").grid(row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.max_jerk_entry = ttk.Entry(self.primary_input_frame, textvariable=self.variables["max_jerk"], width=10)
+        ttk.Label(self.primary_input_frame, text="Max Jerk (mm/s³):").grid(
+            row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.max_jerk_entry = ttk.Entry(
+            self.primary_input_frame, textvariable=self.variables["max_jerk"], width=10,
+        )
         self.max_jerk_entry.grid(row=2, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Label(self.primary_input_frame, text="(0 = no limit)").grid(row=2, column=4, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.primary_input_frame, text="(0 = no limit)").grid(
+            row=2, column=4, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Dwell checkboxes
         self.dwell_tdc_check = ttk.Checkbutton(
@@ -313,36 +402,60 @@ class CamMotionGUI:
     def _create_cam_parameters(self):
         """Create widgets for cam-ring system parameters."""
         # System description
-        desc_label = ttk.Label(self.secondary_input_frame,
-                              text="System: Cam connected to linear follower via connecting rod, cam contacts ring follower directly",
-                              font=("TkDefaultFont", 9, "italic"),
-                              foreground="green")
+        desc_label = ttk.Label(
+            self.secondary_input_frame,
+            text="System: Cam connected to linear follower via connecting rod, cam contacts ring follower directly",
+            font=("TkDefaultFont", 9, "italic"),
+            foreground="green",
+        )
         desc_label.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
 
         # Cam base radius
-        ttk.Label(self.secondary_input_frame, text="Cam Base Radius (mm):").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.base_radius_entry = ttk.Entry(self.secondary_input_frame, textvariable=self.variables["base_radius"], width=10)
+        ttk.Label(self.secondary_input_frame, text="Cam Base Radius (mm):").grid(
+            row=1, column=0, sticky=tk.W, pady=2,
+        )
+        self.base_radius_entry = ttk.Entry(
+            self.secondary_input_frame,
+            textvariable=self.variables["base_radius"],
+            width=10,
+        )
         self.base_radius_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Connecting rod length (distance from cam center to linear follower connection)
-        ttk.Label(self.secondary_input_frame, text="Connecting Rod Length (mm):").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.connecting_rod_entry = ttk.Entry(self.secondary_input_frame, textvariable=self.variables["connecting_rod_length"], width=10)
-        self.connecting_rod_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.secondary_input_frame, text="Connecting Rod Length (mm):").grid(
+            row=2, column=0, sticky=tk.W, pady=2,
+        )
+        self.connecting_rod_entry = ttk.Entry(
+            self.secondary_input_frame,
+            textvariable=self.variables["connecting_rod_length"],
+            width=10,
+        )
+        self.connecting_rod_entry.grid(
+            row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Contact type (external/internal contact between cam and ring)
-        ttk.Label(self.secondary_input_frame, text="Cam-Ring Contact Type:").grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.contact_type_combo = ttk.Combobox(self.secondary_input_frame, textvariable=self.variables["contact_type"],
-                                             values=["external", "internal"],
-                                             state="readonly", width=15)
+        ttk.Label(self.secondary_input_frame, text="Cam-Ring Contact Type:").grid(
+            row=3, column=0, sticky=tk.W, pady=2,
+        )
+        self.contact_type_combo = ttk.Combobox(
+            self.secondary_input_frame,
+            textvariable=self.variables["contact_type"],
+            values=["external", "internal"],
+            state="readonly",
+            width=15,
+        )
         self.contact_type_combo.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
     def _create_ring_parameters(self):
         """Create widgets for ring design parameters."""
         # Information label explaining that ring design is mathematically determined
-        info_label = ttk.Label(self.secondary_input_frame,
-                              text="Ring Profile: Mathematically determined by cam geometry and meshing law",
-                              font=("TkDefaultFont", 9, "italic"),
-                              foreground="blue")
+        info_label = ttk.Label(
+            self.secondary_input_frame,
+            text="Ring Profile: Mathematically determined by cam geometry and meshing law",
+            font=("TkDefaultFont", 9, "italic"),
+            foreground="blue",
+        )
         info_label.grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=(10, 5))
 
         # Ring design is determined by the mathematical relationship
@@ -350,117 +463,258 @@ class CamMotionGUI:
         # No user selection needed - it's computed from the cam geometry
 
         # Enable ring design checkbox
-        self.enable_ring_check = ttk.Checkbutton(self.secondary_input_frame, text="Enable Ring Design",
-                                               variable=self.variables["enable_ring_design"])
+        self.enable_ring_check = ttk.Checkbutton(
+            self.secondary_input_frame,
+            text="Enable Ring Design",
+            variable=self.variables["enable_ring_design"],
+        )
         self.enable_ring_check.grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=10)
 
     def _create_tertiary_widgets(self):
         """Create widgets for tertiary optimization (sun gear system)."""
         # Input frame for tertiary optimization
-        self.tertiary_input_frame = ttk.LabelFrame(self.tertiary_frame, text="Sun Gear System Parameters", padding="10")
+        self.tertiary_input_frame = ttk.LabelFrame(
+            self.tertiary_frame, text="Sun Gear System Parameters", padding="10",
+        )
         self.tertiary_input_frame.pack(fill=tk.X, pady=(0, 10))
 
         # Sun gear parameters
-        ttk.Label(self.tertiary_input_frame, text="Sun Gear Radius (mm):").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.sun_gear_entry = ttk.Entry(self.tertiary_input_frame, textvariable=self.variables["sun_gear_radius"], width=10)
+        ttk.Label(self.tertiary_input_frame, text="Sun Gear Radius (mm):").grid(
+            row=0, column=0, sticky=tk.W, pady=2,
+        )
+        self.sun_gear_entry = ttk.Entry(
+            self.tertiary_input_frame,
+            textvariable=self.variables["sun_gear_radius"],
+            width=10,
+        )
         self.sun_gear_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Ring gear parameters
-        ttk.Label(self.tertiary_input_frame, text="Ring Gear Radius (mm):").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.ring_gear_entry = ttk.Entry(self.tertiary_input_frame, textvariable=self.variables["ring_gear_radius"], width=10)
+        ttk.Label(self.tertiary_input_frame, text="Ring Gear Radius (mm):").grid(
+            row=1, column=0, sticky=tk.W, pady=2,
+        )
+        self.ring_gear_entry = ttk.Entry(
+            self.tertiary_input_frame,
+            textvariable=self.variables["ring_gear_radius"],
+            width=10,
+        )
         self.ring_gear_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Gear ratio
-        ttk.Label(self.tertiary_input_frame, text="Gear Ratio:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.gear_ratio_entry = ttk.Entry(self.tertiary_input_frame, textvariable=self.variables["gear_ratio"], width=10)
+        ttk.Label(self.tertiary_input_frame, text="Gear Ratio:").grid(
+            row=2, column=0, sticky=tk.W, pady=2,
+        )
+        self.gear_ratio_entry = ttk.Entry(
+            self.tertiary_input_frame,
+            textvariable=self.variables["gear_ratio"],
+            width=10,
+        )
         self.gear_ratio_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Max back rotation
-        ttk.Label(self.tertiary_input_frame, text="Max Back Rotation (deg):").grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.back_rotation_entry = ttk.Entry(self.tertiary_input_frame, textvariable=self.variables["max_back_rotation"], width=10)
+        ttk.Label(self.tertiary_input_frame, text="Max Back Rotation (deg):").grid(
+            row=3, column=0, sticky=tk.W, pady=2,
+        )
+        self.back_rotation_entry = ttk.Entry(
+            self.tertiary_input_frame,
+            textvariable=self.variables["max_back_rotation"],
+            width=10,
+        )
         self.back_rotation_entry.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Information label
-        info_text = "Sun gear eliminates cam-ring interference and enables 360° ring coverage"
-        info_label = ttk.Label(self.tertiary_input_frame,
-                              text=info_text,
-                              font=("TkDefaultFont", 9, "italic"),
-                              foreground="green")
+        info_text = (
+            "Sun gear eliminates cam-ring interference and enables 360° ring coverage"
+        )
+        info_label = ttk.Label(
+            self.tertiary_input_frame,
+            text=info_text,
+            font=("TkDefaultFont", 9, "italic"),
+            foreground="green",
+        )
         info_label.grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=(10, 5))
 
     def _create_settings_widgets(self):
         """Create widgets for unified optimization settings."""
         # Settings frame
-        self.settings_input_frame = ttk.LabelFrame(self.settings_frame, text="Unified Optimization Settings", padding="10")
+        self.settings_input_frame = ttk.LabelFrame(
+            self.settings_frame, text="Unified Optimization Settings", padding="10",
+        )
         self.settings_input_frame.pack(fill=tk.X, pady=(0, 10))
 
         # Collocation settings
-        ttk.Label(self.settings_input_frame, text="Collocation Degree:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.collocation_degree_entry = ttk.Entry(self.settings_input_frame, textvariable=self.variables["collocation_degree"], width=10)
-        self.collocation_degree_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.settings_input_frame, text="Collocation Degree:").grid(
+            row=0, column=0, sticky=tk.W, pady=2,
+        )
+        self.collocation_degree_entry = ttk.Entry(
+            self.settings_input_frame,
+            textvariable=self.variables["collocation_degree"],
+            width=10,
+        )
+        self.collocation_degree_entry.grid(
+            row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Max iterations
-        ttk.Label(self.settings_input_frame, text="Max Iterations:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.max_iterations_entry = ttk.Entry(self.settings_input_frame, textvariable=self.variables["max_iterations"], width=10)
-        self.max_iterations_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.settings_input_frame, text="Max Iterations:").grid(
+            row=1, column=0, sticky=tk.W, pady=2,
+        )
+        self.max_iterations_entry = ttk.Entry(
+            self.settings_input_frame,
+            textvariable=self.variables["max_iterations"],
+            width=10,
+        )
+        self.max_iterations_entry.grid(
+            row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Tolerance
-        ttk.Label(self.settings_input_frame, text="Tolerance:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.tolerance_entry = ttk.Entry(self.settings_input_frame, textvariable=self.variables["tolerance"], width=10)
+        ttk.Label(self.settings_input_frame, text="Tolerance:").grid(
+            row=2, column=0, sticky=tk.W, pady=2,
+        )
+        self.tolerance_entry = ttk.Entry(
+            self.settings_input_frame,
+            textvariable=self.variables["tolerance"],
+            width=10,
+        )
         self.tolerance_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Lagrangian tolerance
-        ttk.Label(self.settings_input_frame, text="Lagrangian Tolerance:").grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.lagrangian_tolerance_entry = ttk.Entry(self.settings_input_frame, textvariable=self.variables["lagrangian_tolerance"], width=10)
-        self.lagrangian_tolerance_entry.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.settings_input_frame, text="Lagrangian Tolerance:").grid(
+            row=3, column=0, sticky=tk.W, pady=2,
+        )
+        self.lagrangian_tolerance_entry = ttk.Entry(
+            self.settings_input_frame,
+            textvariable=self.variables["lagrangian_tolerance"],
+            width=10,
+        )
+        self.lagrangian_tolerance_entry.grid(
+            row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Penalty weight
-        ttk.Label(self.settings_input_frame, text="Penalty Weight:").grid(row=4, column=0, sticky=tk.W, pady=2)
-        self.penalty_weight_entry = ttk.Entry(self.settings_input_frame, textvariable=self.variables["penalty_weight"], width=10)
-        self.penalty_weight_entry.grid(row=4, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.settings_input_frame, text="Penalty Weight:").grid(
+            row=4, column=0, sticky=tk.W, pady=2,
+        )
+        self.penalty_weight_entry = ttk.Entry(
+            self.settings_input_frame,
+            textvariable=self.variables["penalty_weight"],
+            width=10,
+        )
+        self.penalty_weight_entry.grid(
+            row=4, column=1, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
         # Optimization targets frame
-        self.targets_frame = ttk.LabelFrame(self.settings_frame, text="Optimization Targets", padding="10")
+        self.targets_frame = ttk.LabelFrame(
+            self.settings_frame, text="Optimization Targets", padding="10",
+        )
         self.targets_frame.pack(fill=tk.X, pady=(0, 10))
 
         # Primary targets
-        ttk.Label(self.targets_frame, text="Primary Layer Targets:", font=("TkDefaultFont", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        ttk.Label(
+            self.targets_frame,
+            text="Primary Layer Targets:",
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
 
-        self.minimize_jerk_check = ttk.Checkbutton(self.targets_frame, text="Minimize Jerk", variable=self.variables["minimize_jerk"])
+        self.minimize_jerk_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Jerk",
+            variable=self.variables["minimize_jerk"],
+        )
         self.minimize_jerk_check.grid(row=1, column=0, sticky=tk.W, pady=2)
 
-        self.minimize_time_check = ttk.Checkbutton(self.targets_frame, text="Minimize Time", variable=self.variables["minimize_time"])
+        self.minimize_time_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Time",
+            variable=self.variables["minimize_time"],
+        )
         self.minimize_time_check.grid(row=2, column=0, sticky=tk.W, pady=2)
 
-        self.minimize_energy_check = ttk.Checkbutton(self.targets_frame, text="Minimize Energy", variable=self.variables["minimize_energy"])
+        self.minimize_energy_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Energy",
+            variable=self.variables["minimize_energy"],
+        )
         self.minimize_energy_check.grid(row=3, column=0, sticky=tk.W, pady=2)
 
         # Secondary targets
-        ttk.Label(self.targets_frame, text="Secondary Layer Targets:", font=("TkDefaultFont", 10, "bold")).grid(row=0, column=1, sticky=tk.W, pady=(0, 5), padx=(20, 0))
+        ttk.Label(
+            self.targets_frame,
+            text="Secondary Layer Targets:",
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=0, column=1, sticky=tk.W, pady=(0, 5), padx=(20, 0))
 
-        self.minimize_ring_size_check = ttk.Checkbutton(self.targets_frame, text="Minimize Ring Size", variable=self.variables["minimize_ring_size"])
-        self.minimize_ring_size_check.grid(row=1, column=1, sticky=tk.W, pady=2, padx=(20, 0))
+        self.minimize_ring_size_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Ring Size",
+            variable=self.variables["minimize_ring_size"],
+        )
+        self.minimize_ring_size_check.grid(
+            row=1, column=1, sticky=tk.W, pady=2, padx=(20, 0),
+        )
 
-        self.minimize_cam_size_check = ttk.Checkbutton(self.targets_frame, text="Minimize Cam Size", variable=self.variables["minimize_cam_size"])
-        self.minimize_cam_size_check.grid(row=2, column=1, sticky=tk.W, pady=2, padx=(20, 0))
+        self.minimize_cam_size_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Cam Size",
+            variable=self.variables["minimize_cam_size"],
+        )
+        self.minimize_cam_size_check.grid(
+            row=2, column=1, sticky=tk.W, pady=2, padx=(20, 0),
+        )
 
-        self.minimize_curvature_check = ttk.Checkbutton(self.targets_frame, text="Minimize Curvature Variation", variable=self.variables["minimize_curvature_variation"])
-        self.minimize_curvature_check.grid(row=3, column=1, sticky=tk.W, pady=2, padx=(20, 0))
+        self.minimize_curvature_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Curvature Variation",
+            variable=self.variables["minimize_curvature_variation"],
+        )
+        self.minimize_curvature_check.grid(
+            row=3, column=1, sticky=tk.W, pady=2, padx=(20, 0),
+        )
 
         # Tertiary targets
-        ttk.Label(self.targets_frame, text="Tertiary Layer Targets:", font=("TkDefaultFont", 10, "bold")).grid(row=0, column=2, sticky=tk.W, pady=(0, 5), padx=(20, 0))
+        ttk.Label(
+            self.targets_frame,
+            text="Tertiary Layer Targets:",
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=0, column=2, sticky=tk.W, pady=(0, 5), padx=(20, 0))
 
-        self.minimize_system_size_check = ttk.Checkbutton(self.targets_frame, text="Minimize System Size", variable=self.variables["minimize_system_size"])
-        self.minimize_system_size_check.grid(row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0))
+        self.minimize_system_size_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize System Size",
+            variable=self.variables["minimize_system_size"],
+        )
+        self.minimize_system_size_check.grid(
+            row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
 
-        self.maximize_efficiency_check = ttk.Checkbutton(self.targets_frame, text="Maximize Efficiency", variable=self.variables["maximize_efficiency"])
-        self.maximize_efficiency_check.grid(row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0))
+        self.maximize_efficiency_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Maximize Efficiency",
+            variable=self.variables["maximize_efficiency"],
+        )
+        self.maximize_efficiency_check.grid(
+            row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
 
-        self.minimize_back_rotation_check = ttk.Checkbutton(self.targets_frame, text="Minimize Back Rotation", variable=self.variables["minimize_back_rotation"])
-        self.minimize_back_rotation_check.grid(row=3, column=2, sticky=tk.W, pady=2, padx=(20, 0))
+        self.minimize_back_rotation_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Back Rotation",
+            variable=self.variables["minimize_back_rotation"],
+        )
+        self.minimize_back_rotation_check.grid(
+            row=3, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
 
-        self.minimize_gear_stress_check = ttk.Checkbutton(self.targets_frame, text="Minimize Gear Stress", variable=self.variables["minimize_gear_stress"])
-        self.minimize_gear_stress_check.grid(row=4, column=2, sticky=tk.W, pady=2, padx=(20, 0))
+        self.minimize_gear_stress_check = ttk.Checkbutton(
+            self.targets_frame,
+            text="Minimize Gear Stress",
+            variable=self.variables["minimize_gear_stress"],
+        )
+        self.minimize_gear_stress_check.grid(
+            row=4, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
 
     def _create_control_buttons(self):
         """Create control buttons."""
@@ -527,12 +781,24 @@ class CamMotionGUI:
         self.reset_button.pack(side=tk.LEFT, padx=5)
 
         # Plot view toggle
-        ttk.Label(self.common_button_frame, text="View:").pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Label(self.common_button_frame, text="View:").pack(
+            side=tk.LEFT, padx=(20, 5),
+        )
         self.plot_view_var = tk.StringVar(value="subplots")
-        ttk.Radiobutton(self.common_button_frame, text="Smart Subplots", variable=self.plot_view_var,
-                       value="subplots", command=self._toggle_plot_view).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Radiobutton(self.common_button_frame, text="Single Plot", variable=self.plot_view_var,
-                       value="single", command=self._toggle_plot_view).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Radiobutton(
+            self.common_button_frame,
+            text="Smart Subplots",
+            variable=self.plot_view_var,
+            value="subplots",
+            command=self._toggle_plot_view,
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Radiobutton(
+            self.common_button_frame,
+            text="Single Plot",
+            variable=self.plot_view_var,
+            value="single",
+            command=self._toggle_plot_view,
+        ).pack(side=tk.LEFT, padx=(0, 5))
 
     def _layout_widgets(self):
         """Layout all widgets in the main window."""
@@ -545,7 +811,9 @@ class CamMotionGUI:
         """Setup matplotlib plots for each tab."""
         # Tab 1: Motion Law
         self.motion_law_fig = Figure(figsize=(12, 6), dpi=100)
-        self.motion_law_canvas = FigureCanvasTkAgg(self.motion_law_fig, self.motion_law_frame)
+        self.motion_law_canvas = FigureCanvasTkAgg(
+            self.motion_law_fig, self.motion_law_frame,
+        )
         self.motion_law_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         # Tab 2: Cam/Ring Motion
@@ -560,7 +828,9 @@ class CamMotionGUI:
 
         # Tab 4: Animation
         self.animation_fig = Figure(figsize=(12, 6), dpi=100)
-        self.animation_canvas = FigureCanvasTkAgg(self.animation_fig, self.animation_frame)
+        self.animation_canvas = FigureCanvasTkAgg(
+            self.animation_fig, self.animation_frame,
+        )
         self.animation_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         # Animation controls
@@ -595,18 +865,27 @@ class CamMotionGUI:
         )
         self.stop_button.pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(self.animation_control_frame, text="Speed:").pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Label(self.animation_control_frame, text="Speed:").pack(
+            side=tk.LEFT, padx=(20, 5),
+        )
         self.speed_scale = ttk.Scale(
             self.animation_control_frame,
-            from_=0.1, to=3.0,
+            from_=0.1,
+            to=3.0,
             variable=self.variables["animation_speed"],
             orient=tk.HORIZONTAL,
             length=100,
         )
         self.speed_scale.pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(self.animation_control_frame, text="Frames:").pack(side=tk.LEFT, padx=(20, 5))
-        self.frames_entry = ttk.Entry(self.animation_control_frame, textvariable=self.variables["animation_frames"], width=6)
+        ttk.Label(self.animation_control_frame, text="Frames:").pack(
+            side=tk.LEFT, padx=(20, 5),
+        )
+        self.frames_entry = ttk.Entry(
+            self.animation_control_frame,
+            textvariable=self.variables["animation_frames"],
+            width=6,
+        )
         self.frames_entry.pack(side=tk.LEFT, padx=5)
 
         # Animation state
@@ -619,32 +898,60 @@ class CamMotionGUI:
         # Motion Law tab
         self.motion_law_fig.clear()
         ax = self.motion_law_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "Motion Law\n\nRun optimization to see results",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "Motion Law\n\nRun optimization to see results",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Linear Follower Motion Law")
         self.motion_law_canvas.draw()
 
         # Cam/Ring Motion tab
         self.motion_fig.clear()
         ax = self.motion_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "Cam/Ring Motion\n\nRun optimization to see results",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "Cam/Ring Motion\n\nRun optimization to see results",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Cam and Ring Motion Relationships")
         self.motion_canvas.draw()
 
         # 2D Profiles tab
         self.profiles_fig.clear()
         ax = self.profiles_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "2D Profiles\n\nRun optimization to see results",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "2D Profiles\n\nRun optimization to see results",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Cam and Ring 2D Profiles")
         self.profiles_canvas.draw()
 
         # Animation tab
         self.animation_fig.clear()
         ax = self.animation_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "System Animation\n\nRun optimization to see animation",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "System Animation\n\nRun optimization to see animation",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Cam-Ring System Animation")
         self.animation_canvas.draw()
 
@@ -667,13 +974,17 @@ class CamMotionGUI:
             if not 0 <= upstroke_duration <= 100:
                 raise ValueError("Upstroke duration must be between 0 and 100%")
             if not 0 <= zero_accel_duration <= 100:
-                raise ValueError("Zero acceleration duration must be between 0 and 100%")
+                raise ValueError(
+                    "Zero acceleration duration must be between 0 and 100%",
+                )
 
             # REMOVED: The incorrect constraint that was causing the error
             # if zero_accel_duration > upstroke_duration:
             #     raise ValueError("Zero acceleration duration cannot exceed upstroke duration")
 
-            print(f"DEBUG: Validation passed - zero acceleration duration ({zero_accel_duration}%) can exceed upstroke duration ({upstroke_duration}%)")
+            print(
+                f"DEBUG: Validation passed - zero acceleration duration ({zero_accel_duration}%) can exceed upstroke duration ({upstroke_duration}%)",
+            )
 
             if cycle_time <= 0:
                 raise ValueError("Cycle time must be positive")
@@ -746,7 +1057,9 @@ class CamMotionGUI:
             print("DEBUG: Calling solve_cam_motion_law with:")
             print(f"  - stroke={stroke}")
             print(f"  - upstroke_duration_percent={upstroke_duration}")
-            print(f"  - zero_accel_duration_percent={zero_accel_duration if zero_accel_duration > 0 else None}")
+            print(
+                f"  - zero_accel_duration_percent={zero_accel_duration if zero_accel_duration > 0 else None}",
+            )
 
             # Solve motion law
             solution = solve_cam_motion_law(
@@ -757,13 +1070,17 @@ class CamMotionGUI:
                 max_velocity=max_velocity,
                 max_acceleration=max_acceleration,
                 max_jerk=max_jerk,
-                zero_accel_duration_percent=zero_accel_duration if zero_accel_duration > 0 else None,
+                zero_accel_duration_percent=zero_accel_duration
+                if zero_accel_duration > 0
+                else None,
                 dwell_at_tdc=dwell_at_tdc,
                 dwell_at_bdc=dwell_at_bdc,
                 settings=settings,
             )
 
-            print(f"DEBUG: Motion law solved successfully, got {len(solution['cam_angle'])} points")
+            print(
+                f"DEBUG: Motion law solved successfully, got {len(solution['cam_angle'])} points",
+            )
 
             # Store the primary result for ring design
             self.primary_result = solution
@@ -774,6 +1091,7 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error in solve thread: {e}")
             import traceback
+
             traceback.print_exc()
             log.error(f"Error solving motion law: {e}")
             self.root.after(0, self._show_error, str(e))
@@ -787,7 +1105,10 @@ class CamMotionGUI:
             return
 
         if self.primary_result is None:
-            messagebox.showwarning("No Primary Solution", "Please solve the motion law first before designing the ring follower.")
+            messagebox.showwarning(
+                "No Primary Solution",
+                "Please solve the motion law first before designing the ring follower.",
+            )
             return
 
         # Disable solve button during computation
@@ -844,7 +1165,9 @@ class CamMotionGUI:
                 "connecting_rod_length": connecting_rod_length,
             }
 
-            print(f"DEBUG: Starting cam-ring optimization with initial guess: {initial_guess}")
+            print(
+                f"DEBUG: Starting cam-ring optimization with initial guess: {initial_guess}",
+            )
 
             # Perform optimization
             optimization_result = optimizer.optimize(
@@ -855,19 +1178,27 @@ class CamMotionGUI:
             if optimization_result.status.value == "converged":
                 ring_result = optimization_result.solution
                 print("DEBUG: Optimization completed successfully")
-                print(f"  - Final objective value: {optimization_result.objective_value:.6f}")
+                print(
+                    f"  - Final objective value: {optimization_result.objective_value:.6f}",
+                )
                 print(f"  - Iterations: {optimization_result.iterations}")
-                print(f"  - Optimized parameters: {ring_result.get('optimized_parameters', {})}")
+                print(
+                    f"  - Optimized parameters: {ring_result.get('optimized_parameters', {})}",
+                )
             else:
-                print(f"DEBUG: Optimization failed: {optimization_result.metadata.get('error_message', 'Unknown error')}")
+                print(
+                    f"DEBUG: Optimization failed: {optimization_result.metadata.get('error_message', 'Unknown error')}",
+                )
                 # Fallback to simple mapping
                 ring_result = process_linear_to_ring_follower(
                     primary_data=self.primary_result,
-                    secondary_constraints={"cam_parameters": {
-                        "base_radius": base_radius,
-                        "connecting_rod_length": connecting_rod_length,
-                        "contact_type": contact_type,
-                    }},
+                    secondary_constraints={
+                        "cam_parameters": {
+                            "base_radius": base_radius,
+                            "connecting_rod_length": connecting_rod_length,
+                            "contact_type": contact_type,
+                        },
+                    },
                     secondary_relationships={},
                     optimization_targets={},
                 )
@@ -881,6 +1212,7 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error in ring design thread: {e}")
             import traceback
+
             traceback.print_exc()
             log.error(f"Error designing ring follower: {e}")
             self.root.after(0, self._show_error, str(e))
@@ -937,9 +1269,27 @@ class CamMotionGUI:
 
             # Plot 1: Primary optimization results (motion law)
             if result_data.primary_theta is not None:
-                ax1.plot(result_data.primary_theta, result_data.primary_position, "b-", label="Position", linewidth=2)
-                ax1.plot(result_data.primary_theta, result_data.primary_velocity, "r-", label="Velocity", linewidth=2)
-                ax1.plot(result_data.primary_theta, result_data.primary_acceleration, "g-", label="Acceleration", linewidth=2)
+                ax1.plot(
+                    result_data.primary_theta,
+                    result_data.primary_position,
+                    "b-",
+                    label="Position",
+                    linewidth=2,
+                )
+                ax1.plot(
+                    result_data.primary_theta,
+                    result_data.primary_velocity,
+                    "r-",
+                    label="Velocity",
+                    linewidth=2,
+                )
+                ax1.plot(
+                    result_data.primary_theta,
+                    result_data.primary_acceleration,
+                    "g-",
+                    label="Acceleration",
+                    linewidth=2,
+                )
                 ax1.set_xlabel("Cam Angle (degrees)")
                 ax1.set_ylabel("Displacement (mm)")
                 ax1.set_title("Primary: Linear Follower Motion Law")
@@ -950,7 +1300,13 @@ class CamMotionGUI:
             if result_data.secondary_cam_curves is not None:
                 cam_curves = result_data.secondary_cam_curves
                 if "profile_radius" in cam_curves:
-                    ax2.plot(result_data.primary_theta, cam_curves["profile_radius"], "b-", label="Cam Profile", linewidth=2)
+                    ax2.plot(
+                        result_data.primary_theta,
+                        cam_curves["profile_radius"],
+                        "b-",
+                        label="Cam Profile",
+                        linewidth=2,
+                    )
                     ax2.set_xlabel("Cam Angle (degrees)")
                     ax2.set_ylabel("Radius (mm)")
                     ax2.set_title("Secondary: Cam Profile")
@@ -958,7 +1314,10 @@ class CamMotionGUI:
                     ax2.grid(True)
 
             # Plot 3: Secondary optimization results (ring profile - polar)
-            if result_data.secondary_psi is not None and result_data.secondary_R_psi is not None:
+            if (
+                result_data.secondary_psi is not None
+                and result_data.secondary_R_psi is not None
+            ):
                 psi_rad = result_data.secondary_psi
                 R_psi = result_data.secondary_R_psi
                 ax3.plot(psi_rad, R_psi, "r-", linewidth=2)
@@ -966,7 +1325,10 @@ class CamMotionGUI:
                 ax3.grid(True)
 
             # Plot 4: Tertiary optimization results (complete ring profile - polar)
-            if result_data.tertiary_psi_complete is not None and result_data.tertiary_R_psi_complete is not None:
+            if (
+                result_data.tertiary_psi_complete is not None
+                and result_data.tertiary_R_psi_complete is not None
+            ):
                 psi_complete = result_data.tertiary_psi_complete
                 R_psi_complete = result_data.tertiary_R_psi_complete
                 ax4.plot(psi_complete, R_psi_complete, "g-", linewidth=2)
@@ -981,14 +1343,21 @@ class CamMotionGUI:
             summary_text += f"Secondary: Ring coverage {summary['secondary_results']['ring_coverage']:.1f}°\n"
             summary_text += f"Tertiary: Complete 360° coverage: {summary['tertiary_results']['complete_360_coverage']}"
 
-            self.fig.text(0.02, 0.02, summary_text, fontsize=8, verticalalignment="bottom",
-                         bbox=dict(boxstyle="round", facecolor="lightgray", alpha=0.8))
+            self.fig.text(
+                0.02,
+                0.02,
+                summary_text,
+                fontsize=8,
+                verticalalignment="bottom",
+                bbox=dict(boxstyle="round", facecolor="lightgray", alpha=0.8),
+            )
 
             self.fig.tight_layout()
 
         except Exception as e:
             print(f"DEBUG: Error creating unified plots: {e}")
             import traceback
+
             traceback.print_exc()
 
     def _update_plot(self, solution):
@@ -1007,20 +1376,34 @@ class CamMotionGUI:
             jerk = solution["control"]
 
             print("DEBUG: Plot data shapes:")
-            print(f"  - cam_angle: {len(cam_angle)} points, range: {cam_angle[0]:.2f} to {cam_angle[-1]:.2f}")
-            print(f"  - position: {len(position)} points, range: {position.min():.2f} to {position.max():.2f}")
-            print(f"  - velocity: {len(velocity)} points, range: {velocity.min():.2f} to {velocity.max():.2f}")
-            print(f"  - acceleration: {len(acceleration)} points, range: {acceleration.min():.2f} to {acceleration.max():.2f}")
-            print(f"  - jerk: {len(jerk)} points, range: {jerk.min():.2f} to {jerk.max():.2f}")
+            print(
+                f"  - cam_angle: {len(cam_angle)} points, range: {cam_angle[0]:.2f} to {cam_angle[-1]:.2f}",
+            )
+            print(
+                f"  - position: {len(position)} points, range: {position.min():.2f} to {position.max():.2f}",
+            )
+            print(
+                f"  - velocity: {len(velocity)} points, range: {velocity.min():.2f} to {velocity.max():.2f}",
+            )
+            print(
+                f"  - acceleration: {len(acceleration)} points, range: {acceleration.min():.2f} to {acceleration.max():.2f}",
+            )
+            print(
+                f"  - jerk: {len(jerk)} points, range: {jerk.min():.2f} to {jerk.max():.2f}",
+            )
 
             # Store solution BEFORE plotting so BDC marker can access it
             self.current_solution = solution
 
             # Create plots based on selected view mode
             if self.plot_view_var.get() == "subplots":
-                self._create_smart_scaled_plots(cam_angle, position, velocity, acceleration, jerk)
+                self._create_smart_scaled_plots(
+                    cam_angle, position, velocity, acceleration, jerk,
+                )
             else:
-                self._create_single_plot(cam_angle, position, velocity, acceleration, jerk)
+                self._create_single_plot(
+                    cam_angle, position, velocity, acceleration, jerk,
+                )
 
             print("DEBUG: About to refresh canvas...")
 
@@ -1037,11 +1420,14 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error in _update_plot: {e}")
             import traceback
+
             traceback.print_exc()
             log.error(f"Error updating plot: {e}")
             self._show_error(f"Error updating plot: {e}")
 
-    def _create_smart_scaled_plots(self, cam_angle, position, velocity, acceleration, jerk):
+    def _create_smart_scaled_plots(
+        self, cam_angle, position, velocity, acceleration, jerk,
+    ):
         """Create smart-scaled subplots for each motion law curve."""
 
         # Create 2x2 subplot layout
@@ -1064,7 +1450,10 @@ class CamMotionGUI:
             ax.axvline(x=0, color="black", linestyle="--", alpha=0.5)
 
             # Calculate BDC position based on upstroke duration
-            if hasattr(self, "current_solution") and "cam_angle" in self.current_solution:
+            if (
+                hasattr(self, "current_solution")
+                and "cam_angle" in self.current_solution
+            ):
                 # Calculate BDC based on upstroke duration percentage
                 upstroke_duration = self.variables["upstroke_duration"].get()
                 bdc_angle = (upstroke_duration / 100.0) * 360.0
@@ -1101,7 +1490,9 @@ class CamMotionGUI:
         # Plot all curves on the same axes
         ax.plot(cam_angle, position, "b-", linewidth=2, label="Displacement (mm)")
         ax.plot(cam_angle, velocity, "g-", linewidth=2, label="Velocity (mm/s)")
-        ax.plot(cam_angle, acceleration, "r-", linewidth=2, label="Acceleration (mm/s²)")
+        ax.plot(
+            cam_angle, acceleration, "r-", linewidth=2, label="Acceleration (mm/s²)",
+        )
         ax.plot(cam_angle, jerk, "m-", linewidth=2, label="Jerk (mm/s³)")
 
         # Add TDC/BDC markers
@@ -1113,7 +1504,9 @@ class CamMotionGUI:
             upstroke_duration = self.variables["upstroke_duration"].get()
             bdc_angle = (upstroke_duration / 100.0) * 360.0
             # BDC marker placed at calculated position
-            ax.axvline(x=bdc_angle, color="black", linestyle="--", alpha=0.5, label="BDC")
+            ax.axvline(
+                x=bdc_angle, color="black", linestyle="--", alpha=0.5, label="BDC",
+            )
         else:
             # Fallback to 180° if no solution available
             print("DEBUG: Using fallback BDC marker at 180°")
@@ -1194,10 +1587,17 @@ class CamMotionGUI:
         stats_text = f"Max: {max_val:.2f} {unit}\nMin: {min_val:.2f} {unit}\nMean: {mean_val:.2f} {unit}\nRMS: {rms_val:.2f} {unit}"
 
         # Position text box in upper right corner
-        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-                verticalalignment="top", horizontalalignment="right",
-                bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
-                fontsize=8, family="monospace")
+        ax.text(
+            0.98,
+            0.98,
+            stats_text,
+            transform=ax.transAxes,
+            verticalalignment="top",
+            horizontalalignment="right",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+            fontsize=8,
+            family="monospace",
+        )
 
     def _show_error(self, error_message):
         """Show error message."""
@@ -1239,7 +1639,9 @@ class CamMotionGUI:
                 "stroke": self.variables["stroke"].get(),
                 "cycle_time": self.variables["cycle_time"].get(),
                 "upstroke_duration_percent": self.variables["upstroke_duration"].get(),
-                "zero_accel_duration_percent": self.variables["zero_accel_duration"].get(),
+                "zero_accel_duration_percent": self.variables[
+                    "zero_accel_duration"
+                ].get(),
             }
 
             print(f"DEBUG: Unified optimization input data: {input_data}")
@@ -1256,10 +1658,16 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error in unified optimization thread: {e}")
             import traceback
+
             traceback.print_exc()
             error_message = str(e)
             self.root.after(0, self._enable_unified_solve_button)
-            self.root.after(0, lambda: self.status_var.set(f"Unified optimization failed: {error_message}"))
+            self.root.after(
+                0,
+                lambda: self.status_var.set(
+                    f"Unified optimization failed: {error_message}",
+                ),
+            )
 
     def _configure_unified_framework(self):
         """Configure the unified optimization framework with current settings."""
@@ -1281,9 +1689,15 @@ class CamMotionGUI:
         constraints = UnifiedOptimizationConstraints(
             stroke_min=1.0,
             stroke_max=100.0,
-            max_velocity=self.variables["max_velocity"].get() if self.variables["max_velocity"].get() > 0 else None,
-            max_acceleration=self.variables["max_acceleration"].get() if self.variables["max_acceleration"].get() > 0 else None,
-            max_jerk=self.variables["max_jerk"].get() if self.variables["max_jerk"].get() > 0 else None,
+            max_velocity=self.variables["max_velocity"].get()
+            if self.variables["max_velocity"].get() > 0
+            else None,
+            max_acceleration=self.variables["max_acceleration"].get()
+            if self.variables["max_acceleration"].get() > 0
+            else None,
+            max_jerk=self.variables["max_jerk"].get()
+            if self.variables["max_jerk"].get() > 0
+            else None,
             base_radius_min=5.0,
             base_radius_max=100.0,
             connecting_rod_length_min=10.0,
@@ -1304,7 +1718,9 @@ class CamMotionGUI:
             minimize_energy=self.variables["minimize_energy"].get(),
             minimize_ring_size=self.variables["minimize_ring_size"].get(),
             minimize_cam_size=self.variables["minimize_cam_size"].get(),
-            minimize_curvature_variation=self.variables["minimize_curvature_variation"].get(),
+            minimize_curvature_variation=self.variables[
+                "minimize_curvature_variation"
+            ].get(),
             minimize_system_size=self.variables["minimize_system_size"].get(),
             maximize_efficiency=self.variables["maximize_efficiency"].get(),
             minimize_back_rotation=self.variables["minimize_back_rotation"].get(),
@@ -1312,7 +1728,9 @@ class CamMotionGUI:
         )
 
         # Configure framework
-        self.unified_framework.configure(settings=settings, constraints=constraints, targets=targets)
+        self.unified_framework.configure(
+            settings=settings, constraints=constraints, targets=targets,
+        )
 
         print(f"DEBUG: Configured unified framework with method: {method.value}")
 
@@ -1359,12 +1777,19 @@ class CamMotionGUI:
             # Implementation for primary-only optimization
             # This would use the unified framework but only run the primary layer
             self.root.after(0, self._enable_primary_solve_button)
-            self.root.after(0, lambda: self.status_var.set("Primary optimization completed"))
+            self.root.after(
+                0, lambda: self.status_var.set("Primary optimization completed"),
+            )
         except Exception as e:
             print(f"DEBUG: Error in primary optimization thread: {e}")
             error_message = str(e)
             self.root.after(0, self._enable_primary_solve_button)
-            self.root.after(0, lambda: self.status_var.set(f"Primary optimization failed: {error_message}"))
+            self.root.after(
+                0,
+                lambda: self.status_var.set(
+                    f"Primary optimization failed: {error_message}",
+                ),
+            )
 
     def _solve_secondary_thread(self):
         """Thread function for secondary optimization only."""
@@ -1372,12 +1797,19 @@ class CamMotionGUI:
             print("DEBUG: Starting secondary optimization thread...")
             # Implementation for secondary-only optimization
             self.root.after(0, self._enable_secondary_solve_button)
-            self.root.after(0, lambda: self.status_var.set("Secondary optimization completed"))
+            self.root.after(
+                0, lambda: self.status_var.set("Secondary optimization completed"),
+            )
         except Exception as e:
             print(f"DEBUG: Error in secondary optimization thread: {e}")
             error_message = str(e)
             self.root.after(0, self._enable_secondary_solve_button)
-            self.root.after(0, lambda: self.status_var.set(f"Secondary optimization failed: {error_message}"))
+            self.root.after(
+                0,
+                lambda: self.status_var.set(
+                    f"Secondary optimization failed: {error_message}",
+                ),
+            )
 
     def _solve_tertiary_thread(self):
         """Thread function for tertiary optimization only."""
@@ -1385,12 +1817,19 @@ class CamMotionGUI:
             print("DEBUG: Starting tertiary optimization thread...")
             # Implementation for tertiary-only optimization
             self.root.after(0, self._enable_tertiary_solve_button)
-            self.root.after(0, lambda: self.status_var.set("Tertiary optimization completed"))
+            self.root.after(
+                0, lambda: self.status_var.set("Tertiary optimization completed"),
+            )
         except Exception as e:
             print(f"DEBUG: Error in tertiary optimization thread: {e}")
             error_message = str(e)
             self.root.after(0, self._enable_tertiary_solve_button)
-            self.root.after(0, lambda: self.status_var.set(f"Tertiary optimization failed: {error_message}"))
+            self.root.after(
+                0,
+                lambda: self.status_var.set(
+                    f"Tertiary optimization failed: {error_message}",
+                ),
+            )
 
     def _enable_unified_solve_button(self):
         """Re-enable the unified solve button."""
@@ -1424,11 +1863,14 @@ class CamMotionGUI:
 
             # Update status
             summary = self.unified_framework.get_optimization_summary()
-            self.status_var.set(f"Unified optimization completed - Method: {summary['method']}, Time: {summary['total_solve_time']:.3f}s")
+            self.status_var.set(
+                f"Unified optimization completed - Method: {summary['method']}, Time: {summary['total_solve_time']:.3f}s",
+            )
 
         except Exception as e:
             print(f"DEBUG: Error updating unified plot: {e}")
             import traceback
+
             traceback.print_exc()
             self.status_var.set(f"Plot update failed: {e}")
         finally:
@@ -1437,7 +1879,9 @@ class CamMotionGUI:
     def _update_ring_plot(self, ring_result):
         """Update the plot with ring design results."""
         try:
-            print(f"DEBUG: Updating ring plot with result keys: {list(ring_result.keys())}")
+            print(
+                f"DEBUG: Updating ring plot with result keys: {list(ring_result.keys())}",
+            )
 
             # Clear previous plot
             self.fig.clear()
@@ -1459,6 +1903,7 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error updating ring plot: {e}")
             import traceback
+
             traceback.print_exc()
             self._show_error(f"Error updating plot: {e}")
 
@@ -1480,11 +1925,23 @@ class CamMotionGUI:
 
             # Plot pitch curve (cam centerline)
             if "pitch_radius" in cam_curves:
-                ax1.plot(theta_rad, cam_curves["pitch_radius"], "b-", linewidth=2, label="Pitch Curve")
+                ax1.plot(
+                    theta_rad,
+                    cam_curves["pitch_radius"],
+                    "b-",
+                    linewidth=2,
+                    label="Pitch Curve",
+                )
 
             # Plot profile curve (cam surface)
             if "profile_radius" in cam_curves:
-                ax1.plot(theta_rad, cam_curves["profile_radius"], "r-", linewidth=2, label="Profile Curve")
+                ax1.plot(
+                    theta_rad,
+                    cam_curves["profile_radius"],
+                    "r-",
+                    linewidth=2,
+                    label="Profile Curve",
+                )
 
             ax1.set_title("Cam Profile", pad=20)
             ax1.legend(loc="upper right", bbox_to_anchor=(1.3, 1.0))
@@ -1518,11 +1975,23 @@ class CamMotionGUI:
 
             # Plot pitch curve (cam centerline)
             if "pitch_radius" in cam_curves:
-                ax1.plot(theta_rad, cam_curves["pitch_radius"], "b-", linewidth=2, label="Pitch Curve")
+                ax1.plot(
+                    theta_rad,
+                    cam_curves["pitch_radius"],
+                    "b-",
+                    linewidth=2,
+                    label="Pitch Curve",
+                )
 
             # Plot profile curve (cam surface)
             if "profile_radius" in cam_curves:
-                ax1.plot(theta_rad, cam_curves["profile_radius"], "r-", linewidth=2, label="Profile Curve")
+                ax1.plot(
+                    theta_rad,
+                    cam_curves["profile_radius"],
+                    "r-",
+                    linewidth=2,
+                    label="Profile Curve",
+                )
 
             ax1.set_title("Cam Profile", pad=20)
             ax1.legend(loc="upper right", bbox_to_anchor=(1.3, 1.0))
@@ -1541,12 +2010,18 @@ class CamMotionGUI:
     def _save_plot(self):
         """Save the current plot."""
         if not hasattr(self, "current_solution"):
-            messagebox.showwarning("Warning", "No plot to save. Please solve a motion law first.")
+            messagebox.showwarning(
+                "Warning", "No plot to save. Please solve a motion law first.",
+            )
             return
 
         filename = filedialog.asksaveasfilename(
             defaultextension=".png",
-            filetypes=[("PNG files", "*.png"), ("PDF files", "*.pdf"), ("SVG files", "*.svg")],
+            filetypes=[
+                ("PNG files", "*.png"),
+                ("PDF files", "*.pdf"),
+                ("SVG files", "*.svg"),
+            ],
             title="Save Motion Law Plot",
         )
 
@@ -1568,9 +2043,16 @@ class CamMotionGUI:
         ax.set_ylabel("Value")
         ax.set_title("Cam Motion Law Curves")
         ax.grid(True, alpha=0.3)
-        ax.text(0.5, 0.5, 'Click "Solve Motion Law" to generate curves',
-                transform=ax.transAxes, ha="center", va="center",
-                fontsize=12, alpha=0.7)
+        ax.text(
+            0.5,
+            0.5,
+            'Click "Solve Motion Law" to generate curves',
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=12,
+            alpha=0.7,
+        )
         ax.set_xlim(0, 360)
         ax.set_ylim(-1, 1)
 
@@ -1626,7 +2108,9 @@ class CamMotionGUI:
                 "stroke": self.variables["stroke"].get(),
                 "cycle_time": self.variables["cycle_time"].get(),
                 "upstroke_duration_percent": self.variables["upstroke_duration"].get(),
-                "zero_accel_duration_percent": self.variables["zero_accel_duration"].get(),
+                "zero_accel_duration_percent": self.variables[
+                    "zero_accel_duration"
+                ].get(),
             }
 
             print(f"DEBUG: System optimization input data: {input_data}")
@@ -1643,10 +2127,13 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error in optimization thread: {e}")
             import traceback
+
             traceback.print_exc()
             error_message = str(e)
             self.root.after(0, self._enable_optimize_button)
-            self.root.after(0, lambda: self.status_var.set(f"Optimization failed: {error_message}"))
+            self.root.after(
+                0, lambda: self.status_var.set(f"Optimization failed: {error_message}"),
+            )
 
     def _enable_optimize_button(self):
         """Re-enable the optimize button."""
@@ -1670,11 +2157,14 @@ class CamMotionGUI:
             self._update_animation_plot(result_data)
 
             # Update status
-            self.status_var.set(f"Optimization completed - Total time: {result_data.total_solve_time:.3f}s")
+            self.status_var.set(
+                f"Optimization completed - Total time: {result_data.total_solve_time:.3f}s",
+            )
 
         except Exception as e:
             print(f"DEBUG: Error updating plots: {e}")
             import traceback
+
             traceback.print_exc()
             self.status_var.set(f"Plot update failed: {e}")
         finally:
@@ -1684,37 +2174,67 @@ class CamMotionGUI:
         """Update the motion law plot (Tab 1)."""
         self.motion_law_fig.clear()
 
-        if result_data.primary_theta is not None and result_data.primary_position is not None:
+        if (
+            result_data.primary_theta is not None
+            and result_data.primary_position is not None
+        ):
             # Create subplots for position, velocity, acceleration
             ax1 = self.motion_law_fig.add_subplot(311)
             ax2 = self.motion_law_fig.add_subplot(312)
             ax3 = self.motion_law_fig.add_subplot(313)
 
             # Plot position
-            ax1.plot(result_data.primary_theta, result_data.primary_position, "b-", linewidth=2, label="Position")
+            ax1.plot(
+                result_data.primary_theta,
+                result_data.primary_position,
+                "b-",
+                linewidth=2,
+                label="Position",
+            )
             ax1.set_ylabel("Position (mm)")
             ax1.grid(True, alpha=0.3)
             ax1.legend()
 
             # Plot velocity
             if result_data.primary_velocity is not None:
-                ax2.plot(result_data.primary_theta, result_data.primary_velocity, "g-", linewidth=2, label="Velocity")
+                ax2.plot(
+                    result_data.primary_theta,
+                    result_data.primary_velocity,
+                    "g-",
+                    linewidth=2,
+                    label="Velocity",
+                )
                 ax2.set_ylabel("Velocity (mm/s)")
                 ax2.grid(True, alpha=0.3)
                 ax2.legend()
 
             # Plot acceleration
             if result_data.primary_acceleration is not None:
-                ax3.plot(result_data.primary_theta, result_data.primary_acceleration, "r-", linewidth=2, label="Acceleration")
+                ax3.plot(
+                    result_data.primary_theta,
+                    result_data.primary_acceleration,
+                    "r-",
+                    linewidth=2,
+                    label="Acceleration",
+                )
                 ax3.set_ylabel("Acceleration (mm/s²)")
                 ax3.set_xlabel("Cam Angle (degrees)")
                 ax3.grid(True, alpha=0.3)
                 ax3.legend()
 
-            self.motion_law_fig.suptitle("Linear Follower Motion Law", fontsize=14, fontweight="bold")
+            self.motion_law_fig.suptitle(
+                "Linear Follower Motion Law", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.motion_law_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No motion law data available", ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No motion law data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Linear Follower Motion Law")
 
         self.motion_law_fig.tight_layout()
@@ -1724,13 +2244,22 @@ class CamMotionGUI:
         """Update the cam/ring motion plot (Tab 2)."""
         self.motion_fig.clear()
 
-        if result_data.secondary_psi is not None and result_data.secondary_R_psi is not None:
+        if (
+            result_data.secondary_psi is not None
+            and result_data.secondary_R_psi is not None
+        ):
             # Create subplots for ring motion and cam motion
             ax1 = self.motion_fig.add_subplot(211)
             ax2 = self.motion_fig.add_subplot(212)
 
             # Plot ring motion (psi vs R_psi)
-            ax1.plot(result_data.secondary_psi, result_data.secondary_R_psi, "purple", linewidth=2, label="Ring Radius")
+            ax1.plot(
+                result_data.secondary_psi,
+                result_data.secondary_R_psi,
+                "purple",
+                linewidth=2,
+                label="Ring Radius",
+            )
             ax1.set_ylabel("Ring Radius (mm)")
             ax1.set_xlabel("Ring Angle ψ (rad)")
             ax1.grid(True, alpha=0.3)
@@ -1739,20 +2268,33 @@ class CamMotionGUI:
 
             # Plot cam motion (if available)
             if result_data.secondary_cam_curves is not None:
-                cam_theta = result_data.secondary_cam_curves.get("theta", result_data.primary_theta)
+                cam_theta = result_data.secondary_cam_curves.get(
+                    "theta", result_data.primary_theta,
+                )
                 cam_radius = result_data.secondary_cam_curves.get("profile_radius")
                 if cam_radius is not None:
-                    ax2.plot(cam_theta, cam_radius, "orange", linewidth=2, label="Cam Radius")
+                    ax2.plot(
+                        cam_theta, cam_radius, "orange", linewidth=2, label="Cam Radius",
+                    )
                     ax2.set_ylabel("Cam Radius (mm)")
                     ax2.set_xlabel("Cam Angle θ (degrees)")
                     ax2.grid(True, alpha=0.3)
                     ax2.legend()
                     ax2.set_title("Cam Profile Motion")
 
-            self.motion_fig.suptitle("Cam and Ring Motion Relationships", fontsize=14, fontweight="bold")
+            self.motion_fig.suptitle(
+                "Cam and Ring Motion Relationships", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.motion_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No cam/ring motion data available", ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No cam/ring motion data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Cam and Ring Motion Relationships")
 
         self.motion_fig.tight_layout()
@@ -1762,28 +2304,55 @@ class CamMotionGUI:
         """Update the 2D profiles plot (Tab 3)."""
         self.profiles_fig.clear()
 
-        if result_data.secondary_cam_curves is not None and result_data.secondary_psi is not None:
+        if (
+            result_data.secondary_cam_curves is not None
+            and result_data.secondary_psi is not None
+        ):
             # Create subplots for cam profile and ring profile
             ax1 = self.profiles_fig.add_subplot(121, projection="polar")
             ax2 = self.profiles_fig.add_subplot(122, projection="polar")
 
             # Plot cam profile (polar)
-            if "theta" in result_data.secondary_cam_curves and "profile_radius" in result_data.secondary_cam_curves:
+            if (
+                "theta" in result_data.secondary_cam_curves
+                and "profile_radius" in result_data.secondary_cam_curves
+            ):
                 cam_theta_rad = np.radians(result_data.secondary_cam_curves["theta"])
                 cam_radius = result_data.secondary_cam_curves["profile_radius"]
-                ax1.plot(cam_theta_rad, cam_radius, "orange", linewidth=2, label="Cam Profile")
+                ax1.plot(
+                    cam_theta_rad,
+                    cam_radius,
+                    "orange",
+                    linewidth=2,
+                    label="Cam Profile",
+                )
                 ax1.set_title("Cam Profile (Polar)", pad=20)
                 ax1.grid(True)
 
             # Plot ring profile (polar)
-            ax2.plot(result_data.secondary_psi, result_data.secondary_R_psi, "purple", linewidth=2, label="Ring Profile")
+            ax2.plot(
+                result_data.secondary_psi,
+                result_data.secondary_R_psi,
+                "purple",
+                linewidth=2,
+                label="Ring Profile",
+            )
             ax2.set_title("Ring Profile (Polar)", pad=20)
             ax2.grid(True)
 
-            self.profiles_fig.suptitle("Cam and Ring 2D Profiles", fontsize=14, fontweight="bold")
+            self.profiles_fig.suptitle(
+                "Cam and Ring 2D Profiles", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.profiles_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No profile data available", ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No profile data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Cam and Ring 2D Profiles")
 
         self.profiles_fig.tight_layout()
@@ -1793,17 +2362,29 @@ class CamMotionGUI:
         """Update the animation plot (Tab 4)."""
         self.animation_fig.clear()
 
-        if result_data.primary_theta is not None and result_data.primary_position is not None:
+        if (
+            result_data.primary_theta is not None
+            and result_data.primary_position is not None
+        ):
             # Store animation data
             self.animation_data = result_data
 
             # Create initial frame
             self._draw_animation_frame(0)
 
-            self.animation_fig.suptitle("Cam-Ring System Animation", fontsize=14, fontweight="bold")
+            self.animation_fig.suptitle(
+                "Cam-Ring System Animation", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.animation_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No animation data available", ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No animation data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Cam-Ring System Animation")
 
         self.animation_fig.tight_layout()
@@ -1823,15 +2404,22 @@ class CamMotionGUI:
             total_frames = 60
 
         # Interpolate to current frame
-        if self.animation_data.primary_theta is not None and len(self.animation_data.primary_theta) > 0:
-            theta_current = np.interp(frame_index / (total_frames - 1),
-                                    np.linspace(0, 1, len(self.animation_data.primary_theta)),
-                                    self.animation_data.primary_theta)
+        if (
+            self.animation_data.primary_theta is not None
+            and len(self.animation_data.primary_theta) > 0
+        ):
+            theta_current = np.interp(
+                frame_index / (total_frames - 1),
+                np.linspace(0, 1, len(self.animation_data.primary_theta)),
+                self.animation_data.primary_theta,
+            )
 
             if self.animation_data.primary_position is not None:
-                position_current = np.interp(frame_index / (total_frames - 1),
-                                           np.linspace(0, 1, len(self.animation_data.primary_position)),
-                                           self.animation_data.primary_position)
+                position_current = np.interp(
+                    frame_index / (total_frames - 1),
+                    np.linspace(0, 1, len(self.animation_data.primary_position)),
+                    self.animation_data.primary_position,
+                )
 
                 # Draw system components
                 self._draw_system_components(ax, theta_current, position_current)
@@ -1840,7 +2428,9 @@ class CamMotionGUI:
         ax.set_ylim(-50, 50)
         ax.set_aspect("equal")
         ax.grid(True, alpha=0.3)
-        ax.set_title(f"Frame {frame_index + 1}/{total_frames} - θ = {theta_current:.1f}°")
+        ax.set_title(
+            f"Frame {frame_index + 1}/{total_frames} - θ = {theta_current:.1f}°",
+        )
 
         self.animation_fig.tight_layout()
         self.animation_canvas.draw()
@@ -1852,13 +2442,25 @@ class CamMotionGUI:
         ax.plot(0, position, "bo", markersize=8, label="Follower Position")
 
         # Draw connecting rod (if available)
-        if hasattr(self, "animation_data") and self.animation_data.secondary_rod_length is not None:
+        if (
+            hasattr(self, "animation_data")
+            and self.animation_data.secondary_rod_length is not None
+        ):
             rod_length = self.animation_data.secondary_rod_length
             # Simple connecting rod representation
-            ax.plot([0, 10], [position, position + 5], "g-", linewidth=2, label="Connecting Rod")
+            ax.plot(
+                [0, 10],
+                [position, position + 5],
+                "g-",
+                linewidth=2,
+                label="Connecting Rod",
+            )
 
         # Draw cam (simplified representation)
-        if hasattr(self, "animation_data") and self.animation_data.secondary_base_radius is not None:
+        if (
+            hasattr(self, "animation_data")
+            and self.animation_data.secondary_base_radius is not None
+        ):
             base_radius = self.animation_data.secondary_base_radius
             cam_x = base_radius * np.cos(np.radians(theta))
             cam_y = base_radius * np.sin(np.radians(theta))
@@ -1890,7 +2492,9 @@ class CamMotionGUI:
         self.animation_frame_index = (self.animation_frame_index + 1) % total_frames
 
         # Schedule next frame
-        delay = int(1000 / (30 * self.variables["animation_speed"].get()))  # 30 FPS base
+        delay = int(
+            1000 / (30 * self.variables["animation_speed"].get()),
+        )  # 30 FPS base
         self.animation_timer = self.root.after(delay, self._animate_next_frame)
 
     def _pause_animation(self):
@@ -1915,6 +2519,7 @@ class CamMotionGUI:
 
         try:
             from tkinter import filedialog
+
             filename = filedialog.asksaveasfilename(
                 defaultextension=".json",
                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
@@ -1923,14 +2528,27 @@ class CamMotionGUI:
 
             if filename:
                 import json
+
                 # Convert numpy arrays to lists for JSON serialization
                 result_dict = {
-                    "primary_theta": self.unified_result.primary_theta.tolist() if self.unified_result.primary_theta is not None else None,
-                    "primary_position": self.unified_result.primary_position.tolist() if self.unified_result.primary_position is not None else None,
-                    "primary_velocity": self.unified_result.primary_velocity.tolist() if self.unified_result.primary_velocity is not None else None,
-                    "primary_acceleration": self.unified_result.primary_acceleration.tolist() if self.unified_result.primary_acceleration is not None else None,
-                    "secondary_psi": self.unified_result.secondary_psi.tolist() if self.unified_result.secondary_psi is not None else None,
-                    "secondary_R_psi": self.unified_result.secondary_R_psi.tolist() if self.unified_result.secondary_R_psi is not None else None,
+                    "primary_theta": self.unified_result.primary_theta.tolist()
+                    if self.unified_result.primary_theta is not None
+                    else None,
+                    "primary_position": self.unified_result.primary_position.tolist()
+                    if self.unified_result.primary_position is not None
+                    else None,
+                    "primary_velocity": self.unified_result.primary_velocity.tolist()
+                    if self.unified_result.primary_velocity is not None
+                    else None,
+                    "primary_acceleration": self.unified_result.primary_acceleration.tolist()
+                    if self.unified_result.primary_acceleration is not None
+                    else None,
+                    "secondary_psi": self.unified_result.secondary_psi.tolist()
+                    if self.unified_result.secondary_psi is not None
+                    else None,
+                    "secondary_R_psi": self.unified_result.secondary_R_psi.tolist()
+                    if self.unified_result.secondary_R_psi is not None
+                    else None,
                     "secondary_base_radius": self.unified_result.secondary_base_radius,
                     "secondary_rod_length": self.unified_result.secondary_rod_length,
                     "total_solve_time": self.unified_result.total_solve_time,
@@ -2071,12 +2689,15 @@ def main():
     # Test the constraint validation directly
     try:
         from CamPro_OptimalMotion import CamMotionConstraints
+
         test_constraints = CamMotionConstraints(
             stroke=20.0,
             upstroke_duration_percent=30.0,
             zero_accel_duration_percent=60.0,
         )
-        print("DEBUG: Constraint validation test PASSED - zero acceleration can exceed upstroke")
+        print(
+            "DEBUG: Constraint validation test PASSED - zero acceleration can exceed upstroke",
+        )
     except Exception as e:
         print(f"DEBUG: Constraint validation test FAILED: {e}")
 

@@ -40,7 +40,9 @@ def demo_constraint_system():
     print("Created cam constraints:")
     print(f"  - Stroke: {cam_constraints.stroke} mm")
     print(f"  - Upstroke duration: {cam_constraints.upstroke_duration_percent}%")
-    print(f"  - Zero acceleration duration: {cam_constraints.zero_accel_duration_percent}%")
+    print(
+        f"  - Zero acceleration duration: {cam_constraints.zero_accel_duration_percent}%",
+    )
     print(f"  - Max velocity: {cam_constraints.max_velocity} mm/s")
 
     # Validate constraints
@@ -54,7 +56,9 @@ def demo_constraint_system():
 
     # Convert to motion constraints
     motion_constraints = cam_constraints.to_motion_constraints(cycle_time=1.0)
-    print(f"  - Converted to motion constraints with {len(motion_constraints.list_constraints())} constraints")
+    print(
+        f"  - Converted to motion constraints with {len(motion_constraints.list_constraints())} constraints",
+    )
 
     return cam_constraints, motion_constraints
 
@@ -169,7 +173,9 @@ def demo_plotting_system():
                 if summary:
                     print("  - Solution summary:")
                     for key, stats in summary.items():
-                        print(f"    * {key}: {stats['shape']} points, range [{stats['min']:.2f}, {stats['max']:.2f}]")
+                        print(
+                            f"    * {key}: {stats['shape']} points, range [{stats['min']:.2f}, {stats['max']:.2f}]",
+                        )
 
             except Exception as e:
                 print(f"  - Plotting error: {e}")
@@ -193,7 +199,7 @@ def demo_performance_tracking():
     print("Running multiple optimizations for performance tracking...")
 
     for i in range(3):
-        print(f"  - Optimization {i+1}/3")
+        print(f"  - Optimization {i + 1}/3")
         result = optimizer.solve_cam_motion_law(
             cam_constraints=cam_constraints,
             motion_type="minimum_jerk",
@@ -205,7 +211,9 @@ def demo_performance_tracking():
     performance = optimizer.get_performance_summary()
     print("\nPerformance Summary:")
     print(f"  - Total optimizations: {performance.get('total_optimizations', 0)}")
-    print(f"  - Successful optimizations: {performance.get('successful_optimizations', 0)}")
+    print(
+        f"  - Successful optimizations: {performance.get('successful_optimizations', 0)}",
+    )
     print(f"  - Success rate: {performance.get('success_rate', 0):.1%}")
 
     if "avg_solve_time" in performance:
@@ -239,6 +247,7 @@ def main():
     except Exception as e:
         print(f"\nDemo failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

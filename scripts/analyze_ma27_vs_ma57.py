@@ -46,8 +46,12 @@ def mini_nlp_and_run(enable_analysis: bool = True):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Analyze MA27 run and grade MA57 readiness")
-    parser.add_argument("--no-analysis", action="store_true", help="Disable Ipopt log capture")
+    parser = argparse.ArgumentParser(
+        description="Analyze MA27 run and grade MA57 readiness",
+    )
+    parser.add_argument(
+        "--no-analysis", action="store_true", help="Disable Ipopt log capture",
+    )
     args = parser.parse_args()
 
     sys.exit(mini_nlp_and_run(enable_analysis=not args.no_analysis))
@@ -55,5 +59,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

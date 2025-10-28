@@ -17,5 +17,3 @@ def chamber_volume(*, B: float, Vc: float, x_L: float, x_R: float) -> float:
     V = Vc + A_p * (x_R - x_L)
     """
     return Vc + piston_area(B) * (x_R - x_L)
-
-

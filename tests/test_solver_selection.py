@@ -3,7 +3,7 @@ from campro.optimization.solver_selection import (
     ProblemCharacteristics,
     SolverType,
 )
-from campro.optimization.solver_analysis import MA57ReadinessReport
+
 
 # Stub readiness report class if not detailed in codebase
 class _StubReport:
@@ -26,7 +26,8 @@ def test_solver_selection_defaults_to_ma27(monkeypatch):
 
     # Patch detection to False
     monkeypatch.setattr(
-        "campro.optimization.solver_detection.is_ma57_available", lambda: False
+        "campro.optimization.solver_detection.is_ma57_available",
+        lambda: False,
     )
 
     assert selector.select_solver(pc, "phase1") is SolverType.MA27
@@ -49,7 +50,8 @@ def test_solver_selection_chooses_ma57_when_available(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "campro.optimization.solver_detection.is_ma57_available", lambda: True
+        "campro.optimization.solver_detection.is_ma57_available",
+        lambda: True,
     )
 
     assert selector.select_solver(pc, "phase1") is SolverType.MA57

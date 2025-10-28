@@ -9,6 +9,3 @@ def test_make_grid_basic():
     assert len(grid.weights) == 3
     assert len(grid.a) == 3
     assert len(grid.a[0]) == 3
-
-
-

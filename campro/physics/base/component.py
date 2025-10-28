@@ -19,6 +19,7 @@ log = get_logger(__name__)
 
 class ComponentStatus(Enum):
     """Status of a component computation."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -29,6 +30,7 @@ class ComponentStatus(Enum):
 @dataclass
 class ComponentResult:
     """Result from a component computation."""
+
     status: ComponentStatus
     outputs: Dict[str, np.ndarray]
     metadata: Dict[str, Any]
@@ -48,7 +50,7 @@ class ComponentResult:
 class BaseComponent(ABC):
     """
     Base interface for all physics components.
-    
+
     This class defines the contract that all physics components must follow,
     enabling modular system design and easy testing.
     """
@@ -56,7 +58,7 @@ class BaseComponent(ABC):
     def __init__(self, parameters: Dict[str, Any], name: Optional[str] = None):
         """
         Initialize the component.
-        
+
         Parameters
         ----------
         parameters : Dict[str, Any]
@@ -67,13 +69,15 @@ class BaseComponent(ABC):
         self.parameters = parameters.copy()
         self.name = name or self.__class__.__name__
         self._validate_parameters()
-        log.debug(f"Initialized component {self.name} with parameters: {self.parameters}")
+        log.debug(
+            f"Initialized component {self.name} with parameters: {self.parameters}",
+        )
 
     @abstractmethod
     def _validate_parameters(self) -> None:
         """
         Validate component parameters.
-        
+
         Raises
         ------
         ValueError
@@ -84,12 +88,12 @@ class BaseComponent(ABC):
     def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute component outputs from inputs.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             Input data arrays
-            
+
         Returns
         -------
         ComponentResult
@@ -99,7 +103,7 @@ class BaseComponent(ABC):
     def get_parameters(self) -> Dict[str, Any]:
         """
         Get component parameters.
-        
+
         Returns
         -------
         Dict[str, Any]
@@ -110,7 +114,7 @@ class BaseComponent(ABC):
     def update_parameters(self, parameters: Dict[str, Any]) -> None:
         """
         Update component parameters.
-        
+
         Parameters
         ----------
         parameters : Dict[str, Any]
@@ -123,7 +127,7 @@ class BaseComponent(ABC):
     def get_required_inputs(self) -> List[str]:
         """
         Get list of required input names.
-        
+
         Returns
         -------
         List[str]
@@ -134,7 +138,7 @@ class BaseComponent(ABC):
     def get_optional_inputs(self) -> List[str]:
         """
         Get list of optional input names.
-        
+
         Returns
         -------
         List[str]
@@ -145,7 +149,7 @@ class BaseComponent(ABC):
     def get_outputs(self) -> List[str]:
         """
         Get list of output names.
-        
+
         Returns
         -------
         List[str]
@@ -156,12 +160,12 @@ class BaseComponent(ABC):
     def validate_inputs(self, inputs: Dict[str, np.ndarray]) -> bool:
         """
         Validate input data.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             Input data to validate
-            
+
         Returns
         -------
         bool
@@ -180,4 +184,3 @@ class BaseComponent(ABC):
     def __repr__(self) -> str:
         """String representation of component."""
         return f"{self.__class__.__name__}(name='{self.name}', parameters={self.parameters})"
-

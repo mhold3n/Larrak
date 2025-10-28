@@ -5,11 +5,8 @@ This module tests the CasADi Litvin implementation against Python baselines
 to ensure numeric parity and proper automatic differentiation.
 """
 
-
-import numpy as np
-import pytest
-
 import casadi as ca
+import numpy as np
 from campro.physics.casadi import (
     create_contact_phi_solver,
     create_internal_flank_sampler,
@@ -39,7 +36,10 @@ class TestCasadiLitvinFlankSampling:
     def test_flank_sampler_outputs(self):
         """Test flank sampler function outputs."""
         phi_vec, x_vec, y_vec = self.flank_sampler_fn(
-            self.z_r, self.module, self.alpha_deg, self.addendum_factor,
+            self.z_r,
+            self.module,
+            self.alpha_deg,
+            self.addendum_factor,
         )
 
         # Check output shapes
@@ -64,7 +64,10 @@ class TestCasadiLitvinFlankSampling:
     def test_flank_sampler_parameter_range(self):
         """Test that flank sampler produces reasonable parameter range."""
         phi_vec, x_vec, y_vec = self.flank_sampler_fn(
-            self.z_r, self.module, self.alpha_deg, self.addendum_factor,
+            self.z_r,
+            self.module,
+            self.alpha_deg,
+            self.addendum_factor,
         )
 
         # Check parameter monotonicity (should be increasing)
@@ -82,7 +85,10 @@ class TestCasadiLitvinFlankSampling:
         module_extreme = 0.5  # Very small module
 
         phi_vec, x_vec, y_vec = self.flank_sampler_fn(
-            z_r_extreme, module_extreme, self.alpha_deg, self.addendum_factor,
+            z_r_extreme,
+            module_extreme,
+            self.alpha_deg,
+            self.addendum_factor,
         )
 
         # Should not produce NaN/Inf even with extreme parameters
@@ -119,7 +125,13 @@ class TestCasadiLitvinPlanetTransform:
     def test_planet_transform_outputs(self):
         """Test planet transform function outputs."""
         x_planet, y_planet = self.planet_transform_fn(
-            self.phi, self.theta_r, self.R0, self.z_r, self.z_p, self.module, self.alpha_deg,
+            self.phi,
+            self.theta_r,
+            self.R0,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
         )
 
         # Check output shapes
@@ -140,11 +152,17 @@ class TestCasadiLitvinPlanetTransform:
     def test_planet_transform_kinematics(self):
         """Test planet transform kinematics consistency."""
         # Test at different angles
-        angles = [0.0, np.pi/4, np.pi/2, np.pi, 3*np.pi/2]
+        angles = [0.0, np.pi / 4, np.pi / 2, np.pi, 3 * np.pi / 2]
 
         for theta_r in angles:
             x_planet, y_planet = self.planet_transform_fn(
-                self.phi, theta_r, self.R0, self.z_r, self.z_p, self.module, self.alpha_deg,
+                self.phi,
+                theta_r,
+                self.R0,
+                self.z_r,
+                self.z_p,
+                self.module,
+                self.alpha_deg,
             )
 
             # Should produce finite coordinates
@@ -165,7 +183,13 @@ class TestCasadiLitvinPlanetTransform:
 
         # Compute transform
         x_planet, y_planet = self.planet_transform_fn(
-            phi_sym, theta_r_sym, self.R0, self.z_r, self.z_p, self.module, self.alpha_deg,
+            phi_sym,
+            theta_r_sym,
+            self.R0,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
         )
 
         # Compute gradients
@@ -183,7 +207,8 @@ class TestCasadiLitvinPlanetTransform:
 
         # Evaluate gradients
         dx_dphi_val, dy_dphi_val, dx_dtheta_val, dy_dtheta_val = grad_fn(
-            self.phi, self.theta_r,
+            self.phi,
+            self.theta_r,
         )
 
         # Check for NaN/Inf
@@ -217,7 +242,10 @@ class TestCasadiLitvinContactSolver:
         # Create test flank data
         self.flank_sampler_fn = create_internal_flank_sampler()
         phi_vec, x_vec, y_vec = self.flank_sampler_fn(
-            self.z_r, self.module, self.alpha_deg, 1.0,
+            self.z_r,
+            self.module,
+            self.alpha_deg,
+            1.0,
         )
         self.flank_data = ca.vertcat(phi_vec.T, x_vec.T, y_vec.T)
 
@@ -229,8 +257,14 @@ class TestCasadiLitvinContactSolver:
     def test_contact_solver_outputs(self):
         """Test contact solver function outputs."""
         phi_contact = self.contact_solver_fn(
-            self.phi_seed, self.theta_r, self.R0, self.z_r, self.z_p,
-            self.module, self.alpha_deg, self.flank_data,
+            self.phi_seed,
+            self.theta_r,
+            self.R0,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
+            self.flank_data,
         )
 
         # Check output shape
@@ -251,8 +285,14 @@ class TestCasadiLitvinContactSolver:
 
         for seed in seeds:
             phi_contact = self.contact_solver_fn(
-                seed, self.theta_r, self.R0, self.z_r, self.z_p,
-                self.module, self.alpha_deg, self.flank_data,
+                seed,
+                self.theta_r,
+                self.R0,
+                self.z_r,
+                self.z_p,
+                self.module,
+                self.alpha_deg,
+                self.flank_data,
             )
 
             # Should produce finite result
@@ -266,8 +306,14 @@ class TestCasadiLitvinContactSolver:
         module_extreme = 0.1  # Very small module
 
         phi_contact = self.contact_solver_fn(
-            self.phi_seed, self.theta_r, R0_extreme, self.z_r, self.z_p,
-            module_extreme, self.alpha_deg, self.flank_data,
+            self.phi_seed,
+            self.theta_r,
+            R0_extreme,
+            self.z_r,
+            self.z_p,
+            module_extreme,
+            self.alpha_deg,
+            self.flank_data,
         )
 
         # Should not produce NaN/Inf even with extreme parameters
@@ -291,7 +337,7 @@ class TestCasadiLitvinMetrics:
         self.motion_params = ca.DM([1.0, 1.0, 0.0])  # [amplitude, frequency, phase]
 
         # Test data (limit to 10 for fixed-size functions)
-        self.theta_vec = np.linspace(0, 2*np.pi, 10)
+        self.theta_vec = np.linspace(0, 2 * np.pi, 10)
 
     def test_litvin_metrics_function_creation(self):
         """Test that Litvin metrics function is created successfully."""
@@ -301,8 +347,13 @@ class TestCasadiLitvinMetrics:
     def test_litvin_metrics_outputs(self):
         """Test Litvin metrics function outputs."""
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module, self.alpha_deg,
-            self.R0, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
+            self.R0,
+            self.motion_params,
         )
 
         # Check output shapes
@@ -334,8 +385,13 @@ class TestCasadiLitvinMetrics:
 
         for z_p in z_p_values:
             slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-                self.theta_vec, self.z_r, z_p, self.module, self.alpha_deg,
-                self.R0, self.motion_params,
+                self.theta_vec,
+                self.z_r,
+                z_p,
+                self.module,
+                self.alpha_deg,
+                self.R0,
+                self.motion_params,
             )
 
             # Should produce finite results
@@ -359,8 +415,13 @@ class TestCasadiLitvinMetrics:
 
         # Compute metrics
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, module_sym, self.alpha_deg,
-            R0_sym, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            module_sym,
+            self.alpha_deg,
+            R0_sym,
+            self.motion_params,
         )
 
         # Compute gradients
@@ -377,8 +438,11 @@ class TestCasadiLitvinMetrics:
         )
 
         # Evaluate gradients
-        dslip_dR0_val, dslip_dmodule_val, dobjective_dR0_val, dobjective_dmodule_val = grad_fn(
-            self.R0, self.module,
+        dslip_dR0_val, dslip_dmodule_val, dobjective_dR0_val, dobjective_dmodule_val = (
+            grad_fn(
+                self.R0,
+                self.module,
+            )
         )
 
         # Check for NaN/Inf
@@ -409,7 +473,7 @@ class TestCasadiLitvinParityWithPython:
         self.motion_params = ca.DM([1.0, 1.0, 0.0])
 
         # Test data (limit to 10 for fixed-size functions)
-        self.theta_vec = np.linspace(0, 2*np.pi, 10)
+        self.theta_vec = np.linspace(0, 2 * np.pi, 10)
 
     def test_litvin_metrics_parity(self):
         """Test Litvin metrics parity with Python implementation."""
@@ -417,8 +481,13 @@ class TestCasadiLitvinParityWithPython:
 
         # CasADi calculation
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module, self.alpha_deg,
-            self.R0, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
+            self.R0,
+            self.motion_params,
         )
 
         # Python calculation (simplified - would need full Python setup)
@@ -439,8 +508,13 @@ class TestCasadiLitvinParityWithPython:
         R0_large = 100.0  # Very large radius
 
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module, self.alpha_deg,
-            R0_large, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
+            R0_large,
+            self.motion_params,
         )
 
         # With large closure, objective should be dominated by penalty
@@ -451,8 +525,13 @@ class TestCasadiLitvinParityWithPython:
         """Test Litvin metrics with edge case parameters."""
         # Test with very small module
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, 0.1, self.alpha_deg,
-            self.R0, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            0.1,
+            self.alpha_deg,
+            self.R0,
+            self.motion_params,
         )
         assert np.isfinite(slip_integral)
         assert np.isfinite(contact_length)
@@ -461,8 +540,13 @@ class TestCasadiLitvinParityWithPython:
 
         # Test with very large module
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, 10.0, self.alpha_deg,
-            self.R0, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            10.0,
+            self.alpha_deg,
+            self.R0,
+            self.motion_params,
         )
         assert np.isfinite(slip_integral)
         assert np.isfinite(contact_length)
@@ -471,8 +555,13 @@ class TestCasadiLitvinParityWithPython:
 
         # Test with extreme pressure angle
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module, 45.0,
-            self.R0, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            self.module,
+            45.0,
+            self.R0,
+            self.motion_params,
         )
         assert np.isfinite(slip_integral)
         assert np.isfinite(contact_length)
@@ -482,15 +571,27 @@ class TestCasadiLitvinParityWithPython:
     def test_litvin_metrics_parameter_sensitivity(self):
         """Test that Litvin metrics respond appropriately to parameter changes."""
         # Baseline calculation
-        slip_baseline, contact_baseline, closure_baseline, objective_baseline = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module, self.alpha_deg,
-            self.R0, self.motion_params,
+        slip_baseline, contact_baseline, closure_baseline, objective_baseline = (
+            self.litvin_metrics_fn(
+                self.theta_vec,
+                self.z_r,
+                self.z_p,
+                self.module,
+                self.alpha_deg,
+                self.R0,
+                self.motion_params,
+            )
         )
 
         # Test module sensitivity
         slip_test, contact_test, closure_test, objective_test = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module * 1.1, self.alpha_deg,
-            self.R0, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            self.module * 1.1,
+            self.alpha_deg,
+            self.R0,
+            self.motion_params,
         )
 
         # Results should be different but finite
@@ -501,8 +602,13 @@ class TestCasadiLitvinParityWithPython:
 
         # Test R0 sensitivity
         slip_test, contact_test, closure_test, objective_test = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module, self.alpha_deg,
-            self.R0 * 1.1, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
+            self.R0 * 1.1,
+            self.motion_params,
         )
 
         # Results should be different but finite
@@ -514,8 +620,13 @@ class TestCasadiLitvinParityWithPython:
     def test_litvin_metrics_objective_components(self):
         """Test that objective function components are properly weighted."""
         slip_integral, contact_length, closure, objective = self.litvin_metrics_fn(
-            self.theta_vec, self.z_r, self.z_p, self.module, self.alpha_deg,
-            self.R0, self.motion_params,
+            self.theta_vec,
+            self.z_r,
+            self.z_p,
+            self.module,
+            self.alpha_deg,
+            self.R0,
+            self.motion_params,
         )
 
         # Objective should be: slip - 0.1*length + penalty

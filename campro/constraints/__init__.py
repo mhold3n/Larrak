@@ -14,14 +14,10 @@ __all__ = [
     "BaseConstraints",
     "ConstraintType",
     "ConstraintViolation",
-
     # Motion constraints
     "MotionConstraints",
     "MotionConstraintType",
-
     # Cam constraints
     "CamMotionConstraints",
     "CamConstraintType",
 ]
-
-

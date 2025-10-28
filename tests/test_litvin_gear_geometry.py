@@ -27,7 +27,9 @@ def test_gear_geometry_basic_metrics():
     r_profile = base_radius + x_theta
 
     litvin = LitvinSynthesis()
-    syn = litvin.synthesize_from_cam_profile(theta=theta, r_profile=r_profile, target_ratio=2.0)
+    syn = litvin.synthesize_from_cam_profile(
+        theta=theta, r_profile=r_profile, target_ratio=2.0,
+    )
 
     geom = LitvinGearGeometry.from_synthesis(
         theta=theta,
@@ -58,7 +60,9 @@ def test_ratio_affects_base_circle_and_teeth(ratio: float):
     r_profile = base_radius + x_theta
 
     litvin = LitvinSynthesis()
-    syn = litvin.synthesize_from_cam_profile(theta=theta, r_profile=r_profile, target_ratio=ratio)
+    syn = litvin.synthesize_from_cam_profile(
+        theta=theta, r_profile=r_profile, target_ratio=ratio,
+    )
 
     geom = LitvinGearGeometry.from_synthesis(
         theta=theta,
@@ -72,5 +76,3 @@ def test_ratio_affects_base_circle_and_teeth(ratio: float):
     assert geom.z_cam >= 8 and geom.z_ring >= 8
     approx_ratio = geom.z_ring / geom.z_cam
     assert np.isclose(approx_ratio, ratio, rtol=0.2)
-
-

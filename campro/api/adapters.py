@@ -2,21 +2,29 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from campro.diagnostics import RUN_ID
-from campro.diagnostics.run_metadata import log_run_metadata
-from campro.diagnostics.ipopt_logger import get_ipopt_log_stats
 from campro.api.solve_report import SolveReport
+from campro.diagnostics import RUN_ID
+from campro.diagnostics.ipopt_logger import get_ipopt_log_stats
+from campro.diagnostics.run_metadata import log_run_metadata
 
 
-def motion_result_to_solve_report(result: "OptimizationResult") -> SolveReport:  # type: ignore[name-defined]
+def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  # type: ignore[name-defined]
     """Convert a Motion/OptimizationResult to a SolveReport."""
     status = getattr(result, "status", None)
-    status_str = getattr(status, "value", str(status)) if status is not None else "unknown"
+    status_str = (
+        getattr(status, "value", str(status)) if status is not None else "unknown"
+    )
 
     # Extract basic residuals if present
     residuals: Dict[str, float] = {}
     conv = getattr(result, "convergence_info", {}) or {}
-    for k in ("primal_inf", "dual_inf", "complementarity", "constraint_violation", "kkt_error"):
+    for k in (
+        "primal_inf",
+        "dual_inf",
+        "complementarity",
+        "constraint_violation",
+        "kkt_error",
+    ):
         v = conv.get(k)
         if isinstance(v, (int, float)):
             residuals[k] = float(v)
@@ -31,7 +39,11 @@ def motion_result_to_solve_report(result: "OptimizationResult") -> SolveReport: 
     # Parse Ipopt log if present and merge residuals
     log_stats = get_ipopt_log_stats()
     if log_stats:
-        for k_src, k_dst in (("primal_inf", "primal_inf"), ("dual_inf", "dual_inf"), ("compl_inf", "compl_inf")):
+        for k_src, k_dst in (
+            ("primal_inf", "primal_inf"),
+            ("dual_inf", "dual_inf"),
+            ("compl_inf", "compl_inf"),
+        ):
             v = log_stats.get(k_src)
             if isinstance(v, (int, float)):
                 residuals[k_dst] = float(v)
@@ -52,7 +64,11 @@ def motion_result_to_solve_report(result: "OptimizationResult") -> SolveReport: 
     report = SolveReport(
         run_id=RUN_ID,
         status=public_status,
-        kkt={k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals},
+        kkt={
+            k: residuals.get(k)
+            for k in ("primal_inf", "dual_inf", "compl_inf")
+            if k in residuals
+        },
         n_iter=n_iter,
         scaling_stats={},
         residuals=residuals,
@@ -61,21 +77,23 @@ def motion_result_to_solve_report(result: "OptimizationResult") -> SolveReport: 
 
     # Persist metadata
     try:
-        log_run_metadata({
-            "run_id": RUN_ID,
-            "status": report.status,
-            "n_iter": report.n_iter,
-            "kkt": report.kkt,
-            "residuals": report.residuals,
-            "artifacts": report.artifacts,
-        })
+        log_run_metadata(
+            {
+                "run_id": RUN_ID,
+                "status": report.status,
+                "n_iter": report.n_iter,
+                "kkt": report.kkt,
+                "residuals": report.residuals,
+                "artifacts": report.artifacts,
+            },
+        )
     except Exception:
         pass
 
     return report
 
 
-def unified_data_to_solve_report(data: "UnifiedOptimizationData") -> SolveReport:  # type: ignore[name-defined]
+def unified_data_to_solve_report(data: UnifiedOptimizationData) -> SolveReport:  # type: ignore[name-defined]
     """Convert UnifiedOptimizationData to a SolveReport summary.
 
     Aggregates convergence info to a single high-level status.
@@ -91,7 +109,11 @@ def unified_data_to_solve_report(data: "UnifiedOptimizationData") -> SolveReport
 
     # Collect residual-like values if available via analyses
     residuals: Dict[str, float] = {}
-    for phase_attr in ("primary_ipopt_analysis", "secondary_ipopt_analysis", "tertiary_ipopt_analysis"):
+    for phase_attr in (
+        "primary_ipopt_analysis",
+        "secondary_ipopt_analysis",
+        "tertiary_ipopt_analysis",
+    ):
         report = getattr(data, phase_attr, None)
         if report and getattr(report, "stats", None):
             stats = report.stats  # type: ignore[assignment]
@@ -101,7 +123,9 @@ def unified_data_to_solve_report(data: "UnifiedOptimizationData") -> SolveReport
                     residuals[f"{phase_attr}.{key}"] = float(v)
 
     # Include feasibility pre-check results if present
-    feas = (getattr(data, "convergence_info", {}) or {}).get("feasibility_primary") or {}
+    feas = (getattr(data, "convergence_info", {}) or {}).get(
+        "feasibility_primary",
+    ) or {}
     if isinstance(feas, dict):
         mv = feas.get("max_violation")
         if isinstance(mv, (int, float)):
@@ -110,7 +134,11 @@ def unified_data_to_solve_report(data: "UnifiedOptimizationData") -> SolveReport
     # Parse Ipopt log and add residuals/kkt if available
     log_stats = get_ipopt_log_stats()
     if log_stats:
-        for k_src, k_dst in (("primal_inf", "primal_inf"), ("dual_inf", "dual_inf"), ("compl_inf", "compl_inf")):
+        for k_src, k_dst in (
+            ("primal_inf", "primal_inf"),
+            ("dual_inf", "dual_inf"),
+            ("compl_inf", "compl_inf"),
+        ):
             v = log_stats.get(k_src)
             if isinstance(v, (int, float)):
                 residuals[k_dst] = float(v)
@@ -137,8 +165,14 @@ def unified_data_to_solve_report(data: "UnifiedOptimizationData") -> SolveReport
 
     report = SolveReport(
         run_id=RUN_ID,
-        status="Solve_Success" if status_str == "converged" else ("Infeasible" if status_str == "infeasible" else "Failed"),
-        kkt={k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals},
+        status="Solve_Success"
+        if status_str == "converged"
+        else ("Infeasible" if status_str == "infeasible" else "Failed"),
+        kkt={
+            k: residuals.get(k)
+            for k in ("primal_inf", "dual_inf", "compl_inf")
+            if k in residuals
+        },
         n_iter=n_iter,
         scaling_stats=scaling_stats,
         residuals=residuals,

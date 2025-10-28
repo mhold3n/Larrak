@@ -3,10 +3,10 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, Tuple
 
+from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.freepiston.gas import build_gas_model
 from campro.freepiston.opt.colloc import CollocationGrid, make_grid
 from campro.logging import get_logger
-from campro.constants import CASADI_PHYSICS_EPSILON
 
 log = get_logger(__name__)
 
@@ -21,7 +21,7 @@ def _import_casadi():
 
 def gas_pressure_from_state(*, rho: Any, T: Any, gamma: float = 1.4) -> Any:
     """Gas pressure from density and temperature using ideal gas law.
-    
+
     Parameters
     ----------
     rho : Any
@@ -30,7 +30,7 @@ def gas_pressure_from_state(*, rho: Any, T: Any, gamma: float = 1.4) -> Any:
         Gas temperature [K] (CasADi variable)
     gamma : float
         Heat capacity ratio
-        
+
     Returns
     -------
     p : Any
@@ -43,7 +43,7 @@ def gas_pressure_from_state(*, rho: Any, T: Any, gamma: float = 1.4) -> Any:
 
 def chamber_volume_from_pistons(*, x_L: Any, x_R: Any, B: float, Vc: float) -> Any:
     """Chamber volume from piston positions.
-    
+
     Parameters
     ----------
     x_L : Any
@@ -54,7 +54,7 @@ def chamber_volume_from_pistons(*, x_L: Any, x_R: Any, B: float, Vc: float) -> A
         Bore diameter [m]
     Vc : float
         Clearance volume [m^3]
-        
+
     Returns
     -------
     V : Any
@@ -66,13 +66,18 @@ def chamber_volume_from_pistons(*, x_L: Any, x_R: Any, B: float, Vc: float) -> A
 
 
 def enhanced_piston_dae_constraints(
-    xL_c: Any, xR_c: Any, vL_c: Any, vR_c: Any,
-    aL_c: Any, aR_c: Any, p_gas_c: Any,
+    xL_c: Any,
+    xR_c: Any,
+    vL_c: Any,
+    vR_c: Any,
+    aL_c: Any,
+    aR_c: Any,
+    p_gas_c: Any,
     geometry: Dict[str, float],
 ) -> Tuple[Any, Any]:
     """
     Complete piston DAE with all force components.
-    
+
     Returns:
         F_L, F_R: Net forces on left and right pistons
     """
@@ -90,8 +95,12 @@ def enhanced_piston_dae_constraints(
     rod_length = geometry["rod_length"]
 
     # Effective mass including rod dynamics
-    m_eff_L = m_piston + m_rod * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
-    m_eff_R = m_piston + m_rod * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
+    m_eff_L = m_piston + m_rod * (
+        rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON)
+    )
+    m_eff_R = m_piston + m_rod * (
+        rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON)
+    )
 
     F_inertia_L = -m_eff_L * aL_c
     F_inertia_R = -m_eff_R * aR_c
@@ -118,17 +127,26 @@ def enhanced_piston_dae_constraints(
     return F_L, F_R
 
 
-def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
-                        a_L: Any, a_R: Any, geometry: Dict[str, float]) -> Tuple[Any, Any]:
+def piston_force_balance(
+    *,
+    p_gas: Any,
+    x_L: Any,
+    x_R: Any,
+    v_L: Any,
+    v_R: Any,
+    a_L: Any,
+    a_R: Any,
+    geometry: Dict[str, float],
+) -> Tuple[Any, Any]:
     """Enhanced piston force balance with full gas-structure coupling.
-    
+
     This function implements the complete force balance for opposed pistons including:
     - Gas pressure forces with proper area calculation
     - Inertia forces for piston and connecting rod
     - Friction forces with velocity-dependent damping
     - Clearance penalty forces with smooth transitions
     - Piston ring dynamics and blow-by effects
-    
+
     Parameters
     ----------
     p_gas : Any
@@ -141,7 +159,7 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
         Piston accelerations [m/s^2] (CasADi variables)
     geometry : Dict[str, float]
         Piston geometry parameters
-        
+
     Returns
     -------
     F_L, F_R : Any
@@ -168,8 +186,12 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
     F_piston_inertia_R = -m_piston * a_R
 
     # Connecting rod inertia (simplified)
-    F_rod_inertia_L = -m_rod * a_L * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
-    F_rod_inertia_R = -m_rod * a_R * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
+    F_rod_inertia_L = (
+        -m_rod * a_L * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
+    )
+    F_rod_inertia_R = (
+        -m_rod * a_R * (rod_cg_offset / ca.fmax(rod_length, CASADI_PHYSICS_EPSILON))
+    )
 
     F_inertia_L = F_piston_inertia_L + F_rod_inertia_L
     F_inertia_R = F_piston_inertia_R + F_rod_inertia_R
@@ -189,8 +211,18 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
     mu_ring = geometry.get("ring_friction_coefficient", 0.1)
 
     # Ring friction force (pressure-dependent)
-    F_ring_L = -ring_count * mu_ring * (ring_tension + p_gas * ring_width * math.pi * B) * ca.sign(v_L)
-    F_ring_R = -ring_count * mu_ring * (ring_tension + p_gas * ring_width * math.pi * B) * ca.sign(v_R)
+    F_ring_L = (
+        -ring_count
+        * mu_ring
+        * (ring_tension + p_gas * ring_width * math.pi * B)
+        * ca.sign(v_L)
+    )
+    F_ring_R = (
+        -ring_count
+        * mu_ring
+        * (ring_tension + p_gas * ring_width * math.pi * B)
+        * ca.sign(v_R)
+    )
 
     # Enhanced clearance penalty forces
     gap_min = geometry.get("clearance_min", 0.001)  # m
@@ -201,7 +233,11 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
 
     # Smooth clearance penalty using tanh function
     gap_violation = ca.fmax(0.0, gap_min - gap)
-    F_clearance = k_clearance * gap_violation * ca.tanh(gap_violation / ca.fmax(clearance_smooth, CASADI_PHYSICS_EPSILON))
+    F_clearance = (
+        k_clearance
+        * gap_violation
+        * ca.tanh(gap_violation / ca.fmax(clearance_smooth, CASADI_PHYSICS_EPSILON))
+    )
 
     # Net forces
     F_L = F_gas_L + F_inertia_L + F_friction_L + F_ring_L + F_clearance
@@ -211,13 +247,20 @@ def piston_force_balance(*, p_gas: Any, x_L: Any, x_R: Any, v_L: Any, v_R: Any,
 
 
 def enhanced_gas_dae_constraints(
-    rho_c: Any, T_c: Any, V_c: Any, dV_dt_c: Any,
-    mdot_in_c: Any, mdot_out_c: Any, Q_comb_c: Any, Q_heat_c: Any,
-    geometry: Dict[str, float], thermo: Dict[str, float],
+    rho_c: Any,
+    T_c: Any,
+    V_c: Any,
+    dV_dt_c: Any,
+    mdot_in_c: Any,
+    mdot_out_c: Any,
+    Q_comb_c: Any,
+    Q_heat_c: Any,
+    geometry: Dict[str, float],
+    thermo: Dict[str, float],
 ) -> Tuple[Any, Any]:
     """
     Complete gas DAE with all source terms.
-    
+
     Returns:
         drho_dt, dT_dt: Density and temperature rates
     """
@@ -232,7 +275,9 @@ def enhanced_gas_dae_constraints(
     # Mass balance: d(rho*V)/dt = mdot_in - mdot_out
     # Expanding: rho*dV/dt + V*drho/dt = mdot_in - mdot_out
     # Solving for drho/dt: drho/dt = (mdot_in - mdot_out - rho*dV/dt) / V
-    drho_dt = (mdot_in_c - mdot_out_c - rho_c * dV_dt_c) / ca.fmax(V_c, CASADI_PHYSICS_EPSILON)
+    drho_dt = (mdot_in_c - mdot_out_c - rho_c * dV_dt_c) / ca.fmax(
+        V_c, CASADI_PHYSICS_EPSILON,
+    )
 
     # Energy balance: d(m*e)/dt = Q_comb - Q_heat + mdot_in*h_in - mdot_out*h_out - p*dV/dt
     # where m = rho*V, e = cv*T, h = cp*T, p = rho*R*T
@@ -256,28 +301,41 @@ def enhanced_gas_dae_constraints(
     # m*cv*dT/dt + e*(drho_dt*V + rho*dV_dt_c) = Q_comb - Q_heat + mdot_in*h_in - mdot_out*h_out - p*dV/dt
 
     # Solve for dT/dt
-    dT_dt = (Q_comb_c - Q_heat_c +
-             mdot_in_c * h_in - mdot_out_c * h_out -
-             p_gas * dV_dt_c -
-             e_internal * (drho_dt * V_c + rho_c * dV_dt_c)) / ca.fmax(m_total * cv, CASADI_PHYSICS_EPSILON)
+    dT_dt = (
+        Q_comb_c
+        - Q_heat_c
+        + mdot_in_c * h_in
+        - mdot_out_c * h_out
+        - p_gas * dV_dt_c
+        - e_internal * (drho_dt * V_c + rho_c * dV_dt_c)
+    ) / ca.fmax(m_total * cv, CASADI_PHYSICS_EPSILON)
 
     return drho_dt, dT_dt
 
 
-def gas_energy_balance(*, rho: Any, T: Any, V: Any, dV_dt: Any,
-                      Q_combustion: Any, Q_heat_transfer: Any,
-                      mdot_in: Any, mdot_out: Any,
-                      T_in: Any = None, T_out: Any = None,
-                      gamma: float = 1.4) -> Any:
+def gas_energy_balance(
+    *,
+    rho: Any,
+    T: Any,
+    V: Any,
+    dV_dt: Any,
+    Q_combustion: Any,
+    Q_heat_transfer: Any,
+    mdot_in: Any,
+    mdot_out: Any,
+    T_in: Any = None,
+    T_out: Any = None,
+    gamma: float = 1.4,
+) -> Any:
     """Enhanced gas energy balance equation with proper thermodynamics.
-    
+
     This function implements the complete energy balance for the gas in the chamber,
     including:
     - Mass conservation with volume changes
     - Energy conservation with heat transfer and combustion
     - Proper enthalpy calculations for inlet/outlet flows
     - Temperature-dependent gas properties
-    
+
     Parameters
     ----------
     rho : Any
@@ -302,7 +360,7 @@ def gas_energy_balance(*, rho: Any, T: Any, V: Any, dV_dt: Any,
         Outlet temperature [K] (CasADi variable)
     gamma : float
         Heat capacity ratio
-        
+
     Returns
     -------
     dT_dt : Any
@@ -313,7 +371,9 @@ def gas_energy_balance(*, rho: Any, T: Any, V: Any, dV_dt: Any,
     # Gas properties (temperature-dependent)
     R = 287.0  # J/(kg K) - gas constant for air
     cp_ref = 1005.0  # J/(kg K) - reference specific heat
-    cv_ref = cp_ref / ca.fmax(gamma, CASADI_PHYSICS_EPSILON)  # J/(kg K) - reference specific heat at constant volume
+    cv_ref = cp_ref / ca.fmax(
+        gamma, CASADI_PHYSICS_EPSILON,
+    )  # J/(kg K) - reference specific heat at constant volume
 
     # Temperature-dependent specific heat (simplified linear model)
     # In practice, this would use JANAF polynomial fits
@@ -349,17 +409,24 @@ def gas_energy_balance(*, rho: Any, T: Any, V: Any, dV_dt: Any,
     # m*cv*dT/dt + e*dm/dt = Q_combustion - Q_heat_transfer + mdot_in*h_in - mdot_out*h_out - p*dV/dt
 
     # Solve for dT/dt
-    dT_dt = (Q_combustion - Q_heat_transfer +
-             mdot_in * h_in - mdot_out * h_out -
-             p * dV_dt - e * dm_dt) / ca.fmax(m * cv, CASADI_PHYSICS_EPSILON)
+    dT_dt = (
+        Q_combustion
+        - Q_heat_transfer
+        + mdot_in * h_in
+        - mdot_out * h_out
+        - p * dV_dt
+        - e * dm_dt
+    ) / ca.fmax(m * cv, CASADI_PHYSICS_EPSILON)
 
     return dT_dt
 
 
-def build_collocation_nlp_with_1d_coupling(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+def build_collocation_nlp_with_1d_coupling(
+    P: Dict[str, Any],
+) -> Tuple[Any, Dict[str, Any]]:
     """
     Build NLP with full 1D gas-structure coupling.
-    
+
     This replaces the current 0D gas model with 1D FV model
     while maintaining the collocation framework.
     """
@@ -378,8 +445,9 @@ def build_collocation_nlp_with_1d_coupling(P: Dict[str, Any]) -> Tuple[Any, Dict
     return build_collocation_nlp(P)
 
 
-def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
-                             grid: CollocationGrid, n_cells: int) -> Tuple[Any, Dict[str, Any]]:
+def _build_1d_collocation_nlp(
+    P: Dict[str, Any], ca: Any, K: int, C: int, grid: CollocationGrid, n_cells: int,
+) -> Tuple[Any, Dict[str, Any]]:
     """Build 1D gas-structure coupled collocation NLP."""
 
     # Get geometry and parameters
@@ -406,10 +474,18 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
 
     w += [xL0, xR0, vL0, vR0]
     w0 += [0.0, 0.1, 0.0, 0.0]
-    lbw += [bounds.get("xL_min", -0.1), bounds.get("xR_min", 0.0),
-            bounds.get("vL_min", -10.0), bounds.get("vR_min", -10.0)]
-    ubw += [bounds.get("xL_max", 0.1), bounds.get("xR_max", 0.2),
-            bounds.get("vL_max", 10.0), bounds.get("vR_max", 10.0)]
+    lbw += [
+        bounds.get("xL_min", -0.1),
+        bounds.get("xR_min", 0.0),
+        bounds.get("vL_min", -10.0),
+        bounds.get("vR_min", -10.0),
+    ]
+    ubw += [
+        bounds.get("xL_max", 0.1),
+        bounds.get("xR_max", 0.2),
+        bounds.get("vL_max", 10.0),
+        bounds.get("vR_max", 10.0),
+    ]
 
     # Initial 1D gas state variables (per cell)
     rho0_cells = [ca.SX.sym(f"rho0_{i}") for i in range(n_cells)]
@@ -418,12 +494,16 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
 
     w += rho0_cells + u0_cells + E0_cells
     w0 += [1.0] * n_cells + [0.0] * n_cells + [2.5] * n_cells  # Initial gas state
-    lbw += [bounds.get("rho_min", 0.1)] * n_cells + \
-           [bounds.get("u_min", -100.0)] * n_cells + \
-           [bounds.get("E_min", 0.1)] * n_cells
-    ubw += [bounds.get("rho_max", 10.0)] * n_cells + \
-           [bounds.get("u_max", 100.0)] * n_cells + \
-           [bounds.get("E_max", 100.0)] * n_cells
+    lbw += (
+        [bounds.get("rho_min", 0.1)] * n_cells
+        + [bounds.get("u_min", -100.0)] * n_cells
+        + [bounds.get("E_min", 0.1)] * n_cells
+    )
+    ubw += (
+        [bounds.get("rho_max", 10.0)] * n_cells
+        + [bounds.get("u_max", 100.0)] * n_cells
+        + [bounds.get("E_max", 100.0)] * n_cells
+    )
 
     # Valve controls
     Ain0 = ca.SX.sym("Ain0")
@@ -481,8 +561,11 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
             w += [Ain_stage[j], Aex_stage[j], Q_comb_stage[j]]
             w0 += [0.0, 0.0, 0.0]
             lbw += [0.0, 0.0, 0.0]
-            ubw += [bounds.get("Ain_max", 0.01), bounds.get("Aex_max", 0.01),
-                   bounds.get("Q_comb_max", 10000.0)]
+            ubw += [
+                bounds.get("Ain_max", 0.01),
+                bounds.get("Aex_max", 0.01),
+                bounds.get("Q_comb_max", 10000.0),
+            ]
 
         # Collocation states for pistons
         xL_colloc = [ca.SX.sym(f"xL_{k}_{j}") for j in range(C)]
@@ -493,25 +576,43 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
         for j in range(C):
             w += [xL_colloc[j], xR_colloc[j], vL_colloc[j], vR_colloc[j]]
             w0 += [0.0, 0.1, 0.0, 0.0]
-            lbw += [bounds.get("xL_min", -0.1), bounds.get("xR_min", 0.0),
-                   bounds.get("vL_min", -10.0), bounds.get("vR_min", -10.0)]
-            ubw += [bounds.get("xL_max", 0.1), bounds.get("xR_max", 0.2),
-                   bounds.get("vL_max", 10.0), bounds.get("vR_max", 10.0)]
+            lbw += [
+                bounds.get("xL_min", -0.1),
+                bounds.get("xR_min", 0.0),
+                bounds.get("vL_min", -10.0),
+                bounds.get("vR_min", -10.0),
+            ]
+            ubw += [
+                bounds.get("xL_max", 0.1),
+                bounds.get("xR_max", 0.2),
+                bounds.get("vL_max", 10.0),
+                bounds.get("vR_max", 10.0),
+            ]
 
         # Collocation states for 1D gas (per cell, per collocation point)
-        rho_colloc = [[ca.SX.sym(f"rho_{k}_{c}_{i}") for i in range(n_cells)] for c in range(C)]
-        u_colloc = [[ca.SX.sym(f"u_{k}_{c}_{i}") for i in range(n_cells)] for c in range(C)]
-        E_colloc = [[ca.SX.sym(f"E_{k}_{c}_{i}") for i in range(n_cells)] for c in range(C)]
+        rho_colloc = [
+            [ca.SX.sym(f"rho_{k}_{c}_{i}") for i in range(n_cells)] for c in range(C)
+        ]
+        u_colloc = [
+            [ca.SX.sym(f"u_{k}_{c}_{i}") for i in range(n_cells)] for c in range(C)
+        ]
+        E_colloc = [
+            [ca.SX.sym(f"E_{k}_{c}_{i}") for i in range(n_cells)] for c in range(C)
+        ]
 
         for c in range(C):
             w += rho_colloc[c] + u_colloc[c] + E_colloc[c]
             w0 += [1.0] * n_cells + [0.0] * n_cells + [2.5] * n_cells
-            lbw += [bounds.get("rho_min", 0.1)] * n_cells + \
-                   [bounds.get("u_min", -100.0)] * n_cells + \
-                   [bounds.get("E_min", 0.1)] * n_cells
-            ubw += [bounds.get("rho_max", 10.0)] * n_cells + \
-                   [bounds.get("u_max", 100.0)] * n_cells + \
-                   [bounds.get("E_max", 100.0)] * n_cells
+            lbw += (
+                [bounds.get("rho_min", 0.1)] * n_cells
+                + [bounds.get("u_min", -100.0)] * n_cells
+                + [bounds.get("E_min", 0.1)] * n_cells
+            )
+            ubw += (
+                [bounds.get("rho_max", 10.0)] * n_cells
+                + [bounds.get("u_max", 100.0)] * n_cells
+                + [bounds.get("E_max", 100.0)] * n_cells
+            )
 
         # Collocation equations
         for c in range(C):
@@ -525,10 +626,17 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
             Q_comb_c = Q_comb_stage[c]
 
             # Chamber volume and its rate of change
-            V_c = chamber_volume_from_pistons(x_L=xL_c, x_R=xR_c,
-                                            B=geometry.get("bore", 0.1),
-                                            Vc=geometry.get("clearance_volume", 1e-4))
-            dV_dt = math.pi * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2 * (vR_c - vL_c)
+            V_c = chamber_volume_from_pistons(
+                x_L=xL_c,
+                x_R=xR_c,
+                B=geometry.get("bore", 0.1),
+                Vc=geometry.get("clearance_volume", 1e-4),
+            )
+            dV_dt = (
+                math.pi
+                * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2
+                * (vR_c - vL_c)
+            )
 
             # Enhanced piston forces with proper acceleration coupling
             # Compute accelerations from velocity differences (simplified)
@@ -542,13 +650,24 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 u_i = u_colloc[c][i]
                 E_i = E_colloc[c][i]
                 # Convert to pressure using ideal gas law
-                p_i = (1.4 - 1.0) * rho_i * (E_i - 0.5 * ca.fmax(u_i, CASADI_PHYSICS_EPSILON)**2)
+                p_i = (
+                    (1.4 - 1.0)
+                    * rho_i
+                    * (E_i - 0.5 * ca.fmax(u_i, CASADI_PHYSICS_EPSILON) ** 2)
+                )
                 p_avg += p_i
             p_avg /= n_cells
 
-            F_L_c, F_R_c = piston_force_balance(p_gas=p_avg, x_L=xL_c, x_R=xR_c,
-                                               v_L=vL_c, v_R=vR_c, a_L=aL_c, a_R=aR_c,
-                                               geometry=geometry)
+            F_L_c, F_R_c = piston_force_balance(
+                p_gas=p_avg,
+                x_L=xL_c,
+                x_R=xR_c,
+                v_L=vL_c,
+                v_R=vR_c,
+                a_L=aL_c,
+                a_R=aR_c,
+                geometry=geometry,
+            )
 
             # 1D gas dynamics constraints
             for i in range(n_cells):
@@ -563,8 +682,11 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 # Calculate fluxes at cell faces using HLLC
                 if i > 0:
                     # Left face flux
-                    U_L = [rho_colloc[c][i-1], rho_colloc[c][i-1] * u_colloc[c][i-1],
-                           rho_colloc[c][i-1] * E_colloc[c][i-1]]
+                    U_L = [
+                        rho_colloc[c][i - 1],
+                        rho_colloc[c][i - 1] * u_colloc[c][i - 1],
+                        rho_colloc[c][i - 1] * E_colloc[c][i - 1],
+                    ]
                     U_R = [rho_i, rho_i * u_i, rho_i * E_i]
                     F_left = _hllc_flux_symbolic(U_L, U_R, ca)
                 else:
@@ -573,16 +695,29 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 if i < n_cells - 1:
                     # Right face flux
                     U_L = [rho_i, rho_i * u_i, rho_i * E_i]
-                    U_R = [rho_colloc[c][i+1], rho_colloc[c][i+1] * u_colloc[c][i+1],
-                           rho_colloc[c][i+1] * E_colloc[c][i+1]]
+                    U_R = [
+                        rho_colloc[c][i + 1],
+                        rho_colloc[c][i + 1] * u_colloc[c][i + 1],
+                        rho_colloc[c][i + 1] * E_colloc[c][i + 1],
+                    ]
                     F_right = _hllc_flux_symbolic(U_L, U_R, ca)
                 else:
                     F_right = [0.0, 0.0, 0.0]
 
                 # Source terms (volume change, heat transfer)
                 S_sources = _calculate_1d_source_terms(
-                    rho_i, u_i, E_i, xL_c, xR_c, vL_c, vR_c,
-                    geometry, flow_cfg, Q_comb_c, Ain_c, Aex_c,
+                    rho_i,
+                    u_i,
+                    E_i,
+                    xL_c,
+                    xR_c,
+                    vL_c,
+                    vR_c,
+                    geometry,
+                    flow_cfg,
+                    Q_comb_c,
+                    Ain_c,
+                    Aex_c,
                 )
 
                 # Cell width (simplified)
@@ -591,7 +726,11 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 # Semi-discrete form: dU/dt = -(F_right - F_left) / dx + S
                 dU_dt = []
                 for comp in range(3):
-                    dU_dt.append(-(F_right[comp] - F_left[comp]) / ca.fmax(dx, CASADI_PHYSICS_EPSILON) + S_sources[comp])
+                    dU_dt.append(
+                        -(F_right[comp] - F_left[comp])
+                        / ca.fmax(dx, CASADI_PHYSICS_EPSILON)
+                        + S_sources[comp],
+                    )
 
                 # Add collocation constraint
                 U_cell = [rho_i, rho_i * u_i, rho_i * E_i]
@@ -617,11 +756,29 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 rhs_xR += h * grid.a[c][j] * vR_colloc[j]
 
                 # Enhanced force balance with proper mass calculation
-                m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
-                m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+                m_total_L = geometry.get("mass", 1.0) + geometry.get(
+                    "rod_mass", 0.5,
+                ) * (
+                    geometry.get("rod_cg_offset", 0.075)
+                    / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+                )
+                m_total_R = geometry.get("mass", 1.0) + geometry.get(
+                    "rod_mass", 0.5,
+                ) * (
+                    geometry.get("rod_cg_offset", 0.075)
+                    / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+                )
 
-                rhs_vL += h * grid.a[c][j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
-                rhs_vR += h * grid.a[c][j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+                rhs_vL += (
+                    h
+                    * grid.a[c][j]
+                    * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+                )
+                rhs_vR += (
+                    h
+                    * grid.a[c][j]
+                    * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+                )
 
             colloc_res = [xL_c - rhs_xL, xR_c - rhs_xR, vL_c - rhs_vL, vR_c - rhs_vR]
             g += colloc_res
@@ -651,11 +808,25 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
             xR_k1 += h * grid.weights[j] * vR_colloc[j]
 
             # Enhanced force balance with proper mass calculation
-            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
-            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (
+                geometry.get("rod_cg_offset", 0.075)
+                / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+            )
+            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (
+                geometry.get("rod_cg_offset", 0.075)
+                / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+            )
 
-            vL_k1 += h * grid.weights[j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
-            vR_k1 += h * grid.weights[j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+            vL_k1 += (
+                h
+                * grid.weights[j]
+                * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+            )
+            vR_k1 += (
+                h
+                * grid.weights[j]
+                * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+            )
 
         # Update gas states
         rho_k1 = [rho_k[i] for i in range(n_cells)]
@@ -670,47 +841,75 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
                 E_k1[i] += h * grid.weights[j] * 0.0  # Placeholder
 
         # New state variables
-        xL_k = ca.SX.sym(f"xL_{k+1}")
-        xR_k = ca.SX.sym(f"xR_{k+1}")
-        vL_k = ca.SX.sym(f"vL_{k+1}")
-        vR_k = ca.SX.sym(f"vR_{k+1}")
+        xL_k = ca.SX.sym(f"xL_{k + 1}")
+        xR_k = ca.SX.sym(f"xR_{k + 1}")
+        vL_k = ca.SX.sym(f"vL_{k + 1}")
+        vR_k = ca.SX.sym(f"vR_{k + 1}")
 
-        rho_k = [ca.SX.sym(f"rho_{k+1}_{i}") for i in range(n_cells)]
-        u_k = [ca.SX.sym(f"u_{k+1}_{i}") for i in range(n_cells)]
-        E_k = [ca.SX.sym(f"E_{k+1}_{i}") for i in range(n_cells)]
+        rho_k = [ca.SX.sym(f"rho_{k + 1}_{i}") for i in range(n_cells)]
+        u_k = [ca.SX.sym(f"u_{k + 1}_{i}") for i in range(n_cells)]
+        E_k = [ca.SX.sym(f"E_{k + 1}_{i}") for i in range(n_cells)]
 
-        yF_k = ca.SX.sym(f"yF_{k+1}")
-        Mdel_k = ca.SX.sym(f"Mdel_{k+1}")
-        Mlost_k = ca.SX.sym(f"Mlost_{k+1}")
-        AinInt_k = ca.SX.sym(f"AinInt_{k+1}")
-        AinTmom_k = ca.SX.sym(f"AinTmom_{k+1}")
-        AexInt_k = ca.SX.sym(f"AexInt_{k+1}")
-        AexTmom_k = ca.SX.sym(f"AexTmom_{k+1}")
+        yF_k = ca.SX.sym(f"yF_{k + 1}")
+        Mdel_k = ca.SX.sym(f"Mdel_{k + 1}")
+        Mlost_k = ca.SX.sym(f"Mlost_{k + 1}")
+        AinInt_k = ca.SX.sym(f"AinInt_{k + 1}")
+        AinTmom_k = ca.SX.sym(f"AinTmom_{k + 1}")
+        AexInt_k = ca.SX.sym(f"AexInt_{k + 1}")
+        AexTmom_k = ca.SX.sym(f"AexTmom_{k + 1}")
 
-        w += [xL_k, xR_k, vL_k, vR_k] + rho_k + u_k + E_k + \
-             [yF_k, Mdel_k, Mlost_k, AinInt_k, AinTmom_k, AexInt_k, AexTmom_k]
-        w0 += [0.0, 0.1, 0.0, 0.0] + [1.0] * n_cells + [0.0] * n_cells + [2.5] * n_cells + \
-              [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        lbw += [bounds.get("xL_min", -0.1), bounds.get("xR_min", 0.0),
-               bounds.get("vL_min", -10.0), bounds.get("vR_min", -10.0)] + \
-               [bounds.get("rho_min", 0.1)] * n_cells + \
-               [bounds.get("u_min", -100.0)] * n_cells + \
-               [bounds.get("E_min", 0.1)] * n_cells + \
-               [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        ubw += [bounds.get("xL_max", 0.1), bounds.get("xR_max", 0.2),
-               bounds.get("vL_max", 10.0), bounds.get("vR_max", 10.0)] + \
-               [bounds.get("rho_max", 10.0)] * n_cells + \
-               [bounds.get("u_max", 100.0)] * n_cells + \
-               [bounds.get("E_max", 100.0)] * n_cells + \
-               [1.0, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf]
+        w += (
+            [xL_k, xR_k, vL_k, vR_k]
+            + rho_k
+            + u_k
+            + E_k
+            + [yF_k, Mdel_k, Mlost_k, AinInt_k, AinTmom_k, AexInt_k, AexTmom_k]
+        )
+        w0 += (
+            [0.0, 0.1, 0.0, 0.0]
+            + [1.0] * n_cells
+            + [0.0] * n_cells
+            + [2.5] * n_cells
+            + [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        )
+        lbw += (
+            [
+                bounds.get("xL_min", -0.1),
+                bounds.get("xR_min", 0.0),
+                bounds.get("vL_min", -10.0),
+                bounds.get("vR_min", -10.0),
+            ]
+            + [bounds.get("rho_min", 0.1)] * n_cells
+            + [bounds.get("u_min", -100.0)] * n_cells
+            + [bounds.get("E_min", 0.1)] * n_cells
+            + [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        )
+        ubw += (
+            [
+                bounds.get("xL_max", 0.1),
+                bounds.get("xR_max", 0.2),
+                bounds.get("vL_max", 10.0),
+                bounds.get("vR_max", 10.0),
+            ]
+            + [bounds.get("rho_max", 10.0)] * n_cells
+            + [bounds.get("u_max", 100.0)] * n_cells
+            + [bounds.get("E_max", 100.0)] * n_cells
+            + [1.0, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf]
+        )
 
         # Continuity constraints
         cont = [xL_k - xL_k1, xR_k - xR_k1, vL_k - vL_k1, vR_k - vR_k1]
         for i in range(n_cells):
             cont += [rho_k[i] - rho_k1[i], u_k[i] - u_k1[i], E_k[i] - E_k1[i]]
-        cont += [yF_k - yF_k, Mdel_k - Mdel_k, Mlost_k - Mlost_k,
-                AinInt_k - AinInt_k, AinTmom_k - AinTmom_k,
-                AexInt_k - AexInt_k, AexTmom_k - AexTmom_k]
+        cont += [
+            yF_k - yF_k,
+            Mdel_k - Mdel_k,
+            Mlost_k - Mlost_k,
+            AinInt_k - AinInt_k,
+            AinTmom_k - AinTmom_k,
+            AexInt_k - AexInt_k,
+            AexTmom_k - AexTmom_k,
+        ]
         g += cont
         lbg += [0.0] * len(cont)
         ubg += [0.0] * len(cont)
@@ -732,7 +931,9 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
     J_terms.append(-W_ind_accum)
     # Thermal efficiency surrogate: maximize W_ind/Q_in -> minimize -(W/Q)
     if w_eta > 0.0:
-        J_terms.append(-w_eta * (W_ind_accum / ca.fmax(Q_in_accum + 1e-6, CASADI_PHYSICS_EPSILON)))
+        J_terms.append(
+            -w_eta * (W_ind_accum / ca.fmax(Q_in_accum + 1e-6, CASADI_PHYSICS_EPSILON)),
+        )
     # Scavenging penalty (minimize cycle short-circuit fraction)
     if w_short > 0.0:
         J_terms.append(w_short * scav_penalty_accum)
@@ -740,9 +941,17 @@ def _build_1d_collocation_nlp(P: Dict[str, Any], ca: Any, K: int, C: int,
     J = sum(J_terms)
 
     nlp = {"x": ca.vertcat(*w), "f": J, "g": ca.vertcat(*g)}
-    meta = {"K": K, "C": C, "n_vars": len(w), "n_constraints": len(g),
-            "flow_mode": "1d_gas", "dynamic_wall": False,
-            "scavenging_states": True, "timing_states": True, "n_cells": n_cells}
+    meta = {
+        "K": K,
+        "C": C,
+        "n_vars": len(w),
+        "n_constraints": len(g),
+        "flow_mode": "1d_gas",
+        "dynamic_wall": False,
+        "scavenging_states": True,
+        "timing_states": True,
+        "n_cells": n_cells,
+    }
     return nlp, meta
 
 
@@ -757,12 +966,34 @@ def _hllc_flux_symbolic(U_L: List[Any], U_R: List[Any], ca: Any) -> List[Any]:
     # Convert to primitive variables
     u_L = rhou_L / ca.fmax(rho_L, CASADI_PHYSICS_EPSILON)
     u_R = rhou_R / ca.fmax(rho_R, CASADI_PHYSICS_EPSILON)
-    p_L = (1.4 - 1.0) * rho_L * (rhoE_L / ca.fmax(rho_L, CASADI_PHYSICS_EPSILON) - 0.5 * ca.fmax(u_L, CASADI_PHYSICS_EPSILON)**2)
-    p_R = (1.4 - 1.0) * rho_R * (rhoE_R / ca.fmax(rho_R, CASADI_PHYSICS_EPSILON) - 0.5 * ca.fmax(u_R, CASADI_PHYSICS_EPSILON)**2)
+    p_L = (
+        (1.4 - 1.0)
+        * rho_L
+        * (
+            rhoE_L / ca.fmax(rho_L, CASADI_PHYSICS_EPSILON)
+            - 0.5 * ca.fmax(u_L, CASADI_PHYSICS_EPSILON) ** 2
+        )
+    )
+    p_R = (
+        (1.4 - 1.0)
+        * rho_R
+        * (
+            rhoE_R / ca.fmax(rho_R, CASADI_PHYSICS_EPSILON)
+            - 0.5 * ca.fmax(u_R, CASADI_PHYSICS_EPSILON) ** 2
+        )
+    )
 
     # Simplified flux calculation
-    F_L = [rho_L * u_L, rho_L * ca.fmax(u_L, CASADI_PHYSICS_EPSILON)**2 + p_L, (rhoE_L + p_L) * u_L]
-    F_R = [rho_R * u_R, rho_R * ca.fmax(u_R, CASADI_PHYSICS_EPSILON)**2 + p_R, (rhoE_R + p_R) * u_R]
+    F_L = [
+        rho_L * u_L,
+        rho_L * ca.fmax(u_L, CASADI_PHYSICS_EPSILON) ** 2 + p_L,
+        (rhoE_L + p_L) * u_L,
+    ]
+    F_R = [
+        rho_R * u_R,
+        rho_R * ca.fmax(u_R, CASADI_PHYSICS_EPSILON) ** 2 + p_R,
+        (rhoE_R + p_R) * u_R,
+    ]
 
     # Simple average for now (in practice, use proper HLLC)
     F = [(F_L[i] + F_R[i]) / 2.0 for i in range(3)]
@@ -770,30 +1001,48 @@ def _hllc_flux_symbolic(U_L: List[Any], U_R: List[Any], ca: Any) -> List[Any]:
     return F
 
 
-def _calculate_1d_source_terms(rho: Any, u: Any, E: Any, xL: Any, xR: Any,
-                              vL: Any, vR: Any, geometry: Dict[str, float],
-                              flow_cfg: Dict[str, Any], Q_comb: Any,
-                              Ain: Any, Aex: Any) -> List[Any]:
+def _calculate_1d_source_terms(
+    rho: Any,
+    u: Any,
+    E: Any,
+    xL: Any,
+    xR: Any,
+    vL: Any,
+    vR: Any,
+    geometry: Dict[str, float],
+    flow_cfg: Dict[str, Any],
+    Q_comb: Any,
+    Ain: Any,
+    Aex: Any,
+) -> List[Any]:
     """Calculate 1D source terms for gas dynamics equations."""
     ca = _import_casadi()
 
     # Volume change rate
-    dV_dt = math.pi * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2 * (vR - vL)
+    dV_dt = (
+        math.pi
+        * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2
+        * (vR - vL)
+    )
 
     # Cell volume (simplified)
     V_cell = (xR - xL) / ca.fmax(flow_cfg.get("mesh_cells", 80), CASADI_PHYSICS_EPSILON)
 
     # Source terms
     S_rho = -rho * dV_dt / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Mass source
-    S_rhou = -rho * u * dV_dt / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Momentum source
-    S_rhoE = -rho * E * dV_dt / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON) + Q_comb / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Energy source
+    S_rhou = (
+        -rho * u * dV_dt / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)
+    )  # Momentum source
+    S_rhoE = -rho * E * dV_dt / ca.fmax(
+        V_cell, CASADI_PHYSICS_EPSILON,
+    ) + Q_comb / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Energy source
 
     return [S_rho, S_rhou, S_rhoE]
 
 
 def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
     """Build collocation NLP with gas-structure coupling.
-    
+
     Implements a full gas-structure coupled optimization problem with:
     - Piston dynamics with gas pressure coupling
     - Gas thermodynamics with combustion and heat transfer
@@ -836,12 +1085,22 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
 
     w += [xL0, xR0, vL0, vR0, rho0, T0]
     w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
-    lbw += [bounds.get("xL_min", -0.1), bounds.get("xR_min", 0.0),
-            bounds.get("vL_min", -10.0), bounds.get("vR_min", -10.0),
-            bounds.get("rho_min", 0.1), bounds.get("T_min", 200.0)]
-    ubw += [bounds.get("xL_max", 0.1), bounds.get("xR_max", 0.2),
-            bounds.get("vL_max", 10.0), bounds.get("vR_max", 10.0),
-            bounds.get("rho_max", 10.0), bounds.get("T_max", 2000.0)]
+    lbw += [
+        bounds.get("xL_min", -0.1),
+        bounds.get("xR_min", 0.0),
+        bounds.get("vL_min", -10.0),
+        bounds.get("vR_min", -10.0),
+        bounds.get("rho_min", 0.1),
+        bounds.get("T_min", 200.0),
+    ]
+    ubw += [
+        bounds.get("xL_max", 0.1),
+        bounds.get("xR_max", 0.2),
+        bounds.get("vL_max", 10.0),
+        bounds.get("vR_max", 10.0),
+        bounds.get("rho_max", 10.0),
+        bounds.get("T_max", 2000.0),
+    ]
 
     # Valve controls
     Ain0 = ca.SX.sym("Ain0")
@@ -912,8 +1171,11 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             w += [Ain_stage[j], Aex_stage[j], Q_comb_stage[j]]
             w0 += [0.0, 0.0, 0.0]
             lbw += [0.0, 0.0, 0.0]
-            ubw += [bounds.get("Ain_max", 0.01), bounds.get("Aex_max", 0.01),
-                   bounds.get("Q_comb_max", 10000.0)]
+            ubw += [
+                bounds.get("Ain_max", 0.01),
+                bounds.get("Aex_max", 0.01),
+                bounds.get("Q_comb_max", 10000.0),
+            ]
 
         # Collocation states
         xL_colloc = [ca.SX.sym(f"xL_{k}_{j}") for j in range(C)]
@@ -924,15 +1186,31 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
         T_colloc = [ca.SX.sym(f"T_{k}_{j}") for j in range(C)]
 
         for j in range(C):
-            w += [xL_colloc[j], xR_colloc[j], vL_colloc[j], vR_colloc[j],
-                  rho_colloc[j], T_colloc[j]]
+            w += [
+                xL_colloc[j],
+                xR_colloc[j],
+                vL_colloc[j],
+                vR_colloc[j],
+                rho_colloc[j],
+                T_colloc[j],
+            ]
             w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
-            lbw += [bounds.get("xL_min", -0.1), bounds.get("xR_min", 0.0),
-                   bounds.get("vL_min", -10.0), bounds.get("vR_min", -10.0),
-                   bounds.get("rho_min", 0.1), bounds.get("T_min", 200.0)]
-            ubw += [bounds.get("xL_max", 0.1), bounds.get("xR_max", 0.2),
-                   bounds.get("vL_max", 10.0), bounds.get("vR_max", 10.0),
-                   bounds.get("rho_max", 10.0), bounds.get("T_max", 2000.0)]
+            lbw += [
+                bounds.get("xL_min", -0.1),
+                bounds.get("xR_min", 0.0),
+                bounds.get("vL_min", -10.0),
+                bounds.get("vR_min", -10.0),
+                bounds.get("rho_min", 0.1),
+                bounds.get("T_min", 200.0),
+            ]
+            ubw += [
+                bounds.get("xL_max", 0.1),
+                bounds.get("xR_max", 0.2),
+                bounds.get("vL_max", 10.0),
+                bounds.get("vR_max", 10.0),
+                bounds.get("rho_max", 10.0),
+                bounds.get("T_max", 2000.0),
+            ]
 
         # Collocation equations
         for c in range(C):
@@ -948,10 +1226,17 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             Q_comb_c = Q_comb_stage[c]
 
             # Chamber volume and its rate of change
-            V_c = chamber_volume_from_pistons(x_L=xL_c, x_R=xR_c,
-                                            B=geometry.get("bore", 0.1),
-                                            Vc=geometry.get("clearance_volume", 1e-4))
-            dV_dt = math.pi * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2 * (vR_c - vL_c)
+            V_c = chamber_volume_from_pistons(
+                x_L=xL_c,
+                x_R=xR_c,
+                B=geometry.get("bore", 0.1),
+                Vc=geometry.get("clearance_volume", 1e-4),
+            )
+            dV_dt = (
+                math.pi
+                * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2
+                * (vR_c - vL_c)
+            )
 
             # Gas pressure
             p_c = gas_pressure_from_state(rho=rho_c, T=T_c)
@@ -961,9 +1246,16 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             aL_c = (vL_c - vL_k) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
             aR_c = (vR_c - vR_k) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
 
-            F_L_c, F_R_c = piston_force_balance(p_gas=p_c, x_L=xL_c, x_R=xR_c,
-                                               v_L=vL_c, v_R=vR_c, a_L=aL_c, a_R=aR_c,
-                                               geometry=geometry)
+            F_L_c, F_R_c = piston_force_balance(
+                p_gas=p_c,
+                x_L=xL_c,
+                x_R=xR_c,
+                v_L=vL_c,
+                v_R=vR_c,
+                a_L=aL_c,
+                a_R=aR_c,
+                geometry=geometry,
+            )
 
             # Mass flow rates via unified gas model
             R = 287.0
@@ -974,29 +1266,64 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             p_ex = float(geometry.get("p_exhaust", 1e5))
             T_ex = T_c
             rho_ex = p_ex / (R * T_ex)
-            mdot_in = gas_model.mdot_in(ca=ca, p_up=p_in, T_up=T_in, rho_up=rho_in,
-                                        p_down=p_c, T_down=T_c, A_eff=Ain_c, gamma=gamma, R=R)
-            mdot_out = gas_model.mdot_out(ca=ca, p_up=p_c, T_up=T_c, rho_up=rho_c,
-                                          p_down=p_ex, T_down=T_ex, A_eff=Aex_c, gamma=gamma, R=R)
+            mdot_in = gas_model.mdot_in(
+                ca=ca,
+                p_up=p_in,
+                T_up=T_in,
+                rho_up=rho_in,
+                p_down=p_c,
+                T_down=T_c,
+                A_eff=Ain_c,
+                gamma=gamma,
+                R=R,
+            )
+            mdot_out = gas_model.mdot_out(
+                ca=ca,
+                p_up=p_c,
+                T_up=T_c,
+                rho_up=rho_c,
+                p_down=p_ex,
+                T_down=T_ex,
+                A_eff=Aex_c,
+                gamma=gamma,
+                R=R,
+            )
 
             # Wall heat transfer
             T_wall_c = Tw_k if dynamic_wall else T_wall_const
-            Q_heat_transfer = gas_model.qdot_wall(ca=ca, p_gas=p_c, T_gas=T_c,
-                                                  T_wall=T_wall_c, B=geometry.get("bore", 0.1),
-                                                  x_L=xL_c, x_R=xR_c)
+            Q_heat_transfer = gas_model.qdot_wall(
+                ca=ca,
+                p_gas=p_c,
+                T_gas=T_c,
+                T_wall=T_wall_c,
+                B=geometry.get("bore", 0.1),
+                x_L=xL_c,
+                x_R=xR_c,
+            )
 
             # Enhanced gas energy balance
-            dT_dt = gas_energy_balance(rho=rho_c, T=T_c, V=V_c, dV_dt=dV_dt,
-                                     Q_combustion=Q_comb_c, Q_heat_transfer=Q_heat_transfer,
-                                     mdot_in=mdot_in, mdot_out=mdot_out,
-                                     T_in=T_in, T_out=T_ex, gamma=gamma)
+            dT_dt = gas_energy_balance(
+                rho=rho_c,
+                T=T_c,
+                V=V_c,
+                dV_dt=dV_dt,
+                Q_combustion=Q_comb_c,
+                Q_heat_transfer=Q_heat_transfer,
+                mdot_in=mdot_in,
+                mdot_out=mdot_out,
+                T_in=T_in,
+                T_out=T_ex,
+                gamma=gamma,
+            )
 
             # Mass balance
             dm_dt = mdot_in - mdot_out
             drho_dt = (dm_dt - rho_c * dV_dt) / ca.fmax(V_c, CASADI_PHYSICS_EPSILON)
             # Fresh fraction dynamics
             m_c = rho_c * V_c
-            dyF_dt = (mdot_in - mdot_out * yF_k - yF_k * dm_dt) / ca.fmax(m_c, CASADI_PHYSICS_EPSILON)
+            dyF_dt = (mdot_in - mdot_out * yF_k - yF_k * dm_dt) / ca.fmax(
+                m_c, CASADI_PHYSICS_EPSILON,
+            )
 
             # Collocation equations (state updates using A matrix)
             rhs_xL = xL_k
@@ -1021,11 +1348,29 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
                 rhs_xR += h * grid.a[c][j] * vR_colloc[j]
 
                 # Enhanced force balance with proper mass calculation
-                m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
-                m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+                m_total_L = geometry.get("mass", 1.0) + geometry.get(
+                    "rod_mass", 0.5,
+                ) * (
+                    geometry.get("rod_cg_offset", 0.075)
+                    / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+                )
+                m_total_R = geometry.get("mass", 1.0) + geometry.get(
+                    "rod_mass", 0.5,
+                ) * (
+                    geometry.get("rod_cg_offset", 0.075)
+                    / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+                )
 
-                rhs_vL += h * grid.a[c][j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
-                rhs_vR += h * grid.a[c][j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+                rhs_vL += (
+                    h
+                    * grid.a[c][j]
+                    * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+                )
+                rhs_vR += (
+                    h
+                    * grid.a[c][j]
+                    * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+                )
                 rhs_rho += h * grid.a[c][j] * drho_dt
                 rhs_T += h * grid.a[c][j] * dT_dt
                 if dynamic_wall:
@@ -1042,13 +1387,25 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
                 rhs_AexInt += h * grid.a[c][j] * Aex_c
                 rhs_AexTmom += h * grid.a[c][j] * (t_c * Aex_c)
 
-            colloc_res = [xL_c - rhs_xL, xR_c - rhs_xR, vL_c - rhs_vL, vR_c - rhs_vR,
-                          rho_c - rhs_rho, T_c - rhs_T]
+            colloc_res = [
+                xL_c - rhs_xL,
+                xR_c - rhs_xR,
+                vL_c - rhs_vL,
+                vR_c - rhs_vR,
+                rho_c - rhs_rho,
+                T_c - rhs_T,
+            ]
             if dynamic_wall:
                 colloc_res.append(T_wall_c - rhs_Tw)
-            colloc_res += [yF_k - rhs_yF, Mdel_k - rhs_Mdel, Mlost_k - rhs_Mlost,
-                           AinInt_k - rhs_AinInt, AinTmom_k - rhs_AinTmom,
-                           AexInt_k - rhs_AexInt, AexTmom_k - rhs_AexTmom]
+            colloc_res += [
+                yF_k - rhs_yF,
+                Mdel_k - rhs_Mdel,
+                Mlost_k - rhs_Mlost,
+                AinInt_k - rhs_AinInt,
+                AinTmom_k - rhs_AinTmom,
+                AexInt_k - rhs_AexInt,
+                AexTmom_k - rhs_AexTmom,
+            ]
             g += colloc_res
             lbg += [0.0] * len(colloc_res)
             ubg += [0.0] * len(colloc_res)
@@ -1074,11 +1431,25 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
             xR_k1 += h * grid.weights[j] * vR_colloc[j]
 
             # Enhanced force balance with proper mass calculation
-            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
-            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (geometry.get("rod_cg_offset", 0.075) / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON))
+            m_total_L = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (
+                geometry.get("rod_cg_offset", 0.075)
+                / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+            )
+            m_total_R = geometry.get("mass", 1.0) + geometry.get("rod_mass", 0.5) * (
+                geometry.get("rod_cg_offset", 0.075)
+                / ca.fmax(geometry.get("rod_length", 0.15), CASADI_PHYSICS_EPSILON)
+            )
 
-            vL_k1 += h * grid.weights[j] * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
-            vR_k1 += h * grid.weights[j] * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+            vL_k1 += (
+                h
+                * grid.weights[j]
+                * (F_L_c / ca.fmax(m_total_L, CASADI_PHYSICS_EPSILON))
+            )
+            vR_k1 += (
+                h
+                * grid.weights[j]
+                * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
+            )
             rho_k1 += h * grid.weights[j] * drho_dt
             T_k1 += h * grid.weights[j] * dT_dt
             if dynamic_wall:
@@ -1096,40 +1467,84 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
         AexTmom_k1 = AexTmom_k + h * (t_bar * Aex_c)
 
         # New state variables
-        xL_k = ca.SX.sym(f"xL_{k+1}")
-        xR_k = ca.SX.sym(f"xR_{k+1}")
-        vL_k = ca.SX.sym(f"vL_{k+1}")
-        vR_k = ca.SX.sym(f"vR_{k+1}")
-        rho_k = ca.SX.sym(f"rho_{k+1}")
-        T_k = ca.SX.sym(f"T_{k+1}")
+        xL_k = ca.SX.sym(f"xL_{k + 1}")
+        xR_k = ca.SX.sym(f"xR_{k + 1}")
+        vL_k = ca.SX.sym(f"vL_{k + 1}")
+        vR_k = ca.SX.sym(f"vR_{k + 1}")
+        rho_k = ca.SX.sym(f"rho_{k + 1}")
+        T_k = ca.SX.sym(f"T_{k + 1}")
 
-        yF_k = ca.SX.sym(f"yF_{k+1}")
-        Mdel_k = ca.SX.sym(f"Mdel_{k+1}")
-        Mlost_k = ca.SX.sym(f"Mlost_{k+1}")
-        AinInt_k = ca.SX.sym(f"AinInt_{k+1}")
-        AinTmom_k = ca.SX.sym(f"AinTmom_{k+1}")
-        AexInt_k = ca.SX.sym(f"AexInt_{k+1}")
-        AexTmom_k = ca.SX.sym(f"AexTmom_{k+1}")
+        yF_k = ca.SX.sym(f"yF_{k + 1}")
+        Mdel_k = ca.SX.sym(f"Mdel_{k + 1}")
+        Mlost_k = ca.SX.sym(f"Mlost_{k + 1}")
+        AinInt_k = ca.SX.sym(f"AinInt_{k + 1}")
+        AinTmom_k = ca.SX.sym(f"AinTmom_{k + 1}")
+        AexInt_k = ca.SX.sym(f"AexInt_{k + 1}")
+        AexTmom_k = ca.SX.sym(f"AexTmom_{k + 1}")
 
-        w += [xL_k, xR_k, vL_k, vR_k, rho_k, T_k,
-              yF_k, Mdel_k, Mlost_k, AinInt_k, AinTmom_k, AexInt_k, AexTmom_k]
-        w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0,
-               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        lbw += [bounds.get("xL_min", -0.1), bounds.get("xR_min", 0.0),
-               bounds.get("vL_min", -10.0), bounds.get("vR_min", -10.0),
-               bounds.get("rho_min", 0.1), bounds.get("T_min", 200.0),
-               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        ubw += [bounds.get("xL_max", 0.1), bounds.get("xR_max", 0.2),
-               bounds.get("vL_max", 10.0), bounds.get("vR_max", 10.0),
-               bounds.get("rho_max", 10.0), bounds.get("T_max", 2000.0),
-               1.0, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf]
+        w += [
+            xL_k,
+            xR_k,
+            vL_k,
+            vR_k,
+            rho_k,
+            T_k,
+            yF_k,
+            Mdel_k,
+            Mlost_k,
+            AinInt_k,
+            AinTmom_k,
+            AexInt_k,
+            AexTmom_k,
+        ]
+        w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        lbw += [
+            bounds.get("xL_min", -0.1),
+            bounds.get("xR_min", 0.0),
+            bounds.get("vL_min", -10.0),
+            bounds.get("vR_min", -10.0),
+            bounds.get("rho_min", 0.1),
+            bounds.get("T_min", 200.0),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        ]
+        ubw += [
+            bounds.get("xL_max", 0.1),
+            bounds.get("xR_max", 0.2),
+            bounds.get("vL_max", 10.0),
+            bounds.get("vR_max", 10.0),
+            bounds.get("rho_max", 10.0),
+            bounds.get("T_max", 2000.0),
+            1.0,
+            ca.inf,
+            ca.inf,
+            ca.inf,
+            ca.inf,
+            ca.inf,
+            ca.inf,
+        ]
 
         # Continuity constraints
-        cont = [xL_k - xL_k1, xR_k - xR_k1, vL_k - vL_k1, vR_k - vR_k1,
-                rho_k - rho_k1, T_k - T_k1,
-                yF_k - yF_k1, Mdel_k - Mdel_k1, Mlost_k - Mlost_k1,
-                AinInt_k - AinInt_k1, AinTmom_k - AinTmom_k1,
-                AexInt_k - AexInt_k1, AexTmom_k - AexTmom_k1]
+        cont = [
+            xL_k - xL_k1,
+            xR_k - xR_k1,
+            vL_k - vL_k1,
+            vR_k - vR_k1,
+            rho_k - rho_k1,
+            T_k - T_k1,
+            yF_k - yF_k1,
+            Mdel_k - Mdel_k1,
+            Mlost_k - Mlost_k1,
+            AinInt_k - AinInt_k1,
+            AinTmom_k - AinTmom_k1,
+            AexInt_k - AexInt_k1,
+            AexTmom_k - AexTmom_k1,
+        ]
         g += cont
         lbg += [0.0] * len(cont)
         ubg += [0.0] * len(cont)
@@ -1161,8 +1576,12 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
                 Ain_prev = Ain_stage[j] if k > 0 else Ain0
                 Aex_prev = Aex_stage[j] if k > 0 else Aex0
 
-                Ain_rate = (Ain_stage[j] - Ain_prev) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
-                Aex_rate = (Aex_stage[j] - Aex_prev) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
+                Ain_rate = (Ain_stage[j] - Ain_prev) / ca.fmax(
+                    h, CASADI_PHYSICS_EPSILON,
+                )
+                Aex_rate = (Aex_stage[j] - Aex_prev) / ca.fmax(
+                    h, CASADI_PHYSICS_EPSILON,
+                )
 
                 g += [Ain_rate, Aex_rate]  # Valve rate constraints
                 lbg += [-bounds.get("dA_dt_max", 0.02), -bounds.get("dA_dt_max", 0.02)]
@@ -1199,9 +1618,12 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
     ubg += [0.0, 0.0, 0.0, 0.0]
 
     # Scavenging metrics and timing targets at cycle end
-    V_end = chamber_volume_from_pistons(x_L=xL_k, x_R=xR_k,
-                                        B=geometry.get("bore", 0.1),
-                                        Vc=geometry.get("clearance_volume", 1e-4))
+    V_end = chamber_volume_from_pistons(
+        x_L=xL_k,
+        x_R=xR_k,
+        B=geometry.get("bore", 0.1),
+        Vc=geometry.get("clearance_volume", 1e-4),
+    )
     m_end = rho_k * V_end
     fresh_trapped = yF_k * m_end
     total_trapped = m_end
@@ -1253,7 +1675,9 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
                 valve_vars.append(Ain_stage[j])
                 valve_vars.append(Aex_stage[j])
         if len(valve_vars) > 1:
-            diffs = [valve_vars[i + 1] - valve_vars[i] for i in range(len(valve_vars) - 1)]
+            diffs = [
+                valve_vars[i + 1] - valve_vars[i] for i in range(len(valve_vars) - 1)
+            ]
             smooth_penalty_accum = w_smooth * ca.sumsqr(ca.vertcat(*diffs))
 
     # W_ind term (maximize): minimize -W_ind
@@ -1261,7 +1685,9 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
     J_terms.append(-W_ind_accum)
     # Thermal efficiency surrogate: maximize W_ind/Q_in -> minimize -(W/Q)
     if w_eta > 0.0:
-        J_terms.append(-w_eta * (W_ind_accum / ca.fmax(Q_in_accum + 1e-6, CASADI_PHYSICS_EPSILON)))
+        J_terms.append(
+            -w_eta * (W_ind_accum / ca.fmax(Q_in_accum + 1e-6, CASADI_PHYSICS_EPSILON)),
+        )
     # Scavenging penalty (minimize cycle short-circuit fraction)
     if w_short > 0.0:
         J_terms.append(w_short * short_circuit_fraction)
@@ -1272,9 +1698,14 @@ def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
     J = sum(J_terms)
 
     nlp = {"x": ca.vertcat(*w), "f": J, "g": ca.vertcat(*g)}
-    meta = {"K": K, "C": C, "n_vars": len(w), "n_constraints": len(g),
-            "flow_mode": gas_model.mode, "dynamic_wall": dynamic_wall,
-            "scavenging_states": True, "timing_states": True}
+    meta = {
+        "K": K,
+        "C": C,
+        "n_vars": len(w),
+        "n_constraints": len(g),
+        "flow_mode": gas_model.mode,
+        "dynamic_wall": dynamic_wall,
+        "scavenging_states": True,
+        "timing_states": True,
+    }
     return nlp, meta
-
-

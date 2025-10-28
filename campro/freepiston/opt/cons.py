@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from campro.constants import CASADI_PHYSICS_EPSILON
-
 from campro.logging import get_logger
 
 # Import CasADi for domain guards
@@ -38,13 +37,13 @@ def comprehensive_path_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Comprehensive path constraints for all states and controls.
-    
+
     Args:
         states: Dictionary of state variables over time
         controls: Dictionary of control variables over time
         bounds: Bounds dictionary
         grid: Collocation grid
-        
+
     Returns:
         g_path, lbg_path, ubg_path: Path constraints and bounds
     """
@@ -78,14 +77,18 @@ def comprehensive_path_constraints(
     # Valve rate constraints
     if "A_in" in controls and len(controls["A_in"]) > 1:
         for i in range(1, len(controls["A_in"])):
-            dA_dt = (controls["A_in"][i] - controls["A_in"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
+            dA_dt = (controls["A_in"][i] - controls["A_in"][i - 1]) / ca.fmax(
+                grid.h, CASADI_PHYSICS_EPSILON,
+            )
             g_path.append(dA_dt)
             lbg_path.append(-bounds.get("dA_dt_max", 0.02))
             ubg_path.append(bounds.get("dA_dt_max", 0.02))
 
     if "A_ex" in controls and len(controls["A_ex"]) > 1:
         for i in range(1, len(controls["A_ex"])):
-            dA_dt = (controls["A_ex"][i] - controls["A_ex"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
+            dA_dt = (controls["A_ex"][i] - controls["A_ex"][i - 1]) / ca.fmax(
+                grid.h, CASADI_PHYSICS_EPSILON,
+            )
             g_path.append(dA_dt)
             lbg_path.append(-bounds.get("dA_dt_max", 0.02))
             ubg_path.append(bounds.get("dA_dt_max", 0.02))
@@ -100,10 +103,16 @@ def comprehensive_path_constraints(
     # Piston acceleration constraints
     if "v_L" in states and "v_R" in states and len(states["v_L"]) > 1:
         for i in range(1, len(states["v_L"])):
-            aL = (states["v_L"][i] - states["v_L"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
-            aR = (states["v_R"][i] - states["v_R"][i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
+            aL = (states["v_L"][i] - states["v_L"][i - 1]) / ca.fmax(
+                grid.h, CASADI_PHYSICS_EPSILON,
+            )
+            aR = (states["v_R"][i] - states["v_R"][i - 1]) / ca.fmax(
+                grid.h, CASADI_PHYSICS_EPSILON,
+            )
             g_path.extend([aL, aR])
-            lbg_path.extend([-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)])
+            lbg_path.extend(
+                [-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)],
+            )
             ubg_path.extend([bounds.get("a_max", 1000.0), bounds.get("a_max", 1000.0)])
 
     # Density constraints
@@ -136,11 +145,11 @@ def pressure_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Pressure path constraints.
-    
+
     Args:
         pressure_states: List of pressure states over time
         bounds: Bounds dictionary
-        
+
     Returns:
         g_pressure, lbg_pressure, ubg_pressure: Pressure constraints and bounds
     """
@@ -162,11 +171,11 @@ def temperature_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Temperature path constraints.
-    
+
     Args:
         temperature_states: List of temperature states over time
         bounds: Bounds dictionary
-        
+
     Returns:
         g_temp, lbg_temp, ubg_temp: Temperature constraints and bounds
     """
@@ -189,12 +198,12 @@ def piston_clearance_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Piston clearance path constraints.
-    
+
     Args:
         x_L_states: List of left piston position states
         x_R_states: List of right piston position states
         bounds: Bounds dictionary
-        
+
     Returns:
         g_clearance, lbg_clearance, ubg_clearance: Clearance constraints and bounds
     """
@@ -219,12 +228,12 @@ def valve_rate_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Valve rate path constraints.
-    
+
     Args:
         valve_states: List of valve area states over time
         bounds: Bounds dictionary
         grid: Collocation grid
-        
+
     Returns:
         g_rate, lbg_rate, ubg_rate: Rate constraints and bounds
     """
@@ -234,7 +243,9 @@ def valve_rate_constraints(
 
     if len(valve_states) > 1:
         for i in range(1, len(valve_states)):
-            dA_dt = (valve_states[i] - valve_states[i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
+            dA_dt = (valve_states[i] - valve_states[i - 1]) / ca.fmax(
+                grid.h, CASADI_PHYSICS_EPSILON,
+            )
             g_rate.append(dA_dt)
             lbg_rate.append(-bounds.get("dA_dt_max", 0.02))
             ubg_rate.append(bounds.get("dA_dt_max", 0.02))
@@ -249,12 +260,12 @@ def piston_velocity_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Piston velocity path constraints.
-    
+
     Args:
         v_L_states: List of left piston velocity states
         v_R_states: List of right piston velocity states
         bounds: Bounds dictionary
-        
+
     Returns:
         g_velocity, lbg_velocity, ubg_velocity: Velocity constraints and bounds
     """
@@ -278,13 +289,13 @@ def piston_acceleration_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Piston acceleration path constraints.
-    
+
     Args:
         v_L_states: List of left piston velocity states
         v_R_states: List of right piston velocity states
         bounds: Bounds dictionary
         grid: Collocation grid
-        
+
     Returns:
         g_accel, lbg_accel, ubg_accel: Acceleration constraints and bounds
     """
@@ -294,10 +305,16 @@ def piston_acceleration_constraints(
 
     if len(v_L_states) > 1:
         for i in range(1, len(v_L_states)):
-            aL = (v_L_states[i] - v_L_states[i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
-            aR = (v_R_states[i] - v_R_states[i-1]) / ca.fmax(grid.h, CASADI_PHYSICS_EPSILON)
+            aL = (v_L_states[i] - v_L_states[i - 1]) / ca.fmax(
+                grid.h, CASADI_PHYSICS_EPSILON,
+            )
+            aR = (v_R_states[i] - v_R_states[i - 1]) / ca.fmax(
+                grid.h, CASADI_PHYSICS_EPSILON,
+            )
             g_accel.extend([aL, aR])
-            lbg_accel.extend([-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)])
+            lbg_accel.extend(
+                [-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)],
+            )
             ubg_accel.extend([bounds.get("a_max", 1000.0), bounds.get("a_max", 1000.0)])
 
     return g_accel, lbg_accel, ubg_accel
@@ -309,11 +326,11 @@ def density_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Density path constraints.
-    
+
     Args:
         density_states: List of density states over time
         bounds: Bounds dictionary
-        
+
     Returns:
         g_density, lbg_density, ubg_density: Density constraints and bounds
     """
@@ -335,11 +352,11 @@ def energy_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Energy path constraints.
-    
+
     Args:
         energy_states: List of energy states over time
         bounds: Bounds dictionary
-        
+
     Returns:
         g_energy, lbg_energy, ubg_energy: Energy constraints and bounds
     """
@@ -361,11 +378,11 @@ def velocity_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Velocity path constraints.
-    
+
     Args:
         velocity_states: List of velocity states over time
         bounds: Bounds dictionary
-        
+
     Returns:
         g_velocity, lbg_velocity, ubg_velocity: Velocity constraints and bounds
     """
@@ -388,12 +405,12 @@ def combustion_timing_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Combustion timing path constraints.
-    
+
     Args:
         Q_comb_states: List of combustion heat release states
         bounds: Bounds dictionary
         timing_params: Timing parameters
-        
+
     Returns:
         g_combustion, lbg_combustion, ubg_combustion: Combustion constraints and bounds
     """
@@ -417,11 +434,11 @@ def scavenging_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Scavenging path constraints.
-    
+
     Args:
         scavenging_states: Dictionary of scavenging state variables
         bounds: Bounds dictionary
-        
+
     Returns:
         g_scavenging, lbg_scavenging, ubg_scavenging: Scavenging constraints and bounds
     """
@@ -459,11 +476,11 @@ def wall_temperature_constraints(
 ) -> Tuple[List[Any], List[float], List[float]]:
     """
     Wall temperature path constraints.
-    
+
     Args:
         T_wall_states: List of wall temperature states
         bounds: Bounds dictionary
-        
+
     Returns:
         g_wall, lbg_wall, ubg_wall: Wall temperature constraints and bounds
     """
@@ -484,10 +501,10 @@ def validate_constraint_bounds(
 ) -> bool:
     """
     Validate constraint bounds for consistency.
-    
+
     Args:
         bounds: Bounds dictionary
-        
+
     Returns:
         True if bounds are valid, False otherwise
     """
@@ -527,7 +544,7 @@ def validate_constraint_bounds(
 def get_default_bounds() -> Dict[str, float]:
     """
     Get default constraint bounds.
-    
+
     Returns:
         Dictionary of default bounds
     """
@@ -535,52 +552,40 @@ def get_default_bounds() -> Dict[str, float]:
         # Pressure bounds [Pa]
         "p_min": 1e3,
         "p_max": 1e7,
-
         # Temperature bounds [K]
         "T_min": 200.0,
         "T_max": 2000.0,
-
         # Density bounds [kg/m^3]
         "rho_min": 0.1,
         "rho_max": 10.0,
-
         # Velocity bounds [m/s]
         "v_min": -50.0,
         "v_max": 50.0,
         "u_min": -100.0,
         "u_max": 100.0,
-
         # Acceleration bounds [m/s^2]
         "a_min": -1000.0,
         "a_max": 1000.0,
-
         # Piston position bounds [m]
         "xL_min": -0.1,
         "xL_max": 0.1,
         "xR_min": 0.0,
         "xR_max": 0.2,
-
         # Clearance bounds [m]
         "gap_min": 0.0008,
-
         # Valve area bounds [m^2]
         "Ain_max": 0.01,
         "Aex_max": 0.01,
-
         # Valve rate bounds [m^2/s]
         "dA_dt_max": 0.02,
-
         # Energy bounds [J/kg]
         "E_min": 0.1,
         "E_max": 100.0,
-
         # Combustion bounds [W]
         "Q_comb_max": 10000.0,
-
         # Wall temperature bounds [K]
         "T_wall_min": 250.0,
         "T_wall_max": 800.0,
-
         # Scavenging bounds
         "m_delivered_max": 1.0,
         "m_short_circuit_max": 0.1,

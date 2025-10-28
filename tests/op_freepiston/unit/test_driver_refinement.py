@@ -30,6 +30,3 @@ def test_driver_refinement_path_exists():
         _ = solve_cycle_with_refinement(P, refinement_strategy="fixed")
     except Exception:
         pass
-
-
-

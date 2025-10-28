@@ -32,6 +32,3 @@ def test_mdot_symbolic_smoke():
 
     # Should be a CasADi expression
     assert hasattr(mdot, "is_symbolic") or "casadi" in str(type(mdot)).lower()
-
-
-

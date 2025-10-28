@@ -29,7 +29,9 @@ class CamRingParameters:
     base_radius: float = 10.0  # r_b: base radius of cam
 
     # Connecting rod parameters
-    connecting_rod_length: float = 25.0  # Length of connecting rod from cam center to linear follower
+    connecting_rod_length: float = (
+        25.0  # Length of connecting rod from cam center to linear follower
+    )
 
     # Ring parameters
     ring_center_x: float = 0.0
@@ -52,7 +54,7 @@ class CamRingParameters:
 class CamRingMapper:
     """
     Cam-ring-linear follower mapping system.
-    
+
     Implements the mathematical framework for relating linear follower motion
     to cam geometry and ring follower design through rolling kinematics.
     """
@@ -60,26 +62,30 @@ class CamRingMapper:
     def __init__(self, parameters: Optional[CamRingParameters] = None):
         """
         Initialize the cam-ring mapper.
-        
+
         Parameters
         ----------
         parameters : CamRingParameters, optional
             System parameters. If None, uses default values.
         """
         self.parameters = parameters or CamRingParameters()
-        log.info(f"Initialized CamRingMapper with parameters: {self.parameters.to_dict()}")
+        log.info(
+            f"Initialized CamRingMapper with parameters: {self.parameters.to_dict()}",
+        )
 
-    def compute_cam_curves(self, theta: np.ndarray, x_theta: np.ndarray) -> Dict[str, np.ndarray]:
+    def compute_cam_curves(
+        self, theta: np.ndarray, x_theta: np.ndarray,
+    ) -> Dict[str, np.ndarray]:
         """
         Compute cam curves from linear follower motion law via connecting rod.
-        
+
         Parameters
         ----------
         theta : np.ndarray
             Cam angles (radians)
         x_theta : np.ndarray
             Linear follower displacement vs cam angle
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -109,20 +115,22 @@ class CamRingMapper:
             "theta": theta,
         }
 
-    def compute_cam_curvature(self, theta: np.ndarray, r_contact: np.ndarray) -> np.ndarray:
+    def compute_cam_curvature(
+        self, theta: np.ndarray, r_contact: np.ndarray,
+    ) -> np.ndarray:
         """
         Compute curvature of the contacting cam curve.
-        
+
         For a curve given in polar form r(θ), the curvature is:
         κ_c(θ) = (r² + 2(r')² - r·r'') / (r² + (r')²)^(3/2)
-        
+
         Parameters
         ----------
         theta : np.ndarray
             Cam angles (radians)
         r_contact : np.ndarray
             Contacting curve radius
-            
+
         Returns
         -------
         np.ndarray
@@ -136,43 +144,47 @@ class CamRingMapper:
 
         # Curvature formula for polar curves
         numerator = r_contact**2 + 2 * dr_dtheta**2 - r_contact * d2r_dtheta2
-        denominator = (r_contact**2 + dr_dtheta**2)**(3/2)
+        denominator = (r_contact**2 + dr_dtheta**2) ** (3 / 2)
 
         # Avoid division by zero
-        kappa_c = np.divide(numerator, denominator,
-                           out=np.zeros_like(numerator),
-                           where=denominator > 1e-12)
+        kappa_c = np.divide(
+            numerator,
+            denominator,
+            out=np.zeros_like(numerator),
+            where=denominator > 1e-12,
+        )
 
         return kappa_c
 
     def compute_osculating_radius(self, kappa_c: np.ndarray) -> np.ndarray:
         """
         Compute osculating radius from curvature.
-        
+
         ρ_c(θ) = 1/κ_c(θ)
-        
+
         Parameters
         ----------
         kappa_c : np.ndarray
             Curvature
-            
+
         Returns
         -------
         np.ndarray
             Osculating radius ρ_c(θ)
         """
         # Avoid division by zero
-        rho_c = np.divide(1.0, kappa_c,
-                         out=np.full_like(kappa_c, np.inf),
-                         where=abs(kappa_c) > 1e-12)
+        rho_c = np.divide(
+            1.0, kappa_c, out=np.full_like(kappa_c, np.inf), where=abs(kappa_c) > 1e-12,
+        )
 
         return rho_c
 
-    def design_ring_radius(self, psi: np.ndarray, design_type: str = "constant",
-                          **kwargs) -> np.ndarray:
+    def design_ring_radius(
+        self, psi: np.ndarray, design_type: str = "constant", **kwargs,
+    ) -> np.ndarray:
         """
         Design the ring's instantaneous radius R(ψ).
-        
+
         Parameters
         ----------
         psi : np.ndarray
@@ -181,7 +193,7 @@ class CamRingMapper:
             Type of ring design: "constant", "linear", "sinusoidal", "custom"
         **kwargs
             Additional parameters for specific design types
-            
+
         Returns
         -------
         np.ndarray
@@ -212,15 +224,16 @@ class CamRingMapper:
 
         raise ValueError(f"Unknown design type: {design_type}")
 
-    def solve_meshing_law(self, theta: np.ndarray, rho_c: np.ndarray,
-                         psi: np.ndarray, R_psi: np.ndarray) -> np.ndarray:
+    def solve_meshing_law(
+        self, theta: np.ndarray, rho_c: np.ndarray, psi: np.ndarray, R_psi: np.ndarray,
+    ) -> np.ndarray:
         """
         Solve the pitch-curve meshing law to relate cam and ring angles.
-        
+
         The meshing law is: ρ_c(θ) dθ = R(ψ) dψ
-        
+
         This function integrates to find ψ(θ) given the relationship.
-        
+
         Parameters
         ----------
         theta : np.ndarray
@@ -231,7 +244,7 @@ class CamRingMapper:
             Ring angles (initial guess)
         R_psi : np.ndarray
             Ring instantaneous radius
-            
+
         Returns
         -------
         np.ndarray
@@ -240,10 +253,12 @@ class CamRingMapper:
         log.info("Solving pitch-curve meshing law")
 
         # Create interpolation functions
-        rho_c_interp = interp1d(theta, rho_c, kind="cubic",
-                               bounds_error=False, fill_value="extrapolate")
-        R_psi_interp = interp1d(psi, R_psi, kind="cubic",
-                               bounds_error=False, fill_value="extrapolate")
+        rho_c_interp = interp1d(
+            theta, rho_c, kind="cubic", bounds_error=False, fill_value="extrapolate",
+        )
+        R_psi_interp = interp1d(
+            psi, R_psi, kind="cubic", bounds_error=False, fill_value="extrapolate",
+        )
 
         # Define the ODE: dψ/dθ = ρ_c(θ) / R(ψ)
         def meshing_ode(theta_val, psi_val):
@@ -260,8 +275,14 @@ class CamRingMapper:
 
         # Solve the ODE
         try:
-            sol = solve_ivp(meshing_ode, [theta[0], theta[-1]], [psi[0]],
-                           t_eval=theta, method="RK45", rtol=1e-8)
+            sol = solve_ivp(
+                meshing_ode,
+                [theta[0], theta[-1]],
+                [psi[0]],
+                t_eval=theta,
+                method="RK45",
+                rtol=1e-8,
+            )
 
             if sol.success:
                 return sol.y[0]
@@ -272,13 +293,19 @@ class CamRingMapper:
             log.warning(f"ODE solution failed: {e}, using linear approximation")
             return np.linspace(psi[0], psi[-1], len(theta))
 
-    def compute_time_kinematics(self, theta: np.ndarray, psi: np.ndarray,
-                               rho_c: np.ndarray, R_psi: np.ndarray,
-                               driver: str = "cam", omega: Optional[float] = None,
-                               Omega: Optional[float] = None) -> Dict[str, np.ndarray]:
+    def compute_time_kinematics(
+        self,
+        theta: np.ndarray,
+        psi: np.ndarray,
+        rho_c: np.ndarray,
+        R_psi: np.ndarray,
+        driver: str = "cam",
+        omega: Optional[float] = None,
+        Omega: Optional[float] = None,
+    ) -> Dict[str, np.ndarray]:
         """
         Compute time-based kinematics for the system.
-        
+
         Parameters
         ----------
         theta : np.ndarray
@@ -295,7 +322,7 @@ class CamRingMapper:
             Cam angular speed (if driver="cam")
         Omega : float, optional
             Ring angular speed (if driver="ring")
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -314,7 +341,9 @@ class CamRingMapper:
             dtheta_dt = R_psi / rho_c * Omega
 
         else:
-            raise ValueError("Must specify either omega (cam-driven) or Omega (ring-driven)")
+            raise ValueError(
+                "Must specify either omega (cam-driven) or Omega (ring-driven)",
+            )
 
         return {
             "time": t,
@@ -325,17 +354,18 @@ class CamRingMapper:
             "driver": driver,
         }
 
-    def map_linear_to_ring_follower(self, theta: np.ndarray, x_theta: np.ndarray,
-                                   ring_design: Dict[str, Any]) -> Dict[str, np.ndarray]:
+    def map_linear_to_ring_follower(
+        self, theta: np.ndarray, x_theta: np.ndarray, ring_design: Dict[str, Any],
+    ) -> Dict[str, np.ndarray]:
         """
         Complete mapping from linear follower motion law to ring follower design.
-        
+
         This is the main synthesis pipeline:
         1. Lift → cam curve
         2. Design ring radius R(ψ)
         3. Relate angles via meshing law
         4. Compute time kinematics
-        
+
         Parameters
         ----------
         theta : np.ndarray
@@ -344,7 +374,7 @@ class CamRingMapper:
             Linear follower displacement vs cam angle
         ring_design : Dict[str, Any]
             Ring design parameters
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -363,16 +393,20 @@ class CamRingMapper:
         rho_c = self.compute_osculating_radius(kappa_c)
 
         # Step 3: Design ring radius
-        psi_initial = np.linspace(0, 2*np.pi, len(theta))  # Initial guess
+        psi_initial = np.linspace(0, 2 * np.pi, len(theta))  # Initial guess
         R_psi = self.design_ring_radius(psi_initial, **ring_design)
 
         # Always generate complete 360° profiles with proper boundary continuity
         # This ensures the optimization always works with complete profiles
-        log.info("Generating complete 360° profiles with boundary continuity enforcement")
+        log.info(
+            "Generating complete 360° profiles with boundary continuity enforcement",
+        )
 
         # Create enhanced grid with higher resolution at critical points (TDC/BDC)
         theta_complete, x_theta_complete = self._create_enhanced_grid(
-            theta_rad, x_theta, len(theta),
+            theta_rad,
+            x_theta,
+            len(theta),
         )
         theta_deg_complete = np.degrees(theta_complete)
 
@@ -387,7 +421,13 @@ class CamRingMapper:
             omega = ring_design.get("omega")
             Omega = ring_design.get("Omega")
             time_kinematics = self.compute_time_kinematics(
-                theta_rad, psi, rho_c, R_psi, driver, omega, Omega,
+                theta_rad,
+                psi,
+                rho_c,
+                R_psi,
+                driver,
+                omega,
+                Omega,
             )
 
         # Generate complete cam curves for the full 360° range
@@ -411,12 +451,13 @@ class CamRingMapper:
         log.info("Completed linear-to-ring follower mapping")
         return results
 
-    def _create_enhanced_grid(self, theta_rad: np.ndarray, x_theta: np.ndarray,
-                             base_length: int) -> Tuple[np.ndarray, np.ndarray]:
+    def _create_enhanced_grid(
+        self, theta_rad: np.ndarray, x_theta: np.ndarray, base_length: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Create an enhanced grid with higher resolution at critical points (TDC/BDC)
         and enforce proper boundary continuity between 0 and 2π.
-        
+
         Parameters
         ----------
         theta_rad : np.ndarray
@@ -425,7 +466,7 @@ class CamRingMapper:
             Original linear follower displacement
         base_length : int
             Base number of points for the grid
-            
+
         Returns
         -------
         Tuple[np.ndarray, np.ndarray]
@@ -434,26 +475,32 @@ class CamRingMapper:
         log.info("Creating enhanced grid with boundary continuity enforcement")
 
         # Define critical points for higher resolution (TDC, BDC, and boundary)
-        critical_points = np.array([0.0, np.pi/2, np.pi, 3*np.pi/2, 2*np.pi])
+        critical_points = np.array([0.0, np.pi / 2, np.pi, 3 * np.pi / 2, 2 * np.pi])
 
         # Create base grid with endpoint=True to include 2π
-        theta_base = np.linspace(0, 2*np.pi, base_length, endpoint=True)
+        theta_base = np.linspace(0, 2 * np.pi, base_length, endpoint=True)
 
         # Add extra points around critical regions for higher resolution
         extra_points = []
 
         # Add points around TDC (0° and 360°)
-        tdc_region = np.linspace(-np.pi/12, np.pi/12, 5)  # ±15° around TDC
+        tdc_region = np.linspace(-np.pi / 12, np.pi / 12, 5)  # ±15° around TDC
         extra_points.extend(tdc_region)
-        extra_points.extend(2*np.pi + tdc_region)  # Around 360°
+        extra_points.extend(2 * np.pi + tdc_region)  # Around 360°
 
         # Add points around BDC (180°)
-        bdc_region = np.linspace(np.pi - np.pi/12, np.pi + np.pi/12, 5)  # ±15° around BDC
+        bdc_region = np.linspace(
+            np.pi - np.pi / 12, np.pi + np.pi / 12, 5,
+        )  # ±15° around BDC
         extra_points.extend(bdc_region)
 
         # Add points around 90° and 270°
-        extra_points.extend(np.linspace(np.pi/2 - np.pi/24, np.pi/2 + np.pi/24, 3))
-        extra_points.extend(np.linspace(3*np.pi/2 - np.pi/24, 3*np.pi/2 + np.pi/24, 3))
+        extra_points.extend(
+            np.linspace(np.pi / 2 - np.pi / 24, np.pi / 2 + np.pi / 24, 3),
+        )
+        extra_points.extend(
+            np.linspace(3 * np.pi / 2 - np.pi / 24, 3 * np.pi / 2 + np.pi / 24, 3),
+        )
 
         # Combine base grid with extra points
         all_points = np.concatenate([theta_base, extra_points])
@@ -462,23 +509,27 @@ class CamRingMapper:
         theta_enhanced = np.unique(all_points)
 
         # Normalize to [0, 2π] range
-        theta_enhanced = np.mod(theta_enhanced, 2*np.pi)
-        theta_enhanced = np.unique(theta_enhanced)  # Remove duplicates after normalization
+        theta_enhanced = np.mod(theta_enhanced, 2 * np.pi)
+        theta_enhanced = np.unique(
+            theta_enhanced,
+        )  # Remove duplicates after normalization
 
         # Ensure we have the exact boundary points
         if theta_enhanced[0] != 0.0:
             theta_enhanced = np.concatenate([[0.0], theta_enhanced])
-        if theta_enhanced[-1] != 2*np.pi:
-            theta_enhanced = np.concatenate([theta_enhanced, [2*np.pi]])
+        if theta_enhanced[-1] != 2 * np.pi:
+            theta_enhanced = np.concatenate([theta_enhanced, [2 * np.pi]])
 
         # Interpolate x_theta to the enhanced grid
         # Simplified approach: focus only on cam-ring optimization (phase 2)
         # Linkage journal placement will be handled in phase 3
-        if theta_rad[-1] < 2*np.pi:
+        if theta_rad[-1] < 2 * np.pi:
             # Create a simple, smooth extension for phase 2 cam-ring optimization
             # This avoids the complexity of trying to solve everything at once
             x_theta_enhanced = self._create_simple_cam_extension(
-                theta_enhanced, theta_rad, x_theta,
+                theta_enhanced,
+                theta_rad,
+                x_theta,
             )
         else:
             # Input already covers full period
@@ -490,22 +541,27 @@ class CamRingMapper:
             boundary_avg = (x_theta_enhanced[0] + x_theta_enhanced[-1]) / 2
             x_theta_enhanced[0] = boundary_avg
             x_theta_enhanced[-1] = boundary_avg
-            log.info(f"Enforced boundary continuity: x(0) = x(2pi) = {boundary_avg:.6f}")
+            log.info(
+                f"Enforced boundary continuity: x(0) = x(2pi) = {boundary_avg:.6f}",
+            )
 
         log.info(f"Enhanced grid: {len(theta_enhanced)} points (base: {base_length})")
         log.info(f"Grid range: {theta_enhanced[0]:.3f} to {theta_enhanced[-1]:.3f} rad")
-        log.info(f"Boundary continuity: x(0) = {x_theta_enhanced[0]:.6f}, x(2pi) = {x_theta_enhanced[-1]:.6f}")
+        log.info(
+            f"Boundary continuity: x(0) = {x_theta_enhanced[0]:.6f}, x(2pi) = {x_theta_enhanced[-1]:.6f}",
+        )
 
         return theta_enhanced, x_theta_enhanced
 
-    def _create_simple_cam_extension(self, theta_enhanced: np.ndarray,
-                                   theta_rad: np.ndarray, x_theta: np.ndarray) -> np.ndarray:
+    def _create_simple_cam_extension(
+        self, theta_enhanced: np.ndarray, theta_rad: np.ndarray, x_theta: np.ndarray,
+    ) -> np.ndarray:
         """
         Create a simple cam extension for phase 2 cam-ring optimization.
-        
+
         This simplified approach focuses only on cam-ring optimization without
         trying to solve linkage journal placement (deferred to phase 3).
-        
+
         Parameters
         ----------
         theta_enhanced : np.ndarray
@@ -514,7 +570,7 @@ class CamRingMapper:
             Original theta values (partial range)
         x_theta : np.ndarray
             Original motion law values
-            
+
         Returns
         -------
         np.ndarray
@@ -526,7 +582,7 @@ class CamRingMapper:
         # This ensures the cam profile is continuous at 0°/360° boundary
 
         # Create extended arrays for periodic interpolation
-        theta_extended = np.concatenate([theta_rad, [2*np.pi]])
+        theta_extended = np.concatenate([theta_rad, [2 * np.pi]])
         x_theta_extended = np.concatenate([x_theta, [x_theta[0]]])  # Close the loop
 
         # Use cubic spline interpolation for smooth extension
@@ -546,12 +602,18 @@ class CamRingMapper:
             # Apply Gaussian-like smoothing around the boundary
             for i in range(smooth_window):
                 # Weight decreases as we move away from boundary
-                weight = np.exp(-(i / smooth_window) ** 2)
+                weight = np.exp(-((i / smooth_window) ** 2))
                 # Blend with the opposite side of the boundary
                 opposite_idx = len(x_theta_enhanced) - smooth_window + i
                 if opposite_idx < len(x_theta_enhanced):
-                    x_theta_enhanced[i] = weight * x_theta_enhanced[i] + (1 - weight) * x_theta_enhanced[opposite_idx]
-                    x_theta_enhanced[opposite_idx] = weight * x_theta_enhanced[opposite_idx] + (1 - weight) * x_theta_enhanced[i]
+                    x_theta_enhanced[i] = (
+                        weight * x_theta_enhanced[i]
+                        + (1 - weight) * x_theta_enhanced[opposite_idx]
+                    )
+                    x_theta_enhanced[opposite_idx] = (
+                        weight * x_theta_enhanced[opposite_idx]
+                        + (1 - weight) * x_theta_enhanced[i]
+                    )
 
         # Ensure boundary continuity for smooth cam profile
         if abs(x_theta_enhanced[0] - x_theta_enhanced[-1]) > 1e-6:
@@ -565,8 +627,12 @@ class CamRingMapper:
         # Check slope continuity at boundary
         if len(x_theta_enhanced) > 2:
             # Compute slopes at boundary
-            slope_start = (x_theta_enhanced[1] - x_theta_enhanced[0]) / (theta_enhanced[1] - theta_enhanced[0])
-            slope_end = (x_theta_enhanced[-1] - x_theta_enhanced[-2]) / (theta_enhanced[-1] - theta_enhanced[-2])
+            slope_start = (x_theta_enhanced[1] - x_theta_enhanced[0]) / (
+                theta_enhanced[1] - theta_enhanced[0]
+            )
+            slope_end = (x_theta_enhanced[-1] - x_theta_enhanced[-2]) / (
+                theta_enhanced[-1] - theta_enhanced[-2]
+            )
             slope_diff = abs(slope_start - slope_end)
 
             if slope_diff > 0.1:  # Significant slope discontinuity
@@ -578,36 +644,48 @@ class CamRingMapper:
                     # Smooth the boundary region
                     for i in range(smooth_window):
                         weight = (smooth_window - i) / smooth_window
-                        x_theta_enhanced[i] = weight * x_theta_enhanced[i] + (1 - weight) * x_theta_enhanced[-smooth_window + i]
-                        x_theta_enhanced[-smooth_window + i] = weight * x_theta_enhanced[-smooth_window + i] + (1 - weight) * x_theta_enhanced[i]
+                        x_theta_enhanced[i] = (
+                            weight * x_theta_enhanced[i]
+                            + (1 - weight) * x_theta_enhanced[-smooth_window + i]
+                        )
+                        x_theta_enhanced[-smooth_window + i] = (
+                            weight * x_theta_enhanced[-smooth_window + i]
+                            + (1 - weight) * x_theta_enhanced[i]
+                        )
 
-        log.info(f"Created smooth cam extension: range {x_theta_enhanced[0]:.3f} to {x_theta_enhanced[-1]:.3f}")
-        log.info(f"Boundary continuity: x(0) = {x_theta_enhanced[0]:.6f}, x(2pi) = {x_theta_enhanced[-1]:.6f}")
+        log.info(
+            f"Created smooth cam extension: range {x_theta_enhanced[0]:.3f} to {x_theta_enhanced[-1]:.3f}",
+        )
+        log.info(
+            f"Boundary continuity: x(0) = {x_theta_enhanced[0]:.6f}, x(2pi) = {x_theta_enhanced[-1]:.6f}",
+        )
 
         return x_theta_enhanced
 
-    def _generate_complete_ring_profile(self, psi: np.ndarray, R_psi: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def _generate_complete_ring_profile(
+        self, psi: np.ndarray, R_psi: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Generate a complete 360° ring profile from the meshing law solution.
-        
+
         The meshing law solution may not cover the full 360° range due to the
         specific cam geometry and motion law. This method interpolates and
         extrapolates to create a complete ring profile.
-        
+
         Parameters
         ----------
         psi : np.ndarray
             Ring angles from meshing law solution (radians)
         R_psi : np.ndarray
             Ring radius values from meshing law solution
-            
+
         Returns
         -------
         Tuple[np.ndarray, np.ndarray]
             Complete ring angles and radius values covering 360°
         """
         # Normalize psi to [0, 2π] range
-        psi_norm = np.mod(psi, 2*np.pi)
+        psi_norm = np.mod(psi, 2 * np.pi)
 
         # Sort by angle for proper interpolation
         sort_idx = np.argsort(psi_norm)
@@ -615,29 +693,31 @@ class CamRingMapper:
         R_sorted = R_psi[sort_idx]
 
         # Create complete angle range
-        psi_complete = np.linspace(0, 2*np.pi, len(psi), endpoint=False)
+        psi_complete = np.linspace(0, 2 * np.pi, len(psi), endpoint=False)
 
         # Interpolate ring radius for complete range
         # Use periodic interpolation to handle the wrap-around
-        R_complete = np.interp(psi_complete, psi_sorted, R_sorted, period=2*np.pi)
+        R_complete = np.interp(psi_complete, psi_sorted, R_sorted, period=2 * np.pi)
 
         # For constant ring design, ensure all values are the same
         if len(np.unique(R_psi)) == 1:  # All values are the same (constant design)
             R_complete = np.full_like(psi_complete, R_psi[0])
 
-        log.info(f"Generated complete ring profile: {len(psi_complete)} points covering 360°")
+        log.info(
+            f"Generated complete ring profile: {len(psi_complete)} points covering 360°",
+        )
 
         return psi_complete, R_complete
 
     def validate_design(self, results: Dict[str, np.ndarray]) -> Dict[str, bool]:
         """
         Validate the cam-ring design for practical constraints.
-        
+
         Parameters
         ----------
         results : Dict[str, np.ndarray]
             Mapping results from map_linear_to_ring_follower
-            
+
         Returns
         -------
         Dict[str, bool]
@@ -650,16 +730,22 @@ class CamRingMapper:
         # Check for cusps/undercuts
         # For direct cam-ring contact (no rollers), check for excessive curvature
         kappa_c = results["kappa_c"]
-        validation["no_cusps"] = bool(np.all(abs(kappa_c) < 10.0))  # Reasonable curvature limit
+        validation["no_cusps"] = bool(
+            np.all(abs(kappa_c) < 10.0),
+        )  # Reasonable curvature limit
 
         # Check for positive radii
         cam_curves = results["cam_curves"]
-        validation["positive_cam_radii"] = bool(np.all(cam_curves["profile_radius"] > 0))
+        validation["positive_cam_radii"] = bool(
+            np.all(cam_curves["profile_radius"] > 0),
+        )
         validation["positive_ring_radii"] = bool(np.all(results["R_psi"] > 0))
 
         # Check for reasonable curvature values
         validation["reasonable_curvature"] = bool(np.all(np.isfinite(kappa_c)))
-        validation["reasonable_osculating_radius"] = bool(np.all(np.isfinite(results["rho_c"])))
+        validation["reasonable_osculating_radius"] = bool(
+            np.all(np.isfinite(results["rho_c"])),
+        )
 
         # Check for smooth angle relationships
         psi = results["psi"]

@@ -55,9 +55,13 @@ class TestCrossFidelityValidation:
         problem_params = {
             "geom": {"B": 0.1, "Vc": 1e-5},
             "initial_conditions": {
-                "x_L": 0.05, "v_L": 0.0,
-                "x_R": 0.15, "v_R": 0.0,
-                "rho": 1.2, "T": 1000.0, "p": 1.0e5,
+                "x_L": 0.05,
+                "v_L": 0.0,
+                "x_R": 0.15,
+                "v_R": 0.0,
+                "rho": 1.2,
+                "T": 1000.0,
+                "p": 1.0e5,
             },
             "n_cells": 20,
         }
@@ -89,9 +93,13 @@ class TestCrossFidelityValidation:
         problem_params = {
             "geom": {"B": 0.1, "Vc": 1e-5},
             "initial_conditions": {
-                "x_L": 0.05, "v_L": 0.0,
-                "x_R": 0.15, "v_R": 0.0,
-                "rho": 1.2, "T": 1000.0, "p": 1.0e5,
+                "x_L": 0.05,
+                "v_L": 0.0,
+                "x_R": 0.15,
+                "v_R": 0.0,
+                "rho": 1.2,
+                "T": 1000.0,
+                "p": 1.0e5,
             },
             "n_cells": 10,
         }
@@ -105,9 +113,15 @@ class TestCrossFidelityValidation:
 
         # Check required attributes
         required_attrs = [
-            "success", "max_relative_error", "max_absolute_error",
-            "error_metrics", "solution_comparison", "validation_message",
-            "cpu_time_0d", "cpu_time_1d", "mass_conservation_error",
+            "success",
+            "max_relative_error",
+            "max_absolute_error",
+            "error_metrics",
+            "solution_comparison",
+            "validation_message",
+            "cpu_time_0d",
+            "cpu_time_1d",
+            "mass_conservation_error",
             "energy_conservation_error",
         ]
 
@@ -207,9 +221,13 @@ class TestCrossFidelityValidation:
         base_params = {
             "geom": {"B": 0.1, "Vc": 1e-5},
             "initial_conditions": {
-                "x_L": 0.05, "v_L": 0.0,
-                "x_R": 0.15, "v_R": 0.0,
-                "rho": 1.2, "T": 1000.0, "p": 1.0e5,
+                "x_L": 0.05,
+                "v_L": 0.0,
+                "x_R": 0.15,
+                "v_R": 0.0,
+                "rho": 1.2,
+                "T": 1000.0,
+                "p": 1.0e5,
             },
         }
 
@@ -233,9 +251,13 @@ class TestCrossFidelityValidation:
         problem_params = {
             "geom": {"B": 0.1, "Vc": 1e-5},
             "initial_conditions": {
-                "x_L": 0.05, "v_L": 0.0,
-                "x_R": 0.15, "v_R": 0.0,
-                "rho": 1.2, "T": 1000.0, "p": 1.0e5,
+                "x_L": 0.05,
+                "v_L": 0.0,
+                "x_R": 0.15,
+                "v_R": 0.0,
+                "rho": 1.2,
+                "T": 1000.0,
+                "p": 1.0e5,
             },
             "n_cells": 20,
         }
@@ -279,9 +301,13 @@ class TestCrossFidelityValidation:
         for pressure in [1e4, 1e5, 1e6]:
             problem_params = base_params.copy()
             problem_params["initial_conditions"] = {
-                "x_L": 0.05, "v_L": 0.0,
-                "x_R": 0.15, "v_R": 0.0,
-                "rho": 1.2, "T": 1000.0, "p": pressure,
+                "x_L": 0.05,
+                "v_L": 0.0,
+                "x_R": 0.15,
+                "v_R": 0.0,
+                "rho": 1.2,
+                "T": 1000.0,
+                "p": pressure,
             }
 
             result = cross_fidelity_validation(problem_params, validation_params)
@@ -296,9 +322,13 @@ class TestCrossFidelityValidation:
         invalid_params = {
             "geom": {"B": -0.1, "Vc": -1e-5},  # Invalid geometry
             "initial_conditions": {
-                "x_L": 0.05, "v_L": 0.0,
-                "x_R": 0.15, "v_R": 0.0,
-                "rho": -1.2, "T": -1000.0, "p": -1.0e5,  # Invalid initial conditions
+                "x_L": 0.05,
+                "v_L": 0.0,
+                "x_R": 0.15,
+                "v_R": 0.0,
+                "rho": -1.2,
+                "T": -1000.0,
+                "p": -1.0e5,  # Invalid initial conditions
             },
             "n_cells": -10,  # Invalid mesh size
         }

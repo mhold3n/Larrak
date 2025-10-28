@@ -58,11 +58,11 @@ def test_litvin_conjugacy_general_ratio(ratio: float):
 def test_api_types_and_metadata():
     theta, r_profile = _make_simple_cam_profile(360)
     synthesis = LitvinSynthesis()
-    res = synthesis.synthesize_from_cam_profile(theta=theta, r_profile=r_profile, target_ratio=1.5)
+    res = synthesis.synthesize_from_cam_profile(
+        theta=theta, r_profile=r_profile, target_ratio=1.5,
+    )
     assert isinstance(res.psi, np.ndarray)
     assert isinstance(res.R_psi, np.ndarray)
     assert isinstance(res.rho_c, np.ndarray)
     assert res.metadata["method"] == "litvin"
     assert "normalized_ratio" in res.metadata
-
-

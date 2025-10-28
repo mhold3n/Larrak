@@ -14,10 +14,11 @@ R_UNIVERSAL = 8.314462618  # J/(mol K)
 @dataclass
 class JANAFCoeffs:
     """JANAF polynomial coefficients for temperature-dependent properties.
-    
+
     Coefficients for cp(T) = a1 + a2*T + a3*T^2 + a4*T^3 + a5*T^4
     Valid over temperature range [T_low, T_high] in Kelvin.
     """
+
     a1: float  # J/(mol K)
     a2: float  # J/(mol K^2)
     a3: float  # J/(mol K^3)
@@ -32,12 +33,14 @@ class JANAFCoeffs:
 @dataclass
 class RealGasEOS:
     """Real gas equation of state with temperature-dependent properties.
-    
+
     Supports Peng-Robinson EOS and JANAF polynomial fits for transport properties.
     """
 
     # Component data
-    components: Dict[str, Dict[str, float]]  # species -> {W, Tc, Pc, omega, janaf_coeffs}
+    components: Dict[
+        str, Dict[str, float],
+    ]  # species -> {W, Tc, Pc, omega, janaf_coeffs}
     mole_fractions: Dict[str, float]
 
     def __post_init__(self):
@@ -71,7 +74,7 @@ class RealGasEOS:
 
     def cp_mix(self, T: float) -> float:
         """Mixture heat capacity at constant pressure [J/(kg K)].
-        
+
         Uses JANAF polynomial fits for each component.
         """
         cp_total = 0.0
@@ -79,8 +82,13 @@ class RealGasEOS:
             if "janaf_coeffs" in self.components[species]:
                 coeffs = self.components[species]["janaf_coeffs"]
                 # JANAF polynomial: cp = a1 + a2*T + a3*T^2 + a4*T^3 + a5*T^4
-                cp_species = (coeffs.a1 + coeffs.a2*T + coeffs.a3*T**2 +
-                             coeffs.a4*T**3 + coeffs.a5*T**4)
+                cp_species = (
+                    coeffs.a1
+                    + coeffs.a2 * T
+                    + coeffs.a3 * T**2
+                    + coeffs.a4 * T**3
+                    + coeffs.a5 * T**4
+                )
                 cp_total += frac * cp_species
             else:
                 # Fallback to constant cp for species without JANAF data
@@ -106,7 +114,7 @@ class RealGasEOS:
 
     def h_mix(self, T: float) -> float:
         """Mixture enthalpy [J/kg] relative to 298.15 K.
-        
+
         Integrates cp(T) from 298.15 K to T.
         """
         T_ref = 298.15
@@ -128,7 +136,7 @@ class RealGasEOS:
 
     def s_mix(self, T: float, p: float) -> float:
         """Mixture entropy [J/(kg K)] relative to 298.15 K, 1 bar.
-        
+
         s(T,p) = s(T,1bar) - R*ln(p/1bar)
         """
         p_ref = 1e5  # 1 bar in Pa
@@ -139,7 +147,9 @@ class RealGasEOS:
         if abs(T - 298.15) > 1e-6:
             # Integrate cp/T from 298.15 K to T
             n_points = max(10, int(abs(T - 298.15) / 50.0))
-            T_points = [298.15 + i * (T - 298.15) / n_points for i in range(n_points + 1)]
+            T_points = [
+                298.15 + i * (T - 298.15) / n_points for i in range(n_points + 1)
+            ]
 
             for i in range(n_points):
                 T_mid = 0.5 * (T_points[i] + T_points[i + 1])
@@ -154,14 +164,14 @@ class RealGasEOS:
 
     def peng_robinson_pressure(self, T: float, v: float) -> float:
         """Peng-Robinson equation of state: p = RT/(v-b) - a(T)/(v^2+2bv-b^2).
-        
+
         Parameters
         ----------
         T : float
             Temperature [K]
         v : float
             Specific volume [m^3/kg]
-            
+
         Returns
         -------
         p : float
@@ -171,22 +181,22 @@ class RealGasEOS:
 
         # Peng-Robinson parameters
         kappa = 0.37464 + 1.54226 * self.omega_mix - 0.26992 * self.omega_mix**2
-        alpha = (1.0 + kappa * (1.0 - math.sqrt(T / self.Tc_mix)))**2
+        alpha = (1.0 + kappa * (1.0 - math.sqrt(T / self.Tc_mix))) ** 2
 
-        a = 0.45724 * (R * self.Tc_mix)**2 / self.Pc_mix * alpha
+        a = 0.45724 * (R * self.Tc_mix) ** 2 / self.Pc_mix * alpha
         b = 0.07780 * R * self.Tc_mix / self.Pc_mix
 
         # Convert specific volume to molar volume
         v_molar = v * self.W_mix
 
         # Peng-Robinson EOS
-        p = R * T / (v_molar - b) - a / (v_molar**2 + 2*b*v_molar - b**2)
+        p = R * T / (v_molar - b) - a / (v_molar**2 + 2 * b * v_molar - b**2)
 
         return p
 
     def density_from_pressure(self, T: float, p: float) -> float:
         """Compute density from pressure using Peng-Robinson EOS.
-        
+
         Uses Newton-Raphson iteration to solve p(T,v) = p_target.
         """
         R = self.gas_constant()
@@ -213,7 +223,7 @@ class RealGasEOS:
 
     def transport_properties(self, T: float) -> Tuple[float, float, float]:
         """Compute temperature-dependent transport properties.
-        
+
         Returns
         -------
         mu : float
@@ -228,7 +238,7 @@ class RealGasEOS:
         mu_ref = 1.716e-5  # Pa s for air at 273.15 K
         S = 110.4  # Sutherland constant for air
 
-        mu = mu_ref * (T / T_ref)**1.5 * (T_ref + S) / (T + S)
+        mu = mu_ref * (T / T_ref) ** 1.5 * (T_ref + S) / (T + S)
 
         # Thermal conductivity from Eucken's relation
         cp = self.cp_mix(T)
@@ -277,6 +287,3 @@ class IdealMix:
         if T <= 0.0 or p <= 0.0:
             raise ValueError("T and p must be positive")
         return cp * math.log(T) - R * math.log(p)
-
-
-

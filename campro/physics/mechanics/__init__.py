@@ -13,7 +13,6 @@ __all__ = [
     # Torque analysis
     "PistonTorqueCalculator",
     "TorqueAnalysisResult",
-
     # Side-loading analysis
     "SideLoadAnalyzer",
     "SideLoadResult",

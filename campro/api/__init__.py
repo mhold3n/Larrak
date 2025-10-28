@@ -3,18 +3,18 @@
 Exposes data classes and façade functions for common workflows.
 """
 
-from typing import Any, Dict, Tuple
 from dataclasses import asdict as _asdict
+from typing import Any, Dict, Tuple
 
 from campro.constraints.cam import CamMotionConstraints
-from campro.diagnostics.run_metadata import RUN_ID, log_run_metadata, set_global_seeds
 from campro.diagnostics.feasibility import check_feasibility_nlp
+from campro.diagnostics.run_metadata import RUN_ID, log_run_metadata, set_global_seeds
+from campro.logging import get_logger
 from campro.optimization.motion import MotionOptimizer
 
+from .adapters import motion_result_to_solve_report
 from .problem_spec import ProblemSpec
 from .solve_report import SolveReport
-from .adapters import motion_result_to_solve_report
-from campro.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -112,7 +112,9 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
         report = motion_result_to_solve_report(fake)
         # Enrich report with feasibility + scaling telemetry
         try:
-            report.residuals["feas.max_violation"] = float(getattr(feas, "max_violation", 0.0))
+            report.residuals["feas.max_violation"] = float(
+                getattr(feas, "max_violation", 0.0),
+            )
             for k, v in (getattr(feas, "violations", {}) or {}).items():
                 if isinstance(v, (int, float)):
                     report.residuals[f"feas.violation.{k}"] = float(v)
@@ -139,7 +141,9 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
 
     optimizer = MotionOptimizer()
     result = optimizer.solve_cam_motion_law(
-        cam_constraints=constraints, motion_type=motion_type, cycle_time=float(spec.cycle_time)
+        cam_constraints=constraints,
+        motion_type=motion_type,
+        cycle_time=float(spec.cycle_time),
     )
 
     # Persist lightweight run metadata
@@ -162,7 +166,9 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     report = motion_result_to_solve_report(result)
     if feas is not None:
         try:
-            report.residuals["feas.max_violation"] = float(getattr(feas, "max_violation", 0.0))
+            report.residuals["feas.max_violation"] = float(
+                getattr(feas, "max_violation", 0.0),
+            )
             for k, v in (getattr(feas, "violations", {}) or {}).items():
                 if isinstance(v, (int, float)):
                     report.residuals[f"feas.violation.{k}"] = float(v)
@@ -186,7 +192,7 @@ def evaluate_tribology(gear: Dict[str, Any], duty: Dict[str, Any]) -> Dict[str, 
 __all__ = [
     "ProblemSpec",
     "SolveReport",
-    "solve_motion",
     "design_gear",
     "evaluate_tribology",
+    "solve_motion",
 ]

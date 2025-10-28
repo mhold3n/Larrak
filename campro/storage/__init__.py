@@ -15,12 +15,8 @@ __all__ = [
     "BaseStorage",
     "StorageResult",
     "StorageStatus",
-
     # Storage implementations
     "MemoryStorage",
-
     # Registry system
     "OptimizationRegistry",
 ]
-
-

@@ -5,4 +5,3 @@ import pytest
 def test_bounded_jerk_placeholder():
     # Placeholder test: implement once jerk bounds are enforced by the optimizer
     assert True
-

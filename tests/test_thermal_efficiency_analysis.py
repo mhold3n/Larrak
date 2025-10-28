@@ -5,12 +5,14 @@ This module tests the extraction and integration of Ipopt analysis
 from the thermal efficiency adapter into the unified framework.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
 import tempfile
-import json
+from pathlib import Path
+from unittest.mock import Mock, patch
 
+import pytest
+
+from campro.optimization.base import OptimizationStatus
+from campro.optimization.solver_analysis import MA57ReadinessReport
 from campro.optimization.thermal_efficiency_adapter import (
     ThermalEfficiencyAdapter,
     ThermalEfficiencyConfig,
@@ -19,8 +21,6 @@ from campro.optimization.unified_framework import (
     UnifiedOptimizationFramework,
     UnifiedOptimizationSettings,
 )
-from campro.optimization.solver_analysis import MA57ReadinessReport
-from campro.optimization.base import OptimizationStatus
 
 
 class TestThermalEfficiencyAnalysis:
@@ -39,9 +39,9 @@ class TestThermalEfficiencyAnalysis:
                 "ls_time_ratio": 0.3,
                 "primal_inf": 1e-6,
                 "dual_inf": 1e-6,
-            }
+            },
         )
-        
+
         mock_complex_result = Mock()
         mock_complex_result.success = True
         mock_complex_result.iterations = 1500
@@ -61,17 +61,20 @@ class TestThermalEfficiencyAnalysis:
                 "x_R": [0.1, 0.2, 0.3],
                 "v_L": [0.01, 0.02, 0.03],
                 "v_R": [0.01, 0.02, 0.03],
-            }
+            },
         }
 
         # Create adapter with mock complex optimizer
         config = ThermalEfficiencyConfig()
         adapter = ThermalEfficiencyAdapter(config)
         adapter.complex_optimizer = Mock()
-        adapter.complex_optimizer.optimize_with_validation.return_value = mock_complex_result
+        adapter.complex_optimizer.optimize_with_validation.return_value = (
+            mock_complex_result
+        )
 
         # Create motion law constraints
         from campro.optimization.motion_law import MotionLawConstraints
+
         constraints = MotionLawConstraints(
             stroke=20.0,
             upstroke_duration_percent=60.0,
@@ -115,17 +118,20 @@ class TestThermalEfficiencyAnalysis:
                 "x_R": [0.1, 0.2, 0.3],
                 "v_L": [0.01, 0.02, 0.03],
                 "v_R": [0.01, 0.02, 0.03],
-            }
+            },
         }
 
         # Create adapter with mock complex optimizer
         config = ThermalEfficiencyConfig()
         adapter = ThermalEfficiencyAdapter(config)
         adapter.complex_optimizer = Mock()
-        adapter.complex_optimizer.optimize_with_validation.return_value = mock_complex_result
+        adapter.complex_optimizer.optimize_with_validation.return_value = (
+            mock_complex_result
+        )
 
         # Create motion law constraints
         from campro.optimization.motion_law import MotionLawConstraints
+
         constraints = MotionLawConstraints(
             stroke=20.0,
             upstroke_duration_percent=60.0,
@@ -158,7 +164,7 @@ class TestThermalEfficiencyAnalysis:
             log_file.write_text(log_content)
 
             # Mock the IPOPT_LOG_DIR to point to our temp directory
-            with patch('campro.constants.IPOPT_LOG_DIR', temp_dir):
+            with patch("campro.constants.IPOPT_LOG_DIR", temp_dir):
                 # Create mock complex optimizer result
                 mock_complex_result = Mock()
                 mock_complex_result.success = True
@@ -182,17 +188,20 @@ class TestThermalEfficiencyAnalysis:
                         "x_R": [0.1, 0.2, 0.3],
                         "v_L": [0.01, 0.02, 0.03],
                         "v_R": [0.01, 0.02, 0.03],
-                    }
+                    },
                 }
 
                 # Create adapter
                 config = ThermalEfficiencyConfig()
                 adapter = ThermalEfficiencyAdapter(config)
                 adapter.complex_optimizer = Mock()
-                adapter.complex_optimizer.optimize_with_validation.return_value = mock_complex_result
+                adapter.complex_optimizer.optimize_with_validation.return_value = (
+                    mock_complex_result
+                )
 
                 # Create motion law constraints
                 from campro.optimization.motion_law import MotionLawConstraints
+
                 constraints = MotionLawConstraints(
                     stroke=20.0,
                     upstroke_duration_percent=60.0,
@@ -225,7 +234,7 @@ class TestThermalEfficiencyAnalysis:
                 "ls_time_ratio": 0.2,
                 "primal_inf": 1e-8,
                 "dual_inf": 1e-8,
-            }
+            },
         )
 
         # Create mock adapter result
@@ -251,7 +260,9 @@ class TestThermalEfficiencyAnalysis:
         framework = UnifiedOptimizationFramework(settings=settings)
 
         # Mock the thermal efficiency adapter
-        with patch('campro.optimization.thermal_efficiency_adapter.ThermalEfficiencyAdapter') as mock_adapter_class:
+        with patch(
+            "campro.optimization.thermal_efficiency_adapter.ThermalEfficiencyAdapter",
+        ) as mock_adapter_class:
             mock_adapter = Mock()
             mock_adapter.solve_motion_law.return_value = mock_adapter_result
             mock_adapter_class.return_value = mock_adapter
@@ -270,13 +281,13 @@ class TestThermalEfficiencyAnalysis:
         adapter = ThermalEfficiencyAdapter(config)
 
         # Test with non-existent directory
-        with patch('campro.constants.IPOPT_LOG_DIR', "/non/existent/path"):
+        with patch("campro.constants.IPOPT_LOG_DIR", "/non/existent/path"):
             log_path = adapter._get_log_file_path()
             assert log_path is None
 
         # Test with empty directory
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch('campro.constants.IPOPT_LOG_DIR', temp_dir):
+            with patch("campro.constants.IPOPT_LOG_DIR", temp_dir):
                 log_path = adapter._get_log_file_path()
                 assert log_path is None
 
@@ -288,6 +299,7 @@ class TestThermalEfficiencyAnalysis:
 
         # Create motion law constraints
         from campro.optimization.motion_law import MotionLawConstraints
+
         constraints = MotionLawConstraints(
             stroke=20.0,
             upstroke_duration_percent=60.0,

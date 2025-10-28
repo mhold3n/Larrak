@@ -15,4 +15,3 @@ class SolveReport:
     scaling_stats: Dict[str, Any] = field(default_factory=dict)
     residuals: Dict[str, float] = field(default_factory=dict)
     artifacts: Dict[str, Any] = field(default_factory=dict)  # paths to CSV/PNG/logs
-

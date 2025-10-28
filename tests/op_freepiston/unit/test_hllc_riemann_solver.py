@@ -1,4 +1,3 @@
-
 import numpy as np
 import pytest
 
@@ -28,7 +27,9 @@ class TestPrimitiveConservativeConversion:
 
         assert abs(rho - 1.225) < 1e-9
         assert abs(u - 0.0) < 1e-9
-        assert abs(p - 100000.0) < 1.0  # Calculated pressure from given conservative variables
+        assert (
+            abs(p - 100000.0) < 1.0
+        )  # Calculated pressure from given conservative variables
 
         # Test case 2: Moving gas
         U = (1.0, 100.0, 100000.0)  # rho, rho*u, rho*E
@@ -523,7 +524,9 @@ class TestEnhancedHLLCSolver:
         U_R = (0.5, 0.0, 125000.0)
 
         S_L_orig, S_R_orig = -100.0, 100.0
-        S_L_fixed, S_R_fixed = apply_entropy_fix(U_L, U_R, S_L_orig, S_R_orig, gamma=1.4)
+        S_L_fixed, S_R_fixed = apply_entropy_fix(
+            U_L, U_R, S_L_orig, S_R_orig, gamma=1.4,
+        )
 
         # Entropy fix should not make wave speeds worse
         assert S_L_fixed <= S_L_orig

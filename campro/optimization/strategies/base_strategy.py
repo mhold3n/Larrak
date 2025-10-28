@@ -17,6 +17,7 @@ log = get_logger(__name__)
 
 class OptimizationStatus(Enum):
     """Status of optimization computation."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -28,6 +29,7 @@ class OptimizationStatus(Enum):
 @dataclass
 class OptimizationStrategyResult:
     """Result from an optimization strategy."""
+
     status: OptimizationStatus
     solution: Dict[str, Any]
     objective_value: float
@@ -55,7 +57,7 @@ class OptimizationStrategyResult:
 class BaseOptimizationStrategy(ABC):
     """
     Base interface for optimization strategies.
-    
+
     This class defines the contract that all optimization strategies must follow,
     enabling modular optimization approaches and easy testing.
     """
@@ -63,7 +65,7 @@ class BaseOptimizationStrategy(ABC):
     def __init__(self, name: Optional[str] = None):
         """
         Initialize the optimization strategy.
-        
+
         Parameters
         ----------
         name : str, optional
@@ -77,7 +79,7 @@ class BaseOptimizationStrategy(ABC):
     def _validate_strategy(self) -> None:
         """
         Validate strategy configuration.
-        
+
         Raises
         ------
         ValueError
@@ -85,14 +87,17 @@ class BaseOptimizationStrategy(ABC):
         """
 
     @abstractmethod
-    def optimize(self, objective_function: Callable,
-                initial_guess: Dict[str, Any],
-                constraints: Optional[List[Callable]] = None,
-                bounds: Optional[Dict[str, tuple]] = None,
-                options: Optional[Dict[str, Any]] = None) -> OptimizationStrategyResult:
+    def optimize(
+        self,
+        objective_function: Callable,
+        initial_guess: Dict[str, Any],
+        constraints: Optional[List[Callable]] = None,
+        bounds: Optional[Dict[str, tuple]] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> OptimizationStrategyResult:
         """
         Perform optimization.
-        
+
         Parameters
         ----------
         objective_function : Callable
@@ -105,7 +110,7 @@ class BaseOptimizationStrategy(ABC):
             Parameter bounds
         options : Dict[str, Any], optional
             Optimization options
-            
+
         Returns
         -------
         OptimizationStrategyResult
@@ -115,7 +120,7 @@ class BaseOptimizationStrategy(ABC):
     def get_strategy_info(self) -> Dict[str, Any]:
         """
         Get strategy information.
-        
+
         Returns
         -------
         Dict[str, Any]
@@ -127,18 +132,19 @@ class BaseOptimizationStrategy(ABC):
             "description": self.__doc__ or "No description available",
         }
 
-    def validate_inputs(self, objective_function: Callable,
-                       initial_guess: Dict[str, Any]) -> bool:
+    def validate_inputs(
+        self, objective_function: Callable, initial_guess: Dict[str, Any],
+    ) -> bool:
         """
         Validate optimization inputs.
-        
+
         Parameters
         ----------
         objective_function : Callable
             Objective function to validate
         initial_guess : Dict[str, Any]
             Initial guess to validate
-            
+
         Returns
         -------
         bool
@@ -157,4 +163,3 @@ class BaseOptimizationStrategy(ABC):
     def __repr__(self) -> str:
         """String representation of strategy."""
         return f"{self.__class__.__name__}(name='{self.name}')"
-

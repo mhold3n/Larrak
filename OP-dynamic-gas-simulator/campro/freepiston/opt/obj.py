@@ -36,18 +36,20 @@ def smoothness_penalty(*, accel: Iterable[float], weights: Iterable[float]) -> f
     return J
 
 
-def indicated_work_trapezoidal(*, p_series: List[float], V_series: List[float]) -> float:
+def indicated_work_trapezoidal(
+    *, p_series: List[float], V_series: List[float],
+) -> float:
     """Indicated work calculation using trapezoidal integration.
-    
+
     W_ind = ∮ p dV
-    
+
     Parameters
     ----------
     p_series : List[float]
         Pressure series [Pa]
     V_series : List[float]
         Volume series [m^3]
-        
+
     Returns
     -------
     W_ind : float
@@ -68,16 +70,16 @@ def indicated_work_trapezoidal(*, p_series: List[float], V_series: List[float]) 
 
 def indicated_work_simpson(*, p_series: List[float], V_series: List[float]) -> float:
     """Indicated work calculation using Simpson's rule.
-    
+
     More accurate than trapezoidal rule for smooth functions.
-    
+
     Parameters
     ----------
     p_series : List[float]
         Pressure series [Pa]
     V_series : List[float]
         Volume series [m^3]
-        
+
     Returns
     -------
     W_ind : float
@@ -100,8 +102,12 @@ def indicated_work_simpson(*, p_series: List[float], V_series: List[float]) -> f
         # Last interval with 3/8 rule
         if n > 2:
             h = V_series[n] - V_series[n - 3]
-            W_ind += (h / 8.0) * (p_series[n - 3] + 3.0 * p_series[n - 2] +
-                                 3.0 * p_series[n - 1] + p_series[n])
+            W_ind += (h / 8.0) * (
+                p_series[n - 3]
+                + 3.0 * p_series[n - 2]
+                + 3.0 * p_series[n - 1]
+                + p_series[n]
+            )
     else:
         # Odd number of intervals - use Simpson's 1/3 rule
         for i in range(0, n, 2):
@@ -111,12 +117,13 @@ def indicated_work_simpson(*, p_series: List[float], V_series: List[float]) -> f
     return W_ind
 
 
-def indicated_work_gauss(*, p_series: List[float], V_series: List[float],
-                        n_points: int = 3) -> float:
+def indicated_work_gauss(
+    *, p_series: List[float], V_series: List[float], n_points: int = 3,
+) -> float:
     """Indicated work calculation using Gauss quadrature.
-    
+
     Most accurate for smooth functions.
-    
+
     Parameters
     ----------
     p_series : List[float]
@@ -125,7 +132,7 @@ def indicated_work_gauss(*, p_series: List[float], V_series: List[float],
         Volume series [m^3]
     n_points : int
         Number of Gauss points per interval
-        
+
     Returns
     -------
     W_ind : float
@@ -137,10 +144,10 @@ def indicated_work_gauss(*, p_series: List[float], V_series: List[float],
     # Gauss-Legendre quadrature weights and points
     if n_points == 2:
         weights = [1.0, 1.0]
-        points = [-1.0/math.sqrt(3.0), 1.0/math.sqrt(3.0)]
+        points = [-1.0 / math.sqrt(3.0), 1.0 / math.sqrt(3.0)]
     elif n_points == 3:
-        weights = [5.0/9.0, 8.0/9.0, 5.0/9.0]
-        points = [-math.sqrt(3.0/5.0), 0.0, math.sqrt(3.0/5.0)]
+        weights = [5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0]
+        points = [-math.sqrt(3.0 / 5.0), 0.0, math.sqrt(3.0 / 5.0)]
     else:
         # Fallback to Simpson's rule for other point counts
         return indicated_work_simpson(p_series, V_series)
@@ -159,10 +166,11 @@ def indicated_work_gauss(*, p_series: List[float], V_series: List[float],
     return W_ind
 
 
-def indicated_work(*, p_series: List[float], V_series: List[float],
-                  method: str = "trapezoidal") -> float:
+def indicated_work(
+    *, p_series: List[float], V_series: List[float], method: str = "trapezoidal",
+) -> float:
     """Indicated work calculation with multiple integration methods.
-    
+
     Parameters
     ----------
     p_series : List[float]
@@ -171,7 +179,7 @@ def indicated_work(*, p_series: List[float], V_series: List[float],
         Volume series [m^3]
     method : str
         Integration method: 'trapezoidal', 'simpson', 'gauss'
-        
+
     Returns
     -------
     W_ind : float
@@ -188,16 +196,16 @@ def indicated_work(*, p_series: List[float], V_series: List[float],
 
 def thermal_efficiency(*, W_ind: float, Q_in: float) -> float:
     """Thermal efficiency calculation.
-    
+
     eta_th = W_ind / Q_in
-    
+
     Parameters
     ----------
     W_ind : float
         Indicated work [J]
     Q_in : float
         Heat input [J]
-        
+
     Returns
     -------
     eta_th : float
@@ -210,16 +218,16 @@ def thermal_efficiency(*, W_ind: float, Q_in: float) -> float:
 
 def mechanical_efficiency(*, W_ind: float, W_friction: float) -> float:
     """Mechanical efficiency calculation.
-    
+
     eta_mech = (W_ind - W_friction) / W_ind
-    
+
     Parameters
     ----------
     W_ind : float
         Indicated work [J]
     W_friction : float
         Friction work [J]
-        
+
     Returns
     -------
     eta_mech : float
@@ -232,16 +240,16 @@ def mechanical_efficiency(*, W_ind: float, W_friction: float) -> float:
 
 def volumetric_efficiency(*, m_actual: float, m_theoretical: float) -> float:
     """Volumetric efficiency calculation.
-    
+
     eta_vol = m_actual / m_theoretical
-    
+
     Parameters
     ----------
     m_actual : float
         Actual mass flow rate [kg/s]
     m_theoretical : float
         Theoretical mass flow rate [kg/s]
-        
+
     Returns
     -------
     eta_vol : float
@@ -254,16 +262,16 @@ def volumetric_efficiency(*, m_actual: float, m_theoretical: float) -> float:
 
 def scavenging_efficiency(*, m_fresh: float, m_total: float) -> float:
     """Scavenging efficiency calculation.
-    
+
     eta_scav = m_fresh / m_total
-    
+
     Parameters
     ----------
     m_fresh : float
         Fresh charge mass [kg]
     m_total : float
         Total charge mass [kg]
-        
+
     Returns
     -------
     eta_scav : float
@@ -276,16 +284,16 @@ def scavenging_efficiency(*, m_fresh: float, m_total: float) -> float:
 
 def short_circuit_loss(*, m_short_circuit: float, m_total: float) -> float:
     """Short-circuit loss calculation.
-    
+
     Short-circuit fraction = m_short_circuit / m_total
-    
+
     Parameters
     ----------
     m_short_circuit : float
         Short-circuit mass [kg]
     m_total : float
         Total mass [kg]
-        
+
     Returns
     -------
     short_circuit_fraction : float
@@ -296,14 +304,20 @@ def short_circuit_loss(*, m_short_circuit: float, m_total: float) -> float:
     return m_short_circuit / m_total
 
 
-def cycle_analysis(*, p_series: List[float], V_series: List[float],
-                  T_series: List[float], m_series: List[float],
-                  Q_in: float, W_friction: float = 0.0,
-                  params: WorkCalculationParameters) -> Dict[str, float]:
+def cycle_analysis(
+    *,
+    p_series: List[float],
+    V_series: List[float],
+    T_series: List[float],
+    m_series: List[float],
+    Q_in: float,
+    W_friction: float = 0.0,
+    params: WorkCalculationParameters,
+) -> Dict[str, float]:
     """Comprehensive cycle analysis.
-    
+
     Computes all relevant efficiency metrics and work terms.
-    
+
     Parameters
     ----------
     p_series : List[float]
@@ -320,21 +334,30 @@ def cycle_analysis(*, p_series: List[float], V_series: List[float],
         Friction work [J]
     params : WorkCalculationParameters
         Calculation parameters
-        
+
     Returns
     -------
     analysis : Dict[str, float]
         Cycle analysis results
     """
     # Indicated work
-    W_ind = indicated_work(p_series=p_series, V_series=V_series,
-                          method=params.integration_method)
+    W_ind = indicated_work(
+        p_series=p_series, V_series=V_series, method=params.integration_method,
+    )
 
     # Thermal efficiency
-    eta_th = thermal_efficiency(W_ind=W_ind, Q_in=Q_in) if params.calculate_thermal_efficiency else 0.0
+    eta_th = (
+        thermal_efficiency(W_ind=W_ind, Q_in=Q_in)
+        if params.calculate_thermal_efficiency
+        else 0.0
+    )
 
     # Mechanical efficiency
-    eta_mech = mechanical_efficiency(W_ind=W_ind, W_friction=W_friction) if params.calculate_mechanical_efficiency else 0.0
+    eta_mech = (
+        mechanical_efficiency(W_ind=W_ind, W_friction=W_friction)
+        if params.calculate_mechanical_efficiency
+        else 0.0
+    )
 
     # Volumetric efficiency (simplified)
     if params.calculate_volumetric_efficiency and len(m_series) > 1:
@@ -368,7 +391,9 @@ def cycle_analysis(*, p_series: List[float], V_series: List[float],
     }
 
 
-def indicated_work_surrogate(*, p_series: Iterable[float], dV_series: Iterable[float]) -> float:
+def indicated_work_surrogate(
+    *, p_series: Iterable[float], dV_series: Iterable[float],
+) -> float:
     """Simple trapezoidal surrogate for W_ind = ∮ p dV (legacy)."""
     import itertools
 
@@ -385,19 +410,20 @@ def scavenging_penalty(*, short_circuit_fraction: float, weight: float) -> float
     return weight * short_circuit_fraction
 
 
-def multi_objective_scalarization(*, objectives: Dict[str, float],
-                                 weights: Dict[str, float]) -> float:
+def multi_objective_scalarization(
+    *, objectives: Dict[str, float], weights: Dict[str, float],
+) -> float:
     """Multi-objective scalarization.
-    
+
     Combines multiple objectives into a single scalar objective function.
-    
+
     Parameters
     ----------
     objectives : Dict[str, float]
         Objective function values
     weights : Dict[str, float]
         Objective weights
-        
+
     Returns
     -------
     J_scalar : float
@@ -419,7 +445,7 @@ def comprehensive_scavenging_objectives(
 ) -> Dict[str, Any]:
     """
     Comprehensive scavenging objectives for two-stroke OP engines.
-    
+
     Returns:
         Dictionary of objective terms
     """
@@ -446,7 +472,9 @@ def comprehensive_scavenging_objectives(
         m_short_circuit = states["m_short_circuit"][-1]
         m_delivered = states["m_delivered"][-1]
         short_circuit_fraction = m_short_circuit / (m_delivered + 1e-9)
-        objectives["short_circuit_penalty"] = weights.get("short_circuit", 2.0) * short_circuit_fraction
+        objectives["short_circuit_penalty"] = (
+            weights.get("short_circuit", 2.0) * short_circuit_fraction
+        )
 
     # 4. Scavenging Quality (uniformity of fresh charge distribution)
     # This requires 1D model - placeholder for now
@@ -457,7 +485,9 @@ def comprehensive_scavenging_objectives(
         m_exhaust_removed = states["m_exhaust_removed"][-1]
         m_exhaust_initial = states["m_exhaust_initial"][0]
         eta_blowdown = m_exhaust_removed / (m_exhaust_initial + 1e-9)
-        objectives["blowdown_efficiency"] = weights.get("eta_blowdown", 1.0) * eta_blowdown
+        objectives["blowdown_efficiency"] = (
+            weights.get("eta_blowdown", 1.0) * eta_blowdown
+        )
 
     return objectives
 
@@ -470,13 +500,13 @@ def scavenging_phase_timing_objectives(
 ) -> Dict[str, Any]:
     """
     Objectives for optimal scavenging phase timing.
-    
+
     Args:
         states: State variables over time
         controls: Control variables over time
         targets: Target phase durations
         weights: Objective weights
-        
+
     Returns:
         Dictionary of timing objective terms
     """
@@ -490,7 +520,10 @@ def scavenging_phase_timing_objectives(
         t_intake_end = find_phase_end(controls["A_in"], threshold=0.01)
         t_intake_duration = t_intake_end - t_intake_start
         t_intake_target = targets.get("intake_duration", 0.1)
-        objectives["intake_timing"] = weights.get("intake_timing", 1.0) * (t_intake_duration - t_intake_target)**2
+        objectives["intake_timing"] = (
+            weights.get("intake_timing", 1.0)
+            * (t_intake_duration - t_intake_target) ** 2
+        )
 
     # 2. Exhaust Phase Duration
     if "A_ex" in controls:
@@ -498,7 +531,10 @@ def scavenging_phase_timing_objectives(
         t_exhaust_end = find_phase_end(controls["A_ex"], threshold=0.01)
         t_exhaust_duration = t_exhaust_end - t_exhaust_start
         t_exhaust_target = targets.get("exhaust_duration", 0.1)
-        objectives["exhaust_timing"] = weights.get("exhaust_timing", 1.0) * (t_exhaust_duration - t_exhaust_target)**2
+        objectives["exhaust_timing"] = (
+            weights.get("exhaust_timing", 1.0)
+            * (t_exhaust_duration - t_exhaust_target) ** 2
+        )
 
     # 3. Overlap Phase (both valves open)
     if "A_in" in controls and "A_ex" in controls:
@@ -555,36 +591,30 @@ def enhanced_scavenging_efficiency(
 ) -> Dict[str, float]:
     """
     Enhanced scavenging efficiency calculation with multiple metrics.
-    
+
     Args:
         m_fresh_trapped: Fresh charge mass trapped [kg]
         m_total_trapped: Total mass trapped [kg]
         m_delivered: Total mass delivered [kg]
         m_short_circuit: Fresh charge short-circuit mass [kg]
-        
+
     Returns:
         Dictionary of scavenging efficiency metrics
     """
     metrics = {}
 
     # Scavenging efficiency (fresh charge / total trapped)
-    metrics["scavenging_efficiency"] = (
-        m_fresh_trapped / (m_total_trapped + 1e-9)
-    )
+    metrics["scavenging_efficiency"] = m_fresh_trapped / (m_total_trapped + 1e-9)
 
     # Trapping efficiency (trapped mass / delivered mass)
-    metrics["trapping_efficiency"] = (
-        m_total_trapped / (m_delivered + 1e-9)
-    )
+    metrics["trapping_efficiency"] = m_total_trapped / (m_delivered + 1e-9)
 
     # Short-circuit fraction
-    metrics["short_circuit_fraction"] = (
-        m_short_circuit / (m_delivered + 1e-9)
-    )
+    metrics["short_circuit_fraction"] = m_short_circuit / (m_delivered + 1e-9)
 
     # Fresh charge purity
-    metrics["fresh_charge_purity"] = (
-        m_fresh_trapped / (m_fresh_trapped + m_total_trapped - m_fresh_trapped + 1e-9)
+    metrics["fresh_charge_purity"] = m_fresh_trapped / (
+        m_fresh_trapped + m_total_trapped - m_fresh_trapped + 1e-9
     )
 
     return metrics
@@ -596,11 +626,11 @@ def blowdown_efficiency(
 ) -> float:
     """
     Blow-down efficiency calculation.
-    
+
     Args:
         m_exhaust_removed: Exhaust gas mass removed [kg]
         m_exhaust_initial: Initial exhaust gas mass [kg]
-        
+
     Returns:
         Blow-down efficiency [0-1]
     """
@@ -616,11 +646,11 @@ def scavenging_quality_index(
 ) -> float:
     """
     Scavenging quality index based on fresh charge distribution uniformity.
-    
+
     Args:
         fresh_charge_distribution: Fresh charge mass fraction distribution
         target_distribution: Target distribution (uniform if None)
-        
+
     Returns:
         Quality index [0-1], where 1.0 is perfect uniformity
     """
@@ -629,7 +659,9 @@ def scavenging_quality_index(
 
     if target_distribution is None:
         # Target uniform distribution
-        target_distribution = [1.0 / len(fresh_charge_distribution)] * len(fresh_charge_distribution)
+        target_distribution = [1.0 / len(fresh_charge_distribution)] * len(
+            fresh_charge_distribution,
+        )
 
     if len(fresh_charge_distribution) != len(target_distribution):
         return 0.0
@@ -639,7 +671,9 @@ def scavenging_quality_index(
     if mean_fresh <= 0.0:
         return 0.0
 
-    variance = sum((x - mean_fresh)**2 for x in fresh_charge_distribution) / len(fresh_charge_distribution)
+    variance = sum((x - mean_fresh) ** 2 for x in fresh_charge_distribution) / len(
+        fresh_charge_distribution,
+    )
     std_dev = variance**0.5
     cv = std_dev / mean_fresh
 
@@ -651,7 +685,7 @@ def scavenging_quality_index(
 
 def get_objective_function(method: str = "indicated_work"):
     """Get objective function by name.
-    
+
     Parameters
     ----------
     method : str
@@ -662,7 +696,7 @@ def get_objective_function(method: str = "indicated_work"):
         - 'smoothness': Smoothness penalty
         - 'scavenging': Comprehensive scavenging objectives
         - 'timing': Scavenging phase timing objectives
-        
+
     Returns
     -------
     obj_func : callable
@@ -681,5 +715,3 @@ def get_objective_function(method: str = "indicated_work"):
     if method == "timing":
         return scavenging_phase_timing_objectives
     raise ValueError(f"Unknown objective method: {method}")
-
-

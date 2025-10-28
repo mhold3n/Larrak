@@ -24,8 +24,9 @@ Each stage logs parameters, elapsed time and outcome via project logger.
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Sequence
+from typing import Any, Callable, Dict
 
 from campro.logging import get_logger
 
@@ -51,7 +52,7 @@ class RetryStrategy:
         self.name = name
         self.overrides = overrides or {}
 
-    def __repr__(self) -> str:  # noqa: D401
+    def __repr__(self) -> str:
         return f"<RetryStrategy {self.name}>"
 
 
@@ -100,7 +101,7 @@ def safe_solve(
     *,
     base_options: Dict[str, Any],
     strategies: Sequence[RetryStrategy] | None = None,
-) -> "SolveResultProtocol":
+) -> SolveResultProtocol:
     """Attempt NLP solve with staged recovery.
 
     Parameters
@@ -124,13 +125,23 @@ def safe_solve(
         if strat is not None:
             attempt_opts.update(strat.overrides)
 
-        log.info("Solve attempt %d (%s) with %d option overrides", idx, label, len(attempt_opts))
+        log.info(
+            "Solve attempt %d (%s) with %d option overrides",
+            idx,
+            label,
+            len(attempt_opts),
+        )
         t0 = time.perf_counter()
         try:
             result = solve_fn(attempt_opts)
         except Exception as exc:  # pylint: disable=broad-except
             elapsed = time.perf_counter() - t0
-            log.warning("Solve attempt %s raised %s after %.3fs", label, exc.__class__.__name__, elapsed)
+            log.warning(
+                "Solve attempt %s raised %s after %.3fs",
+                label,
+                exc.__class__.__name__,
+                elapsed,
+            )
             continue  # proceed to next strategy
 
         elapsed = time.perf_counter() - t0

@@ -18,5 +18,3 @@ def test_heat_loss_rate_linear_in_area_and_deltaT():
     # doubling area doubles q
     q2 = heat_loss_rate(h=h, area=2.0 * A, T=T, Tw=Tw)
     assert abs(q2 - 2.0 * q) < 1e-12
-
-

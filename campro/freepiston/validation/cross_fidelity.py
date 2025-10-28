@@ -16,6 +16,7 @@ log = get_logger(__name__)
 @dataclass
 class ValidationParameters:
     """Parameters for cross-fidelity validation."""
+
     # Simulation parameters
     t_end: float = 1.0  # End time for simulation
     dt_0d: float = 1e-4  # Time step for 0D model
@@ -40,6 +41,7 @@ class ValidationParameters:
 @dataclass
 class ValidationResult:
     """Result of cross-fidelity validation."""
+
     success: bool
     max_relative_error: float
     max_absolute_error: float
@@ -59,6 +61,7 @@ class ValidationResult:
 @dataclass
 class ModelComparison:
     """Comparison between 0D and 1D model results."""
+
     time_points: np.ndarray
     pressure_0d: np.ndarray
     pressure_1d: np.ndarray
@@ -78,14 +81,14 @@ def cross_fidelity_validation(
 ) -> ValidationResult:
     """
     Perform cross-fidelity validation between 0D and 1D models.
-    
+
     This function runs both 0D and 1D simulations for the same problem
     and compares the results to validate the models against each other.
-    
+
     Args:
         problem_params: Problem parameters for both models
         validation_params: Validation parameters
-        
+
     Returns:
         Validation result with comparison metrics
     """
@@ -120,7 +123,9 @@ def cross_fidelity_validation(
     validation_result = ValidationResult(
         success=success,
         max_relative_error=max(error_metrics.values()) if error_metrics else 0.0,
-        max_absolute_error=max(abs(v) for v in error_metrics.values()) if error_metrics else 0.0,
+        max_absolute_error=max(abs(v) for v in error_metrics.values())
+        if error_metrics
+        else 0.0,
         error_metrics=error_metrics,
         solution_comparison=comparison.__dict__,
         validation_message=_create_validation_message(success, error_metrics),
@@ -130,7 +135,9 @@ def cross_fidelity_validation(
         energy_conservation_error=error_metrics.get("energy_conservation", 0.0),
     )
 
-    log.info(f"Cross-fidelity validation completed: {validation_result.validation_message}")
+    log.info(
+        f"Cross-fidelity validation completed: {validation_result.validation_message}",
+    )
 
     return validation_result
 
@@ -267,7 +274,7 @@ def _run_1d_simulation(
     p_0 = max(p_0, 1e-9)
     for i in range(n_cells):
         U[i, 0] = rho_0  # density
-        U[i, 1] = 0.0    # momentum (zero velocity)
+        U[i, 1] = 0.0  # momentum (zero velocity)
         E_spec = p_0 / max((1.4 - 1.0) * rho_0, 1e-12)
         U[i, 2] = rho_0 * E_spec
 
@@ -343,7 +350,9 @@ def _simple_1d_time_step(
     # Simple diffusion to prevent numerical instability
     for i in range(1, n_cells - 1):
         for j in range(3):
-            U_new[i, j] = U[i, j] + 0.1 * dt / dx**2 * (U[i+1, j] - 2*U[i, j] + U[i-1, j])
+            U_new[i, j] = U[i, j] + 0.1 * dt / dx**2 * (
+                U[i + 1, j] - 2 * U[i, j] + U[i - 1, j]
+            )
 
     return U_new
 
@@ -398,14 +407,20 @@ def _compute_error_metrics(
     # Pressure error
     if validation_params.validate_pressure:
         pressure_error = np.abs(comparison.pressure_1d - comparison.pressure_0d)
-        pressure_relative_error = pressure_error / (np.abs(comparison.pressure_0d) + 1e-12)
+        pressure_relative_error = pressure_error / (
+            np.abs(comparison.pressure_0d) + 1e-12
+        )
         error_metrics["pressure_relative"] = np.max(pressure_relative_error)
         error_metrics["pressure_absolute"] = np.max(pressure_error)
 
     # Temperature error
     if validation_params.validate_temperature:
-        temperature_error = np.abs(comparison.temperature_1d - comparison.temperature_0d)
-        temperature_relative_error = temperature_error / (np.abs(comparison.temperature_0d) + 1e-12)
+        temperature_error = np.abs(
+            comparison.temperature_1d - comparison.temperature_0d,
+        )
+        temperature_relative_error = temperature_error / (
+            np.abs(comparison.temperature_0d) + 1e-12
+        )
         error_metrics["temperature_relative"] = np.max(temperature_relative_error)
         error_metrics["temperature_absolute"] = np.max(temperature_error)
 
@@ -417,13 +432,21 @@ def _compute_error_metrics(
 
     # Piston dynamics error
     if validation_params.validate_piston_dynamics:
-        position_error = np.abs(comparison.piston_position_1d - comparison.piston_position_0d)
-        position_relative_error = position_error / (np.abs(comparison.piston_position_0d) + 1e-12)
+        position_error = np.abs(
+            comparison.piston_position_1d - comparison.piston_position_0d,
+        )
+        position_relative_error = position_error / (
+            np.abs(comparison.piston_position_0d) + 1e-12
+        )
         error_metrics["piston_position_relative"] = np.max(position_relative_error)
         error_metrics["piston_position_absolute"] = np.max(position_error)
 
-        velocity_error = np.abs(comparison.piston_velocity_1d - comparison.piston_velocity_0d)
-        velocity_relative_error = velocity_error / (np.abs(comparison.piston_velocity_0d) + 1e-12)
+        velocity_error = np.abs(
+            comparison.piston_velocity_1d - comparison.piston_velocity_0d,
+        )
+        velocity_relative_error = velocity_error / (
+            np.abs(comparison.piston_velocity_0d) + 1e-12
+        )
         error_metrics["piston_velocity_relative"] = np.max(velocity_relative_error)
         error_metrics["piston_velocity_absolute"] = np.max(velocity_error)
 
@@ -473,8 +496,9 @@ def _create_validation_message(
     if success:
         max_error = max(error_metrics.values()) if error_metrics else 0.0
         return f"Validation PASSED: Maximum relative error = {max_error:.2e}"
-    failed_metrics = [name for name, error in error_metrics.items()
-                     if error > 1e-3]  # Threshold for failure
+    failed_metrics = [
+        name for name, error in error_metrics.items() if error > 1e-3
+    ]  # Threshold for failure
     return f"Validation FAILED: Failed metrics = {failed_metrics}"
 
 
@@ -484,11 +508,11 @@ def create_validation_report(
 ) -> str:
     """
     Create a detailed validation report.
-    
+
     Args:
         validation_result: Validation result
         output_file: Optional output file path
-        
+
     Returns:
         Report text
     """
@@ -510,7 +534,9 @@ def create_validation_report(
     report.append("TIMING:")
     report.append(f"  0D Simulation: {validation_result.cpu_time_0d:.1f} seconds")
     report.append(f"  1D Simulation: {validation_result.cpu_time_1d:.1f} seconds")
-    report.append(f"  Speedup: {validation_result.cpu_time_1d / validation_result.cpu_time_0d:.2f}x")
+    report.append(
+        f"  Speedup: {validation_result.cpu_time_1d / validation_result.cpu_time_0d:.2f}x",
+    )
     report.append("")
 
     # Error metrics
@@ -521,8 +547,12 @@ def create_validation_report(
 
     # Conservation
     report.append("CONSERVATION:")
-    report.append(f"  Mass Conservation Error: {validation_result.mass_conservation_error:.2e}")
-    report.append(f"  Energy Conservation Error: {validation_result.energy_conservation_error:.2e}")
+    report.append(
+        f"  Mass Conservation Error: {validation_result.mass_conservation_error:.2e}",
+    )
+    report.append(
+        f"  Energy Conservation Error: {validation_result.energy_conservation_error:.2e}",
+    )
     report.append("")
 
     report.append("=" * 80)
@@ -540,7 +570,7 @@ def create_validation_report(
 def run_validation_suite() -> List[ValidationResult]:
     """
     Run a suite of validation tests.
-    
+
     Returns:
         List of validation results
     """
@@ -552,9 +582,13 @@ def run_validation_suite() -> List[ValidationResult]:
     test_case_1 = {
         "geom": {"B": 0.1, "Vc": 1e-5},
         "initial_conditions": {
-            "x_L": 0.05, "v_L": 0.0,
-            "x_R": 0.15, "v_R": 0.0,
-            "rho": 1.2, "T": 1000.0, "p": 1.0e5,
+            "x_L": 0.05,
+            "v_L": 0.0,
+            "x_R": 0.15,
+            "v_R": 0.0,
+            "rho": 1.2,
+            "T": 1000.0,
+            "p": 1.0e5,
         },
         "n_cells": 50,
     }
@@ -574,9 +608,13 @@ def run_validation_suite() -> List[ValidationResult]:
     test_case_2 = {
         "geom": {"B": 0.1, "Vc": 1e-5},
         "initial_conditions": {
-            "x_L": 0.05, "v_L": 0.0,
-            "x_R": 0.15, "v_R": 1.0,  # Moving piston
-            "rho": 1.2, "T": 1000.0, "p": 1.0e5,
+            "x_L": 0.05,
+            "v_L": 0.0,
+            "x_R": 0.15,
+            "v_R": 1.0,  # Moving piston
+            "rho": 1.2,
+            "T": 1000.0,
+            "p": 1.0e5,
         },
         "n_cells": 100,
     }
@@ -596,9 +634,13 @@ def run_validation_suite() -> List[ValidationResult]:
     test_case_3 = {
         "geom": {"B": 0.1, "Vc": 1e-5},
         "initial_conditions": {
-            "x_L": 0.05, "v_L": 0.0,
-            "x_R": 0.15, "v_R": 0.0,
-            "rho": 5.0, "T": 2000.0, "p": 1.0e6,
+            "x_L": 0.05,
+            "v_L": 0.0,
+            "x_R": 0.15,
+            "v_R": 0.0,
+            "rho": 5.0,
+            "T": 2000.0,
+            "p": 1.0e6,
         },
         "n_cells": 75,
     }

@@ -15,7 +15,9 @@ class CollocationGrid:
     a: List[List[float]]  # coefficients a_cj
 
 
-def make_grid(K: int, C: int, kind: Literal["radau", "gauss"] = "radau") -> CollocationGrid:
+def make_grid(
+    K: int, C: int, kind: Literal["radau", "gauss"] = "radau",
+) -> CollocationGrid:
     """Return a minimal collocation grid skeleton.
 
     This is a placeholder returning evenly spaced nodes and simple weights.
@@ -32,7 +34,7 @@ def make_grid(K: int, C: int, kind: Literal["radau", "gauss"] = "radau") -> Coll
             nodes = [
                 0.155051025721682,  # c1
                 0.644948974278318,  # c2
-                1.0,                # c3
+                1.0,  # c3
             ]
             a = [
                 [
@@ -72,15 +74,17 @@ def make_grid(K: int, C: int, kind: Literal["radau", "gauss"] = "radau") -> Coll
             # Butcher A for Gauss s=2
             a = [
                 [
-                    0.25, 0.25 - math.sqrt(3.0) / 6.0,
+                    0.25,
+                    0.25 - math.sqrt(3.0) / 6.0,
                 ],
                 [
-                    0.25 + math.sqrt(3.0) / 6.0, 0.25,
+                    0.25 + math.sqrt(3.0) / 6.0,
+                    0.25,
                 ],
             ]
             return CollocationGrid(nodes=nodes, weights=weights, a=a)
-        raise NotImplementedError("Gauss–Legendre implemented only for C=2 in this draft")
+        raise NotImplementedError(
+            "Gauss–Legendre implemented only for C=2 in this draft",
+        )
     # Fallback (should not reach)
     raise NotImplementedError(f"Unknown collocation kind: {kind}")
-
-

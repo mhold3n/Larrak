@@ -13,6 +13,7 @@ log = get_logger(__name__)
 @dataclass
 class InterpolationParameters:
     """Parameters for conservative interpolation."""
+
     # Interpolation method
     method: str = "linear"  # "linear", "cubic", "weno", "monotonic"
 
@@ -35,6 +36,7 @@ class InterpolationParameters:
 @dataclass
 class MeshState:
     """State of a moving mesh."""
+
     x: np.ndarray  # Cell center positions
     dx: np.ndarray  # Cell widths
     n_cells: int
@@ -56,16 +58,16 @@ def conservative_interpolation(
 ) -> np.ndarray:
     """
     Perform conservative interpolation from old mesh to new mesh.
-    
+
     This function ensures that the total conserved quantity is preserved
     during mesh motion, which is crucial for moving boundary problems.
-    
+
     Args:
         U_old: Conservative variables on old mesh
         mesh_old: Old mesh state
         mesh_new: New mesh state
         params: Interpolation parameters
-        
+
     Returns:
         Conservative variables on new mesh
     """
@@ -153,10 +155,12 @@ def _cubic_conservative_interpolation(
         if j >= 0 and j < mesh_old.n_cells - 1:
             # Evaluate cubic spline
             dx = x_new - mesh_old.x[j]
-            U_new[i] = (coeffs[j, 0] +
-                       coeffs[j, 1] * dx +
-                       coeffs[j, 2] * dx**2 +
-                       coeffs[j, 3] * dx**3)
+            U_new[i] = (
+                coeffs[j, 0]
+                + coeffs[j, 1] * dx
+                + coeffs[j, 2] * dx**2
+                + coeffs[j, 3] * dx**3
+            )
         else:
             # Use boundary extrapolation
             U_new[i] = _boundary_extrapolation(U_old, mesh_old, x_new, params)
@@ -181,7 +185,7 @@ def _weno_conservative_interpolation(
 
         if j_center >= 2 and j_center < mesh_old.n_cells - 2:
             # Use 5-point WENO stencil
-            stencil = U_old[j_center-2:j_center+3]
+            stencil = U_old[j_center - 2 : j_center + 3]
             weights = _compute_weno_weights(stencil)
 
             # Reconstruct value at x_new
@@ -252,16 +256,16 @@ def _find_cell_index(x: float, mesh: MeshState) -> int:
 def _compute_cubic_spline_coefficients(U: np.ndarray, mesh: MeshState) -> np.ndarray:
     """Compute cubic spline coefficients for conservative interpolation."""
     n = len(U)
-    coeffs = np.zeros((n-1, 4))
+    coeffs = np.zeros((n - 1, 4))
 
     # Set up tridiagonal system for spline coefficients
     # This is a simplified version - in practice, you'd use proper spline algorithms
 
-    for i in range(n-1):
+    for i in range(n - 1):
         # Simple cubic interpolation coefficients
         dx = mesh.dx[i]
         coeffs[i, 0] = U[i]  # Constant term
-        coeffs[i, 1] = (U[i+1] - U[i]) / dx  # Linear term
+        coeffs[i, 1] = (U[i + 1] - U[i]) / dx  # Linear term
         coeffs[i, 2] = 0.0  # Quadratic term (simplified)
         coeffs[i, 3] = 0.0  # Cubic term (simplified)
 
@@ -331,10 +335,11 @@ def _apply_smoothing(U: np.ndarray, smoothing_factor: float) -> np.ndarray:
     U_smooth = U.copy()
     n = len(U)
 
-    for i in range(1, n-1):
+    for i in range(1, n - 1):
         # Simple 3-point smoothing
-        U_smooth[i] = (1 - smoothing_factor) * U[i] + \
-                      smoothing_factor * 0.5 * (U[i-1] + U[i+1])
+        U_smooth[i] = (1 - smoothing_factor) * U[i] + smoothing_factor * 0.5 * (
+            U[i - 1] + U[i + 1]
+        )
 
     return U_smooth
 
@@ -349,12 +354,13 @@ def _apply_monotonicity_limiter(
     U_limited = U_new.copy()
 
     # Check for monotonicity violations and apply limiting
-    for i in range(1, len(U_limited)-1):
+    for i in range(1, len(U_limited) - 1):
         # Check if solution is monotonic
-        if (U_limited[i] > U_limited[i-1] and U_limited[i] > U_limited[i+1]) or \
-           (U_limited[i] < U_limited[i-1] and U_limited[i] < U_limited[i+1]):
+        if (U_limited[i] > U_limited[i - 1] and U_limited[i] > U_limited[i + 1]) or (
+            U_limited[i] < U_limited[i - 1] and U_limited[i] < U_limited[i + 1]
+        ):
             # Apply limiting to preserve monotonicity
-            U_limited[i] = 0.5 * (U_limited[i-1] + U_limited[i+1])
+            U_limited[i] = 0.5 * (U_limited[i - 1] + U_limited[i + 1])
 
     return U_limited
 
@@ -367,16 +373,16 @@ def ale_mesh_motion(
 ) -> np.ndarray:
     """
     Arbitrary Lagrangian-Eulerian (ALE) mesh motion with conservative remapping.
-    
+
     This function handles the case where the mesh moves and we need to
     conservatively remap the solution from the old mesh to the new mesh.
-    
+
     Args:
         mesh_old: Old mesh state
         mesh_new: New mesh state
         U_old: Conservative variables on old mesh
         params: Interpolation parameters
-        
+
     Returns:
         Conservative variables on new mesh
     """
@@ -392,14 +398,14 @@ def piston_boundary_motion(
 ) -> Tuple[MeshState, np.ndarray]:
     """
     Handle piston boundary motion with conservative remapping.
-    
+
     Args:
         mesh_old: Old mesh state
         piston_position_old: Old piston position
         piston_position_new: New piston position
         U_old: Conservative variables on old mesh
         params: Interpolation parameters
-        
+
     Returns:
         Tuple of (new_mesh, new_solution)
     """
@@ -419,10 +425,10 @@ def piston_boundary_motion(
 def get_interpolation_function(method: str) -> callable:
     """
     Get interpolation function by name.
-    
+
     Args:
         method: Interpolation method name
-        
+
     Returns:
         Interpolation function
     """

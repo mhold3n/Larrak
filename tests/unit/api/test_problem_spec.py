@@ -14,4 +14,3 @@ def test_problem_spec_basic_fields():
     assert spec.phases["upstroke_percent"] == 60.0
     assert spec.bounds["max_velocity"] == 100.0
     assert spec.objective == "minimum_jerk"
-

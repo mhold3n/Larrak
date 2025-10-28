@@ -24,29 +24,30 @@ def _validate_ma27_usage() -> None:
     """Validate that MA27 is being used and fail hard if a non-HSL fallback is detected."""
     try:
         import casadi as ca
+
         from campro.optimization.ipopt_factory import create_ipopt_solver
-        
+
         # Create a test problem to check which linear solver is actually being used
         x = ca.SX.sym("x")
-        f = x ** 2
+        f = x**2
         g = x - 1
         nlp = {"x": x, "f": f, "g": g}
-        
+
         # Create solver using centralized factory
         solver = create_ipopt_solver("ma27_test", nlp, linear_solver="ma27")
-        
+
         # Try to solve a simple problem to verify MA27 is working
         result = solver(x0=0, lbg=0, ubg=0)
-        
+
         # Check if solver actually used MA27 (heuristic check)
         # If MA27 is not available, IPOPT may fall back to a non-HSL solver, which is not allowed
         log.info("MA27 linear solver validation passed")
-        
+
     except Exception as e:
         log.error(f"MA27 validation failed: {e}")
         raise RuntimeError(
             "MA27 linear solver is not available. Fallback to non-HSL solvers is not allowed. "
-            "Please ensure HSL library with MA27 is properly installed."
+            "Please ensure HSL library with MA27 is properly installed.",
         ) from e
 
 
@@ -93,6 +94,7 @@ def validate_casadi_ipopt() -> ValidationResult:
     """Validate CasADi installation and ipopt availability."""
     try:
         import casadi as ca
+
         log.info("CasADi version: %s", getattr(ca, "__version__", "unknown"))
 
         if hasattr(ca, "nlpsol_plugins"):
@@ -119,8 +121,9 @@ def validate_casadi_ipopt() -> ValidationResult:
         # Fallback for CasADi builds without nlpsol_plugins attribute
         try:
             from campro.optimization.ipopt_factory import create_ipopt_solver
+
             x = ca.SX.sym("x")
-            f = x ** 2
+            f = x**2
             nlp = {"x": x, "f": f}
             # Use centralized factory to prevent clobbering
             create_ipopt_solver("ipopt_probe", nlp, linear_solver="ma27")
@@ -163,44 +166,49 @@ def validate_casadi_ipopt() -> ValidationResult:
 def validate_hsl_solvers() -> List[ValidationResult]:
     """Validate HSL solver availability (MA27, MA57, MA77, MA86, MA97) - optional but improves performance."""
     results: List[ValidationResult] = []
-    
+
     # Check for all HSL solvers availability through CasADi
     try:
         import casadi as ca
-        
+
         # Test all HSL solvers
-        hsl_solvers = ['ma27', 'ma57', 'ma77', 'ma86', 'ma97']
+        hsl_solvers = ["ma27", "ma57", "ma77", "ma86", "ma97"]
         available_solvers = []
         solver_details = []
-        
+
         # Create a simple test problem
         x = ca.SX.sym("x")
-        f = x ** 2
+        f = x**2
         g = x - 1
         nlp = {"x": x, "f": f, "g": g}
-        
+
         for solver_name in hsl_solvers:
             try:
                 # Try to create a solver with this HSL linear solver
-                solver = ca.nlpsol(f'hsl_test_{solver_name}', 'ipopt', nlp, {
-                    'ipopt.linear_solver': solver_name,
-                    'ipopt.print_level': 0,
-                    'ipopt.sb': 'yes'
-                })
-                
+                solver = ca.nlpsol(
+                    f"hsl_test_{solver_name}",
+                    "ipopt",
+                    nlp,
+                    {
+                        "ipopt.linear_solver": solver_name,
+                        "ipopt.print_level": 0,
+                        "ipopt.sb": "yes",
+                    },
+                )
+
                 # Test the solver with a simple problem
                 result = solver(x0=0, lbg=0, ubg=0)
                 stats = solver.stats()
-                
-                if stats['success']:
+
+                if stats["success"]:
                     available_solvers.append(solver_name.upper())
                     solver_details.append(solver_name.upper())
                 else:
                     solver_details.append(f"{solver_name.upper()}(failed)")
-                    
-            except Exception as e:
+
+            except Exception:
                 solver_details.append(f"{solver_name.upper()}(error)")
-        
+
         if available_solvers:
             results.append(
                 ValidationResult(
@@ -208,7 +216,7 @@ def validate_hsl_solvers() -> List[ValidationResult]:
                     message=f"HSL solvers are available ({len(available_solvers)}/5)",
                     details=f"Available: {', '.join(available_solvers)} | All tested: {', '.join(solver_details)}",
                     suggestion="HSL solvers will significantly improve optimization performance",
-                )
+                ),
             )
         else:
             results.append(
@@ -223,9 +231,9 @@ def validate_hsl_solvers() -> List[ValidationResult]:
                         "3. Follow installation instructions in docs/installation_guide.md\n"
                         "4. Note: ipopt works without HSL but with reduced performance"
                     ),
-                )
+                ),
             )
-            
+
     except ImportError:
         results.append(
             ValidationResult(
@@ -233,7 +241,7 @@ def validate_hsl_solvers() -> List[ValidationResult]:
                 message="Cannot check HSL solvers - CasADi not available",
                 details="CasADi is required to check HSL solver availability",
                 suggestion="Install CasADi first, then re-run validation",
-            )
+            ),
         )
     except Exception as exc:
         log.error("Unexpected error checking HSL solvers: %s", exc)
@@ -243,9 +251,9 @@ def validate_hsl_solvers() -> List[ValidationResult]:
                 message="Error checking HSL solver availability",
                 details=str(exc),
                 suggestion="HSL solvers are optional - ipopt will work without them",
-            )
+            ),
         )
-    
+
     return results
 
 
@@ -322,7 +330,7 @@ def validate_environment() -> Dict[str, Any]:
         results["casadi_ipopt"],
         *results["required_packages"],
     ]
-    
+
     # HSL solvers are optional - include them in total count but not in error determination
     hsl_results = results["hsl_solvers"]
     all_results.extend(hsl_results)
@@ -333,7 +341,7 @@ def validate_environment() -> Dict[str, Any]:
         ValidationStatus.ERROR: 0,
         ValidationStatus.SKIPPED: 0,
     }
-    
+
     # Count only required dependencies for overall status
     required_results = [
         results["python_version"],
@@ -342,7 +350,7 @@ def validate_environment() -> Dict[str, Any]:
     ]
     for res in required_results:
         status_counts[res.status] += 1
-    
+
     # Count all results for total
     total_status_counts: Dict[ValidationStatus, int] = {
         ValidationStatus.PASS: 0,
@@ -368,7 +376,9 @@ def validate_environment() -> Dict[str, Any]:
         "total_status_counts": total_status_counts,
     }
 
-    log.info("Environment validation complete. Overall status: %s", overall_status.value)
+    log.info(
+        "Environment validation complete. Overall status: %s", overall_status.value,
+    )
     return results
 
 

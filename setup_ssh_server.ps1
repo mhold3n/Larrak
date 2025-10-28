@@ -109,3 +109,4 @@ Write-Host "1. Set up SSH key authentication (recommended)" -ForegroundColor Whi
 Write-Host "2. Test the connection from another computer" -ForegroundColor White
 Write-Host "3. Configure Cursor for remote development" -ForegroundColor White
 
+

@@ -13,5 +13,3 @@ def test_gauss_legendre_s2_nodes_weights():
     assert abs(g.nodes[1] - c2) < 1e-12
     assert abs(sum(g.weights) - 1.0) < 1e-12
     assert len(g.a) == 2 and len(g.a[0]) == 2
-
-

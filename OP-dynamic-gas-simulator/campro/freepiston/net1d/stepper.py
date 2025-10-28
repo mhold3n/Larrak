@@ -14,6 +14,7 @@ log = get_logger(__name__)
 @dataclass
 class TimeStepParameters:
     """Parameters for adaptive time stepping."""
+
     # Error control parameters
     rtol: float = 1e-6  # Relative tolerance
     atol: float = 1e-8  # Absolute tolerance
@@ -23,7 +24,7 @@ class TimeStepParameters:
 
     # Step size bounds
     dt_min: float = 1e-12  # Minimum time step
-    dt_max: float = 1e-3   # Maximum time step
+    dt_max: float = 1e-3  # Maximum time step
     dt_initial: float = 1e-6  # Initial time step
 
     # Integration method parameters
@@ -38,6 +39,7 @@ class TimeStepParameters:
 @dataclass
 class TimeStepResult:
     """Result of a time step."""
+
     success: bool
     dt_used: float
     dt_next: float
@@ -55,14 +57,14 @@ def estimate_error(
 ) -> Tuple[float, bool]:
     """
     Estimate local truncation error using embedded Runge-Kutta methods.
-    
+
     Args:
         U: Current state vector
         U_high: High-order solution
         U_low: Low-order solution
         rtol: Relative tolerance
         atol: Absolute tolerance
-        
+
     Returns:
         Tuple of (error_estimate, error_acceptable)
     """
@@ -86,12 +88,12 @@ def select_step_size(
 ) -> float:
     """
     Select next time step size based on error estimate.
-    
+
     Args:
         dt_current: Current time step size
         error_estimate: Local truncation error estimate
         params: Time stepping parameters
-        
+
     Returns:
         Next time step size
     """
@@ -99,8 +101,12 @@ def select_step_size(
         # Error is acceptable, can increase step size
         if error_estimate > 0:
             # Use error to predict optimal step size
-            dt_optimal = dt_current * (1.0 / error_estimate) ** (1.0 / 5.0)  # 5th order method
-            dt_next = min(dt_optimal * params.safety_factor, dt_current * params.max_step_ratio)
+            dt_optimal = dt_current * (1.0 / error_estimate) ** (
+                1.0 / 5.0
+            )  # 5th order method
+            dt_next = min(
+                dt_optimal * params.safety_factor, dt_current * params.max_step_ratio,
+            )
         else:
             # No error, increase by max ratio
             dt_next = dt_current * params.max_step_ratio
@@ -124,30 +130,36 @@ def runge_kutta_45_step(
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of 4th/5th order Runge-Kutta method with error estimation.
-    
+
     Args:
         U: Current state vector
         dUdt: Right-hand side function
         t: Current time
         dt: Time step size
         params: Additional parameters
-        
+
     Returns:
         Tuple of (U_high, U_low, error_estimate)
     """
     # Butcher tableau for RK45 (Dormand-Prince)
-    c = np.array([0, 1/5, 3/10, 4/5, 8/9, 1, 1])
-    a = np.array([
-        [0, 0, 0, 0, 0, 0],
-        [1/5, 0, 0, 0, 0, 0],
-        [3/40, 9/40, 0, 0, 0, 0],
-        [44/45, -56/15, 32/9, 0, 0, 0],
-        [19372/6561, -25360/2187, 64448/6561, -212/729, 0, 0],
-        [9017/3168, -355/33, 46732/5247, 49/176, -5103/18656, 0],
-        [35/384, 0, 500/1113, 125/192, -2187/6784, 11/84],
-    ])
-    b_high = np.array([35/384, 0, 500/1113, 125/192, -2187/6784, 11/84, 0])  # 5th order
-    b_low = np.array([5179/57600, 0, 7571/16695, 393/640, -92097/339200, 187/2100, 1/40])  # 4th order
+    c = np.array([0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1, 1])
+    a = np.array(
+        [
+            [0, 0, 0, 0, 0, 0],
+            [1 / 5, 0, 0, 0, 0, 0],
+            [3 / 40, 9 / 40, 0, 0, 0, 0],
+            [44 / 45, -56 / 15, 32 / 9, 0, 0, 0],
+            [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729, 0, 0],
+            [9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656, 0],
+            [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84],
+        ],
+    )
+    b_high = np.array(
+        [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0],
+    )  # 5th order
+    b_low = np.array(
+        [5179 / 57600, 0, 7571 / 16695, 393 / 640, -92097 / 339200, 187 / 2100, 1 / 40],
+    )  # 4th order
 
     # Compute stages
     k = np.zeros((7, len(U)))
@@ -180,14 +192,14 @@ def runge_kutta_23_step(
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of 2nd/3rd order Runge-Kutta method with error estimation.
-    
+
     Args:
         U: Current state vector
         dUdt: Right-hand side function
         t: Current time
         dt: Time step size
         params: Additional parameters
-        
+
     Returns:
         Tuple of (U_high, U_low, error_estimate)
     """
@@ -197,11 +209,11 @@ def runge_kutta_23_step(
     k3 = dUdt(U + 0.75 * dt * k2, t + 0.75 * dt)
 
     # 3rd order solution
-    U_high = U + dt * (2/9 * k1 + 1/3 * k2 + 4/9 * k3)
+    U_high = U + dt * (2 / 9 * k1 + 1 / 3 * k2 + 4 / 9 * k3)
 
     # 2nd order solution (embedded)
     k4 = dUdt(U_high, t + dt)
-    U_low = U + dt * (7/24 * k1 + 1/4 * k2 + 1/3 * k3 + 1/8 * k4)
+    U_low = U + dt * (7 / 24 * k1 + 1 / 4 * k2 + 1 / 3 * k3 + 1 / 8 * k4)
 
     # Estimate error
     error_estimate = np.max(np.abs(U_high - U_low) / (np.abs(U) + 1e-15))
@@ -218,14 +230,14 @@ def bdf1_step(
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of BDF1 (Backward Euler) method.
-    
+
     Args:
         U: Current state vector
         dUdt: Right-hand side function
         t: Current time
         dt: Time step size
         params: Additional parameters
-        
+
     Returns:
         Tuple of (U_new, U_low, error_estimate)
     """
@@ -279,7 +291,7 @@ def bdf2_step(
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of BDF2 method.
-    
+
     Args:
         U: Current state vector
         U_prev: Previous state vector
@@ -288,7 +300,7 @@ def bdf2_step(
         dt: Current time step size
         dt_prev: Previous time step size
         params: Additional parameters
-        
+
     Returns:
         Tuple of (U_new, U_low, error_estimate)
     """
@@ -298,13 +310,13 @@ def bdf2_step(
     tol = params.get("tol", 1e-8)
 
     # Initial guess (extrapolation)
-    U_new = (4/3) * U - (1/3) * U_prev
+    U_new = (4 / 3) * U - (1 / 3) * U_prev
 
     # Newton iteration
     for i in range(max_iter):
         # Residual: R = U_new - (4/3) * U + (1/3) * U_prev - (2/3) * dt * f(U_new, t + dt)
         f_new = dUdt(U_new, t + dt)
-        R = U_new - (4/3) * U + (1/3) * U_prev - (2/3) * dt * f_new
+        R = U_new - (4 / 3) * U + (1 / 3) * U_prev - (2 / 3) * dt * f_new
 
         # Check convergence
         if np.max(np.abs(R)) < tol:
@@ -312,7 +324,9 @@ def bdf2_step(
 
         # Jacobian approximation
         eps = 1e-8
-        J = np.eye(len(U)) - (2/3) * dt * _finite_difference_jacobian(dUdt, U_new, t + dt, eps)
+        J = np.eye(len(U)) - (2 / 3) * dt * _finite_difference_jacobian(
+            dUdt, U_new, t + dt, eps,
+        )
 
         # Newton update
         try:
@@ -343,7 +357,7 @@ def bdf3_step(
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of BDF3 method.
-    
+
     Args:
         U: Current state vector
         U_prev: Previous state vector
@@ -354,7 +368,7 @@ def bdf3_step(
         dt_prev: Previous time step size
         dt_prev2: Second previous time step size
         params: Additional parameters
-        
+
     Returns:
         Tuple of (U_new, U_low, error_estimate)
     """
@@ -364,13 +378,19 @@ def bdf3_step(
     tol = params.get("tol", 1e-8)
 
     # Initial guess (extrapolation)
-    U_new = (18/11) * U - (9/11) * U_prev + (2/11) * U_prev2
+    U_new = (18 / 11) * U - (9 / 11) * U_prev + (2 / 11) * U_prev2
 
     # Newton iteration
     for i in range(max_iter):
         # Residual
         f_new = dUdt(U_new, t + dt)
-        R = U_new - (18/11) * U + (9/11) * U_prev - (2/11) * U_prev2 - (6/11) * dt * f_new
+        R = (
+            U_new
+            - (18 / 11) * U
+            + (9 / 11) * U_prev
+            - (2 / 11) * U_prev2
+            - (6 / 11) * dt * f_new
+        )
 
         # Check convergence
         if np.max(np.abs(R)) < tol:
@@ -378,7 +398,9 @@ def bdf3_step(
 
         # Jacobian approximation
         eps = 1e-8
-        J = np.eye(len(U)) - (6/11) * dt * _finite_difference_jacobian(dUdt, U_new, t + dt, eps)
+        J = np.eye(len(U)) - (6 / 11) * dt * _finite_difference_jacobian(
+            dUdt, U_new, t + dt, eps,
+        )
 
         # Newton update
         try:
@@ -386,11 +408,11 @@ def bdf3_step(
             U_new += delta
         except np.linalg.LinAlgError:
             # Fall back to BDF2 if Jacobian is singular
-            U_new = (4/3) * U - (1/3) * U_prev
+            U_new = (4 / 3) * U - (1 / 3) * U_prev
             break
 
     # Error estimate (use difference from BDF2)
-    U_bdf2 = (4/3) * U - (1/3) * U_prev
+    U_bdf2 = (4 / 3) * U - (1 / 3) * U_prev
     error_estimate = np.max(np.abs(U_new - U_bdf2) / (np.abs(U) + 1e-15))
 
     return U_new, U_bdf2, error_estimate
@@ -404,13 +426,13 @@ def _finite_difference_jacobian(
 ) -> np.ndarray:
     """
     Compute Jacobian using finite differences.
-    
+
     Args:
         f: Function to differentiate
         U: State vector
         t: Time
         eps: Perturbation size
-        
+
     Returns:
         Jacobian matrix
     """
@@ -431,21 +453,23 @@ def _finite_difference_jacobian(
 def get_integration_method(method_name: str) -> str:
     """
     Get integration method with validation.
-    
+
     Args:
         method_name: Method name
-        
+
     Returns:
         Validated method name
-        
+
     Raises:
         ValueError: If method is not supported
     """
     supported_methods = ["rk45", "rk23", "bdf1", "bdf2", "bdf3"]
 
     if method_name not in supported_methods:
-        raise ValueError(f"Unsupported integration method: {method_name}. "
-                        f"Supported methods: {supported_methods}")
+        raise ValueError(
+            f"Unsupported integration method: {method_name}. "
+            f"Supported methods: {supported_methods}",
+        )
 
     return method_name
 
@@ -453,10 +477,10 @@ def get_integration_method(method_name: str) -> str:
 def get_method_order(method_name: str) -> int:
     """
     Get the order of the integration method.
-    
+
     Args:
         method_name: Method name
-        
+
     Returns:
         Method order
     """
@@ -474,10 +498,10 @@ def get_method_order(method_name: str) -> int:
 def is_implicit_method(method_name: str) -> bool:
     """
     Check if the method is implicit.
-    
+
     Args:
         method_name: Method name
-        
+
     Returns:
         True if implicit, False if explicit
     """
@@ -492,12 +516,12 @@ def get_optimal_method(
 ) -> str:
     """
     Select optimal integration method based on problem characteristics.
-    
+
     Args:
         stiffness_ratio: Ratio of largest to smallest eigenvalue
         accuracy_requirement: Required accuracy (smaller = more accurate)
         stability_requirement: Required stability (smaller = more stable)
-        
+
     Returns:
         Recommended method name
     """
@@ -527,13 +551,13 @@ def estimate_stiffness(
 ) -> float:
     """
     Estimate stiffness ratio using finite differences.
-    
+
     Args:
         dUdt: Right-hand side function
         U: State vector
         t: Time
         eps: Perturbation size
-        
+
     Returns:
         Estimated stiffness ratio
     """
@@ -572,7 +596,7 @@ def adaptive_time_step(
 ) -> TimeStepResult:
     """
     Perform adaptive time step with error control.
-    
+
     Args:
         U: Current state vector
         dUdt: Right-hand side function
@@ -581,7 +605,7 @@ def adaptive_time_step(
         params: Time stepping parameters
         method_params: Method-specific parameters
         history: Integration history for multi-step methods
-        
+
     Returns:
         Time step result
     """
@@ -611,7 +635,9 @@ def adaptive_time_step(
         else:
             U_prev = history["U_prev"]
             dt_prev = history.get("dt_prev", dt)
-            U_high, U_low, error_estimate = bdf2_step(U, U_prev, dUdt, t, dt, dt_prev, method_params)
+            U_high, U_low, error_estimate = bdf2_step(
+                U, U_prev, dUdt, t, dt, dt_prev, method_params,
+            )
             iterations = method_params.get("max_iter", 10)
 
     elif params.method == "bdf3":
@@ -620,7 +646,9 @@ def adaptive_time_step(
             if "U_prev" in history:
                 U_prev = history["U_prev"]
                 dt_prev = history.get("dt_prev", dt)
-                U_high, U_low, error_estimate = bdf2_step(U, U_prev, dUdt, t, dt, dt_prev, method_params)
+                U_high, U_low, error_estimate = bdf2_step(
+                    U, U_prev, dUdt, t, dt, dt_prev, method_params,
+                )
             else:
                 U_high, U_low, error_estimate = bdf1_step(U, dUdt, t, dt, method_params)
             iterations = method_params.get("max_iter", 10)
@@ -629,7 +657,9 @@ def adaptive_time_step(
             U_prev2 = history["U_prev2"]
             dt_prev = history.get("dt_prev", dt)
             dt_prev2 = history.get("dt_prev2", dt)
-            U_high, U_low, error_estimate = bdf3_step(U, U_prev, U_prev2, dUdt, t, dt, dt_prev, dt_prev2, method_params)
+            U_high, U_low, error_estimate = bdf3_step(
+                U, U_prev, U_prev2, dUdt, t, dt, dt_prev, dt_prev2, method_params,
+            )
             iterations = method_params.get("max_iter", 10)
 
     else:
@@ -684,14 +714,14 @@ def integrate_adaptive(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Integrate ODE system with adaptive time stepping.
-    
+
     Args:
         U0: Initial state vector
         dUdt: Right-hand side function
         t_span: Time span (t_start, t_end)
         params: Time stepping parameters
         method_params: Method-specific parameters
-        
+
     Returns:
         Tuple of (time_points, state_history)
     """
@@ -760,24 +790,28 @@ def integrate_adaptive(
                 log.error("Too many failed steps, stopping integration")
                 break
 
-    log.info(f"Integration completed: {total_steps} successful steps, {failed_steps} failed steps")
+    log.info(
+        f"Integration completed: {total_steps} successful steps, {failed_steps} failed steps",
+    )
 
     return np.array(time_points), np.array(state_history)
 
 
-def step_1d(U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: Dict[str, Any]) -> List[Tuple[float, float, float]]:
+def step_1d(
+    U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: Dict[str, Any],
+) -> List[Tuple[float, float, float]]:
     """
     Enhanced time step for 1D gas dynamics with adaptive error control.
-    
+
     This function implements adaptive time stepping for 1D gas dynamics using
     the enhanced time stepping methods with proper error control and stability.
-    
+
     Args:
         U: Current state vector (conservative variables)
         mesh: Mesh object
         dt: Time step size
         params: Additional parameters
-        
+
     Returns:
         Updated state vector
     """
@@ -787,7 +821,7 @@ def step_1d(U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: D
     # Define right-hand side function for 1D gas dynamics with wall models
     def dUdt(U_vec: np.ndarray, t: float) -> np.ndarray:
         """Enhanced right-hand side of 1D gas dynamics equations with wall models.
-        
+
         This function computes the spatial derivatives and fluxes for the
         1D gas dynamics equations using the HLLC Riemann solver and includes
         wall function effects for near-wall treatment.
@@ -822,8 +856,12 @@ def step_1d(U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: D
             U_R = U_vec[i + 1]
 
             # Convert to primitive variables
-            rho_L, u_L, p_L = primitive_from_conservative(U_L, gamma=params.get("gamma", 1.4))
-            rho_R, u_R, p_R = primitive_from_conservative(U_R, gamma=params.get("gamma", 1.4))
+            rho_L, u_L, p_L = primitive_from_conservative(
+                U_L, gamma=params.get("gamma", 1.4),
+            )
+            rho_R, u_R, p_R = primitive_from_conservative(
+                U_R, gamma=params.get("gamma", 1.4),
+            )
 
             # Compute numerical flux using HLLC solver
             F_interface = hllc_flux(U_L, U_R, gamma=params.get("gamma", 1.4))
@@ -842,7 +880,9 @@ def step_1d(U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: D
                     # Check if cell is near wall
                     if _is_near_wall_cell(i, mesh, params):
                         # Get cell properties
-                        rho, u, p = primitive_from_conservative(U_vec[i], gamma=params.get("gamma", 1.4))
+                        rho, u, p = primitive_from_conservative(
+                            U_vec[i], gamma=params.get("gamma", 1.4),
+                        )
                         T = p / (rho * 287.0)  # Ideal gas law
 
                         # Calculate distance to wall
@@ -853,12 +893,20 @@ def step_1d(U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: D
 
                         # Apply wall function
                         wall_result = wall_function_with_roughness(
-                            rho=rho, u=abs(u), mu=mu, y=y, T=T, T_wall=wall_params.T_wall, params=wall_params,
+                            rho=rho,
+                            u=abs(u),
+                            mu=mu,
+                            y=y,
+                            T=T,
+                            T_wall=wall_params.T_wall,
+                            params=wall_params,
                         )
 
                         # Add wall effects to flux
                         # This is a simplified implementation - in practice, you'd modify the source terms
-                        wall_source = _calculate_wall_source_terms(wall_result, U_vec[i], params)
+                        wall_source = _calculate_wall_source_terms(
+                            wall_result, U_vec[i], params,
+                        )
                         flux[i] += wall_source
 
         # Apply boundary conditions (simplified)
@@ -909,12 +957,12 @@ def step_1d(U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: D
 
 def _is_near_wall_cell(cell_index: int, mesh: Any, params: Dict[str, Any]) -> bool:
     """Check if a cell is near a wall boundary.
-    
+
     Args:
         cell_index: Cell index
         mesh: Mesh object
         params: Parameters dictionary
-        
+
     Returns:
         True if cell is near wall
     """
@@ -928,7 +976,7 @@ def _is_near_wall_cell(cell_index: int, mesh: Any, params: Dict[str, Any]) -> bo
         # Check distance to nearest wall
         min_wall_distance = min(
             abs(cell_center - mesh.boundaries[0]),  # Left boundary
-            abs(cell_center - mesh.boundaries[1]),   # Right boundary
+            abs(cell_center - mesh.boundaries[1]),  # Right boundary
         )
         return min_wall_distance < wall_distance_threshold
 
@@ -938,11 +986,11 @@ def _is_near_wall_cell(cell_index: int, mesh: Any, params: Dict[str, Any]) -> bo
 
 def _calculate_wall_distance(cell_index: int, mesh: Any) -> float:
     """Calculate distance from cell to nearest wall.
-    
+
     Args:
         cell_index: Cell index
         mesh: Mesh object
-        
+
     Returns:
         Distance to nearest wall [m]
     """
@@ -951,7 +999,7 @@ def _calculate_wall_distance(cell_index: int, mesh: Any) -> float:
         # Calculate distance to nearest wall
         min_wall_distance = min(
             abs(cell_center - mesh.boundaries[0]),  # Left boundary
-            abs(cell_center - mesh.boundaries[1]),   # Right boundary
+            abs(cell_center - mesh.boundaries[1]),  # Right boundary
         )
         return min_wall_distance
 
@@ -963,14 +1011,16 @@ def _calculate_wall_distance(cell_index: int, mesh: Any) -> float:
     return 0.001  # 1 mm
 
 
-def _calculate_wall_source_terms(wall_result: Dict[str, float], U: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
+def _calculate_wall_source_terms(
+    wall_result: Dict[str, float], U: np.ndarray, params: Dict[str, Any],
+) -> np.ndarray:
     """Calculate wall source terms for the 1D gas dynamics equations.
-    
+
     Args:
         wall_result: Wall function results
         U: Conservative state vector
         params: Parameters dictionary
-        
+
     Returns:
         Wall source terms
     """
@@ -1011,22 +1061,24 @@ def gas_structure_coupled_step(
 ) -> TimeStepResult:
     """
     Single time step with full gas-structure coupling.
-    
+
     Args:
         U: Conservative variables [rho, rho*u, rho*E] for all cells
         mesh: Moving boundary mesh
         piston_forces: Gas forces on pistons
         dt: Time step
         params: Time stepping parameters
-        
+
     Returns:
         Time step result with updated state
     """
     try:
         # 1. Update mesh based on piston motion
         mesh.update_piston_boundaries(
-            piston_forces["x_L"], piston_forces["x_R"],
-            piston_forces["v_L"], piston_forces["v_R"],
+            piston_forces["x_L"],
+            piston_forces["x_R"],
+            piston_forces["v_L"],
+            piston_forces["v_R"],
         )
 
         # 2. Calculate ALE fluxes with moving boundaries
@@ -1062,15 +1114,17 @@ def gas_structure_coupled_step(
         )
 
 
-def calculate_ale_fluxes(U: np.ndarray, mesh: Any, params: TimeStepParameters) -> np.ndarray:
+def calculate_ale_fluxes(
+    U: np.ndarray, mesh: Any, params: TimeStepParameters,
+) -> np.ndarray:
     """
     Calculate ALE fluxes with moving boundaries.
-    
+
     Args:
         U: Conservative variables
         mesh: Moving boundary mesh
         params: Time stepping parameters
-        
+
     Returns:
         ALE flux array
     """
@@ -1098,12 +1152,16 @@ def calculate_ale_fluxes(U: np.ndarray, mesh: Any, params: TimeStepParameters) -
             U_L = U[:, i]
             U_R = U[:, i + 1]
         else:
-            U_L = U[i*3:(i+1)*3]
-            U_R = U[(i+1)*3:(i+2)*3]
+            U_L = U[i * 3 : (i + 1) * 3]
+            U_R = U[(i + 1) * 3 : (i + 2) * 3]
 
         # Convert to primitive variables
-        rho_L, u_L, p_L = primitive_from_conservative(U_L, gamma=params.get("gamma", 1.4))
-        rho_R, u_R, p_R = primitive_from_conservative(U_R, gamma=params.get("gamma", 1.4))
+        rho_L, u_L, p_L = primitive_from_conservative(
+            U_L, gamma=params.get("gamma", 1.4),
+        )
+        rho_R, u_R, p_R = primitive_from_conservative(
+            U_R, gamma=params.get("gamma", 1.4),
+        )
 
         # Compute numerical flux using HLLC solver
         F_interface = hllc_flux(U_L, U_R, gamma=params.get("gamma", 1.4))
@@ -1123,8 +1181,8 @@ def calculate_ale_fluxes(U: np.ndarray, mesh: Any, params: TimeStepParameters) -
             flux[:, i] += F_ale
             flux[:, i + 1] -= F_ale
         else:
-            flux[i*3:(i+1)*3] += F_ale
-            flux[(i+1)*3:(i+2)*3] -= F_ale
+            flux[i * 3 : (i + 1) * 3] += F_ale
+            flux[(i + 1) * 3 : (i + 2) * 3] -= F_ale
 
     # Apply boundary conditions (simplified)
     # In practice, this would use proper boundary condition functions
@@ -1132,16 +1190,18 @@ def calculate_ale_fluxes(U: np.ndarray, mesh: Any, params: TimeStepParameters) -
     return flux
 
 
-def calculate_source_terms(U: np.ndarray, mesh: Any, dt: float, params: TimeStepParameters) -> np.ndarray:
+def calculate_source_terms(
+    U: np.ndarray, mesh: Any, dt: float, params: TimeStepParameters,
+) -> np.ndarray:
     """
     Calculate source terms for gas dynamics equations.
-    
+
     Args:
         U: Conservative variables
         mesh: Moving boundary mesh
         dt: Time step
         params: Time stepping parameters
-        
+
     Returns:
         Source terms array
     """
@@ -1174,27 +1234,29 @@ def calculate_source_terms(U: np.ndarray, mesh: Any, dt: float, params: TimeStep
             source[2, i] = -rho_E * dVdt[i] / cell_volumes[i]  # Energy
         else:
             # U shape: (3*n_cells,)
-            rho = U[i*3]
-            rho_u = U[i*3 + 1]
-            rho_E = U[i*3 + 2]
+            rho = U[i * 3]
+            rho_u = U[i * 3 + 1]
+            rho_E = U[i * 3 + 2]
 
             # Volume change source terms
-            source[i*3] = -rho * dVdt[i] / cell_volumes[i]  # Mass
-            source[i*3 + 1] = -rho_u * dVdt[i] / cell_volumes[i]  # Momentum
-            source[i*3 + 2] = -rho_E * dVdt[i] / cell_volumes[i]  # Energy
+            source[i * 3] = -rho * dVdt[i] / cell_volumes[i]  # Mass
+            source[i * 3 + 1] = -rho_u * dVdt[i] / cell_volumes[i]  # Momentum
+            source[i * 3 + 2] = -rho_E * dVdt[i] / cell_volumes[i]  # Energy
 
     return source
 
 
-def calculate_piston_forces(U: np.ndarray, mesh: Any, params: TimeStepParameters) -> Dict[str, float]:
+def calculate_piston_forces(
+    U: np.ndarray, mesh: Any, params: TimeStepParameters,
+) -> Dict[str, float]:
     """
     Calculate gas forces on pistons.
-    
+
     Args:
         U: Conservative variables
         mesh: Moving boundary mesh
         params: Time stepping parameters
-        
+
     Returns:
         Dictionary of piston forces and positions
     """
@@ -1223,7 +1285,9 @@ def calculate_piston_forces(U: np.ndarray, mesh: Any, params: TimeStepParameters
         else:
             U_left = U[0:3]
 
-        rho_L, u_L, p_L = primitive_from_conservative(U_left, gamma=params.get("gamma", 1.4))
+        rho_L, u_L, p_L = primitive_from_conservative(
+            U_left, gamma=params.get("gamma", 1.4),
+        )
 
         # Right piston (last cell)
         if U.ndim == 2:
@@ -1231,7 +1295,9 @@ def calculate_piston_forces(U: np.ndarray, mesh: Any, params: TimeStepParameters
         else:
             U_right = U[-3:]
 
-        rho_R, u_R, p_R = primitive_from_conservative(U_right, gamma=params.get("gamma", 1.4))
+        rho_R, u_R, p_R = primitive_from_conservative(
+            U_right, gamma=params.get("gamma", 1.4),
+        )
 
         # Piston area (assuming circular pistons)
         bore = params.get("bore", 0.1)  # m

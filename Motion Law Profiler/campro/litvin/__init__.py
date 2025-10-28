@@ -8,5 +8,3 @@ __all__ = [
     "RadialSlotMotion",
     "synthesize_planet_from_motion",
 ]
-
-

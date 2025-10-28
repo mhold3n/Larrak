@@ -21,6 +21,7 @@ log = get_logger(__name__)
 
 class SystemStatus(Enum):
     """Status of a system computation."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -31,6 +32,7 @@ class SystemStatus(Enum):
 @dataclass
 class SystemResult:
     """Result from a system computation."""
+
     status: SystemStatus
     outputs: Dict[str, np.ndarray]
     component_results: Dict[str, ComponentResult]
@@ -51,15 +53,17 @@ class SystemResult:
 class BaseSystem(ABC):
     """
     Base interface for complete physics systems.
-    
+
     Systems coordinate multiple components to solve complex problems.
     They manage data flow between components and handle system-level validation.
     """
 
-    def __init__(self, components: Dict[str, BaseComponent], name: Optional[str] = None):
+    def __init__(
+        self, components: Dict[str, BaseComponent], name: Optional[str] = None,
+    ):
         """
         Initialize the system.
-        
+
         Parameters
         ----------
         components : Dict[str, BaseComponent]
@@ -70,13 +74,15 @@ class BaseSystem(ABC):
         self.components = components.copy()
         self.name = name or self.__class__.__name__
         self._validate_system()
-        log.info(f"Initialized system {self.name} with {len(self.components)} components")
+        log.info(
+            f"Initialized system {self.name} with {len(self.components)} components",
+        )
 
     @abstractmethod
     def _validate_system(self) -> None:
         """
         Validate system configuration.
-        
+
         Raises
         ------
         ValueError
@@ -87,12 +93,12 @@ class BaseSystem(ABC):
     def solve(self, inputs: Dict[str, np.ndarray]) -> SystemResult:
         """
         Solve the complete system.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             System input data
-            
+
         Returns
         -------
         SystemResult
@@ -102,7 +108,7 @@ class BaseSystem(ABC):
     def add_component(self, name: str, component: BaseComponent) -> None:
         """
         Add a component to the system.
-        
+
         Parameters
         ----------
         name : str
@@ -117,7 +123,7 @@ class BaseSystem(ABC):
     def remove_component(self, name: str) -> None:
         """
         Remove a component from the system.
-        
+
         Parameters
         ----------
         name : str
@@ -133,12 +139,12 @@ class BaseSystem(ABC):
     def get_component(self, name: str) -> Optional[BaseComponent]:
         """
         Get a component by name.
-        
+
         Parameters
         ----------
         name : str
             Component name
-            
+
         Returns
         -------
         BaseComponent or None
@@ -149,7 +155,7 @@ class BaseSystem(ABC):
     def list_components(self) -> List[str]:
         """
         Get list of component names.
-        
+
         Returns
         -------
         List[str]
@@ -160,12 +166,12 @@ class BaseSystem(ABC):
     def validate_inputs(self, inputs: Dict[str, np.ndarray]) -> bool:
         """
         Validate system inputs.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             Input data to validate
-            
+
         Returns
         -------
         bool
@@ -177,7 +183,7 @@ class BaseSystem(ABC):
     def get_system_info(self) -> Dict[str, Any]:
         """
         Get system information.
-        
+
         Returns
         -------
         Dict[str, Any]
@@ -202,4 +208,3 @@ class BaseSystem(ABC):
     def __repr__(self) -> str:
         """String representation of system."""
         return f"{self.__class__.__name__}(name='{self.name}', components={list(self.components.keys())})"
-

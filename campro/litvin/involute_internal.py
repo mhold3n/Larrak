@@ -71,6 +71,3 @@ def sample_internal_flank(params: InternalGearParams, n: int = 200) -> InvoluteF
         tangents.append((tx, ty))
 
     return InvoluteFlank(phi=phis, points=pts, tangents=tangents)
-
-
-

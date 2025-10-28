@@ -9,9 +9,9 @@ A comprehensive GUI with 5 tabs for three-stage optimization:
 5. Crank Center - Torque and side-loading optimization (Run 3)
 """
 
-import sys
 import os
 import subprocess
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -96,6 +96,7 @@ def _validate_gui_environment():
         print(f"Warning: Error during environment validation: {e}")
         print("Environment validation failed.")
 
+
 # Perform validation
 _validate_gui_environment()
 from campro.optimization.unified_framework import (
@@ -126,7 +127,9 @@ class CamMotionGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Cam-Ring System Designer")
-        self.root.geometry("1400x1000")  # Increased height to accommodate tertiary controls
+        self.root.geometry(
+            "1400x1000",
+        )  # Increased height to accommodate tertiary controls
 
         # Configure ttk styles for better contrast
         self._configure_styles()
@@ -167,72 +170,72 @@ class CamMotionGUI:
         style = ttk.Style()
 
         # Configure Combobox style for better text contrast
-        style.configure("TCombobox",
-                       fieldbackground="white",
-                       background="white",
-                       foreground="black",
-                       selectbackground="lightblue",
-                       selectforeground="black")
+        style.configure(
+            "TCombobox",
+            fieldbackground="white",
+            background="white",
+            foreground="black",
+            selectbackground="lightblue",
+            selectforeground="black",
+        )
 
         # Configure Entry style for better text contrast
-        style.configure("TEntry",
-                       fieldbackground="white",
-                       background="white",
-                       foreground="black",
-                       selectbackground="lightblue",
-                       selectforeground="black")
+        style.configure(
+            "TEntry",
+            fieldbackground="white",
+            background="white",
+            foreground="black",
+            selectbackground="lightblue",
+            selectforeground="black",
+        )
 
         # Configure Button style for better contrast
-        style.configure("TButton",
-                       background="lightgray",
-                       foreground="black",
-                       focuscolor="none")
+        style.configure(
+            "TButton", background="lightgray", foreground="black", focuscolor="none",
+        )
 
         # Configure Checkbutton style
-        style.configure("TCheckbutton",
-                       background="SystemButtonFace",
-                       foreground="black",
-                       focuscolor="none")
+        style.configure(
+            "TCheckbutton",
+            background="SystemButtonFace",
+            foreground="black",
+            focuscolor="none",
+        )
 
         # Configure Label style
-        style.configure("TLabel",
-                       background="SystemButtonFace",
-                       foreground="black")
+        style.configure("TLabel", background="SystemButtonFace", foreground="black")
 
         # Configure LabelFrame style
-        style.configure("TLabelFrame",
-                       background="SystemButtonFace",
-                       foreground="black")
+        style.configure(
+            "TLabelFrame", background="SystemButtonFace", foreground="black",
+        )
 
         # Configure Notebook style
-        style.configure("TNotebook",
-                       background="SystemButtonFace",
-                       foreground="black")
+        style.configure("TNotebook", background="SystemButtonFace", foreground="black")
 
-        style.configure("TNotebook.Tab",
-                       background="lightgray",
-                       foreground="black",
-                       padding=[10, 5])
+        style.configure(
+            "TNotebook.Tab", background="lightgray", foreground="black", padding=[10, 5],
+        )
 
         # Map active tab style
-        style.map("TNotebook.Tab",
-                 background=[("selected", "white")],
-                 foreground=[("selected", "black")])
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", "white")],
+            foreground=[("selected", "black")],
+        )
 
         # Configure Frame style for better contrast
-        style.configure("TFrame",
-                       background="SystemButtonFace")
+        style.configure("TFrame", background="SystemButtonFace")
 
         # Configure Separator style
-        style.configure("TSeparator",
-                       background="gray")
+        style.configure("TSeparator", background="gray")
 
         # Additional button styling for better visibility
-        style.map("TButton",
-                 background=[("active", "lightblue"),
-                           ("pressed", "darkblue")],
-                 foreground=[("active", "white"),
-                           ("pressed", "white")])
+        style.map(
+            "TButton",
+            background=[("active", "lightblue"), ("pressed", "darkblue")],
+            foreground=[("active", "white"), ("pressed", "white")],
+        )
 
     def _create_variables(self):
         """Create Tkinter variables for input fields."""
@@ -243,23 +246,18 @@ class CamMotionGUI:
             "upstroke_duration": tk.DoubleVar(value=60.0),
             "zero_accel_duration": tk.DoubleVar(value=0.0),
             "motion_type": tk.StringVar(value="minimum_jerk"),
-
             # Cam-ring system parameters
             "base_radius": tk.DoubleVar(value=15.0),
             "connecting_rod_length": tk.DoubleVar(value=25.0),
             "contact_type": tk.StringVar(value="external"),
-
             # Sun gear parameters (for complete system)
             "sun_gear_radius": tk.DoubleVar(value=15.0),
             "ring_gear_radius": tk.DoubleVar(value=45.0),
             "gear_ratio": tk.DoubleVar(value=3.0),
-
             # Optimization method
             "optimization_method": tk.StringVar(value="legendre_collocation"),
-
             # Animation settings
             "animation_speed": tk.DoubleVar(value=1.0),
-
             # Tertiary optimization parameters (crank center optimization)
             "crank_center_x_min": tk.DoubleVar(value=-50.0),
             "crank_center_x_max": tk.DoubleVar(value=50.0),
@@ -267,7 +265,6 @@ class CamMotionGUI:
             "crank_center_y_max": tk.DoubleVar(value=50.0),
             "crank_radius_min": tk.DoubleVar(value=20.0),
             "crank_radius_max": tk.DoubleVar(value=100.0),
-
             # Tertiary optimization targets
             "maximize_torque": tk.BooleanVar(value=True),
             "minimize_side_loading": tk.BooleanVar(value=True),
@@ -275,14 +272,11 @@ class CamMotionGUI:
             "minimize_combustion_side_load": tk.BooleanVar(value=True),
             "minimize_torque_ripple": tk.BooleanVar(value=True),
             "maximize_power_output": tk.BooleanVar(value=True),
-            
             # CasADi physics validation mode
             "enable_casadi_validation_mode": tk.BooleanVar(value=False),
             "casadi_validation_tolerance": tk.DoubleVar(value=1e-4),
-
             # ORDER2 (CasADi) micro optimization toggle
             "enable_order2_micro": tk.BooleanVar(value=False),
-            
             # CasADi optimization options
             "use_casadi_optimizer": tk.BooleanVar(value=False),
             "enable_warmstart": tk.BooleanVar(value=True),
@@ -330,32 +324,60 @@ class CamMotionGUI:
         self._build_diagnostics_tab()
 
         # Status bar
-        self.status_var = tk.StringVar(value="Ready - Configure parameters and run optimization")
-        self.status_bar = ttk.Label(self.main_frame, textvariable=self.status_var, relief=tk.SUNKEN)
+        self.status_var = tk.StringVar(
+            value="Ready - Configure parameters and run optimization",
+        )
+        self.status_bar = ttk.Label(
+            self.main_frame, textvariable=self.status_var, relief=tk.SUNKEN,
+        )
 
     def _create_control_panel(self):
         """Create the main control panel."""
-        self.control_frame = ttk.LabelFrame(self.main_frame, text="System Parameters", padding="10")
+        self.control_frame = ttk.LabelFrame(
+            self.main_frame, text="System Parameters", padding="10",
+        )
 
         # Row 1: Core motion law parameters
-        ttk.Label(self.control_frame, text="Stroke (mm):").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.stroke_entry = ttk.Entry(self.control_frame, textvariable=self.variables["stroke"], width=8)
+        ttk.Label(self.control_frame, text="Stroke (mm):").grid(
+            row=0, column=0, sticky=tk.W, pady=2,
+        )
+        self.stroke_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["stroke"], width=8,
+        )
         self.stroke_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Upstroke Duration (%):").grid(row=0, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.upstroke_entry = ttk.Entry(self.control_frame, textvariable=self.variables["upstroke_duration"], width=8)
+        ttk.Label(self.control_frame, text="Upstroke Duration (%):").grid(
+            row=0, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.upstroke_entry = ttk.Entry(
+            self.control_frame,
+            textvariable=self.variables["upstroke_duration"],
+            width=8,
+        )
         self.upstroke_entry.grid(row=0, column=3, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Zero Accel Duration (%):").grid(row=0, column=4, sticky=tk.W, pady=2, padx=(20, 0))
-        self.zero_accel_entry = ttk.Entry(self.control_frame, textvariable=self.variables["zero_accel_duration"], width=8)
+        ttk.Label(self.control_frame, text="Zero Accel Duration (%):").grid(
+            row=0, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.zero_accel_entry = ttk.Entry(
+            self.control_frame,
+            textvariable=self.variables["zero_accel_duration"],
+            width=8,
+        )
         self.zero_accel_entry.grid(row=0, column=5, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Row 2: Additional motion law parameters
-        ttk.Label(self.control_frame, text="Cycle Time (s):").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.cycle_time_entry = ttk.Entry(self.control_frame, textvariable=self.variables["cycle_time"], width=8)
+        ttk.Label(self.control_frame, text="Cycle Time (s):").grid(
+            row=1, column=0, sticky=tk.W, pady=2,
+        )
+        self.cycle_time_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["cycle_time"], width=8,
+        )
         self.cycle_time_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Motion Type:").grid(row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0))
+        ttk.Label(self.control_frame, text="Motion Type:").grid(
+            row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
         self.motion_type_combo = ttk.Combobox(
             self.control_frame,
             textvariable=self.variables["motion_type"],
@@ -367,15 +389,27 @@ class CamMotionGUI:
         self.motion_type_combo.set("minimum_jerk")  # Set default value
 
         # Row 3: Cam-ring parameters
-        ttk.Label(self.control_frame, text="Cam Base Radius (mm):").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.base_radius_entry = ttk.Entry(self.control_frame, textvariable=self.variables["base_radius"], width=8)
+        ttk.Label(self.control_frame, text="Cam Base Radius (mm):").grid(
+            row=2, column=0, sticky=tk.W, pady=2,
+        )
+        self.base_radius_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["base_radius"], width=8,
+        )
         self.base_radius_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Rod Length (mm):").grid(row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.rod_length_entry = ttk.Entry(self.control_frame, textvariable=self.variables["connecting_rod_length"], width=8)
+        ttk.Label(self.control_frame, text="Rod Length (mm):").grid(
+            row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.rod_length_entry = ttk.Entry(
+            self.control_frame,
+            textvariable=self.variables["connecting_rod_length"],
+            width=8,
+        )
         self.rod_length_entry.grid(row=2, column=3, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Contact Type:").grid(row=2, column=4, sticky=tk.W, pady=2, padx=(20, 0))
+        ttk.Label(self.control_frame, text="Contact Type:").grid(
+            row=2, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        )
         self.contact_type_combo = ttk.Combobox(
             self.control_frame,
             textvariable=self.variables["contact_type"],
@@ -387,16 +421,28 @@ class CamMotionGUI:
         self.contact_type_combo.set("external")  # Set default value
 
         # Row 4: Sun gear parameters
-        ttk.Label(self.control_frame, text="Sun Gear Radius (mm):").grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.sun_gear_entry = ttk.Entry(self.control_frame, textvariable=self.variables["sun_gear_radius"], width=8)
+        ttk.Label(self.control_frame, text="Sun Gear Radius (mm):").grid(
+            row=3, column=0, sticky=tk.W, pady=2,
+        )
+        self.sun_gear_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["sun_gear_radius"], width=8,
+        )
         self.sun_gear_entry.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Ring Gear Radius (mm):").grid(row=3, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        self.ring_gear_entry = ttk.Entry(self.control_frame, textvariable=self.variables["ring_gear_radius"], width=8)
+        ttk.Label(self.control_frame, text="Ring Gear Radius (mm):").grid(
+            row=3, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.ring_gear_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["ring_gear_radius"], width=8,
+        )
         self.ring_gear_entry.grid(row=3, column=3, sticky=tk.W, padx=(5, 0), pady=2)
 
-        ttk.Label(self.control_frame, text="Gear Ratio:").grid(row=3, column=4, sticky=tk.W, pady=2, padx=(20, 0))
-        self.gear_ratio_entry = ttk.Entry(self.control_frame, textvariable=self.variables["gear_ratio"], width=8)
+        ttk.Label(self.control_frame, text="Gear Ratio:").grid(
+            row=3, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        self.gear_ratio_entry = ttk.Entry(
+            self.control_frame, textvariable=self.variables["gear_ratio"], width=8,
+        )
         self.gear_ratio_entry.grid(row=3, column=5, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Row 5: Control buttons
@@ -413,14 +459,18 @@ class CamMotionGUI:
             text="Reset Parameters",
             command=self._reset_parameters,
         )
-        self.reset_button.grid(row=4, column=2, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0))
+        self.reset_button.grid(
+            row=4, column=2, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0),
+        )
 
         self.save_button = ttk.Button(
             self.control_frame,
             text="Save Results",
             command=self._save_results,
         )
-        self.save_button.grid(row=4, column=4, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0))
+        self.save_button.grid(
+            row=4, column=4, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0),
+        )
 
         # Diagnose button: quick access to Ipopt/solver diagnostics
         self.diagnose_button = ttk.Button(
@@ -431,76 +481,176 @@ class CamMotionGUI:
         self.diagnose_button.grid(row=4, column=6, sticky=tk.W, pady=10, padx=(20, 0))
 
         # Row 5: Tertiary optimization header
-        ttk.Separator(self.control_frame, orient="horizontal").grid(row=5, column=0, columnspan=6, sticky="ew", pady=5)
-        ttk.Label(self.control_frame, text="Crank Center Optimization (Run 3)", font=("TkDefaultFont", 10, "bold")).grid(row=6, column=0, columnspan=6, sticky=tk.W, pady=2)
+        ttk.Separator(self.control_frame, orient="horizontal").grid(
+            row=5, column=0, columnspan=6, sticky="ew", pady=5,
+        )
+        ttk.Label(
+            self.control_frame,
+            text="Crank Center Optimization (Run 3)",
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=6, column=0, columnspan=6, sticky=tk.W, pady=2)
 
         # Row 6: Crank center position bounds
-        ttk.Label(self.control_frame, text="Crank X Range (mm):").grid(row=7, column=0, sticky=tk.W, pady=2)
+        ttk.Label(self.control_frame, text="Crank X Range (mm):").grid(
+            row=7, column=0, sticky=tk.W, pady=2,
+        )
         crank_x_frame = ttk.Frame(self.control_frame)
         crank_x_frame.grid(row=7, column=1, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Entry(crank_x_frame, textvariable=self.variables["crank_center_x_min"], width=5).pack(side=tk.LEFT)
+        ttk.Entry(
+            crank_x_frame, textvariable=self.variables["crank_center_x_min"], width=5,
+        ).pack(side=tk.LEFT)
         ttk.Label(crank_x_frame, text=" to ").pack(side=tk.LEFT)
-        ttk.Entry(crank_x_frame, textvariable=self.variables["crank_center_x_max"], width=5).pack(side=tk.LEFT)
+        ttk.Entry(
+            crank_x_frame, textvariable=self.variables["crank_center_x_max"], width=5,
+        ).pack(side=tk.LEFT)
 
-        ttk.Label(self.control_frame, text="Crank Y Range (mm):").grid(row=7, column=2, sticky=tk.W, pady=2, padx=(20, 0))
+        ttk.Label(self.control_frame, text="Crank Y Range (mm):").grid(
+            row=7, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
         crank_y_frame = ttk.Frame(self.control_frame)
         crank_y_frame.grid(row=7, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Entry(crank_y_frame, textvariable=self.variables["crank_center_y_min"], width=5).pack(side=tk.LEFT)
+        ttk.Entry(
+            crank_y_frame, textvariable=self.variables["crank_center_y_min"], width=5,
+        ).pack(side=tk.LEFT)
         ttk.Label(crank_y_frame, text=" to ").pack(side=tk.LEFT)
-        ttk.Entry(crank_y_frame, textvariable=self.variables["crank_center_y_max"], width=5).pack(side=tk.LEFT)
+        ttk.Entry(
+            crank_y_frame, textvariable=self.variables["crank_center_y_max"], width=5,
+        ).pack(side=tk.LEFT)
 
         # Row 7: Crank radius bounds
-        ttk.Label(self.control_frame, text="Crank Radius Range (mm):").grid(row=8, column=0, sticky=tk.W, pady=2)
+        ttk.Label(self.control_frame, text="Crank Radius Range (mm):").grid(
+            row=8, column=0, sticky=tk.W, pady=2,
+        )
         crank_r_frame = ttk.Frame(self.control_frame)
         crank_r_frame.grid(row=8, column=1, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Entry(crank_r_frame, textvariable=self.variables["crank_radius_min"], width=5).pack(side=tk.LEFT)
+        ttk.Entry(
+            crank_r_frame, textvariable=self.variables["crank_radius_min"], width=5,
+        ).pack(side=tk.LEFT)
         ttk.Label(crank_r_frame, text=" to ").pack(side=tk.LEFT)
-        ttk.Entry(crank_r_frame, textvariable=self.variables["crank_radius_max"], width=5).pack(side=tk.LEFT)
+        ttk.Entry(
+            crank_r_frame, textvariable=self.variables["crank_radius_max"], width=5,
+        ).pack(side=tk.LEFT)
 
         # Row 8: Optimization objectives (checkboxes)
-        ttk.Label(self.control_frame, text="Objectives:").grid(row=9, column=0, sticky=tk.W, pady=2)
+        ttk.Label(self.control_frame, text="Objectives:").grid(
+            row=9, column=0, sticky=tk.W, pady=2,
+        )
         objectives_frame = ttk.Frame(self.control_frame)
-        objectives_frame.grid(row=9, column=1, columnspan=5, sticky=tk.W, padx=(5, 0), pady=2)
+        objectives_frame.grid(
+            row=9, column=1, columnspan=5, sticky=tk.W, padx=(5, 0), pady=2,
+        )
 
-        ttk.Checkbutton(objectives_frame, text="Max Torque", variable=self.variables["maximize_torque"]).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(objectives_frame, text="Min Side Load", variable=self.variables["minimize_side_loading"]).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(objectives_frame, text="Min Compression Side Load", variable=self.variables["minimize_compression_side_load"]).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(objectives_frame, text="Min Combustion Side Load", variable=self.variables["minimize_combustion_side_load"]).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            objectives_frame,
+            text="Max Torque",
+            variable=self.variables["maximize_torque"],
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            objectives_frame,
+            text="Min Side Load",
+            variable=self.variables["minimize_side_loading"],
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            objectives_frame,
+            text="Min Compression Side Load",
+            variable=self.variables["minimize_compression_side_load"],
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            objectives_frame,
+            text="Min Combustion Side Load",
+            variable=self.variables["minimize_combustion_side_load"],
+        ).pack(side=tk.LEFT, padx=5)
 
         # Row 9: CasADi validation mode controls
-        ttk.Label(self.control_frame, text="CasADi Validation:").grid(row=10, column=0, sticky=tk.W, pady=2)
+        ttk.Label(self.control_frame, text="CasADi Validation:").grid(
+            row=10, column=0, sticky=tk.W, pady=2,
+        )
         validation_frame = ttk.Frame(self.control_frame)
-        validation_frame.grid(row=10, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Checkbutton(validation_frame, text="Enable Validation Mode", variable=self.variables["enable_casadi_validation_mode"]).pack(side=tk.LEFT, padx=5)
+        validation_frame.grid(
+            row=10, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2,
+        )
+        ttk.Checkbutton(
+            validation_frame,
+            text="Enable Validation Mode",
+            variable=self.variables["enable_casadi_validation_mode"],
+        ).pack(side=tk.LEFT, padx=5)
         ttk.Label(validation_frame, text="Tolerance:").pack(side=tk.LEFT, padx=(10, 5))
-        ttk.Entry(validation_frame, textvariable=self.variables["casadi_validation_tolerance"], width=8).pack(side=tk.LEFT, padx=5)
+        ttk.Entry(
+            validation_frame,
+            textvariable=self.variables["casadi_validation_tolerance"],
+            width=8,
+        ).pack(side=tk.LEFT, padx=5)
 
         # Row 10: ORDER2 (CasADi) toggle
-        ttk.Label(self.control_frame, text="ORDER2 (CasADi):").grid(row=11, column=0, sticky=tk.W, pady=2)
+        ttk.Label(self.control_frame, text="ORDER2 (CasADi):").grid(
+            row=11, column=0, sticky=tk.W, pady=2,
+        )
         order2_frame = ttk.Frame(self.control_frame)
-        order2_frame.grid(row=11, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Checkbutton(order2_frame, text="Enable ORDER2 (micro)", variable=self.variables["enable_order2_micro"]).pack(side=tk.LEFT, padx=5)
+        order2_frame.grid(
+            row=11, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2,
+        )
+        ttk.Checkbutton(
+            order2_frame,
+            text="Enable ORDER2 (micro)",
+            variable=self.variables["enable_order2_micro"],
+        ).pack(side=tk.LEFT, padx=5)
 
         # Row 11: CasADi Optimization Options
-        ttk.Separator(self.control_frame, orient="horizontal").grid(row=12, column=0, columnspan=6, sticky="ew", pady=5)
-        ttk.Label(self.control_frame, text="CasADi Optimization Options", font=("TkDefaultFont", 10, "bold")).grid(row=13, column=0, columnspan=6, sticky=tk.W, pady=2)
-        
+        ttk.Separator(self.control_frame, orient="horizontal").grid(
+            row=12, column=0, columnspan=6, sticky="ew", pady=5,
+        )
+        ttk.Label(
+            self.control_frame,
+            text="CasADi Optimization Options",
+            font=("TkDefaultFont", 10, "bold"),
+        ).grid(row=13, column=0, columnspan=6, sticky=tk.W, pady=2)
+
         # CasADi optimizer toggle
-        ttk.Label(self.control_frame, text="CasADi Optimizer:").grid(row=14, column=0, sticky=tk.W, pady=2)
+        ttk.Label(self.control_frame, text="CasADi Optimizer:").grid(
+            row=14, column=0, sticky=tk.W, pady=2,
+        )
         casadi_frame = ttk.Frame(self.control_frame)
-        casadi_frame.grid(row=14, column=1, columnspan=5, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Checkbutton(casadi_frame, text="Use CasADi Optimizer", variable=self.variables["use_casadi_optimizer"]).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(casadi_frame, text="Enable Warm-start", variable=self.variables["enable_warmstart"]).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(casadi_frame, text="Thermal Efficiency", variable=self.variables["enable_thermal_efficiency"]).pack(side=tk.LEFT, padx=5)
-        
+        casadi_frame.grid(
+            row=14, column=1, columnspan=5, sticky=tk.W, padx=(5, 0), pady=2,
+        )
+        ttk.Checkbutton(
+            casadi_frame,
+            text="Use CasADi Optimizer",
+            variable=self.variables["use_casadi_optimizer"],
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            casadi_frame,
+            text="Enable Warm-start",
+            variable=self.variables["enable_warmstart"],
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            casadi_frame,
+            text="Thermal Efficiency",
+            variable=self.variables["enable_thermal_efficiency"],
+        ).pack(side=tk.LEFT, padx=5)
+
         # CasADi parameters
-        ttk.Label(self.control_frame, text="Segments:").grid(row=15, column=0, sticky=tk.W, pady=2)
-        ttk.Entry(self.control_frame, textvariable=self.variables["casadi_n_segments"], width=8).grid(row=15, column=1, sticky=tk.W, padx=(5, 0), pady=2)
-        
-        ttk.Label(self.control_frame, text="Poly Order:").grid(row=15, column=2, sticky=tk.W, pady=2, padx=(20, 0))
-        ttk.Entry(self.control_frame, textvariable=self.variables["casadi_poly_order"], width=8).grid(row=15, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-        
-        ttk.Label(self.control_frame, text="Method:").grid(row=15, column=4, sticky=tk.W, pady=2, padx=(20, 0))
+        ttk.Label(self.control_frame, text="Segments:").grid(
+            row=15, column=0, sticky=tk.W, pady=2,
+        )
+        ttk.Entry(
+            self.control_frame,
+            textvariable=self.variables["casadi_n_segments"],
+            width=8,
+        ).grid(row=15, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+
+        ttk.Label(self.control_frame, text="Poly Order:").grid(
+            row=15, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        ttk.Entry(
+            self.control_frame,
+            textvariable=self.variables["casadi_poly_order"],
+            width=8,
+        ).grid(row=15, column=3, sticky=tk.W, padx=(5, 0), pady=2)
+
+        ttk.Label(self.control_frame, text="Method:").grid(
+            row=15, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        )
         casadi_method_combo = ttk.Combobox(
             self.control_frame,
             textvariable=self.variables["casadi_collocation_method"],
@@ -510,10 +660,16 @@ class CamMotionGUI:
         )
         casadi_method_combo.grid(row=15, column=5, sticky=tk.W, padx=(5, 0), pady=2)
         casadi_method_combo.set("legendre")
-        
+
         # Thermal efficiency target
-        ttk.Label(self.control_frame, text="Efficiency Target:").grid(row=16, column=0, sticky=tk.W, pady=2)
-        ttk.Entry(self.control_frame, textvariable=self.variables["thermal_efficiency_target"], width=8).grid(row=16, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        ttk.Label(self.control_frame, text="Efficiency Target:").grid(
+            row=16, column=0, sticky=tk.W, pady=2,
+        )
+        ttk.Entry(
+            self.control_frame,
+            textvariable=self.variables["thermal_efficiency_target"],
+            width=8,
+        ).grid(row=16, column=1, sticky=tk.W, padx=(5, 0), pady=2)
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
@@ -538,30 +694,46 @@ class CamMotionGUI:
         self.diag_iter_var = tk.StringVar(value="0")
 
         ttk.Label(summary, text="Run ID:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        ttk.Label(summary, textvariable=self.diag_run_id_var).grid(row=0, column=1, sticky=tk.W, pady=2)
+        ttk.Label(summary, textvariable=self.diag_run_id_var).grid(
+            row=0, column=1, sticky=tk.W, pady=2,
+        )
 
-        ttk.Label(summary, text="Status:").grid(row=0, column=2, sticky=tk.W, padx=(20, 0), pady=2)
-        ttk.Label(summary, textvariable=self.diag_status_var).grid(row=0, column=3, sticky=tk.W, pady=2)
+        ttk.Label(summary, text="Status:").grid(
+            row=0, column=2, sticky=tk.W, padx=(20, 0), pady=2,
+        )
+        ttk.Label(summary, textvariable=self.diag_status_var).grid(
+            row=0, column=3, sticky=tk.W, pady=2,
+        )
 
-        ttk.Label(summary, text="Iterations:").grid(row=0, column=4, sticky=tk.W, padx=(20, 0), pady=2)
-        ttk.Label(summary, textvariable=self.diag_iter_var).grid(row=0, column=5, sticky=tk.W, pady=2)
+        ttk.Label(summary, text="Iterations:").grid(
+            row=0, column=4, sticky=tk.W, padx=(20, 0), pady=2,
+        )
+        ttk.Label(summary, textvariable=self.diag_iter_var).grid(
+            row=0, column=5, sticky=tk.W, pady=2,
+        )
 
         # Residuals group
-        residuals = ttk.LabelFrame(self.diagnostics_frame, text="Residuals", padding="10")
+        residuals = ttk.LabelFrame(
+            self.diagnostics_frame, text="Residuals", padding="10",
+        )
         residuals.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         self.diag_residuals_text = tk.Text(residuals, height=10, wrap="none")
         self.diag_residuals_text.pack(fill=tk.BOTH, expand=True)
         self.diag_residuals_text.config(state="disabled")
 
         # KKT/Constraint stats group
-        kkt_frame = ttk.LabelFrame(self.diagnostics_frame, text="KKT / Constraint Stats", padding="10")
+        kkt_frame = ttk.LabelFrame(
+            self.diagnostics_frame, text="KKT / Constraint Stats", padding="10",
+        )
         kkt_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         self.diag_kkt_text = tk.Text(kkt_frame, height=6, wrap="none")
         self.diag_kkt_text.pack(fill=tk.BOTH, expand=True)
         self.diag_kkt_text.config(state="disabled")
 
         # Artifacts group
-        artifacts = ttk.LabelFrame(self.diagnostics_frame, text="Artifacts", padding="10")
+        artifacts = ttk.LabelFrame(
+            self.diagnostics_frame, text="Artifacts", padding="10",
+        )
         artifacts.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         self.diag_artifacts_text = tk.Text(artifacts, height=6, wrap="none")
         self.diag_artifacts_text.pack(fill=tk.BOTH, expand=True)
@@ -569,13 +741,31 @@ class CamMotionGUI:
         # Buttons for quick actions
         art_btns = ttk.Frame(artifacts)
         art_btns.pack(fill=tk.X, expand=False, pady=(6, 0))
-        ttk.Button(art_btns, text="Open Ipopt Log", command=lambda: self._open_artifact('ipopt_log')).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(art_btns, text="Copy Log Path", command=lambda: self._copy_artifact('ipopt_log')).pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Button(art_btns, text="Open Run Meta", command=lambda: self._open_artifact('run_meta')).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(art_btns, text="Copy Meta Path", command=lambda: self._copy_artifact('run_meta')).pack(side=tk.LEFT)
+        ttk.Button(
+            art_btns,
+            text="Open Ipopt Log",
+            command=lambda: self._open_artifact("ipopt_log"),
+        ).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(
+            art_btns,
+            text="Copy Log Path",
+            command=lambda: self._copy_artifact("ipopt_log"),
+        ).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Button(
+            art_btns,
+            text="Open Run Meta",
+            command=lambda: self._open_artifact("run_meta"),
+        ).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(
+            art_btns,
+            text="Copy Meta Path",
+            command=lambda: self._copy_artifact("run_meta"),
+        ).pack(side=tk.LEFT)
 
         # Feasibility group
-        feas = ttk.LabelFrame(self.diagnostics_frame, text="Feasibility (Phase 0)", padding="10")
+        feas = ttk.LabelFrame(
+            self.diagnostics_frame, text="Feasibility (Phase 0)", padding="10",
+        )
         feas.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         self.diag_feas_text = tk.Text(feas, height=8, wrap="none")
         self.diag_feas_text.pack(fill=tk.BOTH, expand=True)
@@ -587,10 +777,12 @@ class CamMotionGUI:
             if not solve_report:
                 return
             # Summary
-            self.diag_run_id_var.set(getattr(solve_report, 'run_id', '-') or '-')
-            self.diag_status_var.set(getattr(solve_report, 'status', '-') or '-')
+            self.diag_run_id_var.set(getattr(solve_report, "run_id", "-") or "-")
+            self.diag_status_var.set(getattr(solve_report, "status", "-") or "-")
             try:
-                self.diag_iter_var.set(str(int(getattr(solve_report, 'n_iter', 0) or 0)))
+                self.diag_iter_var.set(
+                    str(int(getattr(solve_report, "n_iter", 0) or 0)),
+                )
             except Exception:
                 self.diag_iter_var.set("0")
 
@@ -598,15 +790,22 @@ class CamMotionGUI:
             try:
                 self.diag_residuals_text.config(state="normal")
                 self.diag_residuals_text.delete("1.0", tk.END)
-                res = getattr(solve_report, 'residuals', {}) or {}
+                res = getattr(solve_report, "residuals", {}) or {}
                 if res:
                     # Stable order for common keys first
-                    keys = ["primal_inf", "dual_inf", "kkt_error", "constraint_violation"]
+                    keys = [
+                        "primal_inf",
+                        "dual_inf",
+                        "kkt_error",
+                        "constraint_violation",
+                    ]
                     printed = set()
                     for k in keys:
                         if k in res:
                             try:
-                                self.diag_residuals_text.insert(tk.END, f"{k}: {float(res[k]):.6e}\n")
+                                self.diag_residuals_text.insert(
+                                    tk.END, f"{k}: {float(res[k]):.6e}\n",
+                                )
                                 printed.add(k)
                             except Exception:
                                 pass
@@ -616,7 +815,9 @@ class CamMotionGUI:
                             continue
                         try:
                             if isinstance(v, (int, float)):
-                                self.diag_residuals_text.insert(tk.END, f"{k}: {float(v):.6e}\n")
+                                self.diag_residuals_text.insert(
+                                    tk.END, f"{k}: {float(v):.6e}\n",
+                                )
                             else:
                                 self.diag_residuals_text.insert(tk.END, f"{k}: {v}\n")
                         except Exception:
@@ -630,7 +831,7 @@ class CamMotionGUI:
             try:
                 self.diag_artifacts_text.config(state="normal")
                 self.diag_artifacts_text.delete("1.0", tk.END)
-                arts = getattr(solve_report, 'artifacts', {}) or {}
+                arts = getattr(solve_report, "artifacts", {}) or {}
                 if arts:
                     for k, v in arts.items():
                         self.diag_artifacts_text.insert(tk.END, f"{k}: {v}\n")
@@ -643,14 +844,16 @@ class CamMotionGUI:
             try:
                 self.diag_kkt_text.config(state="normal")
                 self.diag_kkt_text.delete("1.0", tk.END)
-                kkt = getattr(solve_report, 'kkt', {}) or {}
+                kkt = getattr(solve_report, "kkt", {}) or {}
                 if kkt:
                     order = ["primal_inf", "dual_inf", "compl_inf"]
                     printed = set()
                     for k in order:
                         if k in kkt:
                             try:
-                                self.diag_kkt_text.insert(tk.END, f"{k}: {float(kkt[k]):.6e}\n")
+                                self.diag_kkt_text.insert(
+                                    tk.END, f"{k}: {float(kkt[k]):.6e}\n",
+                                )
                                 printed.add(k)
                             except Exception:
                                 pass
@@ -671,29 +874,35 @@ class CamMotionGUI:
                 self.diag_feas_text.config(state="normal")
                 self.diag_feas_text.delete("1.0", tk.END)
                 feas_info = None
-                if hasattr(self, 'unified_result') and self.unified_result is not None:
-                    ci = getattr(self.unified_result, 'convergence_info', {}) or {}
-                    feas_info = ci.get('feasibility_primary')
+                if hasattr(self, "unified_result") and self.unified_result is not None:
+                    ci = getattr(self.unified_result, "convergence_info", {}) or {}
+                    feas_info = ci.get("feasibility_primary")
                 if isinstance(feas_info, dict):
-                    feasible = feas_info.get('feasible', False)
-                    max_violation = feas_info.get('max_violation', 0.0)
+                    feasible = feas_info.get("feasible", False)
+                    max_violation = feas_info.get("max_violation", 0.0)
                     self.diag_feas_text.insert(tk.END, f"Feasible: {feasible}\n")
-                    self.diag_feas_text.insert(tk.END, f"Max Violation: {max_violation:.3e}\n")
-                    viol = feas_info.get('violations', {}) or {}
+                    self.diag_feas_text.insert(
+                        tk.END, f"Max Violation: {max_violation:.3e}\n",
+                    )
+                    viol = feas_info.get("violations", {}) or {}
                     if viol:
                         self.diag_feas_text.insert(tk.END, "Violations:\n")
                         for k, v in viol.items():
                             try:
-                                self.diag_feas_text.insert(tk.END, f"  - {k}: {float(v):.3e}\n")
+                                self.diag_feas_text.insert(
+                                    tk.END, f"  - {k}: {float(v):.3e}\n",
+                                )
                             except Exception:
                                 self.diag_feas_text.insert(tk.END, f"  - {k}: {v}\n")
-                    recs = feas_info.get('recommendations', []) or []
+                    recs = feas_info.get("recommendations", []) or []
                     if recs:
                         self.diag_feas_text.insert(tk.END, "Recommendations:\n")
                         for r in recs:
                             self.diag_feas_text.insert(tk.END, f"  - {r}\n")
                 else:
-                    self.diag_feas_text.insert(tk.END, "Feasibility info not available.\n")
+                    self.diag_feas_text.insert(
+                        tk.END, "Feasibility info not available.\n",
+                    )
             finally:
                 self.diag_feas_text.config(state="disabled")
         except Exception as e:
@@ -702,13 +911,17 @@ class CamMotionGUI:
     # --- Diagnostics helpers: artifact open/copy ---------------------------------
     def _get_artifact_path(self, kind: str) -> str | None:
         try:
-            if hasattr(self, 'solve_report') and self.solve_report and getattr(self.solve_report, 'artifacts', None):
+            if (
+                hasattr(self, "solve_report")
+                and self.solve_report
+                and getattr(self.solve_report, "artifacts", None)
+            ):
                 path = self.solve_report.artifacts.get(kind)
                 if path:
                     return str(path)
         except Exception:
             pass
-        if kind == 'ipopt_log' and getattr(self, 'latest_ipopt_log', None):
+        if kind == "ipopt_log" and getattr(self, "latest_ipopt_log", None):
             return self.latest_ipopt_log
         return None
 
@@ -722,12 +935,12 @@ class CamMotionGUI:
             self.status_var.set(f"Path not found: {p}")
             return
         try:
-            if sys.platform.startswith('darwin'):
-                subprocess.run(['open', str(p)], check=False)
-            elif os.name == 'nt':  # Windows
+            if sys.platform.startswith("darwin"):
+                subprocess.run(["open", str(p)], check=False)
+            elif os.name == "nt":  # Windows
                 os.startfile(str(p))  # type: ignore[attr-defined]
             else:
-                subprocess.run(['xdg-open', str(p)], check=False)
+                subprocess.run(["xdg-open", str(p)], check=False)
             self.status_var.set(f"Opened: {p}")
         except Exception as e:
             self.status_var.set(f"Open failed: {e}")
@@ -749,7 +962,9 @@ class CamMotionGUI:
         """Setup matplotlib plots for each tab."""
         # Tab 1: Motion Law
         self.motion_law_fig = Figure(figsize=(12, 6), dpi=100)
-        self.motion_law_canvas = FigureCanvasTkAgg(self.motion_law_fig, self.motion_law_frame)
+        self.motion_law_canvas = FigureCanvasTkAgg(
+            self.motion_law_fig, self.motion_law_frame,
+        )
         self.motion_law_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         # Tab 2: Cam/Ring Motion
@@ -764,7 +979,9 @@ class CamMotionGUI:
 
         # Tab 4: Animation - Two side-by-side subplots
         self.animation_fig = Figure(figsize=(16, 8), dpi=100)
-        self.animation_canvas = FigureCanvasTkAgg(self.animation_fig, self.animation_frame)
+        self.animation_canvas = FigureCanvasTkAgg(
+            self.animation_fig, self.animation_frame,
+        )
         self.animation_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         # Tab 5: Crank Center Optimization
@@ -804,10 +1021,13 @@ class CamMotionGUI:
         )
         self.stop_button.pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(self.animation_control_frame, text="Speed:").pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Label(self.animation_control_frame, text="Speed:").pack(
+            side=tk.LEFT, padx=(20, 5),
+        )
         self.speed_scale = ttk.Scale(
             self.animation_control_frame,
-            from_=0.1, to=3.0,
+            from_=0.1,
+            to=3.0,
             variable=self.variables["animation_speed"],
             orient=tk.HORIZONTAL,
             length=100,
@@ -815,7 +1035,9 @@ class CamMotionGUI:
         self.speed_scale.pack(side=tk.LEFT, padx=5)
 
         # Frame count will be displayed dynamically based on collocation points
-        self.frames_label = ttk.Label(self.animation_control_frame, text="Frames: Auto (from collocation)")
+        self.frames_label = ttk.Label(
+            self.animation_control_frame, text="Frames: Auto (from collocation)",
+        )
         self.frames_label.pack(side=tk.LEFT, padx=(20, 5))
 
         # Animation state
@@ -828,24 +1050,45 @@ class CamMotionGUI:
         # Motion Law tab
         self.motion_law_fig.clear()
         ax = self.motion_law_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "Motion Law\n\nRun optimization to see results",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "Motion Law\n\nRun optimization to see results",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Linear Follower Motion Law")
         self.motion_law_canvas.draw()
 
         # Cam/Ring Motion tab
         self.motion_fig.clear()
         ax = self.motion_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "Cam/Ring Motion\n\nRun optimization to see results",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "Cam/Ring Motion\n\nRun optimization to see results",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Cam and Ring Motion Relationships")
         self.motion_canvas.draw()
 
         # 2D Profiles tab
         self.profiles_fig.clear()
         ax = self.profiles_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "2D Profiles\n\nRun optimization to see results",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "2D Profiles\n\nRun optimization to see results",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Cam and Ring 2D Profiles")
         self.profiles_canvas.draw()
 
@@ -854,24 +1097,47 @@ class CamMotionGUI:
 
         # Left subplot: Full assembly view
         ax1 = self.animation_fig.add_subplot(121, projection="polar")
-        ax1.text(0.5, 0.5, "Full Assembly View\n\nRun optimization to see collocation-based animation",
-                ha="center", va="center", fontsize=10, transform=ax1.transAxes)
+        ax1.text(
+            0.5,
+            0.5,
+            "Full Assembly View\n\nRun optimization to see collocation-based animation",
+            ha="center",
+            va="center",
+            fontsize=10,
+            transform=ax1.transAxes,
+        )
         ax1.set_title("Full Assembly View")
 
         # Right subplot: Detailed tooth meshing view
         ax2 = self.animation_fig.add_subplot(122, projection="polar")
-        ax2.text(0.5, 0.5, "Tooth Contact Detail\n\nShows 3-4 teeth at contact point",
-                ha="center", va="center", fontsize=10, transform=ax2.transAxes)
+        ax2.text(
+            0.5,
+            0.5,
+            "Tooth Contact Detail\n\nShows 3-4 teeth at contact point",
+            ha="center",
+            va="center",
+            fontsize=10,
+            transform=ax2.transAxes,
+        )
         ax2.set_title("Tooth Contact Detail")
 
-        self.animation_fig.suptitle("Collocation-Based Animation", fontsize=14, fontweight="bold")
+        self.animation_fig.suptitle(
+            "Collocation-Based Animation", fontsize=14, fontweight="bold",
+        )
         self.animation_canvas.draw()
 
         # Crank Center Optimization tab
         self.tertiary_fig.clear()
         ax = self.tertiary_fig.add_subplot(111)
-        ax.text(0.5, 0.5, "Crank Center Optimization\n\nRun optimization to see results",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "Crank Center Optimization\n\nRun optimization to see results",
+            ha="center",
+            va="center",
+            fontsize=14,
+            transform=ax.transAxes,
+        )
         ax.set_title("Torque and Side-Loading Analysis")
         self.tertiary_canvas.draw()
 
@@ -887,15 +1153,21 @@ class CamMotionGUI:
                 return False
 
             if upstroke_duration < 0 or upstroke_duration > 100:
-                self.status_var.set("Error: Upstroke duration must be between 0 and 100%")
+                self.status_var.set(
+                    "Error: Upstroke duration must be between 0 and 100%",
+                )
                 return False
 
             if zero_accel_duration < 0 or zero_accel_duration > 100:
-                self.status_var.set("Error: Zero acceleration duration must be between 0 and 100%")
+                self.status_var.set(
+                    "Error: Zero acceleration duration must be between 0 and 100%",
+                )
                 return False
 
             if zero_accel_duration > upstroke_duration:
-                self.status_var.set("Warning: Zero acceleration duration exceeds upstroke duration")
+                self.status_var.set(
+                    "Warning: Zero acceleration duration exceeds upstroke duration",
+                )
 
             return True
 
@@ -953,7 +1225,9 @@ class CamMotionGUI:
                 "stroke": self.variables["stroke"].get(),
                 "cycle_time": self.variables["cycle_time"].get(),
                 "upstroke_duration_percent": self.variables["upstroke_duration"].get(),
-                "zero_accel_duration_percent": self.variables["zero_accel_duration"].get(),
+                "zero_accel_duration_percent": self.variables[
+                    "zero_accel_duration"
+                ].get(),
                 "motion_type": self.variables["motion_type"].get(),
             }
 
@@ -968,11 +1242,16 @@ class CamMotionGUI:
             self.unified_result = result_data
             try:
                 from campro.api.adapters import unified_data_to_solve_report
+
                 self.solve_report = unified_data_to_solve_report(result_data)
                 # Cache latest Ipopt log for diagnostics panel
                 try:
-                    if hasattr(self.solve_report, 'artifacts') and isinstance(self.solve_report.artifacts, dict):
-                        self.latest_ipopt_log = self.solve_report.artifacts.get('ipopt_log', None)
+                    if hasattr(self.solve_report, "artifacts") and isinstance(
+                        self.solve_report.artifacts, dict,
+                    ):
+                        self.latest_ipopt_log = self.solve_report.artifacts.get(
+                            "ipopt_log", None,
+                        )
                 except Exception:
                     pass
                 # Update diagnostics tab on main thread
@@ -986,7 +1265,12 @@ class CamMotionGUI:
 
             # Update frames label if we have frame count
             if hasattr(self, "_total_frames"):
-                self.root.after(0, lambda: self.frames_label.config(text=f"Frames: {self._total_frames} (collocation points)"))
+                self.root.after(
+                    0,
+                    lambda: self.frames_label.config(
+                        text=f"Frames: {self._total_frames} (collocation points)",
+                    ),
+                )
 
             # Re-enable optimize button
             self.root.after(0, self._enable_optimize_button)
@@ -994,10 +1278,13 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error in optimization thread: {e}")
             import traceback
+
             traceback.print_exc()
             error_message = str(e)
             self.root.after(0, self._enable_optimize_button)
-            self.root.after(0, lambda: self.status_var.set(f"Optimization failed: {error_message}"))
+            self.root.after(
+                0, lambda: self.status_var.set(f"Optimization failed: {error_message}"),
+            )
 
     def _enable_optimize_button(self):
         """Re-enable the optimize button."""
@@ -1024,20 +1311,30 @@ class CamMotionGUI:
 
         # Enable thermal efficiency to use Ipopt (required for analysis)
         settings.use_thermal_efficiency = True
-        
+
         # Configure CasADi validation mode from GUI
-        settings.enable_casadi_validation_mode = self.variables["enable_casadi_validation_mode"].get()
-        settings.casadi_validation_tolerance = self.variables["casadi_validation_tolerance"].get()
-        
+        settings.enable_casadi_validation_mode = self.variables[
+            "enable_casadi_validation_mode"
+        ].get()
+        settings.casadi_validation_tolerance = self.variables[
+            "casadi_validation_tolerance"
+        ].get()
+
         # Configure CasADi optimizer settings
         settings.use_casadi = self.variables["use_casadi_optimizer"].get()
         if settings.use_casadi:
             settings.casadi_n_segments = self.variables["casadi_n_segments"].get()
             settings.casadi_poly_order = self.variables["casadi_poly_order"].get()
-            settings.casadi_collocation_method = self.variables["casadi_collocation_method"].get()
+            settings.casadi_collocation_method = self.variables[
+                "casadi_collocation_method"
+            ].get()
             settings.enable_warmstart = self.variables["enable_warmstart"].get()
-            settings.thermal_efficiency_target = self.variables["thermal_efficiency_target"].get()
-            settings.enable_thermal_efficiency = self.variables["enable_thermal_efficiency"].get()
+            settings.thermal_efficiency_target = self.variables[
+                "thermal_efficiency_target"
+            ].get()
+            settings.enable_thermal_efficiency = self.variables[
+                "enable_thermal_efficiency"
+            ].get()
 
         # Create constraints
         constraints = UnifiedOptimizationConstraints(
@@ -1068,31 +1365,46 @@ class CamMotionGUI:
             # Add tertiary targets
             maximize_torque=self.variables["maximize_torque"].get(),
             minimize_side_loading=self.variables["minimize_side_loading"].get(),
-            minimize_side_loading_during_compression=self.variables["minimize_compression_side_load"].get(),
-            minimize_side_loading_during_combustion=self.variables["minimize_combustion_side_load"].get(),
+            minimize_side_loading_during_compression=self.variables[
+                "minimize_compression_side_load"
+            ].get(),
+            minimize_side_loading_during_combustion=self.variables[
+                "minimize_combustion_side_load"
+            ].get(),
             minimize_torque_ripple=self.variables["minimize_torque_ripple"].get(),
             maximize_power_output=self.variables["maximize_power_output"].get(),
         )
 
         # Configure framework
-        self.unified_framework.configure(settings=settings, constraints=constraints, targets=targets)
-        
+        self.unified_framework.configure(
+            settings=settings, constraints=constraints, targets=targets,
+        )
+
         # Enable ORDER2_MICRO (CasADi) if requested via checkbox
         try:
             enable_order2 = bool(self.variables["enable_order2_micro"].get())
-            if hasattr(self.unified_framework, 'secondary_optimizer') and self.unified_framework.secondary_optimizer is not None:
-                setattr(self.unified_framework.secondary_optimizer, 'enable_order2_micro', enable_order2)
+            if (
+                hasattr(self.unified_framework, "secondary_optimizer")
+                and self.unified_framework.secondary_optimizer is not None
+            ):
+                self.unified_framework.secondary_optimizer.enable_order2_micro = (
+                    enable_order2
+                )
                 log.info(f"ORDER2_MICRO enabled: {enable_order2}")
         except Exception as _e:
             print(f"DEBUG: Failed to set ORDER2 flag: {_e}")
-        
+
         # Enable CasADi validation mode if requested
         if settings.enable_casadi_validation_mode:
-            self.unified_framework.enable_casadi_validation_mode(settings.casadi_validation_tolerance)
-            print(f"DEBUG: CasADi validation mode enabled with tolerance: {settings.casadi_validation_tolerance}")
+            self.unified_framework.enable_casadi_validation_mode(
+                settings.casadi_validation_tolerance,
+            )
+            print(
+                f"DEBUG: CasADi validation mode enabled with tolerance: {settings.casadi_validation_tolerance}",
+            )
         else:
             self.unified_framework.disable_casadi_validation_mode()
-            
+
         print(f"DEBUG: Configured unified framework with method: {method_name}")
 
     def _update_all_plots(self, result_data):
@@ -1118,15 +1430,22 @@ class CamMotionGUI:
             self._update_tertiary_plot(result_data)
 
             # Update status
-            self.status_var.set(f"Optimization completed - Total time: {result_data.total_solve_time:.3f}s")
+            self.status_var.set(
+                f"Optimization completed - Total time: {result_data.total_solve_time:.3f}s",
+            )
 
             # Append residuals summary from SolveReport if available
             try:
-                sr = getattr(self, 'solve_report', None)
-                if sr and getattr(sr, 'residuals', None):
+                sr = getattr(self, "solve_report", None)
+                if sr and getattr(sr, "residuals", None):
                     # Prefer common keys; fallback to first two residuals
                     ordered = []
-                    for k in ("primal_inf", "dual_inf", "kkt_error", "constraint_violation"):
+                    for k in (
+                        "primal_inf",
+                        "dual_inf",
+                        "kkt_error",
+                        "constraint_violation",
+                    ):
                         if k in sr.residuals:
                             try:
                                 ordered.append(f"{k}={float(sr.residuals[k]):.1e}")
@@ -1134,7 +1453,11 @@ class CamMotionGUI:
                                 pass
                     if not ordered:
                         items = list(sr.residuals.items())[:2]
-                        ordered = [f"{k}={float(v):.1e}" for k, v in items if isinstance(v, (int, float))]
+                        ordered = [
+                            f"{k}={float(v):.1e}"
+                            for k, v in items
+                            if isinstance(v, (int, float))
+                        ]
                     if ordered:
                         cur = self.status_var.get()
                         self.status_var.set(cur + " | Residuals: " + ", ".join(ordered))
@@ -1154,6 +1477,7 @@ class CamMotionGUI:
         except Exception as e:
             print(f"DEBUG: Error updating plots: {e}")
             import traceback
+
             traceback.print_exc()
             self.status_var.set(f"Plot update failed: {e}")
         finally:
@@ -1163,7 +1487,10 @@ class CamMotionGUI:
         """Update the motion law plot (Tab 1)."""
         self.motion_law_fig.clear()
 
-        if result_data.primary_theta is not None and result_data.primary_position is not None:
+        if (
+            result_data.primary_theta is not None
+            and result_data.primary_position is not None
+        ):
             # Create subplots for position, velocity, acceleration, and jerk
             ax1 = self.motion_law_fig.add_subplot(411)
             ax2 = self.motion_law_fig.add_subplot(412)
@@ -1171,50 +1498,101 @@ class CamMotionGUI:
             ax4 = self.motion_law_fig.add_subplot(414)
 
             # Plot position
-            ax1.plot(result_data.primary_theta, result_data.primary_position, "b-", linewidth=2, label="Position")
+            ax1.plot(
+                result_data.primary_theta,
+                result_data.primary_position,
+                "b-",
+                linewidth=2,
+                label="Position",
+            )
             ax1.set_ylabel("Position (mm)")
             ax1.grid(True, alpha=0.3)
             ax1.legend()
 
             # Plot velocity
             if result_data.primary_velocity is not None:
-                ax2.plot(result_data.primary_theta, result_data.primary_velocity, "g-", linewidth=2, label="Velocity")
+                ax2.plot(
+                    result_data.primary_theta,
+                    result_data.primary_velocity,
+                    "g-",
+                    linewidth=2,
+                    label="Velocity",
+                )
                 ax2.set_ylabel("Velocity (mm/s)")
                 ax2.grid(True, alpha=0.3)
                 ax2.legend()
 
             # Plot acceleration
             if result_data.primary_acceleration is not None:
-                ax3.plot(result_data.primary_theta, result_data.primary_acceleration, "r-", linewidth=2, label="Acceleration")
+                ax3.plot(
+                    result_data.primary_theta,
+                    result_data.primary_acceleration,
+                    "r-",
+                    linewidth=2,
+                    label="Acceleration",
+                )
                 ax3.set_ylabel("Acceleration (mm/s²)")
                 ax3.grid(True, alpha=0.3)
                 ax3.legend()
 
             # Plot jerk
             if result_data.primary_jerk is not None:
-                ax4.plot(result_data.primary_theta, result_data.primary_jerk, "m-", linewidth=2, label="Jerk")
+                ax4.plot(
+                    result_data.primary_theta,
+                    result_data.primary_jerk,
+                    "m-",
+                    linewidth=2,
+                    label="Jerk",
+                )
                 ax4.set_ylabel("Jerk (mm/s³)")
                 ax4.set_xlabel("Cam Angle (degrees)")
                 ax4.grid(True, alpha=0.3)
                 ax4.legend()
             # If jerk data is not available, compute it from acceleration
-            elif result_data.primary_acceleration is not None and len(result_data.primary_acceleration) > 1:
+            elif (
+                result_data.primary_acceleration is not None
+                and len(result_data.primary_acceleration) > 1
+            ):
                 # Compute jerk as derivative of acceleration
-                jerk = np.gradient(result_data.primary_acceleration, result_data.primary_theta)
-                ax4.plot(result_data.primary_theta, jerk, "m-", linewidth=2, label="Jerk (computed)")
+                jerk = np.gradient(
+                    result_data.primary_acceleration, result_data.primary_theta,
+                )
+                ax4.plot(
+                    result_data.primary_theta,
+                    jerk,
+                    "m-",
+                    linewidth=2,
+                    label="Jerk (computed)",
+                )
                 ax4.set_ylabel("Jerk (mm/s³)")
                 ax4.set_xlabel("Cam Angle (degrees)")
                 ax4.grid(True, alpha=0.3)
                 ax4.legend()
             else:
-                ax4.text(0.5, 0.5, "Jerk data not available", ha="center", va="center", fontsize=10)
+                ax4.text(
+                    0.5,
+                    0.5,
+                    "Jerk data not available",
+                    ha="center",
+                    va="center",
+                    fontsize=10,
+                )
                 ax4.set_ylabel("Jerk (mm/s³)")
                 ax4.set_xlabel("Cam Angle (degrees)")
 
-            self.motion_law_fig.suptitle("Linear Follower Motion Law", fontsize=14, fontweight="bold")
+            self.motion_law_fig.suptitle(
+                "Linear Follower Motion Law", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.motion_law_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No motion law data available", ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No motion law data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Linear Follower Motion Law")
 
         self.motion_law_fig.tight_layout()
@@ -1224,13 +1602,22 @@ class CamMotionGUI:
         """Update the cam/ring motion plot (Tab 2)."""
         self.motion_fig.clear()
 
-        if result_data.secondary_psi is not None and result_data.secondary_R_psi is not None:
+        if (
+            result_data.secondary_psi is not None
+            and result_data.secondary_R_psi is not None
+        ):
             # Create subplots for ring motion and cam motion
             ax1 = self.motion_fig.add_subplot(211)
             ax2 = self.motion_fig.add_subplot(212)
 
             # Plot ring motion (psi vs R_psi)
-            ax1.plot(result_data.secondary_psi, result_data.secondary_R_psi, "purple", linewidth=2, label="Ring Radius")
+            ax1.plot(
+                result_data.secondary_psi,
+                result_data.secondary_R_psi,
+                "purple",
+                linewidth=2,
+                label="Ring Radius",
+            )
             ax1.set_ylabel("Ring Radius (mm)")
             ax1.set_xlabel("Ring Angle ψ (rad)")
             ax1.grid(True, alpha=0.3)
@@ -1239,20 +1626,33 @@ class CamMotionGUI:
 
             # Plot cam motion (if available)
             if result_data.secondary_cam_curves is not None:
-                cam_theta = result_data.secondary_cam_curves.get("theta", result_data.primary_theta)
+                cam_theta = result_data.secondary_cam_curves.get(
+                    "theta", result_data.primary_theta,
+                )
                 cam_radius = result_data.secondary_cam_curves.get("profile_radius")
                 if cam_radius is not None:
-                    ax2.plot(cam_theta, cam_radius, "orange", linewidth=2, label="Cam Radius")
+                    ax2.plot(
+                        cam_theta, cam_radius, "orange", linewidth=2, label="Cam Radius",
+                    )
                     ax2.set_ylabel("Cam Radius (mm)")
                     ax2.set_xlabel("Cam Angle θ (degrees)")
                     ax2.grid(True, alpha=0.3)
                     ax2.legend()
                     ax2.set_title("Cam Profile Motion")
 
-            self.motion_fig.suptitle("Cam and Ring Motion Relationships", fontsize=14, fontweight="bold")
+            self.motion_fig.suptitle(
+                "Cam and Ring Motion Relationships", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.motion_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No cam/ring motion data available", ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No cam/ring motion data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Cam and Ring Motion Relationships")
 
         self.motion_fig.tight_layout()
@@ -1262,30 +1662,59 @@ class CamMotionGUI:
         """Update the 2D profiles plot (Tab 3)."""
         self.profiles_fig.clear()
 
-        if result_data.secondary_cam_curves is not None and result_data.secondary_psi is not None:
+        if (
+            result_data.secondary_cam_curves is not None
+            and result_data.secondary_psi is not None
+        ):
             # Create subplots for cam profile and ring profile
             ax1 = self.profiles_fig.add_subplot(121, projection="polar")
             ax2 = self.profiles_fig.add_subplot(122, projection="polar")
 
             # Plot cam profile (polar) - use the theta from cam_curves
-            if "theta" in result_data.secondary_cam_curves and "profile_radius" in result_data.secondary_cam_curves:
+            if (
+                "theta" in result_data.secondary_cam_curves
+                and "profile_radius" in result_data.secondary_cam_curves
+            ):
                 cam_theta_rad = np.radians(result_data.secondary_cam_curves["theta"])
                 cam_radius = result_data.secondary_cam_curves["profile_radius"]
-                ax1.plot(cam_theta_rad, cam_radius, "orange", linewidth=2, label="Cam Profile")
+                ax1.plot(
+                    cam_theta_rad,
+                    cam_radius,
+                    "orange",
+                    linewidth=2,
+                    label="Cam Profile",
+                )
                 ax1.set_title("Cam Profile (Polar)", pad=20)
                 ax1.grid(True)
                 ax1.set_ylim(0, max(cam_radius) * 1.1)  # Set appropriate radial limits
 
             # Plot ring profile (polar)
-            ax2.plot(result_data.secondary_psi, result_data.secondary_R_psi, "purple", linewidth=2, label="Ring Profile")
+            ax2.plot(
+                result_data.secondary_psi,
+                result_data.secondary_R_psi,
+                "purple",
+                linewidth=2,
+                label="Ring Profile",
+            )
             ax2.set_title("Ring Profile (Polar)", pad=20)
             ax2.grid(True)
-            ax2.set_ylim(0, max(result_data.secondary_R_psi) * 1.1)  # Set appropriate radial limits
+            ax2.set_ylim(
+                0, max(result_data.secondary_R_psi) * 1.1,
+            )  # Set appropriate radial limits
 
-            self.profiles_fig.suptitle("Cam and Ring 2D Profiles", fontsize=14, fontweight="bold")
+            self.profiles_fig.suptitle(
+                "Cam and Ring 2D Profiles", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.profiles_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No profile data available", ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No profile data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Cam and Ring 2D Profiles")
 
         self.profiles_fig.tight_layout()
@@ -1295,7 +1724,10 @@ class CamMotionGUI:
         """Update the animation plot (Tab 4)."""
         self.animation_fig.clear()
 
-        if result_data.secondary_psi is not None and result_data.secondary_R_psi is not None:
+        if (
+            result_data.secondary_psi is not None
+            and result_data.secondary_R_psi is not None
+        ):
             # Store animation data
             self.animation_data = result_data
 
@@ -1318,13 +1750,26 @@ class CamMotionGUI:
             except Exception:
                 # Fallback to legacy assembly if framework bundle is unavailable
                 gear = getattr(result_data, "secondary_gear_geometry", None) or {}
-                base_circle_cam = float(gear.get("base_circle_cam", result_data.secondary_base_radius or 20.0))
-                base_circle_ring = float(gear.get("base_circle_ring", (result_data.secondary_base_radius or 20.0) * 1.7))
+                base_circle_cam = float(
+                    gear.get(
+                        "base_circle_cam", result_data.secondary_base_radius or 20.0,
+                    ),
+                )
+                base_circle_ring = float(
+                    gear.get(
+                        "base_circle_ring",
+                        (result_data.secondary_base_radius or 20.0) * 1.7,
+                    ),
+                )
                 z_cam = int(gear.get("z_cam", 20))
                 theta_cam_deg = None
                 if isinstance(result_data.secondary_cam_curves, dict):
                     theta_cam_deg = result_data.secondary_cam_curves.get("theta")
-                theta_cam_rad = np.radians(theta_cam_deg) if theta_cam_deg is not None else np.linspace(0, 2*np.pi, len(result_data.secondary_psi))
+                theta_cam_rad = (
+                    np.radians(theta_cam_deg)
+                    if theta_cam_deg is not None
+                    else np.linspace(0, 2 * np.pi, len(result_data.secondary_psi))
+                )
                 inputs = AssemblyInputs(
                     base_circle_cam=base_circle_cam,
                     base_circle_ring=base_circle_ring,
@@ -1343,23 +1788,41 @@ class CamMotionGUI:
             # Create initial frame directly (we're already on main thread when this is called)
             self._draw_animation_frame(0)
 
-            self.animation_fig.suptitle("Collocation-Based Animation", fontsize=14, fontweight="bold")
+            self.animation_fig.suptitle(
+                "Collocation-Based Animation", fontsize=14, fontweight="bold",
+            )
 
             # Auto-start playback for convenience
             self._play_animation()
         else:
             # Show placeholder with two subplots
             ax1 = self.animation_fig.add_subplot(121, projection="polar")
-            ax1.text(0.5, 0.5, "Full Assembly View\n\nRun optimization to see collocation-based animation",
-                    ha="center", va="center", fontsize=10, transform=ax1.transAxes)
+            ax1.text(
+                0.5,
+                0.5,
+                "Full Assembly View\n\nRun optimization to see collocation-based animation",
+                ha="center",
+                va="center",
+                fontsize=10,
+                transform=ax1.transAxes,
+            )
             ax1.set_title("Full Assembly View")
 
             ax2 = self.animation_fig.add_subplot(122, projection="polar")
-            ax2.text(0.5, 0.5, "Tooth Contact Detail\n\nShows 3-4 teeth at contact point",
-                    ha="center", va="center", fontsize=10, transform=ax2.transAxes)
+            ax2.text(
+                0.5,
+                0.5,
+                "Tooth Contact Detail\n\nShows 3-4 teeth at contact point",
+                ha="center",
+                va="center",
+                fontsize=10,
+                transform=ax2.transAxes,
+            )
             ax2.set_title("Tooth Contact Detail")
 
-            self.animation_fig.suptitle("Collocation-Based Animation", fontsize=14, fontweight="bold")
+            self.animation_fig.suptitle(
+                "Collocation-Based Animation", fontsize=14, fontweight="bold",
+            )
 
         self.animation_fig.tight_layout()
         self.animation_canvas.draw()
@@ -1414,7 +1877,9 @@ class CamMotionGUI:
         if self._anim_rmax is None:
             self._anim_rmax = 100.0
         ax.set_ylim(0, self._anim_rmax)
-        ax.set_title(f"Full Assembly - Frame {frame_index + 1}/{total_frames}\nθ = {np.degrees(current_theta):.1f}°")
+        ax.set_title(
+            f"Full Assembly - Frame {frame_index + 1}/{total_frames}\nθ = {np.degrees(current_theta):.1f}°",
+        )
 
         # Draw ring gear (fixed, centered): phase-2 profile directly
         ring_psi = self.animation_data.secondary_psi
@@ -1423,18 +1888,30 @@ class CamMotionGUI:
 
         # Draw 3 planet teeth using assembly transform
         st = self.animation_state
-        if st is not None and isinstance(self.animation_data.secondary_gear_geometry, dict):
+        if st is not None and isinstance(
+            self.animation_data.secondary_gear_geometry, dict,
+        ):
             flanks = self.animation_data.secondary_gear_geometry.get("flanks")
             drew_planet = False
             if isinstance(flanks, dict) and ("tooth" in flanks):
-                m0 = int(round(st.z_cam * st.planet_spin_angle[self.animation_frame_index] / (2*np.pi)))
+                m0 = int(
+                    round(
+                        st.z_cam
+                        * st.planet_spin_angle[self.animation_frame_index]
+                        / (2 * np.pi),
+                    ),
+                )
                 for dm, color in [(-1, "b-"), (0, "b-"), (1, "b-")]:
                     idx = m0 + dm
                     tooth = flanks.get("tooth")
                     if isinstance(tooth, dict):
                         tooth_theta = np.asarray(tooth.get("theta"))
                         tooth_r = np.asarray(tooth.get("r"))
-                        if tooth_theta is not None and tooth_r is not None and len(tooth_theta) > 0:
+                        if (
+                            tooth_theta is not None
+                            and tooth_r is not None
+                            and len(tooth_theta) > 0
+                        ):
                             thw, rw = transform_to_world_polar(
                                 tooth_theta,
                                 tooth_r,
@@ -1444,10 +1921,18 @@ class CamMotionGUI:
                                 idx,
                                 st.z_cam,
                             )
-                            ax.plot(thw, rw, color, linewidth=2, label="Cam Teeth" if dm == 0 else None)
+                            ax.plot(
+                                thw,
+                                rw,
+                                color,
+                                linewidth=2,
+                                label="Cam Teeth" if dm == 0 else None,
+                            )
                             drew_planet = True
             # Fallback: draw cam pitch profile aligned as a single body if no explicit tooth data
-            if not drew_planet and isinstance(self.animation_data.secondary_cam_curves, dict):
+            if not drew_planet and isinstance(
+                self.animation_data.secondary_cam_curves, dict,
+            ):
                 cam_theta_deg = self.animation_data.secondary_cam_curves.get("theta")
                 cam_r = self.animation_data.secondary_cam_curves.get("profile_radius")
                 if cam_theta_deg is not None and cam_r is not None:
@@ -1465,8 +1950,14 @@ class CamMotionGUI:
 
         # Draw contact point
         # Contact from phase-2 data directly
-        contact_radius = float(self.animation_state.contact_radius[self.animation_frame_index]) if self.animation_state is not None else float(np.mean(self.animation_data.secondary_R_psi))
-        ax.plot(current_theta, contact_radius, "go", markersize=8, label="Contact Point")
+        contact_radius = (
+            float(self.animation_state.contact_radius[self.animation_frame_index])
+            if self.animation_state is not None
+            else float(np.mean(self.animation_data.secondary_R_psi))
+        )
+        ax.plot(
+            current_theta, contact_radius, "go", markersize=8, label="Contact Point",
+        )
 
         # Add grid and legend
         ax.grid(True, alpha=0.3)
@@ -1479,29 +1970,45 @@ class CamMotionGUI:
         if self._anim_rmax is None:
             self._anim_rmax = 100.0
         ax.set_ylim(0, self._anim_rmax)
-        ax.set_xlim(current_theta - detail_angle_range, current_theta + detail_angle_range)
+        ax.set_xlim(
+            current_theta - detail_angle_range, current_theta + detail_angle_range,
+        )
         ax.set_title(f"Tooth Contact Detail - Frame {frame_index + 1}/{total_frames}")
 
         # Draw ring gear teeth in detail region
         ring_psi = self.animation_data.secondary_psi
         ring_R_psi = self.animation_data.secondary_R_psi
-        mask = (ring_psi >= current_theta - detail_angle_range) & (ring_psi <= current_theta + detail_angle_range)
+        mask = (ring_psi >= current_theta - detail_angle_range) & (
+            ring_psi <= current_theta + detail_angle_range
+        )
         ax.plot(ring_psi[mask], ring_R_psi[mask], "r-", linewidth=3, label="Ring Teeth")
 
         # Draw cam teeth in detail region using assembly transform
         st = self.animation_state
-        if st is not None and isinstance(self.animation_data.secondary_gear_geometry, dict):
+        if st is not None and isinstance(
+            self.animation_data.secondary_gear_geometry, dict,
+        ):
             flanks = self.animation_data.secondary_gear_geometry.get("flanks")
             drew_planet = False
             if isinstance(flanks, dict) and ("tooth" in flanks):
-                m0 = int(round(st.z_cam * st.planet_spin_angle[self.animation_frame_index] / (2*np.pi)))
+                m0 = int(
+                    round(
+                        st.z_cam
+                        * st.planet_spin_angle[self.animation_frame_index]
+                        / (2 * np.pi),
+                    ),
+                )
                 for dm, color in [(-1, "b-"), (0, "b-"), (1, "b-")]:
                     idx = m0 + dm
                     tooth = flanks.get("tooth")
                     if isinstance(tooth, dict):
                         tooth_theta = np.asarray(tooth.get("theta"))
                         tooth_r = np.asarray(tooth.get("r"))
-                        if tooth_theta is not None and tooth_r is not None and len(tooth_theta) > 0:
+                        if (
+                            tooth_theta is not None
+                            and tooth_r is not None
+                            and len(tooth_theta) > 0
+                        ):
                             thw, rw = transform_to_world_polar(
                                 tooth_theta,
                                 tooth_r,
@@ -1511,10 +2018,20 @@ class CamMotionGUI:
                                 idx,
                                 st.z_cam,
                             )
-                            maskw = (thw >= current_theta - detail_angle_range) & (thw <= current_theta + detail_angle_range)
-                            ax.plot(thw[maskw], rw[maskw], color, linewidth=2, label="Cam Teeth" if dm == 0 else None)
+                            maskw = (thw >= current_theta - detail_angle_range) & (
+                                thw <= current_theta + detail_angle_range
+                            )
+                            ax.plot(
+                                thw[maskw],
+                                rw[maskw],
+                                color,
+                                linewidth=2,
+                                label="Cam Teeth" if dm == 0 else None,
+                            )
                             drew_planet = True
-            if not drew_planet and isinstance(self.animation_data.secondary_cam_curves, dict):
+            if not drew_planet and isinstance(
+                self.animation_data.secondary_cam_curves, dict,
+            ):
                 cam_theta_deg = self.animation_data.secondary_cam_curves.get("theta")
                 cam_r = self.animation_data.secondary_cam_curves.get("profile_radius")
                 if cam_theta_deg is not None and cam_r is not None:
@@ -1528,12 +2045,22 @@ class CamMotionGUI:
                         0,
                         st.z_cam,
                     )
-                    maskw = (thw >= current_theta - detail_angle_range) & (thw <= current_theta + detail_angle_range)
-                    ax.plot(thw[maskw], rw[maskw], "b-", linewidth=2, label="Cam Profile")
+                    maskw = (thw >= current_theta - detail_angle_range) & (
+                        thw <= current_theta + detail_angle_range
+                    )
+                    ax.plot(
+                        thw[maskw], rw[maskw], "b-", linewidth=2, label="Cam Profile",
+                    )
 
         # Highlight the exact contact point
-        contact_radius = float(self.animation_state.contact_radius[self.animation_frame_index]) if self.animation_state is not None else float(np.mean(self.animation_data.secondary_R_psi))
-        ax.plot(current_theta, contact_radius, "go", markersize=10, label="Contact Point")
+        contact_radius = (
+            float(self.animation_state.contact_radius[self.animation_frame_index])
+            if self.animation_state is not None
+            else float(np.mean(self.animation_data.secondary_R_psi))
+        )
+        ax.plot(
+            current_theta, contact_radius, "go", markersize=10, label="Contact Point",
+        )
 
         # Add grid and legend
         ax.grid(True, alpha=0.3)
@@ -1549,10 +2076,19 @@ class CamMotionGUI:
         if hasattr(self, "animation_data"):
             rod_length = 25.0  # Fixed connecting rod length for phase 2 simplification
             # Simple connecting rod representation
-            ax.plot([0, 10], [position, position + 5], "g-", linewidth=2, label="Connecting Rod")
+            ax.plot(
+                [0, 10],
+                [position, position + 5],
+                "g-",
+                linewidth=2,
+                label="Connecting Rod",
+            )
 
         # Draw cam (simplified representation)
-        if hasattr(self, "animation_data") and self.animation_data.secondary_base_radius is not None:
+        if (
+            hasattr(self, "animation_data")
+            and self.animation_data.secondary_base_radius is not None
+        ):
             base_radius = self.animation_data.secondary_base_radius
             cam_x = base_radius * np.cos(np.radians(theta))
             cam_y = base_radius * np.sin(np.radians(theta))
@@ -1564,9 +2100,10 @@ class CamMotionGUI:
         """Update the crank center optimization plot (Tab 5)."""
         self.tertiary_fig.clear()
 
-        if (result_data.tertiary_crank_center_x is not None and
-            result_data.tertiary_torque_output is not None):
-
+        if (
+            result_data.tertiary_crank_center_x is not None
+            and result_data.tertiary_torque_output is not None
+        ):
             # Create subplots for torque and side-loading
             ax1 = self.tertiary_fig.add_subplot(221)
             ax2 = self.tertiary_fig.add_subplot(222)
@@ -1574,8 +2111,13 @@ class CamMotionGUI:
             ax4 = self.tertiary_fig.add_subplot(224)
 
             # Plot 1: Crank center position
-            ax1.plot(result_data.tertiary_crank_center_x, result_data.tertiary_crank_center_y,
-                    "ro", markersize=12, label="Optimized Position")
+            ax1.plot(
+                result_data.tertiary_crank_center_x,
+                result_data.tertiary_crank_center_y,
+                "ro",
+                markersize=12,
+                label="Optimized Position",
+            )
             ax1.axhline(y=0, color="k", linestyle="--", alpha=0.3)
             ax1.axvline(x=0, color="k", linestyle="--", alpha=0.3)
             ax1.set_xlabel("X Position (mm)")
@@ -1630,15 +2172,28 @@ Side-Loading:
   Total Penalty: {result_data.tertiary_side_load_penalty:.2f} N
   Max Side Load: {result_data.tertiary_max_side_load:.2f} N
             """
-            ax4.text(0.1, 0.5, summary_text, fontsize=10, family="monospace",
-                    verticalalignment="center")
+            ax4.text(
+                0.1,
+                0.5,
+                summary_text,
+                fontsize=10,
+                family="monospace",
+                verticalalignment="center",
+            )
 
-            self.tertiary_fig.suptitle("Crank Center Optimization (Run 3)",
-                                       fontsize=14, fontweight="bold")
+            self.tertiary_fig.suptitle(
+                "Crank Center Optimization (Run 3)", fontsize=14, fontweight="bold",
+            )
         else:
             ax = self.tertiary_fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No crank center optimization data available",
-                   ha="center", va="center", fontsize=12)
+            ax.text(
+                0.5,
+                0.5,
+                "No crank center optimization data available",
+                ha="center",
+                va="center",
+                fontsize=12,
+            )
             ax.set_title("Crank Center Optimization")
 
         self.tertiary_fig.tight_layout()
@@ -1683,7 +2238,9 @@ Side-Loading:
         self.animation_frame_index = (self.animation_frame_index + 1) % total_frames
 
         # Schedule next frame
-        delay = int(1000 / (30 * self.variables["animation_speed"].get()))  # 30 FPS base
+        delay = int(
+            1000 / (30 * self.variables["animation_speed"].get()),
+        )  # 30 FPS base
         self.animation_timer = self.root.after(delay, self._animate_next_frame)
 
     def _pause_animation(self):
@@ -1708,6 +2265,7 @@ Side-Loading:
 
         try:
             from tkinter import filedialog
+
             filename = filedialog.asksaveasfilename(
                 defaultextension=".json",
                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
@@ -1716,14 +2274,27 @@ Side-Loading:
 
             if filename:
                 import json
+
                 # Convert numpy arrays to lists for JSON serialization
                 result_dict = {
-                    "primary_theta": self.unified_result.primary_theta.tolist() if self.unified_result.primary_theta is not None else None,
-                    "primary_position": self.unified_result.primary_position.tolist() if self.unified_result.primary_position is not None else None,
-                    "primary_velocity": self.unified_result.primary_velocity.tolist() if self.unified_result.primary_velocity is not None else None,
-                    "primary_acceleration": self.unified_result.primary_acceleration.tolist() if self.unified_result.primary_acceleration is not None else None,
-                    "secondary_psi": self.unified_result.secondary_psi.tolist() if self.unified_result.secondary_psi is not None else None,
-                    "secondary_R_psi": self.unified_result.secondary_R_psi.tolist() if self.unified_result.secondary_R_psi is not None else None,
+                    "primary_theta": self.unified_result.primary_theta.tolist()
+                    if self.unified_result.primary_theta is not None
+                    else None,
+                    "primary_position": self.unified_result.primary_position.tolist()
+                    if self.unified_result.primary_position is not None
+                    else None,
+                    "primary_velocity": self.unified_result.primary_velocity.tolist()
+                    if self.unified_result.primary_velocity is not None
+                    else None,
+                    "primary_acceleration": self.unified_result.primary_acceleration.tolist()
+                    if self.unified_result.primary_acceleration is not None
+                    else None,
+                    "secondary_psi": self.unified_result.secondary_psi.tolist()
+                    if self.unified_result.secondary_psi is not None
+                    else None,
+                    "secondary_R_psi": self.unified_result.secondary_R_psi.tolist()
+                    if self.unified_result.secondary_R_psi is not None
+                    else None,
                     "secondary_base_radius": self.unified_result.secondary_base_radius,
                     "secondary_rod_length": 25.0,  # Fixed connecting rod length for phase 2 simplification
                     "total_solve_time": self.unified_result.total_solve_time,
@@ -1774,7 +2345,7 @@ Side-Loading:
         self.variables["minimize_combustion_side_load"].set(True)
         self.variables["minimize_torque_ripple"].set(True)
         self.variables["maximize_power_output"].set(True)
-        
+
         # Reset CasADi optimization parameters
         self.variables["use_casadi_optimizer"].set(False)
         self.variables["enable_warmstart"].set(True)
@@ -1796,77 +2367,81 @@ Side-Loading:
     def _show_detailed_analysis(self, result_data):
         """Show detailed per-phase analysis in console output."""
         try:
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("DETAILED OPTIMIZATION ANALYSIS")
-            print("="*60)
-            
+            print("=" * 60)
+
             # Phase 1 Analysis
-            p1_analysis = getattr(result_data, 'primary_ipopt_analysis', None)
-            print(f"\nPhase 1 (Thermal Efficiency):")
+            p1_analysis = getattr(result_data, "primary_ipopt_analysis", None)
+            print("\nPhase 1 (Thermal Efficiency):")
             if p1_analysis:
                 print(f"  MA57 Readiness: {p1_analysis.grade.upper()}")
                 print(f"  Reasons: {', '.join(p1_analysis.reasons)}")
                 print(f"  Suggested Action: {p1_analysis.suggested_action}")
-                if 'iterations' in p1_analysis.stats:
+                if "iterations" in p1_analysis.stats:
                     print(f"  Iterations: {p1_analysis.stats['iterations']}")
-                if 'solve_time' in p1_analysis.stats:
+                if "solve_time" in p1_analysis.stats:
                     print(f"  Solve Time: {p1_analysis.stats['solve_time']:.3f}s")
             else:
                 print("  Analysis: Not available (thermal efficiency adapter)")
-            
+
             # Phase 2 Analysis
-            p2_analysis = getattr(result_data, 'secondary_ipopt_analysis', None)
-            print(f"\nPhase 2 (Litvin/Cam-Ring):")
+            p2_analysis = getattr(result_data, "secondary_ipopt_analysis", None)
+            print("\nPhase 2 (Litvin/Cam-Ring):")
             if p2_analysis:
                 print(f"  MA57 Readiness: {p2_analysis.grade.upper()}")
                 print(f"  Reasons: {', '.join(p2_analysis.reasons)}")
                 print(f"  Suggested Action: {p2_analysis.suggested_action}")
-                if 'iterations' in p2_analysis.stats:
+                if "iterations" in p2_analysis.stats:
                     print(f"  Iterations: {p2_analysis.stats['iterations']}")
-                if 'solve_time' in p2_analysis.stats:
+                if "solve_time" in p2_analysis.stats:
                     print(f"  Solve Time: {p2_analysis.stats['solve_time']:.3f}s")
             else:
                 print("  Analysis: Not available")
-            
+
             # Phase 3 Analysis
-            p3_analysis = getattr(result_data, 'tertiary_ipopt_analysis', None)
-            print(f"\nPhase 3 (Crank Center):")
+            p3_analysis = getattr(result_data, "tertiary_ipopt_analysis", None)
+            print("\nPhase 3 (Crank Center):")
             if p3_analysis:
                 print(f"  MA57 Readiness: {p3_analysis.grade.upper()}")
                 print(f"  Reasons: {', '.join(p3_analysis.reasons)}")
                 print(f"  Suggested Action: {p3_analysis.suggested_action}")
-                if 'iterations' in p3_analysis.stats:
+                if "iterations" in p3_analysis.stats:
                     print(f"  Iterations: {p3_analysis.stats['iterations']}")
-                if 'solve_time' in p3_analysis.stats:
+                if "solve_time" in p3_analysis.stats:
                     print(f"  Solve Time: {p3_analysis.stats['solve_time']:.3f}s")
             else:
                 print("  Analysis: Not available")
-            
+
             # Overall Summary
-            print(f"\nOverall Summary:")
+            print("\nOverall Summary:")
             print(f"  Total Solve Time: {result_data.total_solve_time:.3f}s")
             print(f"  Optimization Method: {result_data.optimization_method}")
-            
+
             # Count phases with analysis
-            analysis_count = sum(1 for analysis in [p1_analysis, p2_analysis, p3_analysis] if analysis is not None)
+            analysis_count = sum(
+                1
+                for analysis in [p1_analysis, p2_analysis, p3_analysis]
+                if analysis is not None
+            )
             print(f"  Phases with Analysis: {analysis_count}/3")
-            
-            print("="*60)
-            
+
+            print("=" * 60)
+
         except Exception as e:
             print(f"DEBUG: Detailed analysis display failed: {e}")
 
     def _show_ma57_readiness(self):
         """Analyze all optimization phases and show comprehensive MA57 readiness."""
         try:
-            if not hasattr(self, 'unified_result') or not self.unified_result:
+            if not hasattr(self, "unified_result") or not self.unified_result:
                 return
-            
+
             # Extract analysis from all phases
-            p1_analysis = getattr(self.unified_result, 'primary_ipopt_analysis', None)
-            p2_analysis = getattr(self.unified_result, 'secondary_ipopt_analysis', None)
-            p3_analysis = getattr(self.unified_result, 'tertiary_ipopt_analysis', None)
-            
+            p1_analysis = getattr(self.unified_result, "primary_ipopt_analysis", None)
+            p2_analysis = getattr(self.unified_result, "secondary_ipopt_analysis", None)
+            p3_analysis = getattr(self.unified_result, "tertiary_ipopt_analysis", None)
+
             # Display each phase separately
             status_lines = []
             if p1_analysis:
@@ -1875,7 +2450,7 @@ Side-Loading:
                 status_lines.append(f"P2 MA57: {p2_analysis.grade.upper()}")
             if p3_analysis:
                 status_lines.append(f"P3 MA57: {p3_analysis.grade.upper()}")
-            
+
             # Update status bar with all three phases
             if status_lines:
                 current_status = self.status_var.get()
@@ -1884,7 +2459,7 @@ Side-Loading:
                     current_status = current_status.split(" | MA57")[0]
                 grade_info = " | " + " | ".join(status_lines)
                 self.status_var.set(current_status + grade_info)
-            
+
             # Log detailed analysis for debugging
             print("DEBUG: Multi-phase MA57 readiness analysis:")
             if p1_analysis:
@@ -1902,14 +2477,15 @@ Side-Loading:
         """Run quick diagnostics: residuals and MA57 readiness from last run."""
         try:
             # Ensure we have results
-            if not hasattr(self, 'unified_result') or self.unified_result is None:
+            if not hasattr(self, "unified_result") or self.unified_result is None:
                 self.status_var.set("No results to diagnose. Run optimization first.")
                 return
 
             # Build or reuse SolveReport
             try:
                 from campro.api.adapters import unified_data_to_solve_report
-                sr = getattr(self, 'solve_report', None)
+
+                sr = getattr(self, "solve_report", None)
                 if sr is None:
                     sr = unified_data_to_solve_report(self.unified_result)
                     self.solve_report = sr
@@ -1919,12 +2495,12 @@ Side-Loading:
 
             # Determine Ipopt log path for analysis
             ipopt_log = None
-            if sr and getattr(sr, 'artifacts', None):
+            if sr and getattr(sr, "artifacts", None):
                 try:
-                    ipopt_log = sr.artifacts.get('ipopt_log')
+                    ipopt_log = sr.artifacts.get("ipopt_log")
                 except Exception:
                     ipopt_log = None
-            if not ipopt_log and hasattr(self, 'latest_ipopt_log'):
+            if not ipopt_log and hasattr(self, "latest_ipopt_log"):
                 ipopt_log = self.latest_ipopt_log
 
             # Analyze Ipopt output heuristically (stats may be empty)
@@ -1940,9 +2516,14 @@ Side-Loading:
                 lines.append(f"Run ID: {getattr(sr, 'run_id', 'n/a')}")
                 lines.append(f"Status: {getattr(sr, 'status', 'n/a')}")
                 lines.append(f"Iterations: {getattr(sr, 'n_iter', 0)}")
-                if getattr(sr, 'residuals', None):
+                if getattr(sr, "residuals", None):
                     # Show a few key residuals
-                    keys = ["primal_inf", "dual_inf", "kkt_error", "constraint_violation"]
+                    keys = [
+                        "primal_inf",
+                        "dual_inf",
+                        "kkt_error",
+                        "constraint_violation",
+                    ]
                     shown = []
                     for k in keys:
                         if k in sr.residuals:
@@ -1988,7 +2569,9 @@ Side-Loading:
                 current = self.status_var.get()
                 if " | Diagnose:" in current:
                     current = current.split(" | Diagnose:")[0]
-                self.status_var.set(current + f" | Diagnose: MA57 {readiness.grade.upper()}")
+                self.status_var.set(
+                    current + f" | Diagnose: MA57 {readiness.grade.upper()}",
+                )
         except Exception as e:
             try:
                 messagebox.showwarning("NLP Diagnostics", f"Diagnostics failed: {e}")

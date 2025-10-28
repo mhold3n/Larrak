@@ -17,6 +17,3 @@ def load_cfg(path: str | Path) -> Dict[str, Any]:
     if not isinstance(cfg, dict):
         raise ValueError("Configuration root must be a mapping")
     return cfg
-
-
-

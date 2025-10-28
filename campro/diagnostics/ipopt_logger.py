@@ -7,8 +7,9 @@ basic statistics from the log file when available.
 from pathlib import Path
 from typing import Dict, Optional
 
-from .run_metadata import RUN_ID
 from campro.optimization.ipopt_log_parser import parse_ipopt_log_file
+
+from .run_metadata import RUN_ID
 
 
 def ensure_runs_dir(path: str = "runs") -> str:

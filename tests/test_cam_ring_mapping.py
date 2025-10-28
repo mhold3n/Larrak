@@ -67,7 +67,7 @@ class TestCamRingMapper:
     @pytest.fixture
     def sample_data(self):
         """Create sample data for testing."""
-        theta = np.linspace(0, 2*np.pi, 100)
+        theta = np.linspace(0, 2 * np.pi, 100)
         x_theta = 5.0 * np.sin(theta)  # Simple sinusoidal motion
         return theta, x_theta
 
@@ -134,7 +134,7 @@ class TestCamRingMapper:
 
     def test_design_ring_radius_constant(self, mapper):
         """Test constant ring radius design."""
-        psi = np.linspace(0, 2*np.pi, 50)
+        psi = np.linspace(0, 2 * np.pi, 50)
         R_psi = mapper.design_ring_radius(psi, "constant", base_radius=20.0)
 
         expected = np.full_like(psi, 20.0)
@@ -142,7 +142,7 @@ class TestCamRingMapper:
 
     def test_design_ring_radius_linear(self, mapper):
         """Test linear ring radius design."""
-        psi = np.linspace(0, 2*np.pi, 50)
+        psi = np.linspace(0, 2 * np.pi, 50)
         R_psi = mapper.design_ring_radius(psi, "linear", base_radius=15.0, slope=2.0)
 
         expected = 15.0 + 2.0 * psi
@@ -150,16 +150,17 @@ class TestCamRingMapper:
 
     def test_design_ring_radius_sinusoidal(self, mapper):
         """Test sinusoidal ring radius design."""
-        psi = np.linspace(0, 2*np.pi, 50)
-        R_psi = mapper.design_ring_radius(psi, "sinusoidal",
-                                        base_radius=15.0, amplitude=3.0, frequency=2.0)
+        psi = np.linspace(0, 2 * np.pi, 50)
+        R_psi = mapper.design_ring_radius(
+            psi, "sinusoidal", base_radius=15.0, amplitude=3.0, frequency=2.0,
+        )
 
         expected = 15.0 + 3.0 * np.sin(2.0 * psi)
         np.testing.assert_array_almost_equal(R_psi, expected)
 
     def test_design_ring_radius_custom(self, mapper):
         """Test custom ring radius design."""
-        psi = np.linspace(0, 2*np.pi, 50)
+        psi = np.linspace(0, 2 * np.pi, 50)
 
         def custom_func(psi_vals):
             return 10.0 + psi_vals**2
@@ -171,7 +172,7 @@ class TestCamRingMapper:
 
     def test_design_ring_radius_invalid_type(self, mapper):
         """Test invalid ring design type."""
-        psi = np.linspace(0, 2*np.pi, 10)
+        psi = np.linspace(0, 2 * np.pi, 10)
 
         with pytest.raises(ValueError, match="Unknown design type"):
             mapper.design_ring_radius(psi, "invalid_type")
@@ -179,7 +180,7 @@ class TestCamRingMapper:
     def test_solve_meshing_law(self, mapper, sample_data):
         """Test meshing law solution."""
         theta, x_theta = sample_data
-        psi = np.linspace(0, 2*np.pi, len(theta))
+        psi = np.linspace(0, 2 * np.pi, len(theta))
         rho_c = np.ones_like(theta) * 5.0
         R_psi = np.ones_like(psi) * 10.0
 
@@ -195,7 +196,7 @@ class TestCamRingMapper:
     def test_solve_meshing_law_failure(self, mapper, sample_data):
         """Test meshing law solution failure handling."""
         theta, x_theta = sample_data
-        psi = np.linspace(0, 2*np.pi, len(theta))
+        psi = np.linspace(0, 2 * np.pi, len(theta))
         rho_c = np.ones_like(theta) * 5.0
         R_psi = np.ones_like(psi) * 10.0
 
@@ -216,12 +217,17 @@ class TestCamRingMapper:
     def test_compute_time_kinematics_cam_driven(self, mapper, sample_data):
         """Test time kinematics computation with cam-driven system."""
         theta, x_theta = sample_data
-        psi = np.linspace(0, 2*np.pi, len(theta))
+        psi = np.linspace(0, 2 * np.pi, len(theta))
         rho_c = np.ones_like(theta) * 5.0
         R_psi = np.ones_like(psi) * 10.0
 
         kinematics = mapper.compute_time_kinematics(
-            theta, psi, rho_c, R_psi, driver="cam", omega=2.0,
+            theta,
+            psi,
+            rho_c,
+            R_psi,
+            driver="cam",
+            omega=2.0,
         )
 
         assert "time" in kinematics
@@ -232,12 +238,17 @@ class TestCamRingMapper:
     def test_compute_time_kinematics_ring_driven(self, mapper, sample_data):
         """Test time kinematics computation with ring-driven system."""
         theta, x_theta = sample_data
-        psi = np.linspace(0, 2*np.pi, len(theta))
+        psi = np.linspace(0, 2 * np.pi, len(theta))
         rho_c = np.ones_like(theta) * 5.0
         R_psi = np.ones_like(psi) * 10.0
 
         kinematics = mapper.compute_time_kinematics(
-            theta, psi, rho_c, R_psi, driver="ring", Omega=1.5,
+            theta,
+            psi,
+            rho_c,
+            R_psi,
+            driver="ring",
+            Omega=1.5,
         )
 
         assert "time" in kinematics
@@ -248,7 +259,7 @@ class TestCamRingMapper:
     def test_compute_time_kinematics_invalid_driver(self, mapper, sample_data):
         """Test time kinematics with invalid driver parameters."""
         theta, x_theta = sample_data
-        psi = np.linspace(0, 2*np.pi, len(theta))
+        psi = np.linspace(0, 2 * np.pi, len(theta))
         rho_c = np.ones_like(theta) * 5.0
         R_psi = np.ones_like(psi) * 10.0
 
@@ -267,7 +278,15 @@ class TestCamRingMapper:
         results = mapper.map_linear_to_ring_follower(theta, x_theta, ring_design)
 
         # Check that all required keys are present
-        required_keys = ["theta", "x_theta", "cam_curves", "kappa_c", "rho_c", "psi", "R_psi"]
+        required_keys = [
+            "theta",
+            "x_theta",
+            "cam_curves",
+            "kappa_c",
+            "rho_c",
+            "psi",
+            "R_psi",
+        ]
         for key in required_keys:
             assert key in results
 
@@ -304,7 +323,7 @@ class TestCamRingProcessing:
     @pytest.fixture
     def sample_primary_data(self):
         """Create sample primary optimization data."""
-        time = np.linspace(0, 2*np.pi, 100)
+        time = np.linspace(0, 2 * np.pi, 100)
         position = 5.0 * np.sin(time)
         velocity = 5.0 * np.cos(time)
         acceleration = -5.0 * np.sin(time)
@@ -327,7 +346,10 @@ class TestCamRingProcessing:
         }
 
         results = process_linear_to_ring_follower(
-            sample_primary_data, constraints, {}, {},
+            sample_primary_data,
+            constraints,
+            {},
+            {},
         )
 
         # Check that results contain expected keys
@@ -344,7 +366,9 @@ class TestCamRingProcessing:
         empty_data = {"time": np.array([]), "position": np.array([])}
         constraints = {"ring_design_type": "constant"}
 
-        with pytest.raises(ValueError, match="Primary data must contain time and position"):
+        with pytest.raises(
+            ValueError, match="Primary data must contain time and position",
+        ):
             process_linear_to_ring_follower(empty_data, constraints, {}, {})
 
     def test_process_ring_optimization(self, sample_primary_data):
@@ -356,7 +380,10 @@ class TestCamRingProcessing:
         targets = {"objective": "minimize_ring_size"}
 
         results = process_ring_optimization(
-            sample_primary_data, constraints, {}, targets,
+            sample_primary_data,
+            constraints,
+            {},
+            targets,
         )
 
         assert "optimization_objective" in results
@@ -381,7 +408,10 @@ class TestCamRingProcessing:
         }
 
         results = process_multi_objective_ring_design(
-            sample_primary_data, constraints, {}, targets,
+            sample_primary_data,
+            constraints,
+            {},
+            targets,
         )
 
         assert "multi_objective_score" in results
@@ -413,7 +443,8 @@ class TestCamRingProcessing:
     def test_create_constant_ring_design(self, sample_primary_data):
         """Test constant ring design creation."""
         results = create_constant_ring_design(
-            sample_primary_data, ring_radius=25.0,
+            sample_primary_data,
+            ring_radius=25.0,
         )
 
         # Check that ring radius is approximately constant
@@ -437,7 +468,7 @@ class TestIntegration:
     def test_end_to_end_mapping(self):
         """Test complete end-to-end mapping from linear follower to ring design."""
         # Create a realistic linear follower motion law
-        theta = np.linspace(0, 2*np.pi, 200)
+        theta = np.linspace(0, 2 * np.pi, 200)
         x_theta = 8.0 * (1 - np.cos(theta))  # Simple harmonic motion
 
         # Create mapper with realistic parameters
@@ -488,11 +519,11 @@ class TestIntegration:
 
         # Mock primary result
         primary_data = {
-            "time": np.linspace(0, 2*np.pi, 100),
-            "position": 5.0 * np.sin(np.linspace(0, 2*np.pi, 100)),
-            "velocity": 5.0 * np.cos(np.linspace(0, 2*np.pi, 100)),
-            "acceleration": -5.0 * np.sin(np.linspace(0, 2*np.pi, 100)),
-            "control": -5.0 * np.cos(np.linspace(0, 2*np.pi, 100)),
+            "time": np.linspace(0, 2 * np.pi, 100),
+            "position": 5.0 * np.sin(np.linspace(0, 2 * np.pi, 100)),
+            "velocity": 5.0 * np.cos(np.linspace(0, 2 * np.pi, 100)),
+            "acceleration": -5.0 * np.sin(np.linspace(0, 2 * np.pi, 100)),
+            "control": -5.0 * np.cos(np.linspace(0, 2 * np.pi, 100)),
         }
 
         # Store primary result

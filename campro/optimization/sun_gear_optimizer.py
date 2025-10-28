@@ -125,26 +125,32 @@ class SunGearOptimizationTargets:
 class SunGearOptimizer(BaseOptimizer):
     """
     Sun gear system optimizer for cam-ring systems.
-    
+
     This optimizer introduces a sun gear between the cam and ring follower
     to eliminate interference constraints and enable optimal journal placement
     with back rotation capabilities.
     """
 
-    def __init__(self, name: str = "SunGearOptimizer",
-                 settings: Optional[CollocationSettings] = None):
+    def __init__(
+        self,
+        name: str = "SunGearOptimizer",
+        settings: Optional[CollocationSettings] = None,
+    ):
         super().__init__(name)
         self.settings = settings or CollocationSettings()
         self.constraints = SunGearOptimizationConstraints()
         self.targets = SunGearOptimizationTargets()
         self._is_configured = True
 
-    def configure(self, constraints: Optional[SunGearOptimizationConstraints] = None,
-                 targets: Optional[SunGearOptimizationTargets] = None,
-                 **kwargs) -> None:
+    def configure(
+        self,
+        constraints: Optional[SunGearOptimizationConstraints] = None,
+        targets: Optional[SunGearOptimizationTargets] = None,
+        **kwargs,
+    ) -> None:
         """
         Configure the optimizer.
-        
+
         Parameters
         ----------
         constraints : SunGearOptimizationConstraints, optional
@@ -167,13 +173,16 @@ class SunGearOptimizer(BaseOptimizer):
         self._is_configured = True
         log.info(f"Configured {self.name} with sun gear constraints and targets")
 
-    def optimize(self, primary_data: Dict[str, np.ndarray],
-                secondary_data: Dict[str, np.ndarray],
-                initial_guess: Optional[Dict[str, float]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        primary_data: Dict[str, np.ndarray],
+        secondary_data: Dict[str, np.ndarray],
+        initial_guess: Optional[Dict[str, float]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Optimize sun gear system parameters.
-        
+
         Parameters
         ----------
         primary_data : Dict[str, np.ndarray]
@@ -184,7 +193,7 @@ class SunGearOptimizer(BaseOptimizer):
             Initial parameter values
         **kwargs
             Additional optimization parameters
-            
+
         Returns
         -------
         OptimizationResult
@@ -215,36 +224,71 @@ class SunGearOptimizer(BaseOptimizer):
             optimized_params = secondary_data.get("optimized_parameters", {})
 
             if len(theta) == 0 or len(x_theta) == 0:
-                raise ValueError("Primary data must contain cam_angle and position arrays")
+                raise ValueError(
+                    "Primary data must contain cam_angle and position arrays",
+                )
 
             # Set up initial guess
             if initial_guess is None:
-                initial_guess = self._get_default_initial_guess(primary_data, secondary_data)
+                initial_guess = self._get_default_initial_guess(
+                    primary_data, secondary_data,
+                )
 
             log.info(f"Initial guess: {initial_guess}")
 
             # Define optimization variables
-            param_names = ["sun_gear_radius", "ring_gear_radius", "gear_ratio",
-                          "journal_offset_x", "journal_offset_y", "max_back_rotation"]
+            param_names = [
+                "sun_gear_radius",
+                "ring_gear_radius",
+                "gear_ratio",
+                "journal_offset_x",
+                "journal_offset_y",
+                "max_back_rotation",
+            ]
             initial_params = np.array([initial_guess[name] for name in param_names])
 
             # Define parameter bounds
             bounds = [
-                (self.constraints.sun_gear_radius_min, self.constraints.sun_gear_radius_max),
-                (self.constraints.ring_gear_radius_min, self.constraints.ring_gear_radius_max),
+                (
+                    self.constraints.sun_gear_radius_min,
+                    self.constraints.sun_gear_radius_max,
+                ),
+                (
+                    self.constraints.ring_gear_radius_min,
+                    self.constraints.ring_gear_radius_max,
+                ),
                 (self.constraints.min_gear_ratio, self.constraints.max_gear_ratio),
-                (-self.constraints.journal_offset_max, self.constraints.journal_offset_max),
-                (-self.constraints.journal_offset_max, self.constraints.journal_offset_max),
-                (self.constraints.min_back_rotation, self.constraints.max_back_rotation),
+                (
+                    -self.constraints.journal_offset_max,
+                    self.constraints.journal_offset_max,
+                ),
+                (
+                    -self.constraints.journal_offset_max,
+                    self.constraints.journal_offset_max,
+                ),
+                (
+                    self.constraints.min_back_rotation,
+                    self.constraints.max_back_rotation,
+                ),
             ]
 
             # Define objective function
             def objective(params):
-                return self._objective_function(params, param_names, theta, x_theta,
-                                              cam_curves, optimized_params, primary_data, secondary_data)
+                return self._objective_function(
+                    params,
+                    param_names,
+                    theta,
+                    x_theta,
+                    cam_curves,
+                    optimized_params,
+                    primary_data,
+                    secondary_data,
+                )
 
             # Define constraints
-            constraints = self._define_constraints(theta, x_theta, cam_curves, optimized_params)
+            constraints = self._define_constraints(
+                theta, x_theta, cam_curves, optimized_params,
+            )
 
             # Perform optimization
             log.info("Starting sun gear parameter optimization...")
@@ -268,8 +312,13 @@ class SunGearOptimizer(BaseOptimizer):
 
                 # Generate final sun gear design
                 final_design = self._generate_final_design(
-                    optimized_params, theta, x_theta, cam_curves, optimized_params,
-                    primary_data, secondary_data,
+                    optimized_params,
+                    theta,
+                    x_theta,
+                    cam_curves,
+                    optimized_params,
+                    primary_data,
+                    secondary_data,
                 )
 
                 # Update result
@@ -289,7 +338,9 @@ class SunGearOptimizer(BaseOptimizer):
                     },
                 }
 
-                log.info(f"Sun gear optimization completed successfully in {optimization_result.nit} iterations")
+                log.info(
+                    f"Sun gear optimization completed successfully in {optimization_result.nit} iterations",
+                )
                 log.info(f"Final objective value: {optimization_result.fun:.6f}")
                 log.info(f"Optimized parameters: {optimized_params}")
 
@@ -300,13 +351,16 @@ class SunGearOptimizer(BaseOptimizer):
                     "optimization_method": "SLSQP",
                     "iterations": optimization_result.nit,
                 }
-                log.error(f"Sun gear optimization failed: {optimization_result.message}")
+                log.error(
+                    f"Sun gear optimization failed: {optimization_result.message}",
+                )
 
         except Exception as e:
             result.status = OptimizationStatus.FAILED
             result.metadata = {"error_message": str(e)}
             log.error(f"Sun gear optimization error: {e}")
             import traceback
+
             log.error(f"Traceback: {traceback.format_exc()}")
 
         finally:
@@ -314,8 +368,9 @@ class SunGearOptimizer(BaseOptimizer):
 
         return result
 
-    def _get_default_initial_guess(self, primary_data: Dict[str, np.ndarray],
-                                 secondary_data: Dict[str, np.ndarray]) -> Dict[str, float]:
+    def _get_default_initial_guess(
+        self, primary_data: Dict[str, np.ndarray], secondary_data: Dict[str, np.ndarray],
+    ) -> Dict[str, float]:
         """Get default initial guess based on previous optimization results."""
         # Use optimized cam parameters from secondary optimization
         optimized_params = secondary_data.get("optimized_parameters", {})
@@ -336,10 +391,17 @@ class SunGearOptimizer(BaseOptimizer):
             "max_back_rotation": np.pi / 4,  # 45 degrees initial back rotation
         }
 
-    def _objective_function(self, params: np.ndarray, param_names: List[str],
-                          theta: np.ndarray, x_theta: np.ndarray,
-                          cam_curves: Dict[str, np.ndarray], optimized_params: Dict[str, float],
-                          primary_data: Dict[str, np.ndarray], secondary_data: Dict[str, np.ndarray]) -> float:
+    def _objective_function(
+        self,
+        params: np.ndarray,
+        param_names: List[str],
+        theta: np.ndarray,
+        x_theta: np.ndarray,
+        cam_curves: Dict[str, np.ndarray],
+        optimized_params: Dict[str, float],
+        primary_data: Dict[str, np.ndarray],
+        secondary_data: Dict[str, np.ndarray],
+    ) -> float:
         """Calculate objective function value for sun gear system."""
         try:
             # Create parameter dictionary
@@ -360,23 +422,32 @@ class SunGearOptimizer(BaseOptimizer):
 
             # System size objective
             if self.targets.minimize_system_size:
-                system_size = sun_gear_params.ring_gear_radius + sun_gear_params.sun_gear_radius
+                system_size = (
+                    sun_gear_params.ring_gear_radius + sun_gear_params.sun_gear_radius
+                )
                 objective += self.targets.system_size_weight * system_size
 
             # Efficiency objective (simplified)
             if self.targets.maximize_efficiency:
                 # Efficiency decreases with gear ratio and back rotation
-                efficiency_penalty = sun_gear_params.gear_ratio * sun_gear_params.max_back_rotation
+                efficiency_penalty = (
+                    sun_gear_params.gear_ratio * sun_gear_params.max_back_rotation
+                )
                 objective += self.targets.efficiency_weight * efficiency_penalty
 
             # Back rotation objective
             if self.targets.minimize_back_rotation:
-                objective += self.targets.back_rotation_weight * sun_gear_params.max_back_rotation
+                objective += (
+                    self.targets.back_rotation_weight
+                    * sun_gear_params.max_back_rotation
+                )
 
             # Gear stress objective (simplified)
             if self.targets.minimize_gear_stress:
                 # Stress increases with gear ratio and decreases with gear size
-                stress_factor = sun_gear_params.gear_ratio / sun_gear_params.sun_gear_radius
+                stress_factor = (
+                    sun_gear_params.gear_ratio / sun_gear_params.sun_gear_radius
+                )
                 objective += self.targets.gear_stress_weight * stress_factor
 
             return objective
@@ -385,44 +456,75 @@ class SunGearOptimizer(BaseOptimizer):
             log.warning(f"Sun gear objective function error: {e}")
             return 1e6  # Large penalty for invalid parameters
 
-    def _define_constraints(self, theta: np.ndarray, x_theta: np.ndarray,
-                          cam_curves: Dict[str, np.ndarray], optimized_params: Dict[str, float]) -> List[Dict]:
+    def _define_constraints(
+        self,
+        theta: np.ndarray,
+        x_theta: np.ndarray,
+        cam_curves: Dict[str, np.ndarray],
+        optimized_params: Dict[str, float],
+    ) -> List[Dict]:
         """Define optimization constraints for sun gear system."""
         constraints = []
 
         # Physical constraint: no interference
         def no_interference_constraint(params):
-            sun_gear_radius, ring_gear_radius, gear_ratio, journal_x, journal_y, back_rotation = params
+            (
+                sun_gear_radius,
+                ring_gear_radius,
+                gear_ratio,
+                journal_x,
+                journal_y,
+                back_rotation,
+            ) = params
 
             # Check clearance between sun gear and ring gear
-            clearance = ring_gear_radius - sun_gear_radius - self.constraints.min_clearance
+            clearance = (
+                ring_gear_radius - sun_gear_radius - self.constraints.min_clearance
+            )
             return clearance
 
-        constraints.append({
-            "type": "ineq",
-            "fun": no_interference_constraint,
-        })
+        constraints.append(
+            {
+                "type": "ineq",
+                "fun": no_interference_constraint,
+            },
+        )
 
         # Physical constraint: gear ratio consistency
         def gear_ratio_constraint(params):
-            sun_gear_radius, ring_gear_radius, gear_ratio, journal_x, journal_y, back_rotation = params
+            (
+                sun_gear_radius,
+                ring_gear_radius,
+                gear_ratio,
+                journal_x,
+                journal_y,
+                back_rotation,
+            ) = params
 
             # Gear ratio should be consistent with radii
             expected_ratio = ring_gear_radius / sun_gear_radius
             ratio_error = abs(gear_ratio - expected_ratio)
             return 1.0 - ratio_error  # Allow 1% error
 
-        constraints.append({
-            "type": "ineq",
-            "fun": gear_ratio_constraint,
-        })
+        constraints.append(
+            {
+                "type": "ineq",
+                "fun": gear_ratio_constraint,
+            },
+        )
 
         return constraints
 
-    def _generate_final_design(self, optimized_params: Dict[str, float],
-                             theta: np.ndarray, x_theta: np.ndarray,
-                             cam_curves: Dict[str, np.ndarray], cam_optimized_params: Dict[str, float],
-                             primary_data: Dict[str, np.ndarray], secondary_data: Dict[str, np.ndarray]) -> Dict[str, Any]:
+    def _generate_final_design(
+        self,
+        optimized_params: Dict[str, float],
+        theta: np.ndarray,
+        x_theta: np.ndarray,
+        cam_curves: Dict[str, np.ndarray],
+        cam_optimized_params: Dict[str, float],
+        primary_data: Dict[str, np.ndarray],
+        secondary_data: Dict[str, np.ndarray],
+    ) -> Dict[str, Any]:
         """Generate final sun gear design with optimized parameters."""
         # Create optimized sun gear parameters
         sun_gear_params = SunGearParameters(
@@ -435,14 +537,16 @@ class SunGearOptimizer(BaseOptimizer):
         )
 
         # Calculate gear teeth based on radii and ratio
-        sun_gear_teeth = int(sun_gear_params.sun_gear_radius * 2)  # Simplified calculation
+        sun_gear_teeth = int(
+            sun_gear_params.sun_gear_radius * 2,
+        )  # Simplified calculation
         ring_gear_teeth = int(sun_gear_teeth * sun_gear_params.gear_ratio)
 
         # Generate complete ring profile (360° coverage guaranteed)
         # Use endpoint=True to ensure exact 360° coverage
-        psi_complete = np.linspace(0, 2*np.pi, len(theta), endpoint=True)
+        psi_complete = np.linspace(0, 2 * np.pi, len(theta), endpoint=True)
         # Ensure the last point is exactly 2π (360°)
-        psi_complete[-1] = 2*np.pi
+        psi_complete[-1] = 2 * np.pi
         R_psi_complete = np.full_like(psi_complete, sun_gear_params.ring_gear_radius)
 
         # Compile final design
@@ -464,7 +568,9 @@ class SunGearOptimizer(BaseOptimizer):
                 "sun_gear_teeth": sun_gear_teeth,
                 "ring_gear_teeth": ring_gear_teeth,
                 "gear_ratio": sun_gear_params.gear_ratio,
-                "back_rotation_capability": sun_gear_params.max_back_rotation * 180 / np.pi,
+                "back_rotation_capability": sun_gear_params.max_back_rotation
+                * 180
+                / np.pi,
             },
         }
 

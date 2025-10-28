@@ -39,4 +39,3 @@ def test_ale_update_conservation_no_flux_no_sources():
     assert abs(M1 - M0) < 1e-12
     assert abs(P1 - P0) < 1e-12
     assert abs(E1 - E0) < 1e-12
-

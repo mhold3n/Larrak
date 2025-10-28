@@ -15,31 +15,46 @@ class ConfigValidator:
     def __init__(self):
         """Initialize configuration validator."""
         self.required_sections = [
-            "geometry", "thermodynamics", "optimization", "bounds",
+            "geometry",
+            "thermodynamics",
+            "optimization",
+            "bounds",
         ]
 
         self.required_geometry = [
-            "bore", "stroke", "compression_ratio", "mass",
+            "bore",
+            "stroke",
+            "compression_ratio",
+            "mass",
         ]
 
         self.required_thermo = [
-            "gamma", "R", "cp",
+            "gamma",
+            "R",
+            "cp",
         ]
 
         self.required_optimization = [
-            "method", "tolerance", "max_iterations",
+            "method",
+            "tolerance",
+            "max_iterations",
         ]
 
         self.required_bounds = [
-            "p_min", "p_max", "T_min", "T_max", "gap_min", "v_max",
+            "p_min",
+            "p_max",
+            "T_min",
+            "T_max",
+            "gap_min",
+            "v_max",
         ]
 
     def validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Validate configuration dictionary.
-        
+
         Args:
             config: Configuration dictionary
-            
+
         Returns:
             Validation results dictionary
         """
@@ -65,7 +80,9 @@ class ConfigValidator:
 
             # Validate thermodynamics parameters
             if "thermodynamics" in config:
-                self._validate_thermodynamics(config["thermodynamics"], validation_results)
+                self._validate_thermodynamics(
+                    config["thermodynamics"], validation_results,
+                )
 
             # Validate optimization parameters
             if "optimization" in config:
@@ -83,9 +100,9 @@ class ConfigValidator:
 
             # Determine overall success
             validation_results["success"] = (
-                len(validation_results["errors"]) == 0 and
-                len(validation_results["missing_sections"]) == 0 and
-                len(validation_results["missing_parameters"]) == 0
+                len(validation_results["errors"]) == 0
+                and len(validation_results["missing_sections"]) == 0
+                and len(validation_results["missing_parameters"]) == 0
             )
 
             if validation_results["success"]:
@@ -95,7 +112,9 @@ class ConfigValidator:
                 if validation_results["errors"]:
                     log.error(f"Configuration errors: {validation_results['errors']}")
                 if validation_results["warnings"]:
-                    log.warning(f"Configuration warnings: {validation_results['warnings']}")
+                    log.warning(
+                        f"Configuration warnings: {validation_results['warnings']}",
+                    )
 
         except Exception as e:
             log.error(f"Configuration validation failed with exception: {e}")
@@ -103,7 +122,9 @@ class ConfigValidator:
 
         return validation_results
 
-    def _validate_sections(self, config: Dict[str, Any], results: Dict[str, Any]) -> None:
+    def _validate_sections(
+        self, config: Dict[str, Any], results: Dict[str, Any],
+    ) -> None:
         """Validate required configuration sections."""
         for section in self.required_sections:
             if section not in config:
@@ -112,18 +133,26 @@ class ConfigValidator:
             elif not isinstance(config[section], dict):
                 results["errors"].append(f"Section '{section}' must be a dictionary")
 
-    def _validate_geometry(self, geometry: Dict[str, Any], results: Dict[str, Any]) -> None:
+    def _validate_geometry(
+        self, geometry: Dict[str, Any], results: Dict[str, Any],
+    ) -> None:
         """Validate geometry parameters."""
         for param in self.required_geometry:
             if param not in geometry:
                 results["missing_parameters"].append(f"geometry.{param}")
-                results["errors"].append(f"Missing required geometry parameter: {param}")
+                results["errors"].append(
+                    f"Missing required geometry parameter: {param}",
+                )
             else:
                 value = geometry[param]
                 if not isinstance(value, (int, float)):
-                    results["errors"].append(f"Geometry parameter '{param}' must be numeric")
+                    results["errors"].append(
+                        f"Geometry parameter '{param}' must be numeric",
+                    )
                 elif value <= 0:
-                    results["errors"].append(f"Geometry parameter '{param}' must be positive")
+                    results["errors"].append(
+                        f"Geometry parameter '{param}' must be positive",
+                    )
 
         # Validate specific geometry constraints
         if "bore" in geometry and "stroke" in geometry:
@@ -148,18 +177,26 @@ class ConfigValidator:
             elif mass > 100.0:  # kg
                 results["warnings"].append("Piston mass is unusually high")
 
-    def _validate_thermodynamics(self, thermo: Dict[str, Any], results: Dict[str, Any]) -> None:
+    def _validate_thermodynamics(
+        self, thermo: Dict[str, Any], results: Dict[str, Any],
+    ) -> None:
         """Validate thermodynamics parameters."""
         for param in self.required_thermo:
             if param not in thermo:
                 results["missing_parameters"].append(f"thermodynamics.{param}")
-                results["errors"].append(f"Missing required thermodynamics parameter: {param}")
+                results["errors"].append(
+                    f"Missing required thermodynamics parameter: {param}",
+                )
             else:
                 value = thermo[param]
                 if not isinstance(value, (int, float)):
-                    results["errors"].append(f"Thermodynamics parameter '{param}' must be numeric")
+                    results["errors"].append(
+                        f"Thermodynamics parameter '{param}' must be numeric",
+                    )
                 elif value <= 0:
-                    results["errors"].append(f"Thermodynamics parameter '{param}' must be positive")
+                    results["errors"].append(
+                        f"Thermodynamics parameter '{param}' must be positive",
+                    )
 
         # Validate specific thermodynamics constraints
         if "gamma" in thermo:
@@ -167,7 +204,9 @@ class ConfigValidator:
             if gamma <= 1.0:
                 results["errors"].append("Heat capacity ratio (gamma) must be > 1.0")
             elif gamma > 2.0:
-                results["warnings"].append("Heat capacity ratio (gamma) is unusually high")
+                results["warnings"].append(
+                    "Heat capacity ratio (gamma) is unusually high",
+                )
 
         if "R" in thermo:
             R = thermo["R"]
@@ -177,41 +216,61 @@ class ConfigValidator:
         if "cp" in thermo:
             cp = thermo["cp"]
             if cp < 500.0 or cp > 2000.0:  # J/(kg·K)
-                results["warnings"].append("Specific heat capacity (cp) is outside typical range")
+                results["warnings"].append(
+                    "Specific heat capacity (cp) is outside typical range",
+                )
 
-    def _validate_optimization(self, opt: Dict[str, Any], results: Dict[str, Any]) -> None:
+    def _validate_optimization(
+        self, opt: Dict[str, Any], results: Dict[str, Any],
+    ) -> None:
         """Validate optimization parameters."""
         for param in self.required_optimization:
             if param not in opt:
                 results["missing_parameters"].append(f"optimization.{param}")
-                results["errors"].append(f"Missing required optimization parameter: {param}")
+                results["errors"].append(
+                    f"Missing required optimization parameter: {param}",
+                )
             else:
                 value = opt[param]
                 if param == "method":
                     if not isinstance(value, str):
                         results["errors"].append("Optimization method must be a string")
                     elif value not in ["hllc", "enhanced_hllc", "roe"]:
-                        results["warnings"].append(f"Unknown optimization method: {value}")
+                        results["warnings"].append(
+                            f"Unknown optimization method: {value}",
+                        )
                 elif param in ["tolerance", "max_iterations"]:
                     if not isinstance(value, (int, float)):
-                        results["errors"].append(f"Optimization parameter '{param}' must be numeric")
+                        results["errors"].append(
+                            f"Optimization parameter '{param}' must be numeric",
+                        )
                     elif value <= 0:
-                        results["errors"].append(f"Optimization parameter '{param}' must be positive")
+                        results["errors"].append(
+                            f"Optimization parameter '{param}' must be positive",
+                        )
 
         # Validate specific optimization constraints
         if "tolerance" in opt:
             tolerance = opt["tolerance"]
             if tolerance < 1e-12:
-                results["warnings"].append("Tolerance is very small, may cause numerical issues")
+                results["warnings"].append(
+                    "Tolerance is very small, may cause numerical issues",
+                )
             elif tolerance > 1e-3:
-                results["warnings"].append("Tolerance is large, may affect solution accuracy")
+                results["warnings"].append(
+                    "Tolerance is large, may affect solution accuracy",
+                )
 
         if "max_iterations" in opt:
             max_iter = opt["max_iterations"]
             if max_iter < 100:
-                results["warnings"].append("Maximum iterations is low, may not converge")
+                results["warnings"].append(
+                    "Maximum iterations is low, may not converge",
+                )
             elif max_iter > 10000:
-                results["warnings"].append("Maximum iterations is high, may take long time")
+                results["warnings"].append(
+                    "Maximum iterations is high, may take long time",
+                )
 
     def _validate_bounds(self, bounds: Dict[str, Any], results: Dict[str, Any]) -> None:
         """Validate bounds parameters."""
@@ -222,9 +281,13 @@ class ConfigValidator:
             else:
                 value = bounds[param]
                 if not isinstance(value, (int, float)):
-                    results["errors"].append(f"Bounds parameter '{param}' must be numeric")
+                    results["errors"].append(
+                        f"Bounds parameter '{param}' must be numeric",
+                    )
                 elif value <= 0:
-                    results["errors"].append(f"Bounds parameter '{param}' must be positive")
+                    results["errors"].append(
+                        f"Bounds parameter '{param}' must be positive",
+                    )
 
         # Validate bounds relationships
         if "p_min" in bounds and "p_max" in bounds:
@@ -239,7 +302,9 @@ class ConfigValidator:
             T_min = bounds["T_min"]
             T_max = bounds["T_max"]
             if T_min >= T_max:
-                results["errors"].append("Temperature minimum must be less than maximum")
+                results["errors"].append(
+                    "Temperature minimum must be less than maximum",
+                )
             elif T_max / T_min > 10:
                 results["warnings"].append("Temperature range is very large")
 
@@ -257,7 +322,9 @@ class ConfigValidator:
             elif v_max > 100.0:  # m/s
                 results["warnings"].append("Maximum velocity is high")
 
-    def _validate_parameter_relationships(self, config: Dict[str, Any], results: Dict[str, Any]) -> None:
+    def _validate_parameter_relationships(
+        self, config: Dict[str, Any], results: Dict[str, Any],
+    ) -> None:
         """Validate relationships between parameters."""
         geometry = config.get("geometry", {})
         thermo = config.get("thermodynamics", {})
@@ -274,7 +341,9 @@ class ConfigValidator:
             max_force = p_max * area
 
             if max_force > 1e6:  # 1 MN
-                results["warnings"].append("Maximum pressure may result in very high forces")
+                results["warnings"].append(
+                    "Maximum pressure may result in very high forces",
+                )
 
         # Check if temperature bounds are reasonable for the thermodynamics
         if "gamma" in thermo and "T_max" in bounds:
@@ -287,7 +356,9 @@ class ConfigValidator:
             elif gamma > 1.4 and T_max < 500:
                 results["warnings"].append("Low temperature for high gamma gas")
 
-    def _generate_recommendations(self, config: Dict[str, Any], results: Dict[str, Any]) -> None:
+    def _generate_recommendations(
+        self, config: Dict[str, Any], results: Dict[str, Any],
+    ) -> None:
         """Generate configuration recommendations."""
         geometry = config.get("geometry", {})
         thermo = config.get("thermodynamics", {})
@@ -300,38 +371,52 @@ class ConfigValidator:
             stroke = geometry["stroke"]
             ratio = bore / stroke
             if ratio < 0.5:
-                results["recommendations"].append("Consider increasing bore/stroke ratio for better performance")
+                results["recommendations"].append(
+                    "Consider increasing bore/stroke ratio for better performance",
+                )
             elif ratio > 2.0:
-                results["recommendations"].append("Consider decreasing bore/stroke ratio for better efficiency")
+                results["recommendations"].append(
+                    "Consider decreasing bore/stroke ratio for better efficiency",
+                )
 
         # Thermodynamics recommendations
         if "gamma" in thermo:
             gamma = thermo["gamma"]
             if gamma < 1.3:
-                results["recommendations"].append("Consider using a gas with higher gamma for better efficiency")
+                results["recommendations"].append(
+                    "Consider using a gas with higher gamma for better efficiency",
+                )
             elif gamma > 1.4:
-                results["recommendations"].append("Consider using a gas with lower gamma for better performance")
+                results["recommendations"].append(
+                    "Consider using a gas with lower gamma for better performance",
+                )
 
         # Optimization recommendations
         if "method" in opt:
             method = opt["method"]
             if method == "hllc":
-                results["recommendations"].append("Consider using 'enhanced_hllc' for better robustness")
+                results["recommendations"].append(
+                    "Consider using 'enhanced_hllc' for better robustness",
+                )
 
         # Bounds recommendations
         if "p_max" in bounds:
             p_max = bounds["p_max"]
             if p_max < 1e6:  # 10 bar
-                results["recommendations"].append("Consider increasing maximum pressure for better performance")
+                results["recommendations"].append(
+                    "Consider increasing maximum pressure for better performance",
+                )
             elif p_max > 1e7:  # 100 bar
-                results["recommendations"].append("Consider decreasing maximum pressure for safety")
+                results["recommendations"].append(
+                    "Consider decreasing maximum pressure for safety",
+                )
 
     def generate_validation_report(self, validation_results: Dict[str, Any]) -> str:
         """Generate detailed validation report.
-        
+
         Args:
             validation_results: Validation results dictionary
-            
+
         Returns:
             Validation report text
         """
@@ -399,4 +484,3 @@ class ConfigValidator:
         report.append("=" * 80)
 
         return "\n".join(report)
-

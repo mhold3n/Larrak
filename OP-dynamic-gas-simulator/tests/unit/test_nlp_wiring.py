@@ -28,5 +28,3 @@ def test_build_nlp_meta_and_objective_terms():
     assert meta.get("dynamic_wall") is True
     assert meta.get("scavenging_states") is True
     assert meta.get("timing_states") is True
-
-

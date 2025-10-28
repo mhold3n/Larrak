@@ -106,7 +106,7 @@ class TestCrankCenterOptimizer:
         self.optimizer = CrankCenterOptimizer()
 
         # Create test motion law data
-        self.theta = np.linspace(0, 2*np.pi, 100)
+        self.theta = np.linspace(0, 2 * np.pi, 100)
         self.primary_data = {
             "theta": self.theta,
             "displacement": 10.0 * np.sin(self.theta),
@@ -156,8 +156,11 @@ class TestCrankCenterOptimizer:
 
     def test_extract_optimization_data(self):
         """Test extraction of optimization data from previous stages."""
-        motion_law_data, load_profile, gear_geometry = self.optimizer._extract_optimization_data(
-            self.primary_data, self.secondary_data,
+        motion_law_data, load_profile, gear_geometry = (
+            self.optimizer._extract_optimization_data(
+                self.primary_data,
+                self.secondary_data,
+            )
         )
 
         # Check motion law data
@@ -184,8 +187,11 @@ class TestCrankCenterOptimizer:
             "acceleration": -10.0 * np.sin(self.theta),
         }
 
-        motion_law_data, load_profile, gear_geometry = self.optimizer._extract_optimization_data(
-            primary_data_no_load, self.secondary_data,
+        motion_law_data, load_profile, gear_geometry = (
+            self.optimizer._extract_optimization_data(
+                primary_data_no_load,
+                self.secondary_data,
+            )
         )
 
         # Should create default load profile
@@ -201,13 +207,18 @@ class TestCrankCenterOptimizer:
             # Missing 'theta'
         }
 
-        with pytest.raises(ValueError, match="Primary data must contain motion law data"):
-            self.optimizer._extract_optimization_data(invalid_primary_data, self.secondary_data)
+        with pytest.raises(
+            ValueError, match="Primary data must contain motion law data",
+        ):
+            self.optimizer._extract_optimization_data(
+                invalid_primary_data, self.secondary_data,
+            )
 
     def test_get_default_initial_guess(self):
         """Test default initial guess generation."""
         initial_guess = self.optimizer._get_default_initial_guess(
-            self.primary_data, self.secondary_data,
+            self.primary_data,
+            self.secondary_data,
         )
 
         assert "crank_center_x" in initial_guess
@@ -264,10 +275,15 @@ class TestCrankCenterOptimizer:
         mock_minimize.return_value = mock_result
 
         # Mock physics model simulations
-        with patch.object(self.optimizer._torque_calculator, "simulate") as mock_torque_sim, \
-             patch.object(self.optimizer._side_load_analyzer, "simulate") as mock_side_sim, \
-             patch.object(self.optimizer._kinematics, "simulate") as mock_kin_sim:
-
+        with (
+            patch.object(
+                self.optimizer._torque_calculator, "simulate",
+            ) as mock_torque_sim,
+            patch.object(
+                self.optimizer._side_load_analyzer, "simulate",
+            ) as mock_side_sim,
+            patch.object(self.optimizer._kinematics, "simulate") as mock_kin_sim,
+        ):
             # Mock successful simulation results
             mock_torque_result = Mock()
             mock_torque_result.is_successful.return_value = True
@@ -331,15 +347,22 @@ class TestCrankCenterOptimizer:
         optimizer = CrankCenterOptimizer()
         optimizer._is_configured = False
 
-        with pytest.raises(RuntimeError, match="Optimizer must be configured before optimization"):
+        with pytest.raises(
+            RuntimeError, match="Optimizer must be configured before optimization",
+        ):
             optimizer.optimize(self.primary_data, self.secondary_data)
 
     def test_objective_function(self):
         """Test objective function calculation."""
         # Mock physics model simulations
-        with patch.object(self.optimizer._torque_calculator, "simulate") as mock_torque_sim, \
-             patch.object(self.optimizer._side_load_analyzer, "simulate") as mock_side_sim:
-
+        with (
+            patch.object(
+                self.optimizer._torque_calculator, "simulate",
+            ) as mock_torque_sim,
+            patch.object(
+                self.optimizer._side_load_analyzer, "simulate",
+            ) as mock_side_sim,
+        ):
             # Mock successful simulation results
             mock_torque_result = Mock()
             mock_torque_result.is_successful.return_value = True
@@ -363,7 +386,12 @@ class TestCrankCenterOptimizer:
 
             # Test parameters
             params = np.array([2.0, -1.0, 55.0, 160.0])
-            param_names = ["crank_center_x", "crank_center_y", "crank_radius", "rod_length"]
+            param_names = [
+                "crank_center_x",
+                "crank_center_y",
+                "crank_radius",
+                "rod_length",
+            ]
 
             gear_geometry = LitvinGearGeometry(
                 base_circle_cam=20.0,
@@ -378,8 +406,11 @@ class TestCrankCenterOptimizer:
 
             # Calculate objective
             objective = self.optimizer._objective_function(
-                params, param_names, self.primary_data,
-                self.primary_data["load_profile"], gear_geometry,
+                params,
+                param_names,
+                self.primary_data,
+                self.primary_data["load_profile"],
+                gear_geometry,
             )
 
             # Check that objective is calculated (should be negative for torque maximization)
@@ -389,14 +420,21 @@ class TestCrankCenterOptimizer:
     def test_objective_function_failed_analysis(self):
         """Test objective function with failed physics analysis."""
         # Mock failed physics model simulations
-        with patch.object(self.optimizer._torque_calculator, "simulate") as mock_torque_sim:
+        with patch.object(
+            self.optimizer._torque_calculator, "simulate",
+        ) as mock_torque_sim:
             mock_torque_result = Mock()
             mock_torque_result.is_successful.return_value = False
             mock_torque_sim.return_value = mock_torque_result
 
             # Test parameters
             params = np.array([2.0, -1.0, 55.0, 160.0])
-            param_names = ["crank_center_x", "crank_center_y", "crank_radius", "rod_length"]
+            param_names = [
+                "crank_center_x",
+                "crank_center_y",
+                "crank_radius",
+                "rod_length",
+            ]
 
             gear_geometry = LitvinGearGeometry(
                 base_circle_cam=20.0,
@@ -411,8 +449,11 @@ class TestCrankCenterOptimizer:
 
             # Calculate objective
             objective = self.optimizer._objective_function(
-                params, param_names, self.primary_data,
-                self.primary_data["load_profile"], gear_geometry,
+                params,
+                param_names,
+                self.primary_data,
+                self.primary_data["load_profile"],
+                gear_geometry,
             )
 
             # Should return large penalty for failed analysis
@@ -432,11 +473,15 @@ class TestCrankCenterOptimizer:
         )
 
         constraints = self.optimizer._define_constraints(
-            self.primary_data, self.primary_data["load_profile"], gear_geometry,
+            self.primary_data,
+            self.primary_data["load_profile"],
+            gear_geometry,
         )
 
         # Should have performance constraints
-        assert len(constraints) >= 2  # At least min torque and max side load constraints
+        assert (
+            len(constraints) >= 2
+        )  # At least min torque and max side load constraints
 
         # Check constraint types
         for constraint in constraints:
@@ -466,10 +511,15 @@ class TestCrankCenterOptimizer:
         gear_geometry.pressure_angle = np.radians(20.0)
 
         # Mock physics model simulations
-        with patch.object(self.optimizer._torque_calculator, "simulate") as mock_torque_sim, \
-             patch.object(self.optimizer._side_load_analyzer, "simulate") as mock_side_sim, \
-             patch.object(self.optimizer._kinematics, "simulate") as mock_kin_sim:
-
+        with (
+            patch.object(
+                self.optimizer._torque_calculator, "simulate",
+            ) as mock_torque_sim,
+            patch.object(
+                self.optimizer._side_load_analyzer, "simulate",
+            ) as mock_side_sim,
+            patch.object(self.optimizer._kinematics, "simulate") as mock_kin_sim,
+        ):
             # Mock successful simulation results
             mock_torque_result = Mock()
             mock_torque_result.is_successful.return_value = True
@@ -502,8 +552,10 @@ class TestCrankCenterOptimizer:
 
             # Generate final design
             final_design = self.optimizer._generate_final_design(
-                optimized_params, self.primary_data,
-                self.primary_data["load_profile"], gear_geometry,
+                optimized_params,
+                self.primary_data,
+                self.primary_data["load_profile"],
+                gear_geometry,
             )
 
             # Check final design structure
@@ -529,7 +581,7 @@ class TestIntegration:
         optimizer = CrankCenterOptimizer()
 
         # Create test data
-        theta = np.linspace(0, 2*np.pi, 50)
+        theta = np.linspace(0, 2 * np.pi, 50)
         primary_data = {
             "theta": theta,
             "displacement": 10.0 * np.sin(theta),
@@ -545,8 +597,11 @@ class TestIntegration:
         }
 
         # Test data extraction
-        motion_law_data, load_profile, gear_geometry = optimizer._extract_optimization_data(
-            primary_data, secondary_data,
+        motion_law_data, load_profile, gear_geometry = (
+            optimizer._extract_optimization_data(
+                primary_data,
+                secondary_data,
+            )
         )
 
         # Test physics model configuration

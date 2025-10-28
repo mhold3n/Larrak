@@ -7,7 +7,9 @@ from CamPro_LitvinPlanetary import (
 
 
 def test_order0_returns_feasible_result():
-    motion = RadialSlotMotion(center_offset_fn=lambda th: 0.0, planet_angle_fn=lambda th: 2.0 * th)
+    motion = RadialSlotMotion(
+        center_offset_fn=lambda th: 0.0, planet_angle_fn=lambda th: 2.0 * th,
+    )
     cfg = GeometrySearchConfig(
         ring_teeth_candidates=[60, 62],
         planet_teeth_candidates=[30, 31],
@@ -22,5 +24,3 @@ def test_order0_returns_feasible_result():
     assert res.feasible is True
     assert res.best_config is not None
     assert res.objective_value is not None
-
-

@@ -1,19 +1,18 @@
-import math
-import os
-
-import numpy as np
 import pytest
 
 
 def _has_casadi():
     try:
         import casadi as _  # noqa: F401
+
         return True
     except Exception:
         return False
 
 
-@pytest.mark.skipif(not _has_casadi(), reason="CasADi not available; feasibility NLP requires Ipopt")
+@pytest.mark.skipif(
+    not _has_casadi(), reason="CasADi not available; feasibility NLP requires Ipopt",
+)
 def test_feasibility_easy_spec_near_zero():
     from campro.diagnostics.feasibility import check_feasibility_nlp
 
@@ -34,11 +33,14 @@ def test_feasibility_easy_spec_near_zero():
     assert rep.max_violation <= 1e-3
 
 
-@pytest.mark.skipif(not _has_casadi(), reason="CasADi not available; progress test relies on Ipopt log")
+@pytest.mark.skipif(
+    not _has_casadi(), reason="CasADi not available; progress test relies on Ipopt log",
+)
 def test_ipopt_progress_smoke_under_100_iters(tmp_path, monkeypatch):
     # Force runs dir to temporary path if environment variable is used; otherwise rely on default
-    from campro.diagnostics.feasibility import check_feasibility_nlp
     from pathlib import Path
+
+    from campro.diagnostics.feasibility import check_feasibility_nlp
     from campro.optimization.ipopt_log_parser import parse_ipopt_log_file
 
     # Use a moderately sized, feasible problem

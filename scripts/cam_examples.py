@@ -86,7 +86,9 @@ def example_cam_with_velocity_limit():
     print("\nResults:")
     print(f"Actual max velocity: {actual_max_velocity:.3f} mm/s")
     print(f"Max acceleration: {max_acceleration:.3f} mm/s²")
-    print(f"Velocity constraint satisfied: {actual_max_velocity <= max_velocity + 1e-6}")
+    print(
+        f"Velocity constraint satisfied: {actual_max_velocity <= max_velocity + 1e-6}",
+    )
 
     return solution
 
@@ -217,16 +219,24 @@ def plot_cam_comparison(solutions_dict, title="Cam Motion Law Comparison"):
         cam_angle = solution["cam_angle"]
 
         # Position
-        axes[0, 0].plot(cam_angle, solution["position"], color=color, label=name, linewidth=2)
+        axes[0, 0].plot(
+            cam_angle, solution["position"], color=color, label=name, linewidth=2,
+        )
 
         # Velocity
-        axes[0, 1].plot(cam_angle, solution["velocity"], color=color, label=name, linewidth=2)
+        axes[0, 1].plot(
+            cam_angle, solution["velocity"], color=color, label=name, linewidth=2,
+        )
 
         # Acceleration
-        axes[1, 0].plot(cam_angle, solution["acceleration"], color=color, label=name, linewidth=2)
+        axes[1, 0].plot(
+            cam_angle, solution["acceleration"], color=color, label=name, linewidth=2,
+        )
 
         # Jerk
-        axes[1, 1].plot(cam_angle, solution["control"], color=color, label=name, linewidth=2)
+        axes[1, 1].plot(
+            cam_angle, solution["control"], color=color, label=name, linewidth=2,
+        )
 
     # Format plots
     for ax in axes.flat:
@@ -326,17 +336,25 @@ def main():
         fig1.savefig(output_dir / "basic_cam_motion.png", dpi=300, bbox_inches="tight")
         print(f"Saved: {output_dir / 'basic_cam_motion.png'}")
 
-        fig2 = plot_single_cam_solution(velocity_limited_sol, "Cam Motion with Velocity Limit")
-        fig2.savefig(output_dir / "velocity_limited_cam.png", dpi=300, bbox_inches="tight")
+        fig2 = plot_single_cam_solution(
+            velocity_limited_sol, "Cam Motion with Velocity Limit",
+        )
+        fig2.savefig(
+            output_dir / "velocity_limited_cam.png", dpi=300, bbox_inches="tight",
+        )
         print(f"Saved: {output_dir / 'velocity_limited_cam.png'}")
 
-        fig3 = plot_single_cam_solution(zero_accel_sol, "Cam Motion with Zero Acceleration Phase")
+        fig3 = plot_single_cam_solution(
+            zero_accel_sol, "Cam Motion with Zero Acceleration Phase",
+        )
         fig3.savefig(output_dir / "zero_accel_cam.png", dpi=300, bbox_inches="tight")
         print(f"Saved: {output_dir / 'zero_accel_cam.png'}")
 
         # Plot comparison
         fig4 = plot_cam_comparison(motion_types_sols, "Cam Motion Law Types Comparison")
-        fig4.savefig(output_dir / "cam_motion_types_comparison.png", dpi=300, bbox_inches="tight")
+        fig4.savefig(
+            output_dir / "cam_motion_types_comparison.png", dpi=300, bbox_inches="tight",
+        )
         print(f"Saved: {output_dir / 'cam_motion_types_comparison.png'}")
 
         fig5 = plot_single_cam_solution(no_dwell_sol, "Cam Motion without Dwell")
@@ -355,8 +373,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-

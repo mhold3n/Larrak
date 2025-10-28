@@ -26,5 +26,3 @@ def from_dict(funcs: Dict[str, Callable[[float], float]]) -> RadialSlotMotion:
         d_center_offset_fn=funcs.get("d_center_offset"),
         d2_center_offset_fn=funcs.get("d2_center_offset"),
     )
-
-

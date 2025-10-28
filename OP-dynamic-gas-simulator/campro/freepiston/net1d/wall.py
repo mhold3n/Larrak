@@ -65,14 +65,14 @@ def calculate_y_plus(
 ) -> float:
     """
     Calculate y+ value for wall function.
-    
+
     Args:
         rho: Fluid density [kg/m^3]
         u: Fluid velocity [m/s]
         mu: Dynamic viscosity [Pa·s]
         y: Distance from wall [m]
         u_tau: Friction velocity [m/s] (optional)
-        
+
     Returns:
         y+ value [-]
     """
@@ -95,13 +95,13 @@ def estimate_wall_shear_stress(
 ) -> float:
     """
     Estimate wall shear stress using simple correlation.
-    
+
     Args:
         rho: Fluid density [kg/m^3]
         u: Fluid velocity [m/s]
         mu: Dynamic viscosity [Pa·s]
         y: Distance from wall [m]
-        
+
     Returns:
         Wall shear stress [Pa]
     """
@@ -125,7 +125,7 @@ def compressible_wall_function(
 ) -> Dict[str, float]:
     """
     Compressible wall function with y+ calculation.
-    
+
     Args:
         rho: Fluid density [kg/m^3]
         u: Fluid velocity [m/s]
@@ -134,7 +134,7 @@ def compressible_wall_function(
         T: Fluid temperature [K]
         T_wall: Wall temperature [K]
         params: Wall model parameters
-        
+
     Returns:
         Dictionary with wall function results
     """
@@ -169,8 +169,12 @@ def compressible_wall_function(
 
     # Calculate wall heat flux
     q_wall = calculate_wall_heat_flux(
-        rho=rho, T=T, T_wall=T_wall, u_tau=u_tau,
-        y_plus=y_plus, params=params,
+        rho=rho,
+        T=T,
+        T_wall=T_wall,
+        u_tau=u_tau,
+        y_plus=y_plus,
+        params=params,
     )
 
     return {
@@ -193,7 +197,7 @@ def calculate_wall_heat_flux(
 ) -> float:
     """
     Calculate wall heat flux using wall function.
-    
+
     Args:
         rho: Fluid density [kg/m^3]
         T: Fluid temperature [K]
@@ -201,7 +205,7 @@ def calculate_wall_heat_flux(
         u_tau: Friction velocity [m/s]
         y_plus: y+ value [-]
         params: Wall model parameters
-        
+
     Returns:
         Wall heat flux [W/m^2]
     """
@@ -217,8 +221,9 @@ def calculate_wall_heat_flux(
         T_plus = params.Pr * y_plus
     else:
         # Log layer
-        T_plus = params.Pr * params.A_plus + \
-                (params.Pr_t / params.kappa) * math.log(y_plus / params.A_plus)
+        T_plus = params.Pr * params.A_plus + (params.Pr_t / params.kappa) * math.log(
+            y_plus / params.A_plus,
+        )
 
     # Wall heat flux
     cp = 1005.0  # J/(kg·K) - simplified
@@ -235,12 +240,12 @@ def roughness_effects(
 ) -> Dict[str, float]:
     """
     Account for wall roughness effects in wall function.
-    
+
     Args:
         y_plus: y+ value [-]
         roughness_relative: Relative roughness [-]
         params: Wall model parameters
-        
+
     Returns:
         Dictionary with roughness corrections
     """
@@ -281,13 +286,13 @@ def compressible_corrections(
 ) -> Dict[str, float]:
     """
     Apply compressibility corrections to wall function.
-    
+
     Args:
         M: Mach number [-]
         T: Fluid temperature [K]
         T_wall: Wall temperature [K]
         params: Wall model parameters
-        
+
     Returns:
         Dictionary with compressibility corrections
     """
@@ -324,12 +329,12 @@ def wall_function_validation(
 ) -> Dict[str, bool]:
     """
     Validate wall function results.
-    
+
     Args:
         y_plus: y+ value [-]
         u_plus: u+ value [-]
         params: Wall model parameters
-        
+
     Returns:
         Dictionary with validation results
     """
@@ -366,13 +371,13 @@ def wall_temperature_evolution(
 ) -> float:
     """
     Evolve wall temperature based on heat transfer.
-    
+
     Args:
         T_wall_old: Previous wall temperature [K]
         q_wall: Wall heat flux [W/m^2]
         dt: Time step [s]
         wall_properties: Wall material properties
-        
+
     Returns:
         New wall temperature [K]
     """
@@ -404,13 +409,13 @@ def multi_layer_wall_heat_transfer(
 ) -> Dict[str, float]:
     """
     Multi-layer wall heat transfer with thermal resistance.
-    
+
     Args:
         T_gas: Gas temperature [K]
         T_wall_surface: Wall surface temperature [K]
         wall_layers: List of wall layer properties
         params: Wall model parameters
-        
+
     Returns:
         Dictionary with heat transfer results
     """
@@ -433,7 +438,9 @@ def multi_layer_wall_heat_transfer(
         layer_temperatures.append(layer_temperatures[-1] - dT_layer)
 
     # Total heat flux
-    q_wall = (T_gas - T_wall_surface) / total_resistance if total_resistance > 0 else 0.0
+    q_wall = (
+        (T_gas - T_wall_surface) / total_resistance if total_resistance > 0 else 0.0
+    )
 
     return {
         "q_wall": q_wall,
@@ -451,13 +458,13 @@ def radiation_heat_transfer(
 ) -> float:
     """
     Radiation heat transfer between gas and wall.
-    
+
     Args:
         T_gas: Gas temperature [K]
         T_wall: Wall temperature [K]
         emissivity: Wall emissivity [-]
         area: Wall area [m^2]
-        
+
     Returns:
         Radiation heat flux [W/m^2]
     """
@@ -484,7 +491,7 @@ def advanced_heat_transfer_correlation(
 ) -> Dict[str, float]:
     """
     Advanced heat transfer correlation for engine walls.
-    
+
     Args:
         rho: Fluid density [kg/m^3]
         u: Fluid velocity [m/s]
@@ -495,7 +502,7 @@ def advanced_heat_transfer_correlation(
         T_wall: Wall temperature [K]
         D_hydraulic: Hydraulic diameter [m]
         params: Wall model parameters
-        
+
     Returns:
         Dictionary with heat transfer results
     """
@@ -518,11 +525,11 @@ def advanced_heat_transfer_correlation(
     q_wall = h * (T - T_wall)
 
     # Wall function correction
-    y_plus = calculate_y_plus(rho=rho, u=u, mu=mu, y=D_hydraulic/2.0)
+    y_plus = calculate_y_plus(rho=rho, u=u, mu=mu, y=D_hydraulic / 2.0)
 
     if y_plus < params.A_plus:
         # Viscous sublayer - use wall function
-        u_tau = math.sqrt(mu * u / (rho * D_hydraulic/2.0))
+        u_tau = math.sqrt(mu * u / (rho * D_hydraulic / 2.0))
         T_plus = Pr * y_plus
         h_wall_function = rho * cp * u_tau / T_plus
         q_wall_corrected = h_wall_function * (T - T_wall)
@@ -553,7 +560,7 @@ def wall_function_with_roughness(
 ) -> Dict[str, float]:
     """
     Enhanced wall function with roughness effects.
-    
+
     Args:
         rho: Fluid density [kg/m^3]
         u: Fluid velocity [m/s]
@@ -562,13 +569,19 @@ def wall_function_with_roughness(
         T: Fluid temperature [K]
         T_wall: Wall temperature [K]
         params: Wall model parameters
-        
+
     Returns:
         Dictionary with wall function results
     """
     # Basic wall function
     wall_result = compressible_wall_function(
-        rho=rho, u=u, mu=mu, y=y, T=T, T_wall=T_wall, params=params,
+        rho=rho,
+        u=u,
+        mu=mu,
+        y=y,
+        T=T,
+        T_wall=T_wall,
+        params=params,
     )
 
     # Roughness effects
@@ -581,11 +594,18 @@ def wall_function_with_roughness(
     # Compressibility effects
     M = u / math.sqrt(1.4 * 287.0 * T)  # Simplified Mach number
     compressibility_result = compressible_corrections(
-        M=M, T=T, T_wall=T_wall, params=params,
+        M=M,
+        T=T,
+        T_wall=T_wall,
+        params=params,
     )
 
     # Apply corrections
-    u_tau_corrected = wall_result["u_tau"] * roughness_result["roughness_factor"] * compressibility_result["total_correction"]
+    u_tau_corrected = (
+        wall_result["u_tau"]
+        * roughness_result["roughness_factor"]
+        * compressibility_result["total_correction"]
+    )
     tau_w_corrected = rho * u_tau_corrected**2
 
     # Enhanced heat flux
@@ -606,10 +626,10 @@ def wall_function_with_roughness(
 def get_wall_function_method(method: str = "compressible"):
     """
     Get wall function method by name.
-    
+
     Args:
         method: Wall function method name
-        
+
     Returns:
         Wall function function
     """
@@ -617,11 +637,18 @@ def get_wall_function_method(method: str = "compressible"):
         "compressible": compressible_wall_function,
         "roughness": wall_function_with_roughness,
         "simple": lambda **kwargs: {
-            "u_tau": math.sqrt(kwargs["mu"] * kwargs["u"] / (kwargs["rho"] * kwargs["y"])),
-            "y_plus": calculate_y_plus(rho=kwargs["rho"], u=kwargs["u"], mu=kwargs["mu"], y=kwargs["y"]),
+            "u_tau": math.sqrt(
+                kwargs["mu"] * kwargs["u"] / (kwargs["rho"] * kwargs["y"]),
+            ),
+            "y_plus": calculate_y_plus(
+                rho=kwargs["rho"], u=kwargs["u"], mu=kwargs["mu"], y=kwargs["y"],
+            ),
             "tau_w": kwargs["mu"] * kwargs["u"] / kwargs["y"],
-            "q_wall": wall_heat_flux(kwargs["T"], kwargs["T_wall"], kwargs["params"].h_conv),
-            "u_plus": kwargs["u"] / math.sqrt(kwargs["mu"] * kwargs["u"] / (kwargs["rho"] * kwargs["y"])),
+            "q_wall": wall_heat_flux(
+                kwargs["T"], kwargs["T_wall"], kwargs["params"].h_conv,
+            ),
+            "u_plus": kwargs["u"]
+            / math.sqrt(kwargs["mu"] * kwargs["u"] / (kwargs["rho"] * kwargs["y"])),
         },
     }
 
@@ -641,10 +668,10 @@ def spalding_wall_function(
 ) -> Tuple[float, Dict[str, float]]:
     """
     Compute u+ from Spalding's law given y+ using Newton iterations.
-    
+
     Spalding's law:
         u+ = y+ + (1/E) * [exp(κ u+) - 1 - κ u+ - (κ u+)^2/2 - (κ u+)^3/6]
-    
+
     Returns
     -------
     u_plus : float
@@ -678,7 +705,12 @@ def spalding_wall_function(
         bracket = exp_ku - 1.0 - ku - 0.5 * (ku**2) - (ku**3) / 6.0
         f = u_plus + C * bracket - y_plus
         # f'(u) = 1 + C*[k exp(ku) - k - k^2 u - (k^3 u^2)/2]
-        dbracket_du = kappa * exp_ku - kappa - (kappa**2) * u_plus - 0.5 * (kappa**3) * (u_plus**2)
+        dbracket_du = (
+            kappa * exp_ku
+            - kappa
+            - (kappa**2) * u_plus
+            - 0.5 * (kappa**3) * (u_plus**2)
+        )
         df = 1.0 + C * dbracket_du
 
         residual = abs(f)
@@ -721,7 +753,7 @@ def enhanced_wall_treatment(
 ) -> Dict[str, Any]:
     """
     Enhanced wall treatment with automatic model selection and simple blending.
-    
+
     Chooses among linear, Spalding, and log-law based on y+ computed from
     the first near-wall cell size inferred from the provided mesh.
     """
@@ -742,7 +774,13 @@ def enhanced_wall_treatment(
 
     # Use existing compressible wall function to get a consistent y+ and baseline u_tau
     base = compressible_wall_function(
-        rho=rho, u=u, mu=mu, y=y_dist, T=T, T_wall=T_wall, params=wall_params,
+        rho=rho,
+        u=u,
+        mu=mu,
+        y=y_dist,
+        T=T,
+        T_wall=T_wall,
+        params=wall_params,
     )
     y_plus = float(base["y_plus"])
 
@@ -754,7 +792,9 @@ def enhanced_wall_treatment(
     elif y_plus < 200.0:
         model = "spalding"
         u_plus_spald, _diag = spalding_wall_function(
-            y_plus=y_plus, kappa=wall_params.kappa, E=9.0,
+            y_plus=y_plus,
+            kappa=wall_params.kappa,
+            E=9.0,
             max_iterations=wall_params.max_iterations,
             tolerance=wall_params.tolerance,
         )
@@ -765,11 +805,20 @@ def enhanced_wall_treatment(
         u_plus = (1.0 - s) * u_plus_linear + s * u_plus_spald
     else:
         model = "log"
-        u_plus_log = (1.0 / wall_params.kappa) * math.log(max(y_plus, 1e-12)) + wall_params.B
+        u_plus_log = (1.0 / wall_params.kappa) * math.log(
+            max(y_plus, 1e-12),
+        ) + wall_params.B
         # Blend toward log from Spalding if moderately large
-        s = max(0.0, min(1.0, (math.log(max(y_plus, 1e-12)) - math.log(wall_params.A_plus)) / 5.0))
+        s = max(
+            0.0,
+            min(
+                1.0, (math.log(max(y_plus, 1e-12)) - math.log(wall_params.A_plus)) / 5.0,
+            ),
+        )
         u_plus_spald, _ = spalding_wall_function(
-            y_plus=y_plus, kappa=wall_params.kappa, E=9.0,
+            y_plus=y_plus,
+            kappa=wall_params.kappa,
+            E=9.0,
             max_iterations=wall_params.max_iterations,
             tolerance=wall_params.tolerance,
         )

@@ -18,7 +18,7 @@ log = get_logger(__name__)
 class KinematicConstraintsComponent(BaseComponent):
     """
     Component for kinematic constraint analysis.
-    
+
     This component checks and enforces kinematic constraints
     for cam-ring systems.
     """
@@ -29,12 +29,12 @@ class KinematicConstraintsComponent(BaseComponent):
     def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute kinematic constraints.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
             Input data
-            
+
         Returns
         -------
         ComponentResult
@@ -66,4 +66,3 @@ class KinematicConstraintsComponent(BaseComponent):
     def get_outputs(self) -> List[str]:
         """Get list of output names."""
         return []
-

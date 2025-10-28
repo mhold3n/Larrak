@@ -41,8 +41,8 @@ def test_thermal_efficiency_adapter():
         stroke=0.180,
         thermal_efficiency_weight=1.0,
         use_1d_gas_model=False,  # Use 0D for faster testing
-        collocation_points=10,   # Small for testing
-        max_iterations=100,       # Small for testing
+        collocation_points=10,  # Small for testing
+        max_iterations=100,  # Small for testing
     )
 
     # Create adapter
@@ -78,7 +78,9 @@ def test_thermal_efficiency_adapter():
     if result.solution:
         print(f"  - Solution keys: {list(result.solution.keys())}")
         if "thermal_efficiency" in result.solution:
-            print(f"  - Thermal efficiency: {result.solution['thermal_efficiency']:.3f}")
+            print(
+                f"  - Thermal efficiency: {result.solution['thermal_efficiency']:.3f}",
+            )
 
     # Test motion law solving
     print("\nTesting motion law solving...")
@@ -89,7 +91,9 @@ def test_thermal_efficiency_adapter():
     print(f"  - Motion law length: {len(motion_result.cam_angle)} points")
     print(f"  - Max position: {np.max(motion_result.position):.3f}mm")
     print(f"  - Max velocity: {np.max(np.abs(motion_result.velocity)):.3f}mm/rad")
-    print(f"  - Max acceleration: {np.max(np.abs(motion_result.acceleration)):.3f}mm/rad²")
+    print(
+        f"  - Max acceleration: {np.max(np.abs(motion_result.acceleration)):.3f}mm/rad²",
+    )
 
     return True
 
@@ -110,7 +114,9 @@ def test_motion_law_optimizer_integration():
         zero_accel_duration_percent=0.0,
     )
 
-    result_simple = optimizer_simple.solve_motion_law(constraints, MotionType.MINIMUM_JERK)
+    result_simple = optimizer_simple.solve_motion_law(
+        constraints, MotionType.MINIMUM_JERK,
+    )
 
     print("✓ Simple optimization completed")
     print(f"  - Convergence status: {result_simple.convergence_status}")
@@ -120,12 +126,16 @@ def test_motion_law_optimizer_integration():
     print("\nTesting thermal efficiency optimization...")
     optimizer_thermal = MotionLawOptimizer(use_thermal_efficiency=True)
 
-    result_thermal = optimizer_thermal.solve_motion_law(constraints, MotionType.MINIMUM_JERK)
+    result_thermal = optimizer_thermal.solve_motion_law(
+        constraints, MotionType.MINIMUM_JERK,
+    )
 
     print("✓ Thermal efficiency optimization completed")
     print(f"  - Convergence status: {result_thermal.convergence_status}")
     print(f"  - Motion law length: {len(result_thermal.cam_angle)} points")
-    print(f"  - Thermal adapter available: {optimizer_thermal.thermal_adapter is not None}")
+    print(
+        f"  - Thermal adapter available: {optimizer_thermal.thermal_adapter is not None}",
+    )
 
     # Test enabling/disabling thermal efficiency
     print("\nTesting enable/disable thermal efficiency...")
@@ -152,7 +162,9 @@ def test_unified_framework_integration():
     framework_simple.settings.use_thermal_efficiency = False
 
     print("✓ Framework created without thermal efficiency")
-    print(f"  - Thermal efficiency enabled: {framework_simple.settings.use_thermal_efficiency}")
+    print(
+        f"  - Thermal efficiency enabled: {framework_simple.settings.use_thermal_efficiency}",
+    )
 
     # Test with thermal efficiency
     print("\nTesting framework with thermal efficiency...")
@@ -165,7 +177,9 @@ def test_unified_framework_integration():
     }
 
     print("✓ Framework created with thermal efficiency")
-    print(f"  - Thermal efficiency enabled: {framework_thermal.settings.use_thermal_efficiency}")
+    print(
+        f"  - Thermal efficiency enabled: {framework_thermal.settings.use_thermal_efficiency}",
+    )
     print(f"  - Config: {framework_thermal.settings.thermal_efficiency_config}")
 
     # Test primary optimization
@@ -201,6 +215,7 @@ def test_configuration_management():
     from campro.optimization.thermal_efficiency_adapter import (
         get_default_thermal_efficiency_config,
     )
+
     default_config = get_default_thermal_efficiency_config()
 
     print("✓ Default configuration created")
@@ -274,6 +289,7 @@ def main():
     except Exception as e:
         print(f"\n❌ TEST FAILED: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

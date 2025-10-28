@@ -34,5 +34,3 @@ class OptimizationOrder:
     ORDER1_GEOMETRY = 1
     ORDER2_MICRO = 2
     ORDER3_CO_MOTION = 3
-
-

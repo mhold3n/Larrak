@@ -14,10 +14,8 @@ __all__ = [
     # Base strategy
     "BaseOptimizationStrategy",
     "OptimizationStrategyResult",
-
     # Specific strategies
     "MotionOptimizationStrategy",
     "GeometryOptimizationStrategy",
     "MultiObjectiveStrategy",
 ]
-

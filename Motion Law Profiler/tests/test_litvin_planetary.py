@@ -91,10 +91,10 @@ def test_small_sinusoidal_motion_produces_continuous_profile():
 
     # Local continuity: successive segments small
     diffs = [
-        math.hypot(profile.points[i + 1][0] - profile.points[i][0],
-                   profile.points[i + 1][1] - profile.points[i][1])
+        math.hypot(
+            profile.points[i + 1][0] - profile.points[i][0],
+            profile.points[i + 1][1] - profile.points[i][1],
+        )
         for i in range(len(profile.points) - 1)
     ]
     assert max(diffs) < 2.0, "profile has unreasonable jumps"
-
-

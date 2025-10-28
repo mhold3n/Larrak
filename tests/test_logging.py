@@ -40,8 +40,3 @@ class TestLogging:
         logger2 = get_logger("test_module_2")
         assert logger1 is not logger2
         assert logger1.name != logger2.name
-
-
-
-
-

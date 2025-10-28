@@ -17,5 +17,3 @@ def test_energy_audit_no_flows_stationary():
     # With zero dV/dt, zero delta-T, and closed valves → dm_dt=0 and dU_dt≈0
     assert abs(r["dm_dt"]) < 1e-12
     assert abs(r["dU_dt"]) < 1e-8
-
-

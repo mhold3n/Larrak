@@ -41,7 +41,9 @@ def unscale_value(value: ArrayLike, scale: ArrayLike) -> ArrayLike:
     return np.asarray(value) / np.asarray(scale)
 
 
-def scale_bounds(bounds: Tuple[ArrayLike, ArrayLike], scale: ArrayLike) -> Tuple[np.ndarray, np.ndarray]:
+def scale_bounds(
+    bounds: Tuple[ArrayLike, ArrayLike], scale: ArrayLike,
+) -> Tuple[np.ndarray, np.ndarray]:
     """Scale lower/upper bounds by factor s (z = s*x).
 
     Returns new (lb_scaled, ub_scaled).
@@ -50,7 +52,9 @@ def scale_bounds(bounds: Tuple[ArrayLike, ArrayLike], scale: ArrayLike) -> Tuple
     return scale_value(lb, scale), scale_value(ub, scale)
 
 
-def scale_dict(values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike]) -> Dict[str, np.ndarray]:
+def scale_dict(
+    values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike],
+) -> Dict[str, np.ndarray]:
     """Elementwise scale a dict of arrays by matching keys in scales."""
     out: Dict[str, np.ndarray] = {}
     for k, v in values.items():
@@ -59,7 +63,9 @@ def scale_dict(values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike]) -> Di
     return out
 
 
-def unscale_dict(values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike]) -> Dict[str, np.ndarray]:
+def unscale_dict(
+    values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike],
+) -> Dict[str, np.ndarray]:
     """Elementwise unscale a dict of arrays by matching keys in scales."""
     out: Dict[str, np.ndarray] = {}
     for k, v in values.items():
@@ -74,12 +80,15 @@ def unscale_dict(values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike]) -> 
 def _import_casadi():  # pragma: no cover - lightweight lazy import
     try:
         import casadi as ca  # type: ignore
+
         return ca
     except Exception as exc:  # pylint: disable=broad-except
         raise RuntimeError("CasADi is required for symbol scaling helpers") from exc
 
 
-def make_scaled_symbol(name: str, shape: Tuple[int, ...] | int, scale: ArrayLike, *, kind: str = "MX"):
+def make_scaled_symbol(
+    name: str, shape: Tuple[int, ...] | int, scale: ArrayLike, *, kind: str = "MX",
+):
     """Create a scaled decision variable for CasADi NLPs.
 
     Defines z as the decision variable and returns (z, x_expr) where
@@ -119,7 +128,9 @@ def make_scaled_symbol(name: str, shape: Tuple[int, ...] | int, scale: ArrayLike
         elif arr.shape == (n,) and m == 1:
             s_expr = ca.DM(arr).reshape((n, 1))
         else:
-            raise ValueError(f"scale shape {arr.shape} incompatible with variable shape ({n}, {m})")
+            raise ValueError(
+                f"scale shape {arr.shape} incompatible with variable shape ({n}, {m})",
+            )
 
     # Physical variable expression
     x_expr = z / s_expr
@@ -144,7 +155,9 @@ def unscale_expr(expr: Any, scale: ArrayLike) -> Any:
     return expr / arr
 
 
-def build_scaled_nlp(nlp: Dict[str, Any], scale: ArrayLike, *, kind: str | None = None) -> Dict[str, Any]:
+def build_scaled_nlp(
+    nlp: Dict[str, Any], scale: ArrayLike, *, kind: str | None = None,
+) -> Dict[str, Any]:
     """Build a scaled CasADi NLP from an unscaled one.
 
     Given an unscaled NLP dict {'x': x, 'f': f, 'g': g}, constructs a new
@@ -159,31 +172,31 @@ def build_scaled_nlp(nlp: Dict[str, Any], scale: ArrayLike, *, kind: str | None 
     kind: Optional override for symbol type ('SX' or 'MX'); inferred from x.
     """
     ca = _import_casadi()
-    if 'x' not in nlp or 'f' not in nlp:
+    if "x" not in nlp or "f" not in nlp:
         raise ValueError("nlp must contain keys 'x' and 'f'")
-    x = nlp['x']
-    f = nlp['f']
-    g = nlp.get('g', ca.DM([]))
+    x = nlp["x"]
+    f = nlp["f"]
+    g = nlp.get("g", ca.DM([]))
 
     # Infer symbol type and shape
     sym_kind = kind
     if sym_kind is None:
-        sym_kind = 'SX' if isinstance(x, ca.SX) else 'MX'
-    shape = getattr(x, 'shape', None)
+        sym_kind = "SX" if isinstance(x, ca.SX) else "MX"
+    shape = getattr(x, "shape", None)
     if not shape:
         # Fallback for older CasADi builds
-        n = int(getattr(x, 'size1', lambda: 0)())
-        m = int(getattr(x, 'size2', lambda: 1)())
+        n = int(getattr(x, "size1", lambda: 0)())
+        m = int(getattr(x, "size2", lambda: 1)())
         shape = (n, m)
 
     # Create scaled variable and physical expression
-    z, x_expr = make_scaled_symbol('z', shape, scale, kind=sym_kind)
+    z, x_expr = make_scaled_symbol("z", shape, scale, kind=sym_kind)
 
     # Substitute x -> (z/s) in f and g
     f_scaled = ca.substitute(f, x, x_expr)
     g_scaled = ca.substitute(g, x, x_expr) if g is not None else g
 
-    return {'x': z, 'f': f_scaled, 'g': g_scaled}
+    return {"x": z, "f": f_scaled, "g": g_scaled}
 
 
 def solve_scaled_nlpsol(
@@ -208,22 +221,24 @@ def solve_scaled_nlpsol(
     from campro.optimization.ipopt_factory import create_ipopt_solver
 
     nlp_scaled = build_scaled_nlp(nlp, scale)
-    solver = create_ipopt_solver(name, nlp_scaled, options or {}, linear_solver=linear_solver)
+    solver = create_ipopt_solver(
+        name, nlp_scaled, options or {}, linear_solver=linear_solver,
+    )
 
     kwargs: Dict[str, Any] = {}
     if x0 is not None:
-        kwargs['x0'] = scale_value(x0, scale)
+        kwargs["x0"] = scale_value(x0, scale)
     if lbx is not None and ubx is not None:
         lbz, ubz = scale_bounds((lbx, ubx), scale)
-        kwargs['lbx'] = lbz
-        kwargs['ubx'] = ubz
+        kwargs["lbx"] = lbz
+        kwargs["ubx"] = ubz
     elif lbx is not None:
-        kwargs['lbx'] = scale_value(lbx, scale)
+        kwargs["lbx"] = scale_value(lbx, scale)
     elif ubx is not None:
-        kwargs['ubx'] = scale_value(ubx, scale)
+        kwargs["ubx"] = scale_value(ubx, scale)
     if lbg is not None:
-        kwargs['lbg'] = lbg
+        kwargs["lbg"] = lbg
     if ubg is not None:
-        kwargs['ubg'] = ubg
+        kwargs["ubg"] = ubg
 
     return solver, kwargs

@@ -15,6 +15,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+
 def test_casadi_basic():
     """Test basic CasADi import and functionality."""
     print("=" * 60)
@@ -23,6 +24,7 @@ def test_casadi_basic():
 
     try:
         import casadi as ca
+
         print("✓ CasADi imported successfully")
         print(f"  Version: {ca.__version__}")
         print(f"  Build type: {ca.CasadiMeta_build_type()}")
@@ -51,6 +53,7 @@ def test_casadi_basic():
         print(f"✗ CasADi test failed: {e}")
         traceback.print_exc()
         return False
+
 
 def test_freepiston_imports():
     """Test freepiston module imports step by step."""
@@ -94,6 +97,7 @@ def test_freepiston_imports():
 
     return True
 
+
 def test_optimization_lib_components():
     """Test specific components from optimization_lib."""
     print("\n" + "=" * 60)
@@ -108,6 +112,7 @@ def test_optimization_lib_components():
             ProblemBuilder,
             ResultProcessor,
         )
+
         print("✓ All optimization_lib components imported successfully")
 
         # Test creating a basic config
@@ -133,6 +138,7 @@ def test_optimization_lib_components():
         traceback.print_exc()
         return False
 
+
 def test_config_factory():
     """Test config factory functionality."""
     print("\n" + "=" * 60)
@@ -144,6 +150,7 @@ def test_config_factory():
             ConfigFactory,
             create_optimization_scenario,
         )
+
         print("✓ Config factory imported successfully")
 
         # Test creating efficiency scenario
@@ -163,6 +170,7 @@ def test_config_factory():
         traceback.print_exc()
         return False
 
+
 def test_thermal_efficiency_adapter():
     """Test thermal efficiency adapter import and setup."""
     print("\n" + "=" * 60)
@@ -174,6 +182,7 @@ def test_thermal_efficiency_adapter():
             ThermalEfficiencyAdapter,
             ThermalEfficiencyConfig,
         )
+
         print("✓ Thermal efficiency adapter imported successfully")
 
         # Test creating adapter
@@ -198,6 +207,7 @@ def test_thermal_efficiency_adapter():
         traceback.print_exc()
         return False
 
+
 def test_nlp_building():
     """Test NLP building functionality."""
     print("\n" + "=" * 60)
@@ -206,6 +216,7 @@ def test_nlp_building():
 
     try:
         from campro.freepiston.opt.nlp import build_collocation_nlp
+
         print("✓ NLP building function imported successfully")
 
         # Create a minimal problem configuration
@@ -245,6 +256,7 @@ def test_nlp_building():
         print(f"✗ NLP building import failed: {e}")
         traceback.print_exc()
         return False
+
 
 def main():
     """Run all diagnostic tests."""
@@ -287,12 +299,15 @@ def main():
     print()
     if all_passed:
         print("🎉 ALL TESTS PASSED - CasADi integration should work!")
-        print("The complex gas optimizer should be available for thermal efficiency optimization.")
+        print(
+            "The complex gas optimizer should be available for thermal efficiency optimization.",
+        )
     else:
         print("❌ SOME TESTS FAILED - CasADi integration has issues")
         print("Check the error messages above to identify what needs to be fixed.")
 
     return 0 if all_passed else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

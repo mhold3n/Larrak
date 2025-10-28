@@ -1,6 +1,9 @@
 import types
 
-from campro.api.adapters import motion_result_to_solve_report, unified_data_to_solve_report
+from campro.api.adapters import (
+    motion_result_to_solve_report,
+    unified_data_to_solve_report,
+)
 
 
 def test_motion_result_to_solve_report_smoke(tmp_path):
@@ -28,4 +31,3 @@ def test_unified_data_to_solve_report_smoke():
     report = unified_data_to_solve_report(data)  # type: ignore[arg-type]
     assert report.n_iter >= 0
     assert isinstance(report.residuals, dict)
-

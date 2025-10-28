@@ -10,4 +10,3 @@ class RadialSlotMotion:
     planet_angle_fn: Callable[[float], float]
     d_center_offset_fn: Callable[[float], float] | None = None
     d2_center_offset_fn: Callable[[float], float] | None = None
-

@@ -18,4 +18,3 @@ class ProblemSpec:
     objective: str  # "min_jerk" | "custom_thermo" | ...
     gear_mode: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
-

@@ -19,7 +19,7 @@ log = get_logger(__name__)
 class MemoryStorage(BaseStorage):
     """
     In-memory storage for optimization results.
-    
+
     This storage system keeps all data in memory, making it fast for
     temporary storage and sharing between optimization components.
     """
@@ -28,21 +28,25 @@ class MemoryStorage(BaseStorage):
         super().__init__(name)
         self.max_entries = max_entries
 
-    def store(self, key: str, data: Dict[str, Any],
-              metadata: Optional[Dict[str, Any]] = None,
-              constraints: Optional[Dict[str, Any]] = None,
-              optimization_rules: Optional[Dict[str, Any]] = None,
-              solver_settings: Optional[Dict[str, Any]] = None,
-              expires_in: Optional[float] = None) -> StorageResult:
+    def store(
+        self,
+        key: str,
+        data: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
+        constraints: Optional[Dict[str, Any]] = None,
+        optimization_rules: Optional[Dict[str, Any]] = None,
+        solver_settings: Optional[Dict[str, Any]] = None,
+        expires_in: Optional[float] = None,
+    ) -> StorageResult:
         """
         Store optimization result data in memory.
-        
+
         Args:
             key: Unique key for the stored data
             data: Data to store
             metadata: Optional metadata
             expires_in: Optional expiration time in seconds
-            
+
         Returns:
             StorageResult object
         """
@@ -76,10 +80,10 @@ class MemoryStorage(BaseStorage):
     def retrieve(self, key: str) -> Optional[StorageResult]:
         """
         Retrieve stored optimization result from memory.
-        
+
         Args:
             key: Key of the data to retrieve
-            
+
         Returns:
             StorageResult object or None if not found/expired
         """
@@ -107,10 +111,10 @@ class MemoryStorage(BaseStorage):
     def remove(self, key: str) -> bool:
         """
         Remove stored data from memory.
-        
+
         Args:
             key: Key of the data to remove
-            
+
         Returns:
             True if removed successfully, False otherwise
         """
@@ -132,8 +136,7 @@ class MemoryStorage(BaseStorage):
             return
 
         # Find the oldest entry
-        oldest_key = min(self._storage.keys(),
-                        key=lambda k: self._storage[k].timestamp)
+        oldest_key = min(self._storage.keys(), key=lambda k: self._storage[k].timestamp)
 
         log.debug(f"Cleaning up oldest entry '{oldest_key}' to make space")
         self.remove(oldest_key)

@@ -109,7 +109,9 @@ class MovingBoundaryMesh:
         if not np.all(np.diff(self.x_faces) > 0.0):
             raise ValueError("Face coordinates must be strictly increasing")
 
-    def update_piston_boundaries(self, x_L: float, x_R: float, v_L: float, v_R: float) -> None:
+    def update_piston_boundaries(
+        self, x_L: float, x_R: float, v_L: float, v_R: float,
+    ) -> None:
         """Update mesh based on piston positions and velocities with ALE motion."""
         if x_R <= x_L:
             raise ValueError("Right boundary must be greater than left boundary")
@@ -139,14 +141,18 @@ class MovingBoundaryMesh:
         self._update_mesh_velocity()
         self._update_volume_change_rate()
 
-    def _linear_mesh_motion(self, x_L: float, x_R: float, v_L: float, v_R: float) -> None:
+    def _linear_mesh_motion(
+        self, x_L: float, x_R: float, v_L: float, v_R: float,
+    ) -> None:
         """Apply linear mesh motion."""
         # Update face positions uniformly between new boundaries
         self.x_faces = np.linspace(x_L, x_R, self.n_cells + 1)
         # Linear profile of face velocities from left to right boundary
         self.v_faces = np.linspace(v_L, v_R, self.n_cells + 1)
 
-    def _sinusoidal_mesh_motion(self, x_L: float, x_R: float, v_L: float, v_R: float) -> None:
+    def _sinusoidal_mesh_motion(
+        self, x_L: float, x_R: float, v_L: float, v_R: float,
+    ) -> None:
         """Apply sinusoidal mesh motion."""
         # Get sinusoidal parameters
         amplitude = self.motion_params.get("amplitude", 0.1)
@@ -168,10 +174,18 @@ class MovingBoundaryMesh:
         # Update face velocities with sinusoidal profile
         for i in range(self.n_cells + 1):
             xi = (self.x_faces[i] - x_L) / length if length > 0 else 0.0
-            velocity_perturbation = amplitude * 2 * math.pi * frequency * math.cos(2 * math.pi * frequency * xi + phase)
+            velocity_perturbation = (
+                amplitude
+                * 2
+                * math.pi
+                * frequency
+                * math.cos(2 * math.pi * frequency * xi + phase)
+            )
             self.v_faces[i] = v_L + (v_R - v_L) * xi + velocity_perturbation
 
-    def _adaptive_mesh_motion(self, x_L: float, x_R: float, v_L: float, v_R: float) -> None:
+    def _adaptive_mesh_motion(
+        self, x_L: float, x_R: float, v_L: float, v_R: float,
+    ) -> None:
         """Apply adaptive mesh motion based on solution gradients."""
         # For now, default to linear motion
         # In practice, this would use solution gradients to refine mesh
@@ -194,7 +208,9 @@ class MovingBoundaryMesh:
         """Calculate dV/dt for each cell due to piston motion."""
         return self.volume_change_rate.copy()
 
-    def update(self, *, x_left: float, x_right: float, v_left: float, v_right: float) -> None:
+    def update(
+        self, *, x_left: float, x_right: float, v_left: float, v_right: float,
+    ) -> None:
         """Update boundary positions and face velocities assuming linear mapping.
 
         - Updates `x_faces` by linear stretch/compress between new boundaries
@@ -239,14 +255,14 @@ def create_ale_mesh(
 ) -> ALEMesh:
     """
     Create ALE mesh for moving boundaries.
-    
+
     Args:
         x_left: Left boundary position
         x_right: Right boundary position
         n_cells: Number of cells
         motion_type: Type of mesh motion
         motion_params: Motion parameters
-        
+
     Returns:
         ALEMesh object
     """
@@ -258,7 +274,7 @@ def create_ale_mesh(
     dx = length / n_cells
 
     # Cell centers
-    x = np.linspace(x_left + dx/2, x_right - dx/2, n_cells)
+    x = np.linspace(x_left + dx / 2, x_right - dx / 2, n_cells)
 
     # Face positions
     x_faces = np.linspace(x_left, x_right, n_cells + 1)
@@ -283,12 +299,12 @@ def linear_mesh_motion(
 ) -> ALEMesh:
     """
     Apply linear mesh motion to ALE mesh.
-    
+
     Args:
         mesh: Current ALE mesh
         x_left_new: New left boundary position
         x_right_new: New right boundary position
-        
+
     Returns:
         Updated ALE mesh
     """
@@ -300,7 +316,7 @@ def linear_mesh_motion(
 
     # Update cell centers
     dx_new = length_new / mesh.n_cells
-    x_new = np.linspace(x_left_new + dx_new/2, x_right_new - dx_new/2, mesh.n_cells)
+    x_new = np.linspace(x_left_new + dx_new / 2, x_right_new - dx_new / 2, mesh.n_cells)
 
     # Update cell widths
     dx_array_new = np.full(mesh.n_cells, dx_new)
@@ -325,7 +341,7 @@ def sinusoidal_mesh_motion(
 ) -> ALEMesh:
     """
     Apply sinusoidal mesh motion to ALE mesh.
-    
+
     Args:
         mesh: Current ALE mesh
         x_left_new: New left boundary position
@@ -333,7 +349,7 @@ def sinusoidal_mesh_motion(
         amplitude: Amplitude of sinusoidal motion
         frequency: Frequency of sinusoidal motion
         phase: Phase of sinusoidal motion
-        
+
     Returns:
         Updated ALE mesh
     """
@@ -360,7 +376,7 @@ def sinusoidal_mesh_motion(
     x_faces_new[-1] = x_right_new
 
     for i in range(1, mesh.n_cells):
-        x_faces_new[i] = 0.5 * (x_perturbed[i-1] + x_perturbed[i])
+        x_faces_new[i] = 0.5 * (x_perturbed[i - 1] + x_perturbed[i])
 
     # Update cell widths
     dx_new = np.diff(x_faces_new)
@@ -383,13 +399,13 @@ def adaptive_mesh_motion(
 ) -> ALEMesh:
     """
     Apply adaptive mesh motion based on solution gradients.
-    
+
     Args:
         mesh: Current ALE mesh
         x_left_new: New left boundary position
         x_right_new: New right boundary position
         refinement_criteria: Criteria for mesh refinement
-        
+
     Returns:
         Updated ALE mesh
     """
@@ -407,12 +423,12 @@ def calculate_mesh_velocity(
 ) -> np.ndarray:
     """
     Calculate mesh velocity for ALE formulation.
-    
+
     Args:
         mesh_old: Old mesh state
         mesh_new: New mesh state
         dt: Time step
-        
+
     Returns:
         Mesh velocity at cell centers
     """
@@ -432,12 +448,12 @@ def calculate_face_velocity(
 ) -> np.ndarray:
     """
     Calculate mesh velocity at faces for ALE formulation.
-    
+
     Args:
         mesh_old: Old mesh state
         mesh_new: New mesh state
         dt: Time step
-        
+
     Returns:
         Mesh velocity at faces
     """
@@ -453,10 +469,10 @@ def calculate_face_velocity(
 def check_mesh_quality(mesh: ALEMesh) -> Dict[str, float]:
     """
     Check mesh quality metrics.
-    
+
     Args:
         mesh: ALE mesh
-        
+
     Returns:
         Dictionary of quality metrics
     """
@@ -489,12 +505,12 @@ def smooth_mesh(
 ) -> ALEMesh:
     """
     Apply mesh smoothing to improve quality.
-    
+
     Args:
         mesh: ALE mesh to smooth
         smoothing_factor: Smoothing strength (0-1)
         max_iterations: Maximum smoothing iterations
-        
+
     Returns:
         Smoothed ALE mesh
     """
@@ -504,15 +520,16 @@ def smooth_mesh(
     for iteration in range(max_iterations):
         # Smooth cell centers
         for i in range(1, mesh.n_cells - 1):
-            x_smooth[i] = (1 - smoothing_factor) * x_smooth[i] + \
-                         smoothing_factor * 0.5 * (x_smooth[i-1] + x_smooth[i+1])
+            x_smooth[i] = (1 - smoothing_factor) * x_smooth[
+                i
+            ] + smoothing_factor * 0.5 * (x_smooth[i - 1] + x_smooth[i + 1])
 
         # Update face positions
         x_faces_smooth[0] = mesh.x_faces[0]
         x_faces_smooth[-1] = mesh.x_faces[-1]
 
         for i in range(1, mesh.n_cells):
-            x_faces_smooth[i] = 0.5 * (x_smooth[i-1] + x_smooth[i])
+            x_faces_smooth[i] = 0.5 * (x_smooth[i - 1] + x_smooth[i])
 
         # Update cell widths
         dx_smooth = np.diff(x_faces_smooth)
@@ -540,17 +557,17 @@ def conservative_remapping_ale(
 ) -> np.ndarray:
     """
     Perform conservative remapping for ALE mesh motion.
-    
+
     This function conservatively remaps the solution from the old mesh to the new mesh
     while preserving the total conserved quantity (mass, momentum, energy).
-    
+
     Args:
         U_old: Conservative variables on old mesh
         mesh_old: Old ALE mesh
         mesh_new: New ALE mesh
         interpolation_method: Interpolation method ("linear", "cubic", "weno", "monotonic")
         conservation_tolerance: Tolerance for conservation enforcement
-        
+
     Returns:
         Conservative variables on new mesh
     """
@@ -596,14 +613,14 @@ def piston_boundary_ale_motion(
 ) -> Tuple[ALEMesh, np.ndarray]:
     """
     Handle piston boundary motion with conservative ALE remapping.
-    
+
     Args:
         mesh_old: Old ALE mesh
         piston_position_old: Old piston positions (x_L, x_R)
         piston_position_new: New piston positions (x_L, x_R)
         U_old: Conservative variables on old mesh
         interpolation_method: Interpolation method
-        
+
     Returns:
         Tuple of (new_mesh, new_solution)
     """
@@ -617,7 +634,9 @@ def piston_boundary_ale_motion(
         amplitude = mesh_old.motion_params.get("amplitude", 0.1)
         frequency = mesh_old.motion_params.get("frequency", 1.0)
         phase = mesh_old.motion_params.get("phase", 0.0)
-        mesh_new = sinusoidal_mesh_motion(mesh_old, x_L_new, x_R_new, amplitude, frequency, phase)
+        mesh_new = sinusoidal_mesh_motion(
+            mesh_old, x_L_new, x_R_new, amplitude, frequency, phase,
+        )
     elif mesh_old.motion_type == "adaptive":
         refinement_criteria = mesh_old.motion_params.get("refinement_criteria", {})
         mesh_new = adaptive_mesh_motion(mesh_old, x_L_new, x_R_new, refinement_criteria)
@@ -640,14 +659,14 @@ def validate_conservation(
 ) -> Dict[str, float]:
     """
     Validate conservation during ALE remapping.
-    
+
     Args:
         U_old: Conservative variables on old mesh
         mesh_old: Old ALE mesh
         U_new: Conservative variables on new mesh
         mesh_new: New ALE mesh
         tolerance: Conservation tolerance
-        
+
     Returns:
         Dictionary with conservation metrics
     """
@@ -659,7 +678,9 @@ def validate_conservation(
 
     # Conservation error
     conservation_error = abs(total_new - total_old)
-    relative_error = conservation_error / abs(total_old) if abs(total_old) > 1e-15 else 0.0
+    relative_error = (
+        conservation_error / abs(total_old) if abs(total_old) > 1e-15 else 0.0
+    )
 
     # Conservation status
     conservation_ok = conservation_error < tolerance
@@ -676,10 +697,10 @@ def validate_conservation(
 def get_mesh_motion_function(motion_type: str) -> callable:
     """
     Get mesh motion function by type.
-    
+
     Args:
         motion_type: Type of mesh motion
-        
+
     Returns:
         Mesh motion function
     """

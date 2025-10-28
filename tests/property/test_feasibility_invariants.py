@@ -1,7 +1,8 @@
 import importlib
 
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 
 def casadi_available() -> bool:
@@ -35,4 +36,3 @@ def test_feasibility_residual_small_for_lenient_bounds(stroke, up):
         },
     )
     assert rep.max_violation < 1e-2
-

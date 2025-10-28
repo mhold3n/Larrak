@@ -28,13 +28,15 @@ log = get_logger(__name__)
 class MotionLawOptimizer(BaseOptimizer):
     """
     Optimizer for motion law problems using collocation methods.
-    
+
     This optimizer solves motion law optimization problems using proper
     collocation methods with real optimization instead of analytical solutions.
     Supports both simple optimization and thermal efficiency optimization.
     """
 
-    def __init__(self, name: str = "MotionLawOptimizer", use_thermal_efficiency: bool = False):
+    def __init__(
+        self, name: str = "MotionLawOptimizer", use_thermal_efficiency: bool = False,
+    ):
         super().__init__(name)
         self.collocation_method = "legendre"  # or "radau", "hermite"
         self.degree = 3  # Polynomial degree for collocation
@@ -78,7 +80,9 @@ class MotionLawOptimizer(BaseOptimizer):
     def configure(self, **kwargs) -> None:
         """Configure the motion law optimizer."""
         # Update settings from kwargs
-        self.collocation_method = kwargs.get("collocation_method", self.collocation_method)
+        self.collocation_method = kwargs.get(
+            "collocation_method", self.collocation_method,
+        )
         self.degree = kwargs.get("degree", self.degree)
         self.n_points = kwargs.get("n_points", self.n_points)
         self.tolerance = kwargs.get("tolerance", self.tolerance)
@@ -102,9 +106,13 @@ class MotionLawOptimizer(BaseOptimizer):
             )
 
         self._is_configured = True
-        log.info(f"Configured MotionLawOptimizer: {self.collocation_method}, degree {self.degree}, thermal_efficiency={self.use_thermal_efficiency}")
+        log.info(
+            f"Configured MotionLawOptimizer: {self.collocation_method}, degree {self.degree}, thermal_efficiency={self.use_thermal_efficiency}",
+        )
 
-    def enable_thermal_efficiency(self, config: Optional[Dict[str, Any]] = None) -> None:
+    def enable_thermal_efficiency(
+        self, config: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Enable thermal efficiency optimization."""
         self.use_thermal_efficiency = True
         self._setup_thermal_efficiency_adapter()
@@ -121,47 +129,60 @@ class MotionLawOptimizer(BaseOptimizer):
         self.thermal_adapter = None
         log.info("Thermal efficiency optimization disabled")
 
-    def optimize(self, objective: Callable, constraints: Any,
-                initial_guess: Optional[Dict[str, np.ndarray]] = None,
-                **kwargs) -> OptimizationResult:
+    def optimize(
+        self,
+        objective: Callable,
+        constraints: Any,
+        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        **kwargs,
+    ) -> OptimizationResult:
         """
         Optimize motion law problem.
-        
+
         This method is required by BaseOptimizer but we use solve_motion_law instead.
         Routes to thermal efficiency optimization if enabled.
         """
         # Convert to motion law problem if possible
-        if hasattr(constraints, "stroke") and hasattr(constraints, "upstroke_duration_percent"):
+        if hasattr(constraints, "stroke") and hasattr(
+            constraints, "upstroke_duration_percent",
+        ):
             motion_type_str = getattr(constraints, "objective_type", "minimum_jerk")
             motion_type = MotionType(motion_type_str)
             result = self.solve_motion_law(constraints, motion_type)
 
             # Convert to OptimizationResult
             return OptimizationResult(
-                status=OptimizationStatus.CONVERGED if result.convergence_status == "converged" else OptimizationStatus.FAILED,
+                status=OptimizationStatus.CONVERGED
+                if result.convergence_status == "converged"
+                else OptimizationStatus.FAILED,
                 objective_value=result.objective_value,
                 solution=result.to_dict(),
                 iterations=result.iterations,
                 solve_time=result.solve_time,
             )
-        raise ValueError("Constraints must be MotionLawConstraints for motion law optimization")
+        raise ValueError(
+            "Constraints must be MotionLawConstraints for motion law optimization",
+        )
 
-    def solve_motion_law(self, constraints: MotionLawConstraints,
-                        motion_type: MotionType) -> MotionLawResult:
+    def solve_motion_law(
+        self, constraints: MotionLawConstraints, motion_type: MotionType,
+    ) -> MotionLawResult:
         """
         Solve motion law optimization problem.
-        
+
         Args:
             constraints: Motion law constraints
             motion_type: Type of motion law optimization
-            
+
         Returns:
             MotionLawResult with optimized motion law
         """
         log.info(f"Solving {motion_type.value} motion law optimization")
-        log.info(f"Constraints: stroke={constraints.stroke}mm, "
-                f"upstroke={constraints.upstroke_duration_percent}%, "
-                f"zero_accel={constraints.zero_accel_duration_percent}%")
+        log.info(
+            f"Constraints: stroke={constraints.stroke}mm, "
+            f"upstroke={constraints.upstroke_duration_percent}%, "
+            f"zero_accel={constraints.zero_accel_duration_percent}%",
+        )
 
         # Route to thermal efficiency optimization if enabled
         if self.use_thermal_efficiency and self.thermal_adapter is not None:
@@ -170,15 +191,16 @@ class MotionLawOptimizer(BaseOptimizer):
         log.info("Using simple motion law optimization")
         return self._solve_simple_motion_law(constraints, motion_type)
 
-    def _solve_simple_motion_law(self, constraints: MotionLawConstraints,
-                                motion_type: MotionType) -> MotionLawResult:
+    def _solve_simple_motion_law(
+        self, constraints: MotionLawConstraints, motion_type: MotionType,
+    ) -> MotionLawResult:
         """
         Solve motion law optimization using simple collocation methods.
-        
+
         Args:
             constraints: Motion law constraints
             motion_type: Type of motion law optimization
-            
+
         Returns:
             MotionLawResult with optimized motion law
         """
@@ -203,7 +225,11 @@ class MotionLawOptimizer(BaseOptimizer):
             validation = validator.validate(result)
             if not validation.valid:
                 # Emit detailed diagnostics for debugging continuity or boundary failures
-                issues = ", ".join(validation.issues) if hasattr(validation, "issues") else str(validation)
+                issues = (
+                    ", ".join(validation.issues)
+                    if hasattr(validation, "issues")
+                    else str(validation)
+                )
                 try:
                     max_dx = float(np.max(np.abs(np.diff(result.position))))
                     max_dv = float(np.max(np.abs(np.diff(result.velocity))))
@@ -234,6 +260,7 @@ class MotionLawOptimizer(BaseOptimizer):
         if self.collocation_method == "legendre":
             # Generate Legendre-Gauss-Lobatto points
             from scipy.special import roots_legendre
+
             # For LGL with endpoints included, use N-2 interior roots
             interior = max(0, self.n_points - 2)
             if interior > 0:
@@ -257,16 +284,20 @@ class MotionLawOptimizer(BaseOptimizer):
             dtheta = np.diff(points)
             log.debug(
                 "Collocation points generated: n=%d, dtheta[min,mean,max]=[%.4g, %.4g, %.4g] rad",
-                len(points), float(np.min(dtheta)), float(np.mean(dtheta)), float(np.max(dtheta)),
+                len(points),
+                float(np.min(dtheta)),
+                float(np.mean(dtheta)),
+                float(np.max(dtheta)),
             )
 
         return points
 
-    def _solve_minimum_jerk(self, collocation_points: np.ndarray,
-                           constraints: MotionLawConstraints) -> MotionLawResult:
+    def _solve_minimum_jerk(
+        self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> MotionLawResult:
         """
         Solve minimum jerk motion law optimization.
-        
+
         Objective: Minimize ∫[0 to 2π] (x'''(θ))² dθ
         """
         log.info("Solving minimum jerk motion law")
@@ -282,7 +313,8 @@ class MotionLawOptimizer(BaseOptimizer):
 
         # Initial guess: smooth S-curve (physical units)
         initial_guess_phys = self._generate_initial_guess_minimum_jerk(
-            control_points, constraints,
+            control_points,
+            constraints,
         )
 
         # Scaling: normalize control-point positions by stroke to keep magnitudes O(1)
@@ -292,11 +324,16 @@ class MotionLawOptimizer(BaseOptimizer):
         # Define objective function operating on normalized parameters by converting to physical
         def objective(params_norm):
             params_phys = params_norm / pos_scale
-            return self._minimum_jerk_objective(params_phys, control_points, collocation_points)
+            return self._minimum_jerk_objective(
+                params_phys, control_points, collocation_points,
+            )
 
         # Define constraints and wrap to accept normalized parameters
         base_constraints = self._define_motion_law_constraints(
-            initial_guess_phys, control_points, collocation_points, constraints,
+            initial_guess_phys,
+            control_points,
+            collocation_points,
+            constraints,
         )
         constraint_list = [
             {"type": c["type"], "fun": (lambda p, f=c["fun"]: f(p / pos_scale))}
@@ -322,7 +359,9 @@ class MotionLawOptimizer(BaseOptimizer):
         # Extract solution (convert params back to physical units)
         params_phys = result.x / pos_scale
         solution = self._extract_solution_minimum_jerk(
-            params_phys, control_points, collocation_points,
+            params_phys,
+            control_points,
+            collocation_points,
         )
 
         # DEBUG: equality residuals at the solution
@@ -339,7 +378,8 @@ class MotionLawOptimizer(BaseOptimizer):
             max_abs = float(np.max(np.abs(residuals)))
             log.debug(
                 "Equality residuals @solution: max_abs=%.3g, residuals=%s",
-                max_abs, [float(r) for r in residuals],
+                max_abs,
+                [float(r) for r in residuals],
             )
         except Exception as _e:
             log.debug(f"Could not compute residual diagnostics: {_e}")
@@ -360,11 +400,12 @@ class MotionLawOptimizer(BaseOptimizer):
             motion_type=MotionType.MINIMUM_JERK,
         )
 
-    def _solve_minimum_time(self, collocation_points: np.ndarray,
-                           constraints: MotionLawConstraints) -> MotionLawResult:
+    def _solve_minimum_time(
+        self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> MotionLawResult:
         """
         Solve minimum time motion law optimization.
-        
+
         This implements proper bang-bang control with constraint handling.
         """
         log.info("Solving minimum time motion law with bang-bang control")
@@ -373,7 +414,9 @@ class MotionLawOptimizer(BaseOptimizer):
 
         try:
             # Use trapezoidal profile for minimum time (bang-bang control needs more work)
-            result = self._solve_trapezoidal_velocity_profile(collocation_points, constraints)
+            result = self._solve_trapezoidal_velocity_profile(
+                collocation_points, constraints,
+            )
 
             solve_time = time.time() - start_time
 
@@ -396,7 +439,9 @@ class MotionLawOptimizer(BaseOptimizer):
         except Exception as e:
             log.error(f"Bang-bang control optimization failed: {e}")
             # Fall back to trapezoidal profile
-            result = self._solve_trapezoidal_velocity_profile(collocation_points, constraints)
+            result = self._solve_trapezoidal_velocity_profile(
+                collocation_points, constraints,
+            )
 
             return MotionLawResult(
                 cam_angle=collocation_points,
@@ -414,11 +459,12 @@ class MotionLawOptimizer(BaseOptimizer):
                 motion_type=MotionType.MINIMUM_TIME,
             )
 
-    def _solve_minimum_energy(self, collocation_points: np.ndarray,
-                             constraints: MotionLawConstraints) -> MotionLawResult:
+    def _solve_minimum_energy(
+        self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> MotionLawResult:
         """
         Solve minimum energy motion law optimization.
-        
+
         Objective: Minimize ∫[0 to 2π] (x''(θ))² dθ
         """
         log.info("Solving minimum energy motion law")
@@ -427,7 +473,9 @@ class MotionLawOptimizer(BaseOptimizer):
 
         try:
             # Implement proper minimum energy optimization (with normalized parameters)
-            result = self._solve_minimum_energy_optimization(collocation_points, constraints)
+            result = self._solve_minimum_energy_optimization(
+                collocation_points, constraints,
+            )
 
             solve_time = time.time() - start_time
 
@@ -454,8 +502,9 @@ class MotionLawOptimizer(BaseOptimizer):
                 "Cannot fallback to scipy methods. Fix CasADi integration.",
             ) from e
 
-    def _generate_initial_guess_minimum_jerk(self, control_points: np.ndarray,
-                                           constraints: MotionLawConstraints) -> np.ndarray:
+    def _generate_initial_guess_minimum_jerk(
+        self, control_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> np.ndarray:
         """Generate initial guess for minimum jerk optimization."""
         # Create a smooth S-curve initial guess
         n_control = len(control_points)
@@ -467,17 +516,32 @@ class MotionLawOptimizer(BaseOptimizer):
                 # Upstroke phase
                 tau = theta / constraints.upstroke_angle
                 # S-curve: 6t^5 - 15t^4 + 10t^3
-                initial_guess[i] = constraints.stroke * (6 * tau**5 - 15 * tau**4 + 10 * tau**3)
+                initial_guess[i] = constraints.stroke * (
+                    6 * tau**5 - 15 * tau**4 + 10 * tau**3
+                )
             else:
                 # Downstroke phase
-                downstroke_tau = (theta - constraints.upstroke_angle) / constraints.downstroke_angle
+                downstroke_tau = (
+                    theta - constraints.upstroke_angle
+                ) / constraints.downstroke_angle
                 # Mirror the upstroke
-                initial_guess[i] = constraints.stroke * (1 - (6 * downstroke_tau**5 - 15 * downstroke_tau**4 + 10 * downstroke_tau**3))
+                initial_guess[i] = constraints.stroke * (
+                    1
+                    - (
+                        6 * downstroke_tau**5
+                        - 15 * downstroke_tau**4
+                        + 10 * downstroke_tau**3
+                    )
+                )
 
         return initial_guess
 
-    def _minimum_jerk_objective(self, params: np.ndarray, control_points: np.ndarray,
-                               collocation_points: np.ndarray) -> float:
+    def _minimum_jerk_objective(
+        self,
+        params: np.ndarray,
+        control_points: np.ndarray,
+        collocation_points: np.ndarray,
+    ) -> float:
         """Calculate minimum jerk objective function."""
         # Interpolate control points to collocation points
         cs = CubicSpline(control_points, params, bc_type="natural")
@@ -493,9 +557,13 @@ class MotionLawOptimizer(BaseOptimizer):
 
         return objective
 
-    def _define_motion_law_constraints(self, params: np.ndarray, control_points: np.ndarray,
-                                     collocation_points: np.ndarray,
-                                     constraints: MotionLawConstraints) -> List[Dict]:
+    def _define_motion_law_constraints(
+        self,
+        params: np.ndarray,
+        control_points: np.ndarray,
+        collocation_points: np.ndarray,
+        constraints: MotionLawConstraints,
+    ) -> List[Dict]:
         """Define constraints for motion law optimization."""
         constraint_list = []
 
@@ -530,39 +598,57 @@ class MotionLawOptimizer(BaseOptimizer):
             return cs(constraints.upstroke_angle) - constraints.stroke  # Should be 0
 
         # Add constraints
-        constraint_list.append({
-            "type": "eq",
-            "fun": boundary_position_start,
-        })
-        constraint_list.append({
-            "type": "eq",
-            "fun": boundary_position_end,
-        })
-        constraint_list.append({
-            "type": "eq",
-            "fun": boundary_velocity_start,
-        })
-        constraint_list.append({
-            "type": "eq",
-            "fun": boundary_velocity_end,
-        })
-        constraint_list.append({
-            "type": "eq",
-            "fun": boundary_acceleration_start,
-        })
-        constraint_list.append({
-            "type": "eq",
-            "fun": boundary_acceleration_end,
-        })
-        constraint_list.append({
-            "type": "eq",
-            "fun": stroke_constraint,
-        })
+        constraint_list.append(
+            {
+                "type": "eq",
+                "fun": boundary_position_start,
+            },
+        )
+        constraint_list.append(
+            {
+                "type": "eq",
+                "fun": boundary_position_end,
+            },
+        )
+        constraint_list.append(
+            {
+                "type": "eq",
+                "fun": boundary_velocity_start,
+            },
+        )
+        constraint_list.append(
+            {
+                "type": "eq",
+                "fun": boundary_velocity_end,
+            },
+        )
+        constraint_list.append(
+            {
+                "type": "eq",
+                "fun": boundary_acceleration_start,
+            },
+        )
+        constraint_list.append(
+            {
+                "type": "eq",
+                "fun": boundary_acceleration_end,
+            },
+        )
+        constraint_list.append(
+            {
+                "type": "eq",
+                "fun": stroke_constraint,
+            },
+        )
 
         return constraint_list
 
-    def _extract_solution_minimum_jerk(self, params: np.ndarray, control_points: np.ndarray,
-                                     collocation_points: np.ndarray) -> Dict[str, np.ndarray]:
+    def _extract_solution_minimum_jerk(
+        self,
+        params: np.ndarray,
+        control_points: np.ndarray,
+        collocation_points: np.ndarray,
+    ) -> Dict[str, np.ndarray]:
         """Extract solution from optimization result."""
         cs = CubicSpline(control_points, params, bc_type="natural")
 
@@ -578,8 +664,9 @@ class MotionLawOptimizer(BaseOptimizer):
             "jerk": jerk,
         }
 
-    def _solve_trapezoidal_velocity_profile(self, collocation_points: np.ndarray,
-                                          constraints: MotionLawConstraints) -> Dict[str, np.ndarray]:
+    def _solve_trapezoidal_velocity_profile(
+        self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> Dict[str, np.ndarray]:
         """Solve trapezoidal velocity profile for minimum time approximation."""
         n_points = len(collocation_points)
         position = np.zeros(n_points)
@@ -596,7 +683,9 @@ class MotionLawOptimizer(BaseOptimizer):
         const_angle = upstroke_angle * 0.4  # 40% for constant velocity
         decel_angle = upstroke_angle * 0.3  # 30% for deceleration
 
-        max_velocity = constraints.stroke / (0.5 * accel_angle + const_angle + 0.5 * decel_angle)
+        max_velocity = constraints.stroke / (
+            0.5 * accel_angle + const_angle + 0.5 * decel_angle
+        )
 
         for i, theta in enumerate(collocation_points):
             if theta <= accel_angle:
@@ -607,14 +696,20 @@ class MotionLawOptimizer(BaseOptimizer):
             elif theta <= accel_angle + const_angle:
                 # Constant velocity phase
                 velocity[i] = max_velocity
-                position[i] = 0.5 * max_velocity * accel_angle + max_velocity * (theta - accel_angle)
+                position[i] = 0.5 * max_velocity * accel_angle + max_velocity * (
+                    theta - accel_angle
+                )
                 acceleration[i] = 0
             elif theta <= upstroke_angle:
                 # Deceleration phase
                 decel_theta = theta - accel_angle - const_angle
                 velocity[i] = max_velocity * (1 - decel_theta / decel_angle)
-                position[i] = (0.5 * max_velocity * accel_angle + max_velocity * const_angle +
-                             max_velocity * decel_theta - 0.5 * max_velocity * decel_theta**2 / decel_angle)
+                position[i] = (
+                    0.5 * max_velocity * accel_angle
+                    + max_velocity * const_angle
+                    + max_velocity * decel_theta
+                    - 0.5 * max_velocity * decel_theta**2 / decel_angle
+                )
                 acceleration[i] = -max_velocity / decel_angle
             else:
                 # Downstroke phase (mirror upstroke)
@@ -622,21 +717,31 @@ class MotionLawOptimizer(BaseOptimizer):
                 if downstroke_theta <= accel_angle:
                     # Downstroke acceleration
                     velocity[i] = -max_velocity * (downstroke_theta / accel_angle)
-                    position[i] = constraints.stroke - 0.5 * max_velocity * downstroke_theta**2 / accel_angle
+                    position[i] = (
+                        constraints.stroke
+                        - 0.5 * max_velocity * downstroke_theta**2 / accel_angle
+                    )
                     acceleration[i] = -max_velocity / accel_angle
                 elif downstroke_theta <= accel_angle + const_angle:
                     # Downstroke constant velocity
                     velocity[i] = -max_velocity
-                    position[i] = (constraints.stroke - 0.5 * max_velocity * accel_angle -
-                                 max_velocity * (downstroke_theta - accel_angle))
+                    position[i] = (
+                        constraints.stroke
+                        - 0.5 * max_velocity * accel_angle
+                        - max_velocity * (downstroke_theta - accel_angle)
+                    )
                     acceleration[i] = 0
                 else:
                     # Downstroke deceleration
                     decel_theta = downstroke_theta - accel_angle - const_angle
                     velocity[i] = -max_velocity * (1 - decel_theta / decel_angle)
-                    position[i] = (constraints.stroke - 0.5 * max_velocity * accel_angle -
-                                 max_velocity * const_angle - max_velocity * decel_theta +
-                                 0.5 * max_velocity * decel_theta**2 / decel_angle)
+                    position[i] = (
+                        constraints.stroke
+                        - 0.5 * max_velocity * accel_angle
+                        - max_velocity * const_angle
+                        - max_velocity * decel_theta
+                        + 0.5 * max_velocity * decel_theta**2 / decel_angle
+                    )
                     acceleration[i] = max_velocity / decel_angle
 
         # Calculate jerk as derivative of acceleration
@@ -663,12 +768,15 @@ class MotionLawOptimizer(BaseOptimizer):
             "velocity": velocity,
             "acceleration": acceleration,
             "jerk": jerk,
-            "objective_value": float(np.trapz(np.abs(acceleration), collocation_points)),
+            "objective_value": float(
+                np.trapz(np.abs(acceleration), collocation_points),
+            ),
             "iterations": 1,
         }
 
-    def _solve_smooth_acceleration_profile(self, collocation_points: np.ndarray,
-                                         constraints: MotionLawConstraints) -> Dict[str, np.ndarray]:
+    def _solve_smooth_acceleration_profile(
+        self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> Dict[str, np.ndarray]:
         """Solve smooth acceleration profile for minimum energy approximation."""
         n_points = len(collocation_points)
         position = np.zeros(n_points)
@@ -685,15 +793,25 @@ class MotionLawOptimizer(BaseOptimizer):
                 tau = theta / upstroke_angle
                 # Use cubic profile for smooth acceleration
                 position[i] = constraints.stroke * (3 * tau**2 - 2 * tau**3)
-                velocity[i] = (constraints.stroke / upstroke_angle) * (6 * tau - 6 * tau**2)
-                acceleration[i] = (constraints.stroke / upstroke_angle**2) * (6 - 12 * tau)
+                velocity[i] = (constraints.stroke / upstroke_angle) * (
+                    6 * tau - 6 * tau**2
+                )
+                acceleration[i] = (constraints.stroke / upstroke_angle**2) * (
+                    6 - 12 * tau
+                )
                 jerk[i] = -12 * constraints.stroke / upstroke_angle**3
             else:
                 # Downstroke phase - mirror upstroke
                 downstroke_tau = (theta - upstroke_angle) / downstroke_angle
-                position[i] = constraints.stroke * (1 - (3 * downstroke_tau**2 - 2 * downstroke_tau**3))
-                velocity[i] = -(constraints.stroke / downstroke_angle) * (6 * downstroke_tau - 6 * downstroke_tau**2)
-                acceleration[i] = -(constraints.stroke / downstroke_angle**2) * (6 - 12 * downstroke_tau)
+                position[i] = constraints.stroke * (
+                    1 - (3 * downstroke_tau**2 - 2 * downstroke_tau**3)
+                )
+                velocity[i] = -(constraints.stroke / downstroke_angle) * (
+                    6 * downstroke_tau - 6 * downstroke_tau**2
+                )
+                acceleration[i] = -(constraints.stroke / downstroke_angle**2) * (
+                    6 - 12 * downstroke_tau
+                )
                 jerk[i] = 12 * constraints.stroke / downstroke_angle**3
 
         # Ensure proper boundary conditions
@@ -709,11 +827,12 @@ class MotionLawOptimizer(BaseOptimizer):
             "jerk": jerk,
         }
 
-    def _solve_bang_bang_control(self, collocation_points: np.ndarray,
-                                constraints: MotionLawConstraints) -> Dict[str, Any]:
+    def _solve_bang_bang_control(
+        self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> Dict[str, Any]:
         """
         Solve minimum time motion law using proper bang-bang control.
-        
+
         Bang-bang control uses maximum acceleration/deceleration to minimize time.
         """
         log.info("Implementing bang-bang control for minimum time")
@@ -748,27 +867,31 @@ class MotionLawOptimizer(BaseOptimizer):
                 decel_theta = theta - upstroke_midpoint
                 acceleration[i] = -max_accel
                 velocity[i] = max_accel * upstroke_midpoint - max_accel * decel_theta
-                position[i] = (0.5 * max_accel * upstroke_midpoint**2 +
-                             max_accel * upstroke_midpoint * decel_theta -
-                             0.5 * max_accel * decel_theta**2)
+                position[i] = (
+                    0.5 * max_accel * upstroke_midpoint**2
+                    + max_accel * upstroke_midpoint * decel_theta
+                    - 0.5 * max_accel * decel_theta**2
+                )
             elif theta <= downstroke_midpoint:
                 # Downstroke acceleration phase (bang-bang: max deceleration)
                 downstroke_theta = theta - upstroke_angle
                 acceleration[i] = -max_accel
                 velocity[i] = -max_accel * downstroke_theta
-                position[i] = (constraints.stroke -
-                             0.5 * max_accel * downstroke_theta**2)
+                position[i] = constraints.stroke - 0.5 * max_accel * downstroke_theta**2
             else:
                 # Downstroke deceleration phase (bang-bang: max acceleration)
                 downstroke_theta = theta - upstroke_angle
                 decel_theta = downstroke_theta - downstroke_angle / 2
                 acceleration[i] = max_accel
-                velocity[i] = (-max_accel * downstroke_angle / 2 +
-                             max_accel * decel_theta)
-                position[i] = (constraints.stroke -
-                             0.5 * max_accel * (downstroke_angle / 2)**2 -
-                             max_accel * (downstroke_angle / 2) * decel_theta +
-                             0.5 * max_accel * decel_theta**2)
+                velocity[i] = (
+                    -max_accel * downstroke_angle / 2 + max_accel * decel_theta
+                )
+                position[i] = (
+                    constraints.stroke
+                    - 0.5 * max_accel * (downstroke_angle / 2) ** 2
+                    - max_accel * (downstroke_angle / 2) * decel_theta
+                    + 0.5 * max_accel * decel_theta**2
+                )
 
         # Calculate jerk as derivative of acceleration
         jerk = np.gradient(acceleration, collocation_points)
@@ -787,11 +910,12 @@ class MotionLawOptimizer(BaseOptimizer):
             "iterations": 1,  # Bang-bang is analytical, no iterations needed
         }
 
-    def _solve_minimum_energy_optimization(self, collocation_points: np.ndarray,
-                                         constraints: MotionLawConstraints) -> Dict[str, Any]:
+    def _solve_minimum_energy_optimization(
+        self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> Dict[str, Any]:
         """
         Solve minimum energy motion law optimization.
-        
+
         Objective: Minimize ∫[0 to 2π] (x''(θ))² dθ
         """
         log.info("Implementing minimum energy optimization")
@@ -804,7 +928,8 @@ class MotionLawOptimizer(BaseOptimizer):
 
         # Initial guess: smooth S-curve (physical units)
         initial_guess_phys = self._generate_initial_guess_minimum_energy(
-            control_points, constraints,
+            control_points,
+            constraints,
         )
 
         # Scaling: normalize control-point positions by stroke
@@ -814,11 +939,16 @@ class MotionLawOptimizer(BaseOptimizer):
         # Define objective function (minimize acceleration^2) operating on normalized parameters by converting to physical
         def objective(params_norm):
             params_phys = params_norm / pos_scale
-            return self._minimum_energy_objective(params_phys, control_points, collocation_points)
+            return self._minimum_energy_objective(
+                params_phys, control_points, collocation_points,
+            )
 
         # Define constraints and wrap to accept normalized parameters
         base_constraints = self._define_motion_law_constraints(
-            initial_guess_phys, control_points, collocation_points, constraints,
+            initial_guess_phys,
+            control_points,
+            collocation_points,
+            constraints,
         )
         constraint_list = [
             {"type": c["type"], "fun": (lambda p, f=c["fun"]: f(p / pos_scale))}
@@ -839,12 +969,16 @@ class MotionLawOptimizer(BaseOptimizer):
         )
 
         if not result.success:
-            log.warning(f"Minimum energy optimization did not converge: {result.message}")
+            log.warning(
+                f"Minimum energy optimization did not converge: {result.message}",
+            )
 
         # Extract solution (convert params back to physical units)
         params_phys = result.x / pos_scale
         solution = self._extract_solution_minimum_energy(
-            params_phys, control_points, collocation_points,
+            params_phys,
+            control_points,
+            collocation_points,
         )
 
         return {
@@ -856,8 +990,9 @@ class MotionLawOptimizer(BaseOptimizer):
             "iterations": result.nit,
         }
 
-    def _generate_initial_guess_minimum_energy(self, control_points: np.ndarray,
-                                             constraints: MotionLawConstraints) -> np.ndarray:
+    def _generate_initial_guess_minimum_energy(
+        self, control_points: np.ndarray, constraints: MotionLawConstraints,
+    ) -> np.ndarray:
         """Generate initial guess for minimum energy optimization."""
         # Create a smooth S-curve initial guess (similar to minimum jerk)
         n_control = len(control_points)
@@ -869,17 +1004,32 @@ class MotionLawOptimizer(BaseOptimizer):
                 # Upstroke phase
                 tau = theta / constraints.upstroke_angle
                 # S-curve: 6t^5 - 15t^4 + 10t^3
-                initial_guess[i] = constraints.stroke * (6 * tau**5 - 15 * tau**4 + 10 * tau**3)
+                initial_guess[i] = constraints.stroke * (
+                    6 * tau**5 - 15 * tau**4 + 10 * tau**3
+                )
             else:
                 # Downstroke phase
-                downstroke_tau = (theta - constraints.upstroke_angle) / constraints.downstroke_angle
+                downstroke_tau = (
+                    theta - constraints.upstroke_angle
+                ) / constraints.downstroke_angle
                 # Mirror the upstroke
-                initial_guess[i] = constraints.stroke * (1 - (6 * downstroke_tau**5 - 15 * downstroke_tau**4 + 10 * downstroke_tau**3))
+                initial_guess[i] = constraints.stroke * (
+                    1
+                    - (
+                        6 * downstroke_tau**5
+                        - 15 * downstroke_tau**4
+                        + 10 * downstroke_tau**3
+                    )
+                )
 
         return initial_guess
 
-    def _minimum_energy_objective(self, params: np.ndarray, control_points: np.ndarray,
-                                 collocation_points: np.ndarray) -> float:
+    def _minimum_energy_objective(
+        self,
+        params: np.ndarray,
+        control_points: np.ndarray,
+        collocation_points: np.ndarray,
+    ) -> float:
         """Calculate minimum energy objective function."""
         # Interpolate control points to collocation points
         cs = CubicSpline(control_points, params, bc_type="natural")
@@ -894,8 +1044,12 @@ class MotionLawOptimizer(BaseOptimizer):
 
         return objective
 
-    def _extract_solution_minimum_energy(self, params: np.ndarray, control_points: np.ndarray,
-                                       collocation_points: np.ndarray) -> Dict[str, np.ndarray]:
+    def _extract_solution_minimum_energy(
+        self,
+        params: np.ndarray,
+        control_points: np.ndarray,
+        collocation_points: np.ndarray,
+    ) -> Dict[str, np.ndarray]:
         """Extract solution from minimum energy optimization result."""
         cs = CubicSpline(control_points, params, bc_type="natural")
 

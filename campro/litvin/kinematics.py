@@ -22,7 +22,9 @@ class PlanetKinematics:
     def planet_angle(self, theta_r: float) -> float:
         return self.motion.planet_angle_fn(theta_r)
 
-    def transform_ring_to_planet(self, theta_r: float) -> Tuple[Tuple[Tuple[float, float], Tuple[float, float]], Tuple[float, float]]:
+    def transform_ring_to_planet(
+        self, theta_r: float,
+    ) -> Tuple[Tuple[Tuple[float, float], Tuple[float, float]], Tuple[float, float]]:
         d = self.center_distance(theta_r)
         theta_p = self.planet_angle(theta_r)
         cos_p = cos(theta_p)
@@ -31,4 +33,3 @@ class PlanetKinematics:
         rot = ((cos_p, -sin_p), (sin_p, cos_p))
         trans = (d, 0.0)
         return rot, trans
-

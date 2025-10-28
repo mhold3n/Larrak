@@ -2,7 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from campro.optimization.error_recovery import MaxRetriesExceeded, RetryStrategy, safe_solve
+from campro.optimization.error_recovery import (
+    MaxRetriesExceeded,
+    RetryStrategy,
+    safe_solve,
+)
 
 
 class _CounterSolve:

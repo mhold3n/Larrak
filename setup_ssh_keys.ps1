@@ -69,3 +69,4 @@ Write-Host "`nYour private key is stored at:" -ForegroundColor Cyan
 Write-Host "  $privateKeyPath" -ForegroundColor White
 Write-Host "`nKeep this private key secure and never share it!" -ForegroundColor Red
 
+

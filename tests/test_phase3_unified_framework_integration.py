@@ -139,7 +139,9 @@ class TestUnifiedFrameworkIntegration:
     def test_tertiary_optimizer_configuration(self):
         """Test that tertiary optimizer is properly configured with crank center constraints and targets."""
         # Mock the configure method to capture the arguments
-        with patch.object(self.framework.tertiary_optimizer, "configure") as mock_configure:
+        with patch.object(
+            self.framework.tertiary_optimizer, "configure",
+        ) as mock_configure:
             self.framework._configure_optimizers()
 
             # Check that configure was called
@@ -181,19 +183,31 @@ class TestUnifiedFrameworkIntegration:
     def test_tertiary_optimization_data_preparation(self):
         """Test that tertiary optimization data is properly prepared."""
         # Set up mock data
-        self.framework.data.primary_theta = np.linspace(0, 2*np.pi, 100)
-        self.framework.data.primary_position = 10.0 * np.sin(self.framework.data.primary_theta)
-        self.framework.data.primary_velocity = 10.0 * np.cos(self.framework.data.primary_theta)
-        self.framework.data.primary_acceleration = -10.0 * np.sin(self.framework.data.primary_theta)
-        self.framework.data.primary_load_profile = 1000.0 * np.ones_like(self.framework.data.primary_theta)
+        self.framework.data.primary_theta = np.linspace(0, 2 * np.pi, 100)
+        self.framework.data.primary_position = 10.0 * np.sin(
+            self.framework.data.primary_theta,
+        )
+        self.framework.data.primary_velocity = 10.0 * np.cos(
+            self.framework.data.primary_theta,
+        )
+        self.framework.data.primary_acceleration = -10.0 * np.sin(
+            self.framework.data.primary_theta,
+        )
+        self.framework.data.primary_load_profile = 1000.0 * np.ones_like(
+            self.framework.data.primary_theta,
+        )
 
         self.framework.data.secondary_base_radius = 25.0
         self.framework.data.secondary_cam_curves = {"x": np.array([1, 2, 3])}
-        self.framework.data.secondary_psi = np.linspace(0, 2*np.pi, 100)
-        self.framework.data.secondary_R_psi = 45.0 * np.ones_like(self.framework.data.secondary_psi)
+        self.framework.data.secondary_psi = np.linspace(0, 2 * np.pi, 100)
+        self.framework.data.secondary_R_psi = 45.0 * np.ones_like(
+            self.framework.data.secondary_psi,
+        )
 
         # Mock the tertiary optimizer
-        with patch.object(self.framework.tertiary_optimizer, "optimize") as mock_optimize:
+        with patch.object(
+            self.framework.tertiary_optimizer, "optimize",
+        ) as mock_optimize:
             mock_result = Mock()
             mock_result.status = OptimizationStatus.CONVERGED
             mock_result.solution = {
@@ -333,16 +347,18 @@ class TestUnifiedFrameworkIntegration:
     @patch("campro.optimization.unified_framework.MotionOptimizer")
     @patch("campro.optimization.unified_framework.CamRingOptimizer")
     @patch("campro.optimization.unified_framework.CrankCenterOptimizer")
-    def test_full_cascaded_optimization_integration(self, mock_crank_optimizer, mock_cam_optimizer, mock_motion_optimizer):
+    def test_full_cascaded_optimization_integration(
+        self, mock_crank_optimizer, mock_cam_optimizer, mock_motion_optimizer,
+    ):
         """Test full cascaded optimization with CrankCenterOptimizer integration."""
         # Set up mock optimizers
         mock_motion_result = Mock()
         mock_motion_result.status = OptimizationStatus.CONVERGED
         mock_motion_result.solution = {
-            "cam_angle": np.linspace(0, 2*np.pi, 100),
-            "position": 10.0 * np.sin(np.linspace(0, 2*np.pi, 100)),
-            "velocity": 10.0 * np.cos(np.linspace(0, 2*np.pi, 100)),
-            "acceleration": -10.0 * np.sin(np.linspace(0, 2*np.pi, 100)),
+            "cam_angle": np.linspace(0, 2 * np.pi, 100),
+            "position": 10.0 * np.sin(np.linspace(0, 2 * np.pi, 100)),
+            "velocity": 10.0 * np.cos(np.linspace(0, 2 * np.pi, 100)),
+            "acceleration": -10.0 * np.sin(np.linspace(0, 2 * np.pi, 100)),
         }
         mock_motion_result.objective_value = 0.1
         mock_motion_result.iterations = 15
@@ -353,7 +369,7 @@ class TestUnifiedFrameworkIntegration:
         mock_cam_result.solution = {
             "optimized_parameters": {"base_radius": 25.0},
             "cam_curves": {"x": np.array([1, 2, 3])},
-            "psi": np.linspace(0, 2*np.pi, 100),
+            "psi": np.linspace(0, 2 * np.pi, 100),
             "R_psi": 45.0 * np.ones(100),
         }
         mock_cam_result.objective_value = 0.2
@@ -396,14 +412,29 @@ class TestUnifiedFrameworkIntegration:
         framework.tertiary_optimizer = mock_crank_optimizer.return_value
 
         # Mock the data update methods to simulate proper data flow
-        mock_update_primary = Mock(side_effect=lambda result: setattr(framework.data, "primary_theta", np.linspace(0, 2*np.pi, 100)))
-        mock_update_secondary = Mock(side_effect=lambda result: setattr(framework.data, "secondary_base_radius", 25.0))
-        mock_update_tertiary = Mock(side_effect=lambda result: setattr(framework.data, "tertiary_crank_center_x", 2.0))
+        mock_update_primary = Mock(
+            side_effect=lambda result: setattr(
+                framework.data, "primary_theta", np.linspace(0, 2 * np.pi, 100),
+            ),
+        )
+        mock_update_secondary = Mock(
+            side_effect=lambda result: setattr(
+                framework.data, "secondary_base_radius", 25.0,
+            ),
+        )
+        mock_update_tertiary = Mock(
+            side_effect=lambda result: setattr(
+                framework.data, "tertiary_crank_center_x", 2.0,
+            ),
+        )
 
-        with patch.object(framework, "_update_data_from_primary", mock_update_primary), \
-             patch.object(framework, "_update_data_from_secondary", mock_update_secondary), \
-             patch.object(framework, "_update_data_from_tertiary", mock_update_tertiary):
-
+        with (
+            patch.object(framework, "_update_data_from_primary", mock_update_primary),
+            patch.object(
+                framework, "_update_data_from_secondary", mock_update_secondary,
+            ),
+            patch.object(framework, "_update_data_from_tertiary", mock_update_tertiary),
+        ):
             # Run cascaded optimization
             result = framework.optimize_cascaded(self.input_data)
 

@@ -9,9 +9,11 @@ from campro.freepiston.net1d.bc import non_reflecting_inlet_bc, non_reflecting_o
 from campro.freepiston.net1d.flux import hllc_flux, primitive_from_conservative
 
 
-def sod_shock_tube_initial_conditions() -> Tuple[List[Tuple[float, float, float]], List[Tuple[float, float, float]]]:
+def sod_shock_tube_initial_conditions() -> Tuple[
+    List[Tuple[float, float, float]], List[Tuple[float, float, float]],
+]:
     """Initial conditions for Sod shock tube problem.
-    
+
     Returns
     -------
     U_left : List[Tuple[float, float, float]]
@@ -21,13 +23,13 @@ def sod_shock_tube_initial_conditions() -> Tuple[List[Tuple[float, float, float]
     """
     # Left state (high pressure, high density)
     rho_L = 1.0  # kg/m^3
-    u_L = 0.0    # m/s
-    p_L = 1.0    # Pa (normalized)
+    u_L = 0.0  # m/s
+    p_L = 1.0  # Pa (normalized)
 
     # Right state (low pressure, low density)
     rho_R = 0.125  # kg/m^3
-    u_R = 0.0      # m/s
-    p_R = 0.1      # Pa (normalized)
+    u_R = 0.0  # m/s
+    p_R = 0.1  # Pa (normalized)
 
     # Convert to conservative variables
     gamma = 1.4
@@ -43,9 +45,11 @@ def sod_shock_tube_initial_conditions() -> Tuple[List[Tuple[float, float, float]
     return U_L, U_R
 
 
-def sod_shock_tube_analytical_solution(x: float, t: float, x0: float = 0.5) -> Tuple[float, float, float]:
+def sod_shock_tube_analytical_solution(
+    x: float, t: float, x0: float = 0.5,
+) -> Tuple[float, float, float]:
     """Analytical solution for Sod shock tube problem.
-    
+
     Parameters
     ----------
     x : float
@@ -54,7 +58,7 @@ def sod_shock_tube_analytical_solution(x: float, t: float, x0: float = 0.5) -> T
         Time [s]
     x0 : float
         Initial discontinuity position [m]
-        
+
     Returns
     -------
     rho : float
@@ -92,7 +96,9 @@ def sod_shock_tube_analytical_solution(x: float, t: float, x0: float = 0.5) -> T
     u_star = u_L + A_L - c_star_L
 
     # Shock speed
-    u_shock = u_R + c_R * math.sqrt((gamma + 1.0) / (2.0 * gamma) * (p_star / p_R - 1.0) + 1.0)
+    u_shock = u_R + c_R * math.sqrt(
+        (gamma + 1.0) / (2.0 * gamma) * (p_star / p_R - 1.0) + 1.0,
+    )
 
     # Wave positions
     x_contact = x0 + u_star * t
@@ -106,7 +112,9 @@ def sod_shock_tube_analytical_solution(x: float, t: float, x0: float = 0.5) -> T
         return rho_L, u_L, p_L
     if x < x_rarefaction_right:
         # Rarefaction wave
-        u_rare = u_L + 2.0 * c_L / (gamma + 1.0) * (1.0 + (gamma - 1.0) / (2.0 * c_L) * (x - x0) / t)
+        u_rare = u_L + 2.0 * c_L / (gamma + 1.0) * (
+            1.0 + (gamma - 1.0) / (2.0 * c_L) * (x - x0) / t
+        )
         c_rare = c_L - (gamma - 1.0) / 2.0 * u_rare
         p_rare = p_L * (c_rare / c_L) ** (2.0 * gamma / (gamma - 1.0))
         rho_rare = rho_L * (p_rare / p_L) ** (1.0 / gamma)
@@ -130,12 +138,12 @@ def test_sod_shock_tube_initial_conditions():
     # Check left state
     assert U_L[0] == 1.0  # rho_L
     assert U_L[1] == 0.0  # rho*u_L
-    assert U_L[2] > 0.0   # rho*E_L
+    assert U_L[2] > 0.0  # rho*E_L
 
     # Check right state
     assert U_R[0] == 0.125  # rho_R
-    assert U_R[1] == 0.0    # rho*u_R
-    assert U_R[2] > 0.0     # rho*E_R
+    assert U_R[1] == 0.0  # rho*u_R
+    assert U_R[2] > 0.0  # rho*E_R
 
     # Check that left state has higher energy
     assert U_L[2] > U_R[2]
@@ -216,10 +224,10 @@ def test_sod_shock_tube_1d_simulation():
         # Interior points
         for i in range(1, nx - 1):
             # HLLC flux at left interface
-            F_left = hllc_flux(U[i-1], U[i])
+            F_left = hllc_flux(U[i - 1], U[i])
 
             # HLLC flux at right interface
-            F_right = hllc_flux(U[i], U[i+1])
+            F_right = hllc_flux(U[i], U[i + 1])
 
             # Conservative update
             U_new_i = []
@@ -282,8 +290,8 @@ def test_sod_shock_tube_convergence():
 
             # Interior points
             for i in range(1, nx - 1):
-                F_left = hllc_flux(U[i-1], U[i])
-                F_right = hllc_flux(U[i], U[i+1])
+                F_left = hllc_flux(U[i - 1], U[i])
+                F_right = hllc_flux(U[i], U[i + 1])
 
                 U_new_i = []
                 for j in range(3):
@@ -348,12 +356,12 @@ def test_sod_shock_tube_energy_conservation():
                 F_right = hllc_flux(U[0], U[1])
             elif i == nx - 1:
                 # Right boundary: use ghost cell with same state
-                F_left = hllc_flux(U[nx-2], U[nx-1])
-                F_right = hllc_flux(U[nx-1], U[nx-1])  # F(0,0) = 0
+                F_left = hllc_flux(U[nx - 2], U[nx - 1])
+                F_right = hllc_flux(U[nx - 1], U[nx - 1])  # F(0,0) = 0
             else:
                 # Interior points
-                F_left = hllc_flux(U[i-1], U[i])
-                F_right = hllc_flux(U[i], U[i+1])
+                F_left = hllc_flux(U[i - 1], U[i])
+                F_right = hllc_flux(U[i], U[i + 1])
 
             # Conservative update: dU/dt = -dF/dx
             U_new_i = []
@@ -404,7 +412,7 @@ def test_sod_shock_tube_robustness():
     """Test robustness of Sod shock tube solver for extreme conditions."""
     # Test with very high pressure ratio
     U_L = (10.0, 0.0, 10000.0)  # Very high pressure
-    U_R = (0.1, 0.0, 100.0)     # Very low pressure
+    U_R = (0.1, 0.0, 100.0)  # Very low pressure
 
     F_hat = hllc_flux(U_L, U_R)
 
@@ -414,7 +422,7 @@ def test_sod_shock_tube_robustness():
 
     # Test with very high velocity
     U_L = (1.0, 1000.0, 1000.0)  # Very high velocity
-    U_R = (1.0, 0.0, 1000.0)     # Zero velocity
+    U_R = (1.0, 0.0, 1000.0)  # Zero velocity
 
     F_hat = hllc_flux(U_L, U_R)
 

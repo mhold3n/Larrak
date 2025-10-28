@@ -20,7 +20,7 @@ log = get_logger(__name__)
 class OptimizationRegistry:
     """
     Centralized registry for optimization results.
-    
+
     This registry manages optimization results from different optimizers,
     enabling cascaded optimization where secondary optimizers can access
     and use results from primary optimizers.
@@ -28,13 +28,17 @@ class OptimizationRegistry:
 
     def __init__(self, storage: Optional[BaseStorage] = None):
         self.storage = storage or MemoryStorage("OptimizationRegistry")
-        self._optimization_chains: Dict[str, List[str]] = {}  # chain_id -> [optimizer_ids]
+        self._optimization_chains: Dict[
+            str, List[str],
+        ] = {}  # chain_id -> [optimizer_ids]
         self._optimizer_results: Dict[str, str] = {}  # optimizer_id -> storage_key
 
-    def register_optimizer(self, optimizer_id: str, chain_id: Optional[str] = None) -> None:
+    def register_optimizer(
+        self, optimizer_id: str, chain_id: Optional[str] = None,
+    ) -> None:
         """
         Register an optimizer in the registry.
-        
+
         Args:
             optimizer_id: Unique identifier for the optimizer
             chain_id: Optional chain identifier for cascaded optimization
@@ -49,21 +53,25 @@ class OptimizationRegistry:
             self._optimization_chains[chain_id].append(optimizer_id)
             log.info(f"Registered optimizer '{optimizer_id}' in chain '{chain_id}'")
 
-    def store_result(self, optimizer_id: str, result_data: Dict[str, Any],
-                    metadata: Optional[Dict[str, Any]] = None,
-                    constraints: Optional[Dict[str, Any]] = None,
-                    optimization_rules: Optional[Dict[str, Any]] = None,
-                    solver_settings: Optional[Dict[str, Any]] = None,
-                    expires_in: Optional[float] = None) -> StorageResult:
+    def store_result(
+        self,
+        optimizer_id: str,
+        result_data: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
+        constraints: Optional[Dict[str, Any]] = None,
+        optimization_rules: Optional[Dict[str, Any]] = None,
+        solver_settings: Optional[Dict[str, Any]] = None,
+        expires_in: Optional[float] = None,
+    ) -> StorageResult:
         """
         Store optimization result for an optimizer.
-        
+
         Args:
             optimizer_id: Identifier of the optimizer
             result_data: Optimization result data
             metadata: Optional metadata
             expires_in: Optional expiration time in seconds
-            
+
         Returns:
             StorageResult object
         """
@@ -73,11 +81,13 @@ class OptimizationRegistry:
         # Add optimizer metadata
         if metadata is None:
             metadata = {}
-        metadata.update({
-            "optimizer_id": optimizer_id,
-            "timestamp": time.time(),
-            "chain_id": self._get_chain_id(optimizer_id),
-        })
+        metadata.update(
+            {
+                "optimizer_id": optimizer_id,
+                "timestamp": time.time(),
+                "chain_id": self._get_chain_id(optimizer_id),
+            },
+        )
 
         # Store the result
         storage_result = self.storage.store(
@@ -93,16 +103,18 @@ class OptimizationRegistry:
         # Track the result
         self._optimizer_results[optimizer_id] = storage_key
 
-        log.info(f"Stored result for optimizer '{optimizer_id}' with key '{storage_key}'")
+        log.info(
+            f"Stored result for optimizer '{optimizer_id}' with key '{storage_key}'",
+        )
         return storage_result
 
     def get_result(self, optimizer_id: str) -> Optional[StorageResult]:
         """
         Get the latest result for an optimizer.
-        
+
         Args:
             optimizer_id: Identifier of the optimizer
-            
+
         Returns:
             StorageResult object or None if not found
         """
@@ -114,7 +126,9 @@ class OptimizationRegistry:
         result = self.storage.retrieve(storage_key)
 
         if result is None:
-            log.warning(f"Result for optimizer '{optimizer_id}' not accessible (expired or removed)")
+            log.warning(
+                f"Result for optimizer '{optimizer_id}' not accessible (expired or removed)",
+            )
             # Remove from tracking
             del self._optimizer_results[optimizer_id]
 
@@ -123,10 +137,10 @@ class OptimizationRegistry:
     def get_chain_results(self, chain_id: str) -> Dict[str, StorageResult]:
         """
         Get all results for a specific optimization chain.
-        
+
         Args:
             chain_id: Chain identifier
-            
+
         Returns:
             Dictionary mapping optimizer_id to StorageResult
         """
@@ -145,10 +159,10 @@ class OptimizationRegistry:
     def get_available_results(self, optimizer_id: str) -> Dict[str, StorageResult]:
         """
         Get all available results that an optimizer can access.
-        
+
         Args:
             optimizer_id: Identifier of the requesting optimizer
-            
+
         Returns:
             Dictionary mapping optimizer_id to StorageResult
         """
@@ -165,17 +179,19 @@ class OptimizationRegistry:
 
         for i, other_optimizer_id in enumerate(self._optimization_chains[chain_id]):
             if i < optimizer_index and other_optimizer_id in chain_results:
-                available_results[other_optimizer_id] = chain_results[other_optimizer_id]
+                available_results[other_optimizer_id] = chain_results[
+                    other_optimizer_id
+                ]
 
         return available_results
 
     def clear_chain(self, chain_id: str) -> int:
         """
         Clear all results for a specific chain.
-        
+
         Args:
             chain_id: Chain identifier
-            
+
         Returns:
             Number of results cleared
         """

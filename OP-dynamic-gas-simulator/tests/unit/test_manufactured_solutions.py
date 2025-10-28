@@ -9,10 +9,11 @@ from campro.freepiston.core.thermo import JANAFCoeffs, RealGasEOS
 from campro.freepiston.net1d.flux import hllc_flux, primitive_from_conservative
 
 
-def manufactured_solution_sine_wave(x: float, t: float, L: float = 1.0,
-                                  T_period: float = 1.0) -> Tuple[float, float, float]:
+def manufactured_solution_sine_wave(
+    x: float, t: float, L: float = 1.0, T_period: float = 1.0,
+) -> Tuple[float, float, float]:
     """Manufactured solution with sine wave variations.
-    
+
     Parameters
     ----------
     x : float
@@ -23,7 +24,7 @@ def manufactured_solution_sine_wave(x: float, t: float, L: float = 1.0,
         Domain length [m]
     T_period : float
         Time period [s]
-        
+
     Returns
     -------
     rho : float
@@ -35,8 +36,8 @@ def manufactured_solution_sine_wave(x: float, t: float, L: float = 1.0,
     """
     # Base state
     rho_0 = 1.0  # kg/m^3
-    u_0 = 0.0    # m/s
-    p_0 = 1e5    # Pa
+    u_0 = 0.0  # m/s
+    p_0 = 1e5  # Pa
 
     # Amplitude of variations (scaled to produce reasonable source terms)
     A_rho = 0.01
@@ -55,9 +56,11 @@ def manufactured_solution_sine_wave(x: float, t: float, L: float = 1.0,
     return rho, u, p
 
 
-def manufactured_solution_polynomial(x: float, t: float, L: float = 1.0) -> Tuple[float, float, float]:
+def manufactured_solution_polynomial(
+    x: float, t: float, L: float = 1.0,
+) -> Tuple[float, float, float]:
     """Manufactured solution with polynomial variations.
-    
+
     Parameters
     ----------
     x : float
@@ -66,7 +69,7 @@ def manufactured_solution_polynomial(x: float, t: float, L: float = 1.0) -> Tupl
         Time [s]
     L : float
         Domain length [m]
-        
+
     Returns
     -------
     rho : float
@@ -93,9 +96,11 @@ def manufactured_solution_polynomial(x: float, t: float, L: float = 1.0) -> Tupl
     return rho, u, p
 
 
-def manufactured_solution_exponential(x: float, t: float, L: float = 1.0) -> Tuple[float, float, float]:
+def manufactured_solution_exponential(
+    x: float, t: float, L: float = 1.0,
+) -> Tuple[float, float, float]:
     """Manufactured solution with exponential variations.
-    
+
     Parameters
     ----------
     x : float
@@ -104,7 +109,7 @@ def manufactured_solution_exponential(x: float, t: float, L: float = 1.0) -> Tup
         Time [s]
     L : float
         Domain length [m]
-        
+
     Returns
     -------
     rho : float
@@ -131,8 +136,15 @@ def manufactured_solution_exponential(x: float, t: float, L: float = 1.0) -> Tup
     return rho, u, p
 
 
-def compute_source_terms_analytical(rho: float, u: float, p: float, x: float, t: float,
-                                   L: float = 1.0, T_period: float = 1.0) -> Tuple[float, float, float]:
+def compute_source_terms_analytical(
+    rho: float,
+    u: float,
+    p: float,
+    x: float,
+    t: float,
+    L: float = 1.0,
+    T_period: float = 1.0,
+) -> Tuple[float, float, float]:
     """Compute source terms analytically for sine wave manufactured solution.
 
     Parameters
@@ -191,7 +203,9 @@ def compute_source_terms_analytical(rho: float, u: float, p: float, x: float, t:
     S_rho = drho_dt + drho_dx * u + rho * du_dx
 
     # Momentum: d(rho*u)/dt + d(rho*u^2 + p)/dx = S_momentum
-    S_momentum = drho_dt * u + rho * du_dt + drho_dx * u**2 + 2.0 * rho * u * du_dx + dp_dx
+    S_momentum = (
+        drho_dt * u + rho * du_dt + drho_dx * u**2 + 2.0 * rho * u * du_dx + dp_dx
+    )
 
     # Energy: d(rho*E)/dt + d((rho*E + p)*u)/dx = S_energy
     gamma = 1.4
@@ -200,16 +214,27 @@ def compute_source_terms_analytical(rho: float, u: float, p: float, x: float, t:
     p_safe = max(p, 1e-12)
 
     E = p_safe / ((gamma - 1.0) * rho_safe) + 0.5 * u**2
-    dE_dt = dp_dt / ((gamma - 1.0) * rho_safe) - p_safe * drho_dt / ((gamma - 1.0) * rho_safe**2) + u * du_dt
-    dE_dx = dp_dx / ((gamma - 1.0) * rho_safe) - p_safe * drho_dx / ((gamma - 1.0) * rho_safe**2) + u * du_dx
+    dE_dt = (
+        dp_dt / ((gamma - 1.0) * rho_safe)
+        - p_safe * drho_dt / ((gamma - 1.0) * rho_safe**2)
+        + u * du_dt
+    )
+    dE_dx = (
+        dp_dx / ((gamma - 1.0) * rho_safe)
+        - p_safe * drho_dx / ((gamma - 1.0) * rho_safe**2)
+        + u * du_dx
+    )
 
-    S_energy = (rho * dE_dt + E * drho_dt) + ((rho * E + p) * du_dx + u * (rho * dE_dx + E * drho_dx + dp_dx))
+    S_energy = (rho * dE_dt + E * drho_dt) + (
+        (rho * E + p) * du_dx + u * (rho * dE_dx + E * drho_dx + dp_dx)
+    )
 
     return S_rho, S_momentum, S_energy
 
 
-def compute_source_terms(rho: float, u: float, p: float, x: float, t: float,
-                        solution_func: Callable) -> Tuple[float, float, float]:
+def compute_source_terms(
+    rho: float, u: float, p: float, x: float, t: float, solution_func: Callable,
+) -> Tuple[float, float, float]:
     """Compute source terms for manufactured solution using analytical derivatives.
 
     Parameters
@@ -271,15 +296,27 @@ def compute_source_terms(rho: float, u: float, p: float, x: float, t: float,
 
     # Source terms for 1D Euler equations
     S_rho = drho_dt + drho_dx * u + rho * du_dx
-    S_momentum = drho_dt * u + rho * du_dt + drho_dx * u**2 + 2.0 * rho * u * du_dx + dp_dx
+    S_momentum = (
+        drho_dt * u + rho * du_dt + drho_dx * u**2 + 2.0 * rho * u * du_dx + dp_dx
+    )
 
     # Energy: d(rho*E)/dt + d((rho*E + p)*u)/dx = S_energy
     gamma = 1.4
     E = p / ((gamma - 1.0) * rho) + 0.5 * u**2
-    dE_dt = dp_dt / ((gamma - 1.0) * rho) - p * drho_dt / ((gamma - 1.0) * rho**2) + u * du_dt
-    dE_dx = dp_dx / ((gamma - 1.0) * rho) - p * drho_dx / ((gamma - 1.0) * rho**2) + u * du_dx
+    dE_dt = (
+        dp_dt / ((gamma - 1.0) * rho)
+        - p * drho_dt / ((gamma - 1.0) * rho**2)
+        + u * du_dt
+    )
+    dE_dx = (
+        dp_dx / ((gamma - 1.0) * rho)
+        - p * drho_dx / ((gamma - 1.0) * rho**2)
+        + u * du_dx
+    )
 
-    S_energy = (rho * dE_dt + E * drho_dt) + ((rho * E + p) * du_dx + u * (rho * dE_dx + E * drho_dx + dp_dx))
+    S_energy = (rho * dE_dt + E * drho_dt) + (
+        (rho * E + p) * du_dx + u * (rho * dE_dx + E * drho_dx + dp_dx)
+    )
 
     return S_rho, S_momentum, S_energy
 
@@ -360,8 +397,9 @@ def test_source_terms_computation():
     x, t = 0.5, 0.1
     rho, u, p = manufactured_solution_sine_wave(x, t)
 
-    S_rho, S_momentum, S_energy = compute_source_terms(rho, u, p, x, t,
-                                                      manufactured_solution_sine_wave)
+    S_rho, S_momentum, S_energy = compute_source_terms(
+        rho, u, p, x, t, manufactured_solution_sine_wave,
+    )
 
     # Check that source terms are finite
     assert not math.isnan(S_rho)
@@ -374,11 +412,15 @@ def test_source_terms_computation():
     # Check that source terms are reasonable in magnitude
     # Note: Source terms can be large due to spatial gradients in manufactured solution
     assert abs(S_rho) < 100.0
-    assert abs(S_momentum) < 10000.0  # Increased tolerance for pressure gradient effects
-    assert abs(S_energy) < 100000.0   # Increased tolerance for energy source terms
+    assert (
+        abs(S_momentum) < 10000.0
+    )  # Increased tolerance for pressure gradient effects
+    assert abs(S_energy) < 100000.0  # Increased tolerance for energy source terms
 
 
-@pytest.mark.skip(reason="Manufactured solution simulation test is unstable - numerical scheme cannot maintain physical constraints")
+@pytest.mark.skip(
+    reason="Manufactured solution simulation test is unstable - numerical scheme cannot maintain physical constraints",
+)
 def test_manufactured_solution_1d_simulation():
     """Test 1D simulation with manufactured solution."""
     # Grid parameters
@@ -415,13 +457,14 @@ def test_manufactured_solution_1d_simulation():
         # Interior points
         for i in range(1, nx - 1):
             # HLLC flux at interfaces
-            F_left = hllc_flux(U[i-1], U[i])
-            F_right = hllc_flux(U[i], U[i+1])
+            F_left = hllc_flux(U[i - 1], U[i])
+            F_right = hllc_flux(U[i], U[i + 1])
 
             # Source terms
             rho, u, p = primitive_from_conservative(U[i])
-            S_rho, S_momentum, S_energy = compute_source_terms(rho, u, p, x[i], t,
-                                                              manufactured_solution_sine_wave)
+            S_rho, S_momentum, S_energy = compute_source_terms(
+                rho, u, p, x[i], t, manufactured_solution_sine_wave,
+            )
 
             # Conservative update with source terms
             U_new_i = []
@@ -453,7 +496,9 @@ def test_manufactured_solution_1d_simulation():
         assert not math.isinf(u)
 
 
-@pytest.mark.skip(reason="Manufactured solution convergence test is unstable - numerical scheme cannot maintain physical constraints")
+@pytest.mark.skip(
+    reason="Manufactured solution convergence test is unstable - numerical scheme cannot maintain physical constraints",
+)
 def test_manufactured_solution_convergence():
     """Test convergence of manufactured solution."""
     # Different grid resolutions
@@ -491,12 +536,13 @@ def test_manufactured_solution_convergence():
 
             # Interior points
             for i in range(1, nx - 1):
-                F_left = hllc_flux(U[i-1], U[i])
-                F_right = hllc_flux(U[i], U[i+1])
+                F_left = hllc_flux(U[i - 1], U[i])
+                F_right = hllc_flux(U[i], U[i + 1])
 
                 rho, u, p = primitive_from_conservative(U[i])
-                S_rho, S_momentum, S_energy = compute_source_terms(rho, u, p, x[i], t,
-                                                                  manufactured_solution_sine_wave)
+                S_rho, S_momentum, S_energy = compute_source_terms(
+                    rho, u, p, x[i], t, manufactured_solution_sine_wave,
+                )
 
                 U_new_i = []
                 for j in range(3):
@@ -540,10 +586,15 @@ def test_manufactured_solution_real_gas():
             "Pc": 3.396e6,
             "omega": 0.037,
             "janaf_coeffs": JANAFCoeffs(
-                a1=28.98641, a2=1.853978e-3, a3=-9.647459e-6,
-                a4=1.667610e-8, a5=-7.376064e-12,
-                T_low=100.0, T_high=500.0,
-                h_formation=0.0, s_formation=191.61,
+                a1=28.98641,
+                a2=1.853978e-3,
+                a3=-9.647459e-6,
+                a4=1.667610e-8,
+                a5=-7.376064e-12,
+                T_low=100.0,
+                T_high=500.0,
+                h_formation=0.0,
+                s_formation=191.61,
             ),
         },
         "O2": {
@@ -552,10 +603,15 @@ def test_manufactured_solution_real_gas():
             "Pc": 5.043e6,
             "omega": 0.022,
             "janaf_coeffs": JANAFCoeffs(
-                a1=31.32234, a2=-2.005262e-3, a3=1.222427e-5,
-                a4=-1.188127e-8, a5=4.135702e-12,
-                T_low=100.0, T_high=500.0,
-                h_formation=0.0, s_formation=205.15,
+                a1=31.32234,
+                a2=-2.005262e-3,
+                a3=1.222427e-5,
+                a4=-1.188127e-8,
+                a5=4.135702e-12,
+                T_low=100.0,
+                T_high=500.0,
+                h_formation=0.0,
+                s_formation=205.15,
             ),
         },
     }

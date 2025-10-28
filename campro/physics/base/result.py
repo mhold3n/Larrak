@@ -18,6 +18,7 @@ log = get_logger(__name__)
 
 class PhysicsStatus(Enum):
     """Status of physics computations."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -30,7 +31,7 @@ class PhysicsStatus(Enum):
 class PhysicsResult:
     """
     Standardized result container for physics computations.
-    
+
     This class provides a consistent interface for returning results
     from physics computations, including data, metadata, and status information.
     """
@@ -112,8 +113,9 @@ class PhysicsResult:
         }
 
     @classmethod
-    def success(cls, data: Dict[str, np.ndarray],
-                metadata: Optional[Dict[str, Any]] = None) -> "PhysicsResult":
+    def success(
+        cls, data: Dict[str, np.ndarray], metadata: Optional[Dict[str, Any]] = None,
+    ) -> "PhysicsResult":
         """Create a successful result."""
         return cls(
             status=PhysicsStatus.COMPLETED,
@@ -122,8 +124,9 @@ class PhysicsResult:
         )
 
     @classmethod
-    def failure(cls, error_message: str,
-                metadata: Optional[Dict[str, Any]] = None) -> "PhysicsResult":
+    def failure(
+        cls, error_message: str, metadata: Optional[Dict[str, Any]] = None,
+    ) -> "PhysicsResult":
         """Create a failed result."""
         return cls(
             status=PhysicsStatus.FAILED,
@@ -137,4 +140,3 @@ class PhysicsResult:
         status_str = self.status.value
         data_keys = list(self.data.keys())
         return f"PhysicsResult(status={status_str}, data_keys={data_keys})"
-

@@ -15,6 +15,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+
 def test_thermal_efficiency_adapter():
     """Test thermal efficiency adapter with real CasADi optimization."""
     print("=" * 60)
@@ -32,8 +33,8 @@ def test_thermal_efficiency_adapter():
         config = ThermalEfficiencyConfig(
             collocation_points=5,  # Small problem
             collocation_degree=1,  # Radau IIA only supports C=1
-            max_iterations=10,     # Few iterations for testing
-            tolerance=1e-3,        # Relaxed tolerance
+            max_iterations=10,  # Few iterations for testing
+            tolerance=1e-3,  # Relaxed tolerance
         )
 
         # Create adapter
@@ -65,7 +66,9 @@ def test_thermal_efficiency_adapter():
 
             # If it converged, verify result quality
             if result.status.name == "CONVERGED":
-                if result.objective_value == 0.0 or result.objective_value == float("inf"):
+                if result.objective_value == 0.0 or result.objective_value == float(
+                    "inf",
+                ):
                     print("✗ Objective value is invalid")
                     return False
 
@@ -87,10 +90,14 @@ def test_thermal_efficiency_adapter():
                 print("✓ Optimization converged with valid results")
             else:
                 print(f"⚠ Optimization did not converge: {result.status}")
-                print("  This may be due to configuration issues, but CasADi integration is working")
+                print(
+                    "  This may be due to configuration issues, but CasADi integration is working",
+                )
         except Exception as e:
             print(f"⚠ Optimization failed with error: {e}")
-            print("  This may be due to configuration issues, but CasADi integration is working")
+            print(
+                "  This may be due to configuration issues, but CasADi integration is working",
+            )
 
         return True
 
@@ -98,6 +105,7 @@ def test_thermal_efficiency_adapter():
         print(f"✗ Thermal efficiency adapter test failed: {e}")
         traceback.print_exc()
         return False
+
 
 def test_unified_framework():
     """Test unified framework with thermal efficiency optimization."""
@@ -113,6 +121,7 @@ def test_unified_framework():
             UnifiedOptimizationFramework,
             UnifiedOptimizationSettings,
         )
+
         settings = UnifiedOptimizationSettings(
             method=OptimizationMethod.LEGENDRE_COLLOCATION,
             use_thermal_efficiency=True,
@@ -142,10 +151,14 @@ def test_unified_framework():
                 print("✓ Primary optimization converged successfully")
             else:
                 print(f"⚠ Primary optimization did not converge: {result.status}")
-                print("  This may be due to configuration issues, but CasADi integration is working")
+                print(
+                    "  This may be due to configuration issues, but CasADi integration is working",
+                )
         except Exception as e:
             print(f"⚠ Primary optimization failed with error: {e}")
-            print("  This may be due to configuration issues, but CasADi integration is working")
+            print(
+                "  This may be due to configuration issues, but CasADi integration is working",
+            )
 
         return True
 
@@ -153,6 +166,7 @@ def test_unified_framework():
         print(f"✗ Unified framework test failed: {e}")
         traceback.print_exc()
         return False
+
 
 def test_no_scipy_fallbacks():
     """Test that no scipy fallbacks are used."""
@@ -171,7 +185,9 @@ def test_no_scipy_fallbacks():
         def detect_scipy_usage(*args, **kwargs):
             nonlocal scipy_used
             scipy_used = True
-            print(f"⚠ Scipy.optimize.minimize was called: {args[0] if args else 'unknown'}")
+            print(
+                f"⚠ Scipy.optimize.minimize was called: {args[0] if args else 'unknown'}",
+            )
             return original_minimize(*args, **kwargs)
 
         scipy.optimize.minimize = detect_scipy_usage
@@ -213,6 +229,7 @@ def test_no_scipy_fallbacks():
         print(f"✗ Scipy fallback detection test failed: {e}")
         traceback.print_exc()
         return False
+
 
 def main():
     """Run all integration tests."""
@@ -259,6 +276,7 @@ def main():
         print("CasADi integration has issues that need to be fixed.")
 
     return 0 if all_passed else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

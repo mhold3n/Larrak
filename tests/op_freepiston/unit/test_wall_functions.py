@@ -98,7 +98,7 @@ class TestYPlusCalculation:
     def test_calculate_y_plus_basic(self):
         """Test basic y+ calculation."""
         rho = 1.2  # kg/m^3
-        u = 10.0   # m/s
+        u = 10.0  # m/s
         mu = 1.8e-5  # Pa·s
         y = 0.001  # m
 
@@ -113,7 +113,7 @@ class TestYPlusCalculation:
     def test_calculate_y_plus_with_u_tau(self):
         """Test y+ calculation with provided u_tau."""
         rho = 1.2  # kg/m^3
-        u = 10.0   # m/s
+        u = 10.0  # m/s
         mu = 1.8e-5  # Pa·s
         y = 0.001  # m
         u_tau = 1.0  # m/s
@@ -130,7 +130,7 @@ class TestYPlusCalculation:
     def test_calculate_y_plus_edge_cases(self):
         """Test y+ calculation edge cases."""
         rho = 1.2  # kg/m^3
-        u = 0.0    # m/s (zero velocity)
+        u = 0.0  # m/s (zero velocity)
         mu = 1.8e-5  # Pa·s
         y = 0.001  # m
 
@@ -148,14 +148,20 @@ class TestCompressibleWallFunction:
         params = WallModelParameters()
 
         rho = 1.2  # kg/m^3
-        u = 10.0   # m/s
+        u = 10.0  # m/s
         mu = 1.8e-5  # Pa·s
         y = 0.001  # m
         T = 300.0  # K
         T_wall = 400.0  # K
 
         result = compressible_wall_function(
-            rho=rho, u=u, mu=mu, y=y, T=T, T_wall=T_wall, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            y=y,
+            T=T,
+            T_wall=T_wall,
+            params=params,
         )
 
         # Check that all required keys are present
@@ -175,14 +181,20 @@ class TestCompressibleWallFunction:
         params = WallModelParameters(tolerance=1e-8, max_iterations=100)
 
         rho = 1.2  # kg/m^3
-        u = 10.0   # m/s
+        u = 10.0  # m/s
         mu = 1.8e-5  # Pa·s
         y = 0.001  # m
         T = 300.0  # K
         T_wall = 400.0  # K
 
         result = compressible_wall_function(
-            rho=rho, u=u, mu=mu, y=y, T=T, T_wall=T_wall, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            y=y,
+            T=T,
+            T_wall=T_wall,
+            params=params,
         )
 
         # Should converge within max iterations
@@ -194,14 +206,20 @@ class TestCompressibleWallFunction:
         params = WallModelParameters(A_plus=26.0)
 
         rho = 1.2  # kg/m^3
-        u = 1.0    # m/s (low velocity for small y+)
+        u = 1.0  # m/s (low velocity for small y+)
         mu = 1.8e-5  # Pa·s
-        y = 1e-6   # m (very small distance)
+        y = 1e-6  # m (very small distance)
         T = 300.0  # K
         T_wall = 400.0  # K
 
         result = compressible_wall_function(
-            rho=rho, u=u, mu=mu, y=y, T=T, T_wall=T_wall, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            y=y,
+            T=T,
+            T_wall=T_wall,
+            params=params,
         )
 
         # Should be in viscous sublayer
@@ -215,12 +233,18 @@ class TestCompressibleWallFunction:
         rho = 1.2  # kg/m^3
         u = 100.0  # m/s (high velocity for large y+)
         mu = 1.8e-5  # Pa·s
-        y = 0.01   # m (larger distance)
+        y = 0.01  # m (larger distance)
         T = 300.0  # K
         T_wall = 400.0  # K
 
         result = compressible_wall_function(
-            rho=rho, u=u, mu=mu, y=y, T=T, T_wall=T_wall, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            y=y,
+            T=T,
+            T_wall=T_wall,
+            params=params,
         )
 
         # Should be in log layer
@@ -242,7 +266,9 @@ class TestRoughnessEffects:
         roughness_relative = 0.0  # Smooth wall
 
         result = roughness_effects(
-            y_plus=y_plus, roughness_relative=roughness_relative, params=params,
+            y_plus=y_plus,
+            roughness_relative=roughness_relative,
+            params=params,
         )
 
         # Should have no roughness correction
@@ -259,7 +285,9 @@ class TestRoughnessEffects:
         roughness_relative = 0.01  # Rough wall
 
         result = roughness_effects(
-            y_plus=y_plus, roughness_relative=roughness_relative, params=params,
+            y_plus=y_plus,
+            roughness_relative=roughness_relative,
+            params=params,
         )
 
         # Should have roughness correction
@@ -276,7 +304,9 @@ class TestRoughnessEffects:
         roughness_relative = 0.005  # Transitional roughness
 
         result = roughness_effects(
-            y_plus=y_plus, roughness_relative=roughness_relative, params=params,
+            y_plus=y_plus,
+            roughness_relative=roughness_relative,
+            params=params,
         )
 
         # Should have moderate roughness correction
@@ -317,7 +347,9 @@ class TestCompressibilityCorrections:
         # Should have compressibility effects
         assert result["compressibility_factor"] > 1.0
         assert result["temperature_factor"] > 0
-        assert result["total_correction"] > 0  # Can be less than 1 due to temperature factor
+        assert (
+            result["total_correction"] > 0
+        )  # Can be less than 1 due to temperature factor
         assert result["T_ratio"] == T / T_wall
 
 
@@ -338,7 +370,10 @@ class TestWallTemperatureEvolution:
         }
 
         T_wall_new = wall_temperature_evolution(
-            T_wall_old=T_wall_old, q_wall=q_wall, dt=dt, wall_properties=wall_properties,
+            T_wall_old=T_wall_old,
+            q_wall=q_wall,
+            dt=dt,
+            wall_properties=wall_properties,
         )
 
         # Should increase temperature due to heat flux
@@ -362,7 +397,10 @@ class TestWallTemperatureEvolution:
         }
 
         T_wall_new = wall_temperature_evolution(
-            T_wall_old=T_wall_old, q_wall=q_wall, dt=dt, wall_properties=wall_properties,
+            T_wall_old=T_wall_old,
+            q_wall=q_wall,
+            dt=dt,
+            wall_properties=wall_properties,
         )
 
         # Should remain unchanged
@@ -393,8 +431,10 @@ class TestMultiLayerWallHeatTransfer:
         ]
 
         result = multi_layer_wall_heat_transfer(
-            T_gas=T_gas, T_wall_surface=T_wall_surface,
-            wall_layers=wall_layers, params=params,
+            T_gas=T_gas,
+            T_wall_surface=T_wall_surface,
+            wall_layers=wall_layers,
+            params=params,
         )
 
         # Check that all required keys are present
@@ -419,7 +459,10 @@ class TestRadiationHeatTransfer:
         area = 1.0  # m^2
 
         q_rad = radiation_heat_transfer(
-            T_gas=T_gas, T_wall=T_wall, emissivity=emissivity, area=area,
+            T_gas=T_gas,
+            T_wall=T_wall,
+            emissivity=emissivity,
+            area=area,
         )
 
         # Should be positive (heat flux from gas to wall)
@@ -436,7 +479,10 @@ class TestRadiationHeatTransfer:
         area = 1.0  # m^2
 
         q_rad = radiation_heat_transfer(
-            T_gas=T_gas, T_wall=T_wall, emissivity=emissivity, area=area,
+            T_gas=T_gas,
+            T_wall=T_wall,
+            emissivity=emissivity,
+            area=area,
         )
 
         # Should be zero
@@ -451,7 +497,7 @@ class TestAdvancedHeatTransferCorrelation:
         params = WallModelParameters()
 
         rho = 1.2  # kg/m^3
-        u = 50.0   # m/s
+        u = 50.0  # m/s
         mu = 1.8e-5  # Pa·s
         k = 0.026  # W/(m·K)
         cp = 1005.0  # J/(kg·K)
@@ -460,8 +506,15 @@ class TestAdvancedHeatTransferCorrelation:
         D_hydraulic = 0.1  # m
 
         result = advanced_heat_transfer_correlation(
-            rho=rho, u=u, mu=mu, k=k, cp=cp, T=T, T_wall=T_wall,
-            D_hydraulic=D_hydraulic, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            k=k,
+            cp=cp,
+            T=T,
+            T_wall=T_wall,
+            D_hydraulic=D_hydraulic,
+            params=params,
         )
 
         # Check that all required keys are present
@@ -483,7 +536,7 @@ class TestAdvancedHeatTransferCorrelation:
         params = WallModelParameters()
 
         rho = 1.2  # kg/m^3
-        u = 1.0    # m/s (low velocity for laminar)
+        u = 1.0  # m/s (low velocity for laminar)
         mu = 1.8e-5  # Pa·s
         k = 0.026  # W/(m·K)
         cp = 1005.0  # J/(kg·K)
@@ -492,8 +545,15 @@ class TestAdvancedHeatTransferCorrelation:
         D_hydraulic = 0.1  # m
 
         result = advanced_heat_transfer_correlation(
-            rho=rho, u=u, mu=mu, k=k, cp=cp, T=T, T_wall=T_wall,
-            D_hydraulic=D_hydraulic, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            k=k,
+            cp=cp,
+            T=T,
+            T_wall=T_wall,
+            D_hydraulic=D_hydraulic,
+            params=params,
         )
 
         # Check that values are reasonable
@@ -515,19 +575,33 @@ class TestWallFunctionWithRoughness:
         params = WallModelParameters(roughness_relative=0.001)
 
         rho = 1.2  # kg/m^3
-        u = 10.0   # m/s
+        u = 10.0  # m/s
         mu = 1.8e-5  # Pa·s
         y = 0.001  # m
         T = 300.0  # K
         T_wall = 400.0  # K
 
         result = wall_function_with_roughness(
-            rho=rho, u=u, mu=mu, y=y, T=T, T_wall=T_wall, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            y=y,
+            T=T,
+            T_wall=T_wall,
+            params=params,
         )
 
         # Check that all required keys are present
-        required_keys = ["u_tau", "y_plus", "tau_w", "q_wall", "u_plus",
-                        "roughness_factor", "compressibility_factor", "total_correction"]
+        required_keys = [
+            "u_tau",
+            "y_plus",
+            "tau_w",
+            "q_wall",
+            "u_plus",
+            "roughness_factor",
+            "compressibility_factor",
+            "total_correction",
+        ]
         for key in required_keys:
             assert key in result
 
@@ -553,11 +627,18 @@ class TestWallFunctionValidation:
         u_plus = 15.0
 
         result = wall_function_validation(
-            y_plus=y_plus, u_plus=u_plus, params=params,
+            y_plus=y_plus,
+            u_plus=u_plus,
+            params=params,
         )
 
         # Check that all required keys are present
-        required_keys = ["y_plus_valid", "u_plus_valid", "consistency_valid", "u_plus_expected"]
+        required_keys = [
+            "y_plus_valid",
+            "u_plus_valid",
+            "consistency_valid",
+            "u_plus_expected",
+        ]
         for key in required_keys:
             assert key in result
 
@@ -572,10 +653,12 @@ class TestWallFunctionValidation:
         params = WallModelParameters()
 
         y_plus = 2000.0  # Too large
-        u_plus = 100.0   # Too large
+        u_plus = 100.0  # Too large
 
         result = wall_function_validation(
-            y_plus=y_plus, u_plus=u_plus, params=params,
+            y_plus=y_plus,
+            u_plus=u_plus,
+            params=params,
         )
 
         # Check validation results
@@ -597,7 +680,13 @@ class TestGetWallFunctionMethod:
         # Test that it can be called with appropriate arguments
         params = WallModelParameters()
         result = method(
-            rho=1.2, u=10.0, mu=1.8e-5, y=0.001, T=300.0, T_wall=400.0, params=params,
+            rho=1.2,
+            u=10.0,
+            mu=1.8e-5,
+            y=0.001,
+            T=300.0,
+            T_wall=400.0,
+            params=params,
         )
 
         # Should return a dictionary with expected keys
@@ -618,7 +707,13 @@ class TestGetWallFunctionMethod:
         # Test that it can be called with appropriate arguments
         params = WallModelParameters()
         result = method(
-            rho=1.2, u=10.0, mu=1.8e-5, y=0.001, T=300.0, T_wall=400.0, params=params,
+            rho=1.2,
+            u=10.0,
+            mu=1.8e-5,
+            y=0.001,
+            T=300.0,
+            T_wall=400.0,
+            params=params,
         )
 
         # Should return a dictionary with expected keys
@@ -640,7 +735,13 @@ class TestGetWallFunctionMethod:
         # Test that it can be called with appropriate arguments
         params = WallModelParameters()
         result = method(
-            rho=1.2, u=10.0, mu=1.8e-5, y=0.001, T=300.0, T_wall=400.0, params=params,
+            rho=1.2,
+            u=10.0,
+            mu=1.8e-5,
+            y=0.001,
+            T=300.0,
+            T_wall=400.0,
+            params=params,
         )
 
         # Should return a dictionary with expected keys
@@ -669,7 +770,7 @@ class TestIntegrationWith1DSolver:
 
         # Simulate 1D solver call
         rho = 1.2  # kg/m^3
-        u = 10.0   # m/s
+        u = 10.0  # m/s
         mu = 1.8e-5  # Pa·s
         y = 0.001  # m
         T = 300.0  # K
@@ -677,7 +778,13 @@ class TestIntegrationWith1DSolver:
 
         # Test that wall function can be called
         result = wall_function_with_roughness(
-            rho=rho, u=u, mu=mu, y=y, T=T, T_wall=T_wall, params=params,
+            rho=rho,
+            u=u,
+            mu=mu,
+            y=y,
+            T=T,
+            T_wall=T_wall,
+            params=params,
         )
 
         # Should return valid results
@@ -692,6 +799,7 @@ class TestIntegrationWith1DSolver:
 
         # This would be called from the 1D solver
         from campro.freepiston.net1d.stepper import _calculate_wall_source_terms
+
         source = _calculate_wall_source_terms(result, U, solver_params)
 
         # Should return source terms
@@ -703,12 +811,15 @@ class TestSpaldingLaw:
     """Tests for Spalding's law-of-the-wall implementation."""
 
     def test_spalding_converges_and_diagnostics(self):
-        """Spalding should converge and return diagnostics.
-        """
+        """Spalding should converge and return diagnostics."""
         # Moderate and high y+ cases
         for y_plus in [5.0, 30.0, 120.0]:
             u_plus, diag = spalding_wall_function(
-                y_plus=y_plus, kappa=0.41, E=9.0, max_iterations=100, tolerance=1e-10,
+                y_plus=y_plus,
+                kappa=0.41,
+                E=9.0,
+                max_iterations=100,
+                tolerance=1e-10,
             )
             assert u_plus > 0
             assert isinstance(diag, dict)
@@ -717,8 +828,7 @@ class TestSpaldingLaw:
             assert diag.get("residual", 1.0) < 1e-8
 
     def test_spalding_limits_match_linear_and_log_layers(self):
-        """Spalding should match linear for small y+ and approach log-law for large y+.
-        """
+        """Spalding should match linear for small y+ and approach log-law for large y+."""
         kappa = 0.41
         B = 5.2
         # Small y+: u+ ~ y+
@@ -738,6 +848,7 @@ class TestEnhancedWallTreatment:
 
     def test_enhanced_wall_treatment_basic(self):
         from campro.freepiston.net1d.mesh import create_ale_mesh
+
         mesh = create_ale_mesh(0.0, 0.1, 20)
         params = WallModelParameters()
         flow_params = {
@@ -747,7 +858,9 @@ class TestEnhancedWallTreatment:
             "T": 300.0,
             "T_wall": 400.0,
         }
-        result = enhanced_wall_treatment(mesh=mesh, flow_params=flow_params, wall_params=params)
+        result = enhanced_wall_treatment(
+            mesh=mesh, flow_params=flow_params, wall_params=params,
+        )
         for key in ["u_tau", "y_plus", "u_plus", "tau_w", "model"]:
             assert key in result
         assert result["u_tau"] > 0

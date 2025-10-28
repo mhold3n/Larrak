@@ -19,7 +19,7 @@ log = get_logger(__name__)
 class CoordinateTransformComponent(BaseComponent):
     """
     Component for coordinate transformations.
-    
+
     This component handles transformations between different coordinate systems
     used in cam-ring systems.
     """
@@ -31,7 +31,7 @@ class CoordinateTransformComponent(BaseComponent):
     def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
         """
         Perform coordinate transformations.
-        
+
         Parameters
         ----------
         inputs : Dict[str, np.ndarray]
@@ -39,7 +39,7 @@ class CoordinateTransformComponent(BaseComponent):
             - 'theta': Angles (radians)
             - 'r': Radius values
             - 'transform_type': Type of transformation to perform
-            
+
         Returns
         -------
         ComponentResult
@@ -59,7 +59,9 @@ class CoordinateTransformComponent(BaseComponent):
             r = inputs["r"]
             transform_type = inputs.get("transform_type", "polar_to_cartesian")
 
-            log.info(f"Performing {transform_type} transformation for {len(theta)} points")
+            log.info(
+                f"Performing {transform_type} transformation for {len(theta)} points",
+            )
 
             if transform_type == "polar_to_cartesian":
                 outputs = self._polar_to_cartesian(theta, r)
@@ -91,7 +93,9 @@ class CoordinateTransformComponent(BaseComponent):
                 error_message=str(e),
             )
 
-    def _polar_to_cartesian(self, theta: np.ndarray, r: np.ndarray) -> Dict[str, np.ndarray]:
+    def _polar_to_cartesian(
+        self, theta: np.ndarray, r: np.ndarray,
+    ) -> Dict[str, np.ndarray]:
         """Convert polar to cartesian coordinates."""
         x = r * np.cos(theta)
         y = r * np.sin(theta)
@@ -103,7 +107,9 @@ class CoordinateTransformComponent(BaseComponent):
             "r": r,
         }
 
-    def _cartesian_to_polar(self, x: np.ndarray, y: np.ndarray) -> Dict[str, np.ndarray]:
+    def _cartesian_to_polar(
+        self, x: np.ndarray, y: np.ndarray,
+    ) -> Dict[str, np.ndarray]:
         """Convert cartesian to polar coordinates."""
         r = np.sqrt(x**2 + y**2)
         theta = np.arctan2(y, x)
@@ -126,4 +132,3 @@ class CoordinateTransformComponent(BaseComponent):
     def get_outputs(self) -> List[str]:
         """Get list of output names."""
         return ["x", "y", "theta", "r"]
-

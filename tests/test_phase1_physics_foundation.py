@@ -40,7 +40,7 @@ class TestPistonTorqueCalculator:
         )
 
         # Create test motion law data
-        self.theta = np.linspace(0, 2*np.pi, 100)
+        self.theta = np.linspace(0, 2 * np.pi, 100)
         self.motion_law_data = {
             "theta": self.theta,
             "displacement": 10.0 * np.sin(self.theta),
@@ -89,7 +89,9 @@ class TestPistonTorqueCalculator:
             )
 
         # Test invalid gear geometry
-        with pytest.raises(ValueError, match="gear_geometry must be a LitvinGearGeometry instance"):
+        with pytest.raises(
+            ValueError, match="gear_geometry must be a LitvinGearGeometry instance",
+        ):
             calculator.configure(
                 crank_radius=50.0,
                 rod_length=150.0,
@@ -100,7 +102,7 @@ class TestPistonTorqueCalculator:
         """Test instantaneous torque computation."""
         torque = self.calculator.compute_instantaneous_torque(
             piston_force=1000.0,
-            crank_angle=np.pi/4,
+            crank_angle=np.pi / 4,
             crank_center_offset=self.crank_center_offset,
             pressure_angle=np.radians(20.0),
         )
@@ -178,7 +180,7 @@ class TestSideLoadAnalyzer:
         self.analyzer.configure(piston_geometry=self.piston_geometry)
 
         # Create test motion law data
-        self.theta = np.linspace(0, 2*np.pi, 100)
+        self.theta = np.linspace(0, 2 * np.pi, 100)
         self.motion_law_data = {
             "theta": self.theta,
             "displacement": 10.0 * np.sin(self.theta),
@@ -228,7 +230,9 @@ class TestSideLoadAnalyzer:
             "crank_radius": 50.0,
         }
 
-        with pytest.raises(ValueError, match="piston_geometry\\[bore_diameter\\] must be positive"):
+        with pytest.raises(
+            ValueError, match="piston_geometry\\[bore_diameter\\] must be positive",
+        ):
             analyzer.configure(piston_geometry=piston_geometry)
 
     def test_compute_side_load_profile(self):
@@ -294,7 +298,7 @@ class TestCrankKinematics:
         )
 
         # Create test motion law data
-        self.theta = np.linspace(0, 2*np.pi, 100)
+        self.theta = np.linspace(0, 2 * np.pi, 100)
         self.motion_law_data = {
             "theta": self.theta,
             "displacement": 10.0 * np.sin(self.theta),
@@ -337,19 +341,19 @@ class TestCrankKinematics:
     def test_compute_rod_angle(self):
         """Test rod angle computation."""
         rod_angle = self.kinematics.compute_rod_angle(
-            crank_angle=np.pi/4,
+            crank_angle=np.pi / 4,
             crank_center_offset=self.crank_center_offset,
         )
 
         assert isinstance(rod_angle, float)
         assert not np.isnan(rod_angle)
         assert not np.isinf(rod_angle)
-        assert abs(rod_angle) <= np.pi/2  # Rod angle should be reasonable
+        assert abs(rod_angle) <= np.pi / 2  # Rod angle should be reasonable
 
     def test_compute_rod_angular_velocity(self):
         """Test rod angular velocity computation."""
         rod_angular_velocity = self.kinematics.compute_rod_angular_velocity(
-            crank_angle=np.pi/4,
+            crank_angle=np.pi / 4,
             crank_angular_velocity=100.0,
             crank_center_offset=self.crank_center_offset,
         )
@@ -398,7 +402,7 @@ class TestIntegration:
     def test_torque_and_side_loading_integration(self):
         """Test integration between torque and side-loading analysis."""
         # Create shared test data
-        theta = np.linspace(0, 2*np.pi, 100)
+        theta = np.linspace(0, 2 * np.pi, 100)
         motion_law_data = {
             "theta": theta,
             "displacement": 10.0 * np.sin(theta),
@@ -448,13 +452,17 @@ class TestIntegration:
         assert side_load_result.status == PhysicsStatus.COMPLETED
 
         # Verify data consistency
-        assert len(torque_result.data["crank_angles"]) == len(side_load_result.data["crank_angles"])
-        assert np.allclose(torque_result.data["crank_angles"], side_load_result.data["crank_angles"])
+        assert len(torque_result.data["crank_angles"]) == len(
+            side_load_result.data["crank_angles"],
+        )
+        assert np.allclose(
+            torque_result.data["crank_angles"], side_load_result.data["crank_angles"],
+        )
 
     def test_kinematics_integration(self):
         """Test integration with kinematics analysis."""
         # Create test data
-        theta = np.linspace(0, 2*np.pi, 100)
+        theta = np.linspace(0, 2 * np.pi, 100)
         motion_law_data = {
             "theta": theta,
             "displacement": 10.0 * np.sin(theta),
@@ -487,7 +495,7 @@ class TestIntegration:
         rod_velocities = result.data["rod_angular_velocities"]
 
         # Rod angles should be reasonable
-        assert np.all(np.abs(rod_angles) <= np.pi/2)
+        assert np.all(np.abs(rod_angles) <= np.pi / 2)
 
         # Rod velocities should be finite
         assert not np.any(np.isnan(rod_velocities))

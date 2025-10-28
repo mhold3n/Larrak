@@ -1,5 +1,4 @@
 import importlib
-import math
 
 import pytest
 
@@ -30,4 +29,3 @@ def test_feasibility_nlp_relaxed_is_small():
     )
     # We expect a small residual even if not strictly feasible due to discretization
     assert rep.max_violation < 1e-2
-

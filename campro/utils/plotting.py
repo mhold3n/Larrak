@@ -16,19 +16,21 @@ from campro.logging import get_logger
 log = get_logger(__name__)
 
 
-def plot_solution(solution: Dict[str, np.ndarray],
-                 save_path: Optional[Union[str, Path]] = None,
-                 title: str = "Motion Law Solution",
-                 use_cam_angle: bool = False) -> Figure:
+def plot_solution(
+    solution: Dict[str, np.ndarray],
+    save_path: Optional[Union[str, Path]] = None,
+    title: str = "Motion Law Solution",
+    use_cam_angle: bool = False,
+) -> Figure:
     """
     Create a comprehensive plot of motion law solution.
-    
+
     Args:
         solution: Dictionary containing solution arrays
         save_path: Optional path to save the plot
         title: Plot title
         use_cam_angle: Whether to plot against cam angle instead of time
-        
+
     Returns:
         matplotlib Figure object
     """
@@ -92,12 +94,17 @@ def plot_solution(solution: Dict[str, np.ndarray],
     return fig
 
 
-def create_smart_scaled_plots(cam_angle: np.ndarray, position: np.ndarray,
-                            velocity: np.ndarray, acceleration: np.ndarray,
-                            jerk: np.ndarray, fig: Figure) -> None:
+def create_smart_scaled_plots(
+    cam_angle: np.ndarray,
+    position: np.ndarray,
+    velocity: np.ndarray,
+    acceleration: np.ndarray,
+    jerk: np.ndarray,
+    fig: Figure,
+) -> None:
     """
     Create smart-scaled subplots for each motion law curve.
-    
+
     Args:
         cam_angle: Cam angle array
         position: Position array
@@ -149,7 +156,7 @@ def create_smart_scaled_plots(cam_angle: np.ndarray, position: np.ndarray,
 def apply_smart_scaling(ax, data: np.ndarray, x_data: np.ndarray) -> None:
     """
     Apply smart scaling to a subplot.
-    
+
     Args:
         ax: matplotlib axes object
         data: Data array for y-axis scaling
@@ -188,7 +195,7 @@ def apply_smart_scaling(ax, data: np.ndarray, x_data: np.ndarray) -> None:
 def add_statistics_box(ax, data: np.ndarray, unit: str) -> None:
     """
     Add a statistics text box to the subplot.
-    
+
     Args:
         ax: matplotlib axes object
         data: Data array for statistics
@@ -204,18 +211,30 @@ def add_statistics_box(ax, data: np.ndarray, unit: str) -> None:
     stats_text = f"Max: {max_val:.2f} {unit}\nMin: {min_val:.2f} {unit}\nMean: {mean_val:.2f} {unit}\nRMS: {rms_val:.2f} {unit}"
 
     # Position text box in upper right corner
-    ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-            verticalalignment="top", horizontalalignment="right",
-            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
-            fontsize=8, family="monospace")
+    ax.text(
+        0.98,
+        0.98,
+        stats_text,
+        transform=ax.transAxes,
+        verticalalignment="top",
+        horizontalalignment="right",
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        fontsize=8,
+        family="monospace",
+    )
 
 
-def create_single_plot(cam_angle: np.ndarray, position: np.ndarray,
-                      velocity: np.ndarray, acceleration: np.ndarray,
-                      jerk: np.ndarray, fig: Figure) -> None:
+def create_single_plot(
+    cam_angle: np.ndarray,
+    position: np.ndarray,
+    velocity: np.ndarray,
+    acceleration: np.ndarray,
+    jerk: np.ndarray,
+    fig: Figure,
+) -> None:
     """
     Create a single plot with all curves (traditional view).
-    
+
     Args:
         cam_angle: Cam angle array
         position: Position array
@@ -267,5 +286,3 @@ def create_single_plot(cam_angle: np.ndarray, position: np.ndarray,
 
     # Adjust layout to prevent overlap
     fig.tight_layout()
-
-

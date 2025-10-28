@@ -10,10 +10,11 @@ All times are returned in seconds.  Counts are integers.  Ratios are floats in
 [0, 1] where available.
 """
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
-from typing import Any, Dict, Final, Pattern
+from re import Pattern
+from typing import Any, Dict, Final
 
 from campro.logging import get_logger
 
@@ -21,8 +22,8 @@ log = get_logger(__name__)
 
 __all__: Final = [
     "IpoptLogStats",
-    "parse_ipopt_log_text",
     "parse_ipopt_log_file",
+    "parse_ipopt_log_text",
 ]
 
 
@@ -42,7 +43,7 @@ class IpoptLogStats:
     dual_inf: float | None = None
     compl_inf: float | None = None
 
-    def as_dict(self) -> Dict[str, Any]:  # noqa: D401 – simple mapper
+    def as_dict(self) -> Dict[str, Any]:
         """Return stats as a JSON-serialisable dict."""
         return {
             "status": self.status,
@@ -64,11 +65,17 @@ class IpoptLogStats:
 _RE_STATUS: Final[Pattern[str]] = re.compile(r"^\s*EXIT:\s*(.+?)\s*$", re.MULTILINE)
 _RE_ITER: Final[Pattern[str]] = re.compile(r"Number of Iterations\s*:\s*(\d+)")
 _RE_CPU: Final[Pattern[str]] = re.compile(r"Total CPU secs in IPOPT.*?=\s*([0-9.]+)")
-_RE_LS_TIME: Final[Pattern[str]] = re.compile(r"Time\s+for\s+linear\s+solve\s+=\s+([0-9.]+)")
-_RE_LS_RATIO: Final[Pattern[str]] = re.compile(r"Linear\s+solve\s+time\s+ratio\s+=\s+([0-9.]+)")
+_RE_LS_TIME: Final[Pattern[str]] = re.compile(
+    r"Time\s+for\s+linear\s+solve\s+=\s+([0-9.]+)",
+)
+_RE_LS_RATIO: Final[Pattern[str]] = re.compile(
+    r"Linear\s+solve\s+time\s+ratio\s+=\s+([0-9.]+)",
+)
 _RE_PIVOT: Final[Pattern[str]] = re.compile(r"Warning:\s+Small\s+pivot")
 _RE_RESTOR: Final[Pattern[str]] = re.compile(r"Restoration phase start", re.IGNORECASE)
-_RE_REFACT: Final[Pattern[str]] = re.compile(r"Number of Iterative Refinements:\s*(\d+)")
+_RE_REFACT: Final[Pattern[str]] = re.compile(
+    r"Number of Iterative Refinements:\s*(\d+)",
+)
 _RE_INFEAS: Final[Pattern[str]] = re.compile(
     r"Primal infeasibility\s*=\s*([0-9.eE+-]+).*?Dual infeasibility\s*=\s*([0-9.eE+-]+).*?Complementarity\s*=\s*([0-9.eE+-]+)",
     re.DOTALL,
@@ -88,7 +95,9 @@ def parse_ipopt_log_text(text: str) -> IpoptLogStats:
 
     stats = IpoptLogStats()
 
-    stats.status = _RE_STATUS.search(text).group(1).strip() if _RE_STATUS.search(text) else None
+    stats.status = (
+        _RE_STATUS.search(text).group(1).strip() if _RE_STATUS.search(text) else None
+    )
     stats.n_iterations = _extract_int(_RE_ITER.search(text))
     stats.cpu_time = _extract_float(_RE_CPU.search(text))
     stats.ls_time = _extract_float(_RE_LS_TIME.search(text))
@@ -110,7 +119,9 @@ def parse_ipopt_log_text(text: str) -> IpoptLogStats:
     # Derive ls_time_ratio if missing and both components present
     if stats.ls_time_ratio is None and stats.cpu_time and stats.ls_time:
         try:
-            stats.ls_time_ratio = stats.ls_time / stats.cpu_time if stats.cpu_time > 0 else None
+            stats.ls_time_ratio = (
+                stats.ls_time / stats.cpu_time if stats.cpu_time > 0 else None
+            )
         except ZeroDivisionError:
             stats.ls_time_ratio = None
 

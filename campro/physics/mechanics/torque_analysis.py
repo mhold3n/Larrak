@@ -25,21 +25,21 @@ class TorqueAnalysisResult:
 
     # Torque data
     instantaneous_torque: np.ndarray  # Torque at each crank angle (N⋅m)
-    cycle_average_torque: float       # Average torque over full cycle (N⋅m)
-    max_torque: float                 # Maximum instantaneous torque (N⋅m)
-    min_torque: float                 # Minimum instantaneous torque (N⋅m)
+    cycle_average_torque: float  # Average torque over full cycle (N⋅m)
+    max_torque: float  # Maximum instantaneous torque (N⋅m)
+    min_torque: float  # Minimum instantaneous torque (N⋅m)
 
     # Crank angle data
-    crank_angles: np.ndarray          # Crank angles (rad)
+    crank_angles: np.ndarray  # Crank angles (rad)
 
     # Analysis parameters
     crank_center_offset: Tuple[float, float]  # (x, y) offset from gear center (mm)
-    crank_radius: float               # Crank radius (mm)
-    rod_length: float                 # Connecting rod length (mm)
+    crank_radius: float  # Crank radius (mm)
+    rod_length: float  # Connecting rod length (mm)
 
     # Performance metrics
-    torque_ripple: float              # Torque variation coefficient
-    power_output: float               # Average power output (W)
+    torque_ripple: float  # Torque variation coefficient
+    power_output: float  # Average power output (W)
 
     # Metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -48,7 +48,7 @@ class TorqueAnalysisResult:
 class PistonTorqueCalculator(BasePhysicsModel):
     """
     Computes piston torque from motion law, gear geometry, and crank kinematics.
-    
+
     This class integrates motion law data with Litvin gear geometry to compute
     instantaneous torque at the crank, accounting for crank center offset effects
     and connecting rod kinematics.
@@ -62,14 +62,16 @@ class PistonTorqueCalculator(BasePhysicsModel):
         self._motion_law_data: Optional[Dict[str, np.ndarray]] = None
         self._load_profile: Optional[np.ndarray] = None
 
-    def configure(self,
-                  crank_radius: float,
-                  rod_length: float,
-                  gear_geometry: LitvinGearGeometry,
-                  **kwargs) -> None:
+    def configure(
+        self,
+        crank_radius: float,
+        rod_length: float,
+        gear_geometry: LitvinGearGeometry,
+        **kwargs,
+    ) -> None:
         """
         Configure the torque calculator with system parameters.
-        
+
         Args:
             crank_radius: Crank radius in mm
             rod_length: Connecting rod length in mm
@@ -88,21 +90,21 @@ class PistonTorqueCalculator(BasePhysicsModel):
         self._gear_geometry = gear_geometry
         self._is_configured = True
 
-        log.info(f"Configured {self.name}: crank_radius={crank_radius}mm, rod_length={rod_length}mm")
+        log.info(
+            f"Configured {self.name}: crank_radius={crank_radius}mm, rod_length={rod_length}mm",
+        )
 
-    def simulate(self,
-                 inputs: Dict[str, Any],
-                 **kwargs) -> PhysicsResult:
+    def simulate(self, inputs: Dict[str, Any], **kwargs) -> PhysicsResult:
         """
         Compute torque analysis for given inputs.
-        
+
         Args:
             inputs: Dictionary containing:
                 - motion_law_data: Dict with 'theta', 'displacement', 'velocity', 'acceleration'
                 - load_profile: Array of piston forces (N)
                 - crank_center_offset: Tuple (x, y) offset from gear center (mm)
             **kwargs: Additional simulation parameters
-            
+
         Returns:
             PhysicsResult with torque analysis data
         """
@@ -123,7 +125,9 @@ class PistonTorqueCalculator(BasePhysicsModel):
 
             # Compute torque analysis
             torque_result = self._compute_torque_analysis(
-                motion_law_data, load_profile, crank_center_offset,
+                motion_law_data,
+                load_profile,
+                crank_center_offset,
             )
 
             # Prepare result data
@@ -152,20 +156,22 @@ class PistonTorqueCalculator(BasePhysicsModel):
             log.error(error_msg)
             return self._finish_simulation(result, {}, error_message=error_msg)
 
-    def compute_instantaneous_torque(self,
-                                   piston_force: float,
-                                   crank_angle: float,
-                                   crank_center_offset: Tuple[float, float],
-                                   pressure_angle: float) -> float:
+    def compute_instantaneous_torque(
+        self,
+        piston_force: float,
+        crank_angle: float,
+        crank_center_offset: Tuple[float, float],
+        pressure_angle: float,
+    ) -> float:
         """
         Compute instantaneous torque for given conditions.
-        
+
         Args:
             piston_force: Piston force (N)
             crank_angle: Crank angle (rad)
             crank_center_offset: (x, y) offset from gear center (mm)
             pressure_angle: Gear pressure angle (rad)
-            
+
         Returns:
             Instantaneous torque (N⋅m)
         """
@@ -177,29 +183,36 @@ class PistonTorqueCalculator(BasePhysicsModel):
 
         # Compute effective crank radius (accounting for offset)
         effective_crank_radius = self._compute_effective_crank_radius(
-            crank_angle, crank_center_offset,
+            crank_angle,
+            crank_center_offset,
         )
 
         # Compute torque component from piston force
         # T = F_piston * r_effective * sin(θ + φ) * cos(α)
         # where φ is rod angle and α is pressure angle
-        torque_component = (piston_force * effective_crank_radius *
-                           np.sin(crank_angle + rod_angle) * np.cos(pressure_angle))
+        torque_component = (
+            piston_force
+            * effective_crank_radius
+            * np.sin(crank_angle + rod_angle)
+            * np.cos(pressure_angle)
+        )
 
         return torque_component
 
-    def compute_cycle_average_torque(self,
-                                   motion_law_data: Dict[str, np.ndarray],
-                                   load_profile: np.ndarray,
-                                   crank_center_offset: Tuple[float, float]) -> float:
+    def compute_cycle_average_torque(
+        self,
+        motion_law_data: Dict[str, np.ndarray],
+        load_profile: np.ndarray,
+        crank_center_offset: Tuple[float, float],
+    ) -> float:
         """
         Compute cycle-averaged torque for complete motion cycle.
-        
+
         Args:
             motion_law_data: Motion law data with theta, displacement, velocity, acceleration
             load_profile: Piston force profile (N)
             crank_center_offset: (x, y) offset from gear center (mm)
-            
+
         Returns:
             Cycle-averaged torque (N⋅m)
         """
@@ -213,9 +226,14 @@ class PistonTorqueCalculator(BasePhysicsModel):
         crank_angles = motion_law_data["theta"]
         instantaneous_torques = np.zeros_like(crank_angles)
 
-        for i, (crank_angle, piston_force) in enumerate(zip(crank_angles, load_profile)):
+        for i, (crank_angle, piston_force) in enumerate(
+            zip(crank_angles, load_profile),
+        ):
             instantaneous_torques[i] = self.compute_instantaneous_torque(
-                piston_force, crank_angle, crank_center_offset, pressure_angle,
+                piston_force,
+                crank_angle,
+                crank_center_offset,
+                pressure_angle,
             )
 
         # Compute cycle average
@@ -223,10 +241,12 @@ class PistonTorqueCalculator(BasePhysicsModel):
 
         return cycle_average
 
-    def _compute_torque_analysis(self,
-                                motion_law_data: Dict[str, np.ndarray],
-                                load_profile: np.ndarray,
-                                crank_center_offset: Tuple[float, float]) -> TorqueAnalysisResult:
+    def _compute_torque_analysis(
+        self,
+        motion_law_data: Dict[str, np.ndarray],
+        load_profile: np.ndarray,
+        crank_center_offset: Tuple[float, float],
+    ) -> TorqueAnalysisResult:
         """Compute complete torque analysis."""
 
         crank_angles = motion_law_data["theta"]
@@ -235,9 +255,14 @@ class PistonTorqueCalculator(BasePhysicsModel):
         # Compute instantaneous torques
         instantaneous_torques = np.zeros_like(crank_angles)
 
-        for i, (crank_angle, piston_force) in enumerate(zip(crank_angles, load_profile)):
+        for i, (crank_angle, piston_force) in enumerate(
+            zip(crank_angles, load_profile),
+        ):
             instantaneous_torques[i] = self.compute_instantaneous_torque(
-                piston_force, crank_angle, crank_center_offset, pressure_angle,
+                piston_force,
+                crank_angle,
+                crank_center_offset,
+                pressure_angle,
             )
 
         # Compute cycle metrics
@@ -247,7 +272,9 @@ class PistonTorqueCalculator(BasePhysicsModel):
 
         # Compute torque ripple (coefficient of variation)
         torque_std = np.std(instantaneous_torques)
-        torque_ripple = torque_std / abs(cycle_average_torque) if cycle_average_torque != 0 else 0
+        torque_ripple = (
+            torque_std / abs(cycle_average_torque) if cycle_average_torque != 0 else 0
+        )
 
         # Compute power output (assuming constant angular velocity)
         # For now, use a nominal angular velocity - this could be made configurable
@@ -271,7 +298,9 @@ class PistonTorqueCalculator(BasePhysicsModel):
             },
         )
 
-    def _compute_rod_angle(self, crank_angle: float, crank_center_offset: Tuple[float, float]) -> float:
+    def _compute_rod_angle(
+        self, crank_angle: float, crank_center_offset: Tuple[float, float],
+    ) -> float:
         """Compute connecting rod angle accounting for crank center offset."""
 
         # For now, use simplified rod angle computation
@@ -279,11 +308,15 @@ class PistonTorqueCalculator(BasePhysicsModel):
         # sin(φ) = (r * sin(θ)) / L
         # where r is crank radius, L is rod length, θ is crank angle
 
-        rod_angle = np.arcsin((self._crank_radius * np.sin(crank_angle)) / self._rod_length)
+        rod_angle = np.arcsin(
+            (self._crank_radius * np.sin(crank_angle)) / self._rod_length,
+        )
 
         return rod_angle
 
-    def _compute_effective_crank_radius(self, crank_angle: float, crank_center_offset: Tuple[float, float]) -> float:
+    def _compute_effective_crank_radius(
+        self, crank_angle: float, crank_center_offset: Tuple[float, float],
+    ) -> float:
         """Compute effective crank radius accounting for center offset."""
 
         # For now, use nominal crank radius
@@ -322,7 +355,9 @@ class PistonTorqueCalculator(BasePhysicsModel):
         if len(set(lengths)) > 1:
             raise ValueError("All motion law arrays must have same length")
 
-    def _validate_load_profile(self, load_profile: np.ndarray, motion_law_data: Dict[str, np.ndarray]) -> None:
+    def _validate_load_profile(
+        self, load_profile: np.ndarray, motion_law_data: Dict[str, np.ndarray],
+    ) -> None:
         """Validate load profile data."""
 
         if not isinstance(load_profile, np.ndarray):

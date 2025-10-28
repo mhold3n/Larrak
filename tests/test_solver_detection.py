@@ -1,7 +1,5 @@
 import importlib
 
-import pytest
-
 from campro.optimization import solver_detection as sd
 
 
@@ -11,7 +9,9 @@ def test_is_ma57_available_caches(monkeypatch):
     importlib.reload(sd)
 
     # Patch casadi.nlpsol to raise to simulate MA57 absence
-    monkeypatch.setattr("casadi.nlpsol", lambda *a, **kw: (_ for _ in ()).throw(Exception("no ma57")))
+    monkeypatch.setattr(
+        "casadi.nlpsol", lambda *a, **kw: (_ for _ in ()).throw(Exception("no ma57")),
+    )
 
     first = sd.is_ma57_available()
     second = sd.is_ma57_available()

@@ -18,7 +18,9 @@ def make_uniform_grid(n: int) -> CollocationGrid:
     return CollocationGrid(theta=theta)
 
 
-def central_diff(values: Sequence[float], h: float) -> Tuple[Sequence[float], Sequence[float]]:
+def central_diff(
+    values: Sequence[float], h: float,
+) -> Tuple[Sequence[float], Sequence[float]]:
     n = len(values)
     d = [0.0] * n
     d2 = [0.0] * n
@@ -44,5 +46,3 @@ def relief_value(relief: MicroRelief, s: float) -> float:
         return relief.control_points[-1]
     w = t - i
     return (1.0 - w) * relief.control_points[i] + w * relief.control_points[i + 1]
-
-

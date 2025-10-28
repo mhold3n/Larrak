@@ -641,3 +641,4 @@ These examples demonstrate the key features of the CasADi optimization framework
 The framework provides a comprehensive solution for Phase 1 motion law optimization with thermal efficiency objectives, following CasADi best practices and documentation patterns.
 
 
+

@@ -3,7 +3,7 @@ Three-Run Optimization System Demo
 
 This script demonstrates the complete three-run optimization system with Phase 3 integration:
 - Run 1: Motion law optimization (primary)
-- Run 2: Litvin profile synthesis (secondary) 
+- Run 2: Litvin profile synthesis (secondary)
 - Run 3: Crank center optimization for torque maximization and side-loading minimization (tertiary)
 
 This represents the culmination of the Run 3 implementation plan.
@@ -146,10 +146,10 @@ def create_optimization_scenarios():
 
 def run_three_run_optimization(framework, scenario):
     """Run the complete three-run optimization for a given scenario."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Running: {scenario['name']}")
     print(f"Description: {scenario['description']}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Configure framework with scenario-specific settings
     framework.configure(
@@ -169,9 +169,9 @@ def run_three_run_optimization(framework, scenario):
 
 def analyze_results(results, scenario_name):
     """Analyze and display optimization results."""
-    print(f"\n{'='*40}")
+    print(f"\n{'=' * 40}")
     print(f"Results Analysis: {scenario_name}")
-    print(f"{'='*40}")
+    print(f"{'=' * 40}")
 
     # Primary results
     print("\n📊 Primary Optimization (Motion Law):")
@@ -188,13 +188,19 @@ def analyze_results(results, scenario_name):
     if results.secondary_base_radius is not None:
         print(f"  - Base Radius: {results.secondary_base_radius:.1f} mm")
     if results.secondary_psi is not None:
-        ring_coverage = (np.max(results.secondary_psi) - np.min(results.secondary_psi)) * 180 / np.pi
+        ring_coverage = (
+            (np.max(results.secondary_psi) - np.min(results.secondary_psi))
+            * 180
+            / np.pi
+        )
         print(f"  - Ring Coverage: {ring_coverage:.1f}°")
 
     # Tertiary results (crank center optimization)
     print("\n⚙️ Tertiary Optimization (Crank Center):")
     if results.tertiary_crank_center_x is not None:
-        print(f"  - Crank Center: ({results.tertiary_crank_center_x:.1f}, {results.tertiary_crank_center_y:.1f}) mm")
+        print(
+            f"  - Crank Center: ({results.tertiary_crank_center_x:.1f}, {results.tertiary_crank_center_y:.1f}) mm",
+        )
         print(f"  - Crank Radius: {results.tertiary_crank_radius:.1f} mm")
         print(f"  - Rod Length: {results.tertiary_rod_length:.1f} mm")
         print(f"  - Torque Output: {results.tertiary_torque_output:.1f} N⋅m")
@@ -207,7 +213,9 @@ def analyze_results(results, scenario_name):
     # Convergence info
     print("\n📈 Convergence Information:")
     for stage, info in results.convergence_info.items():
-        print(f"  - {stage.title()}: {info['status']} ({info['iterations']} iterations, {info['solve_time']:.2f}s)")
+        print(
+            f"  - {stage.title()}: {info['status']} ({info['iterations']} iterations, {info['solve_time']:.2f}s)",
+        )
 
 
 def create_comparison_plots(results_dict, output_dir):
@@ -241,8 +249,17 @@ def create_comparison_plots(results_dict, output_dir):
 
     # Torque vs Side-Loading scatter plot
     colors = ["blue", "red", "green"]
-    for i, (scenario, torque, side_load) in enumerate(zip(scenarios, torque_outputs, side_load_penalties)):
-        ax1.scatter(side_load, torque, c=colors[i], s=100, label=scenario.replace("_", " ").title(), alpha=0.7)
+    for i, (scenario, torque, side_load) in enumerate(
+        zip(scenarios, torque_outputs, side_load_penalties),
+    ):
+        ax1.scatter(
+            side_load,
+            torque,
+            c=colors[i],
+            s=100,
+            label=scenario.replace("_", " ").title(),
+            alpha=0.7,
+        )
 
     ax1.set_xlabel("Side Load Penalty (N)")
     ax1.set_ylabel("Torque Output (N⋅m)")
@@ -251,8 +268,17 @@ def create_comparison_plots(results_dict, output_dir):
     ax1.grid(True, alpha=0.3)
 
     # Crank center positions
-    for i, (scenario, x, y) in enumerate(zip(scenarios, crank_center_xs, crank_center_ys)):
-        ax2.scatter(x, y, c=colors[i], s=100, label=scenario.replace("_", " ").title(), alpha=0.7)
+    for i, (scenario, x, y) in enumerate(
+        zip(scenarios, crank_center_xs, crank_center_ys),
+    ):
+        ax2.scatter(
+            x,
+            y,
+            c=colors[i],
+            s=100,
+            label=scenario.replace("_", " ").title(),
+            alpha=0.7,
+        )
 
     ax2.set_xlabel("Crank Center X (mm)")
     ax2.set_ylabel("Crank Center Y (mm)")
@@ -262,17 +288,31 @@ def create_comparison_plots(results_dict, output_dir):
     ax2.axis("equal")
 
     plt.tight_layout()
-    plt.savefig(output_dir / "three_run_optimization_comparison.png", dpi=300, bbox_inches="tight")
-    print(f"  - Comparison plot saved to: {output_dir / 'three_run_optimization_comparison.png'}")
+    plt.savefig(
+        output_dir / "three_run_optimization_comparison.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    print(
+        f"  - Comparison plot saved to: {output_dir / 'three_run_optimization_comparison.png'}",
+    )
 
     # Plot 2: Performance metrics comparison
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
 
     metrics = {
-        "Torque Output (N⋅m)": [result.tertiary_torque_output or 0 for result in results_dict.values()],
-        "Side Load Penalty (N)": [result.tertiary_side_load_penalty or 0 for result in results_dict.values()],
-        "Power Output (W)": [result.tertiary_power_output or 0 for result in results_dict.values()],
-        "Torque Ripple": [result.tertiary_torque_ripple or 0 for result in results_dict.values()],
+        "Torque Output (N⋅m)": [
+            result.tertiary_torque_output or 0 for result in results_dict.values()
+        ],
+        "Side Load Penalty (N)": [
+            result.tertiary_side_load_penalty or 0 for result in results_dict.values()
+        ],
+        "Power Output (W)": [
+            result.tertiary_power_output or 0 for result in results_dict.values()
+        ],
+        "Torque Ripple": [
+            result.tertiary_torque_ripple or 0 for result in results_dict.values()
+        ],
     }
 
     x_pos = np.arange(len(scenarios))
@@ -285,18 +325,29 @@ def create_comparison_plots(results_dict, output_dir):
         ax.set_ylabel(metric_name)
         ax.set_title(metric_name)
         ax.set_xticks(x_pos)
-        ax.set_xticklabels([s.replace("_", " ").title() for s in scenarios], rotation=45)
+        ax.set_xticklabels(
+            [s.replace("_", " ").title() for s in scenarios], rotation=45,
+        )
         ax.grid(True, alpha=0.3)
 
         # Add value labels on bars
         for bar, value in zip(bars, values):
             height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                   f"{value:.1f}", ha="center", va="bottom")
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0,
+                height + height * 0.01,
+                f"{value:.1f}",
+                ha="center",
+                va="bottom",
+            )
 
     plt.tight_layout()
-    plt.savefig(output_dir / "three_run_performance_metrics.png", dpi=300, bbox_inches="tight")
-    print(f"  - Performance metrics plot saved to: {output_dir / 'three_run_performance_metrics.png'}")
+    plt.savefig(
+        output_dir / "three_run_performance_metrics.png", dpi=300, bbox_inches="tight",
+    )
+    print(
+        f"  - Performance metrics plot saved to: {output_dir / 'three_run_performance_metrics.png'}",
+    )
 
     plt.close("all")
 
@@ -333,9 +384,9 @@ def main():
         create_comparison_plots(results, "plots/three_run_optimization")
 
     # Summary
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("🎯 Three-Run Optimization System Demo Complete!")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Successfully completed {len(results)} optimization scenarios:")
     for scenario_name in results:
         print(f"  ✅ {scenario_name.replace('_', ' ').title()}")

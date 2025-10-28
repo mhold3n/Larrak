@@ -21,10 +21,10 @@ log = get_logger(__name__)
 class MeshingLawComponent(BaseComponent):
     """
     Component for solving the meshing law between cam and ring follower.
-    
+
     The meshing law relates cam rotation θ to ring follower rotation ψ through:
     ρ_c(θ)dθ = R(ψ)dψ
-    
+
     where ρ_c(θ) is the cam osculating radius and R(ψ) is the ring radius.
     """
 
@@ -57,7 +57,10 @@ class MeshingLawComponent(BaseComponent):
             return False
 
         # R_psi can be scalar or array
-        if not (isinstance(inputs["R_psi"], (int, float)) or isinstance(inputs["R_psi"], np.ndarray)):
+        if not (
+            isinstance(inputs["R_psi"], (int, float))
+            or isinstance(inputs["R_psi"], np.ndarray)
+        ):
             log.error("Input R_psi must be a number or numpy array")
             return False
 
@@ -66,7 +69,7 @@ class MeshingLawComponent(BaseComponent):
     def compute(self, inputs: Dict[str, Any]) -> ComponentResult:
         """
         Solve the meshing law to relate cam and ring angles.
-        
+
         Parameters
         ----------
         inputs : Dict[str, Any]
@@ -75,7 +78,7 @@ class MeshingLawComponent(BaseComponent):
             - 'rho_c': Cam osculating radius ρ_c(θ) - numpy array
             - 'psi_initial': Initial ring angle (radians) - scalar
             - 'R_psi': Ring radius function R(ψ) - scalar or array
-            
+
         Returns
         -------
         ComponentResult
@@ -105,9 +108,14 @@ class MeshingLawComponent(BaseComponent):
                 R_func = lambda psi: R_psi
             else:
                 # Interpolate ring radius function
-                psi_points = np.linspace(0, 2*np.pi, len(R_psi))
-                R_func = interp1d(psi_points, R_psi, kind="linear",
-                                bounds_error=False, fill_value="extrapolate")
+                psi_points = np.linspace(0, 2 * np.pi, len(R_psi))
+                R_func = interp1d(
+                    psi_points,
+                    R_psi,
+                    kind="linear",
+                    bounds_error=False,
+                    fill_value="extrapolate",
+                )
 
             # Solve meshing law: dψ/dθ = ρ_c(θ) / R(ψ)
             psi = self._solve_meshing_law(theta, rho_c, psi_initial, R_func)
@@ -127,7 +135,9 @@ class MeshingLawComponent(BaseComponent):
                 "psi_range": float(psi[-1] - psi[0]),
             }
 
-            log.info(f"Meshing law solved successfully: psi range {metadata['psi_range']:.3f} rad")
+            log.info(
+                f"Meshing law solved successfully: psi range {metadata['psi_range']:.3f} rad",
+            )
 
             return ComponentResult(
                 status=ComponentStatus.COMPLETED,
@@ -144,11 +154,12 @@ class MeshingLawComponent(BaseComponent):
                 error_message=str(e),
             )
 
-    def _solve_meshing_law(self, theta: np.ndarray, rho_c: np.ndarray,
-                          psi_initial: float, R_func: callable) -> np.ndarray:
+    def _solve_meshing_law(
+        self, theta: np.ndarray, rho_c: np.ndarray, psi_initial: float, R_func: callable,
+    ) -> np.ndarray:
         """
         Solve the meshing law differential equation.
-        
+
         Parameters
         ----------
         theta : np.ndarray
@@ -159,15 +170,16 @@ class MeshingLawComponent(BaseComponent):
             Initial ring angle
         R_func : callable
             Ring radius function R(ψ)
-            
+
         Returns
         -------
         np.ndarray
             Ring angles ψ(θ)
         """
         # Create interpolation function for ρ_c(θ)
-        rho_c_func = interp1d(theta, rho_c, kind="linear",
-                             bounds_error=False, fill_value="extrapolate")
+        rho_c_func = interp1d(
+            theta, rho_c, kind="linear", bounds_error=False, fill_value="extrapolate",
+        )
 
         # Define the differential equation: dψ/dθ = ρ_c(θ) / R(ψ)
         def dpsi_dtheta(theta_val, psi_val):
@@ -201,11 +213,12 @@ class MeshingLawComponent(BaseComponent):
             log.warning(f"ODE solver error: {e}, using simplified integration")
             return self._simplified_integration(theta, rho_c, psi_initial, R_func)
 
-    def _simplified_integration(self, theta: np.ndarray, rho_c: np.ndarray,
-                               psi_initial: float, R_func: callable) -> np.ndarray:
+    def _simplified_integration(
+        self, theta: np.ndarray, rho_c: np.ndarray, psi_initial: float, R_func: callable,
+    ) -> np.ndarray:
         """
         Simplified integration method as fallback.
-        
+
         Parameters
         ----------
         theta : np.ndarray
@@ -216,7 +229,7 @@ class MeshingLawComponent(BaseComponent):
             Initial ring angle
         R_func : callable
             Ring radius function
-            
+
         Returns
         -------
         np.ndarray
@@ -226,15 +239,15 @@ class MeshingLawComponent(BaseComponent):
         psi[0] = psi_initial
 
         for i in range(1, len(theta)):
-            dtheta = theta[i] - theta[i-1]
-            R_val = R_func(psi[i-1])
+            dtheta = theta[i] - theta[i - 1]
+            R_val = R_func(psi[i - 1])
 
             if abs(R_val) > 1e-12:
-                dpsi = rho_c[i-1] / R_val * dtheta
+                dpsi = rho_c[i - 1] / R_val * dtheta
             else:
                 dpsi = 0.0
 
-            psi[i] = psi[i-1] + dpsi
+            psi[i] = psi[i - 1] + dpsi
 
         return psi
 

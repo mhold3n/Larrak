@@ -8,12 +8,13 @@ multiple solvers try to set the same option.
 
 from __future__ import annotations
 
-import casadi as ca
 from typing import Any, Dict, Optional
 
+import casadi as ca
+
 from campro.constants import HSLLIB_PATH
-from campro.diagnostics.run_metadata import RUN_ID
 from campro.diagnostics.ipopt_logger import ensure_runs_dir
+from campro.diagnostics.run_metadata import RUN_ID
 from campro.logging import get_logger
 
 log = get_logger(__name__)
@@ -26,31 +27,31 @@ def create_ipopt_solver(
     name: str,
     nlp: Any,
     options: Optional[Dict[str, Any]] = None,
-    linear_solver: Optional[str] = None
+    linear_solver: Optional[str] = None,
 ) -> Any:
     """
     Create an IPOPT solver with explicit linear solver configuration.
-    
+
     Args:
         name: Name for the solver instance
         nlp: NLP problem definition
         options: Additional IPOPT options
         linear_solver: Linear solver to use (default: ma27 for this machine)
-        
+
     Returns:
         CasADi IPOPT solver instance
     """
     # Start with default options
     opts = options.copy() if options else {}
-    
+
     # Set linear solver explicitly
     solver_to_use = linear_solver or DEFAULT_LINEAR_SOLVER
     opts["ipopt.linear_solver"] = solver_to_use
-    
+
     # Set HSL library path if using MA27/MA57
     if solver_to_use in ["ma27", "ma57"]:
         opts["ipopt.hsllib"] = HSLLIB_PATH
-    
+
     # Default Ipopt file sink per run (unless caller provided one)
     try:
         ensure_runs_dir("runs")
@@ -62,10 +63,10 @@ def create_ipopt_solver(
         pass
 
     log.debug(f"Creating solver '{name}' with linear solver: {solver_to_use}")
-    
+
     # Create the solver
     solver = ca.nlpsol(name, "ipopt", nlp, opts)
-    
+
     return solver
 
 

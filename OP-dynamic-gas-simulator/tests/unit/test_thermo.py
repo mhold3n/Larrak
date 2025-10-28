@@ -12,5 +12,3 @@ def test_ideal_mix_gas_constants_and_enthalpy():
     h2 = mix.h_T(T2)
     # For constant cp, delta h ~ cp*(T2-T1)
     assert abs((h2 - h1) - cp * (T2 - T1)) < 1e-9
-
-

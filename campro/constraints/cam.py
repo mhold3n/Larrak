@@ -37,7 +37,7 @@ class CamConstraintType(Enum):
 class CamMotionConstraints(BaseConstraints):
     """
     Simplified constraints for cam follower motion law problems.
-    
+
     This class provides intuitive cam-specific constraints that are easier to use
     than the general motion constraints.
     """
@@ -45,7 +45,9 @@ class CamMotionConstraints(BaseConstraints):
     # Core cam parameters
     stroke: float  # Total follower stroke (required)
     upstroke_duration_percent: float  # % of cycle for upstroke (0-100)
-    zero_accel_duration_percent: Optional[float] = None  # % of cycle with zero acceleration (can be anywhere in cycle)
+    zero_accel_duration_percent: Optional[float] = (
+        None  # % of cycle with zero acceleration (can be anywhere in cycle)
+    )
 
     # Optional constraints
     max_velocity: Optional[float] = None
@@ -68,7 +70,9 @@ class CamMotionConstraints(BaseConstraints):
             raise ValueError("Upstroke duration percent must be between 0 and 100")
         if self.zero_accel_duration_percent is not None:
             if not 0 <= self.zero_accel_duration_percent <= 100:
-                raise ValueError("Zero acceleration duration percent must be between 0 and 100")
+                raise ValueError(
+                    "Zero acceleration duration percent must be between 0 and 100",
+                )
             # Note: Zero acceleration duration can be anywhere in the cycle
             # and is not limited by upstroke duration
 
@@ -92,7 +96,7 @@ class CamMotionConstraints(BaseConstraints):
     def validate(self) -> bool:
         """
         Validate all cam constraints.
-        
+
         Returns:
             bool: True if all constraints are valid, False otherwise
         """
@@ -156,10 +160,12 @@ class CamMotionConstraints(BaseConstraints):
         log.info(f"Cam constraints validation: {'PASSED' if is_valid else 'FAILED'}")
         return is_valid
 
-    def check_violations(self, solution: Dict[str, np.ndarray]) -> List[ConstraintViolation]:
+    def check_violations(
+        self, solution: Dict[str, np.ndarray],
+    ) -> List[ConstraintViolation]:
         """
         Check for constraint violations in a cam motion law solution.
-        
+
         Args:
             solution: Dictionary containing solution arrays
                 - 'time': Time array
@@ -168,7 +174,7 @@ class CamMotionConstraints(BaseConstraints):
                 - 'velocity': Velocity array
                 - 'acceleration': Acceleration array
                 - 'control': Control (jerk) array
-                
+
         Returns:
             List of constraint violations found
         """
@@ -256,10 +262,10 @@ class CamMotionConstraints(BaseConstraints):
     def to_motion_constraints(self, cycle_time: float = 1.0) -> MotionConstraints:
         """
         Convert cam constraints to general motion constraints.
-        
+
         Args:
             cycle_time: Total cycle time in seconds
-            
+
         Returns:
             MotionConstraints object
         """
@@ -276,7 +282,10 @@ class CamMotionConstraints(BaseConstraints):
 
         # Set acceleration bounds if specified
         if self.max_acceleration is not None:
-            motion_constraints.acceleration_bounds = (-self.max_acceleration, self.max_acceleration)
+            motion_constraints.acceleration_bounds = (
+                -self.max_acceleration,
+                self.max_acceleration,
+            )
 
         # Set jerk bounds if specified
         if self.max_jerk is not None:
@@ -311,5 +320,3 @@ class CamMotionConstraints(BaseConstraints):
     def from_dict(cls, data: Dict[str, any]) -> "CamMotionConstraints":
         """Create cam constraints from dictionary format."""
         return cls(**data)
-
-

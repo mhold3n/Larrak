@@ -5,17 +5,13 @@ This module tests the validation statistics collection and analysis
 capabilities for CasADi physics validation mode.
 """
 
-import pytest
-import numpy as np
 import tempfile
-from pathlib import Path
 from datetime import datetime
-from unittest.mock import Mock, patch
+from pathlib import Path
 
 from campro.optimization.validation_statistics import (
     ValidationMetrics,
-    ValidationStatistics,
-    ValidationStatisticsCollector
+    ValidationStatisticsCollector,
 )
 
 
@@ -31,6 +27,7 @@ class TestValidationStatisticsCollection:
         """Clean up test fixtures."""
         # Clean up temp directory
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_validation_metrics_creation(self):
@@ -77,9 +74,9 @@ class TestValidationStatisticsCollection:
             tolerance_threshold=1e-4,
             casadi_version="3.6.0",
             python_version="3.11.5",
-            hardware_info={"cpu": "test", "memory": "8GB"}
+            hardware_info={"cpu": "test", "memory": "8GB"},
         )
-        
+
         assert metrics.problem_id == "test_001"
         assert metrics.within_tolerance is True
         assert metrics.evaluation_speedup > 1.0
@@ -93,9 +90,9 @@ class TestValidationStatisticsCollection:
     def test_add_validation_metrics(self):
         """Test adding validation metrics to collector."""
         metrics = self._create_sample_metrics("test_001")
-        
+
         self.collector.add_validation_metrics(metrics)
-        
+
         assert len(self.collector.metrics) == 1
         assert self.collector.metrics[0].problem_id == "test_001"
 
@@ -103,9 +100,9 @@ class TestValidationStatisticsCollection:
         """Test computing statistics from a single validation metric."""
         metrics = self._create_sample_metrics("test_001")
         self.collector.add_validation_metrics(metrics)
-        
+
         statistics = self.collector.compute_statistics()
-        
+
         assert statistics.total_validations == 1
         assert statistics.successful_validations == 1
         assert statistics.within_tolerance_count == 1
@@ -117,17 +114,17 @@ class TestValidationStatisticsCollection:
         metrics1 = self._create_sample_metrics("test_001", within_tolerance=True)
         metrics2 = self._create_sample_metrics("test_002", within_tolerance=True)
         metrics3 = self._create_sample_metrics("test_003", within_tolerance=False)
-        
+
         self.collector.add_validation_metrics(metrics1)
         self.collector.add_validation_metrics(metrics2)
         self.collector.add_validation_metrics(metrics3)
-        
+
         statistics = self.collector.compute_statistics()
-        
+
         assert statistics.total_validations == 3
         assert statistics.within_tolerance_count == 2
         assert statistics.tolerance_exceeded_count == 1
-        assert statistics.tolerance_success_rate == 2/3
+        assert statistics.tolerance_success_rate == 2 / 3
 
     def test_statistics_parity_analysis(self):
         """Test parity analysis in statistics computation."""
@@ -135,60 +132,74 @@ class TestValidationStatisticsCollection:
         metrics1 = self._create_sample_metrics("test_001", torque_avg_diff=0.1)
         metrics2 = self._create_sample_metrics("test_002", torque_avg_diff=0.2)
         metrics3 = self._create_sample_metrics("test_003", torque_avg_diff=0.05)
-        
+
         self.collector.add_validation_metrics(metrics1)
         self.collector.add_validation_metrics(metrics2)
         self.collector.add_validation_metrics(metrics3)
-        
+
         statistics = self.collector.compute_statistics()
-        
+
         # Check torque average statistics
-        assert statistics.torque_avg_stats['min'] == 0.05
-        assert statistics.torque_avg_stats['max'] == 0.2
-        assert abs(statistics.torque_avg_stats['mean'] - 0.1167) < 0.01
-        assert statistics.torque_avg_stats['std'] > 0
+        assert statistics.torque_avg_stats["min"] == 0.05
+        assert statistics.torque_avg_stats["max"] == 0.2
+        assert abs(statistics.torque_avg_stats["mean"] - 0.1167) < 0.01
+        assert statistics.torque_avg_stats["std"] > 0
 
     def test_statistics_performance_analysis(self):
         """Test performance analysis in statistics computation."""
         # Create metrics with different speedups
-        metrics1 = self._create_sample_metrics("test_001", evaluation_speedup=2.0, gradient_speedup=3.0)
-        metrics2 = self._create_sample_metrics("test_002", evaluation_speedup=4.0, gradient_speedup=5.0)
-        metrics3 = self._create_sample_metrics("test_003", evaluation_speedup=1.5, gradient_speedup=2.0)
-        
+        metrics1 = self._create_sample_metrics(
+            "test_001", evaluation_speedup=2.0, gradient_speedup=3.0,
+        )
+        metrics2 = self._create_sample_metrics(
+            "test_002", evaluation_speedup=4.0, gradient_speedup=5.0,
+        )
+        metrics3 = self._create_sample_metrics(
+            "test_003", evaluation_speedup=1.5, gradient_speedup=2.0,
+        )
+
         self.collector.add_validation_metrics(metrics1)
         self.collector.add_validation_metrics(metrics2)
         self.collector.add_validation_metrics(metrics3)
-        
+
         statistics = self.collector.compute_statistics()
-        
+
         # Check performance statistics
-        assert statistics.evaluation_speedup_stats['min'] == 1.5
-        assert statistics.evaluation_speedup_stats['max'] == 4.0
-        assert abs(statistics.evaluation_speedup_stats['mean'] - 2.5) < 0.1
-        
-        assert statistics.gradient_speedup_stats['min'] == 2.0
-        assert statistics.gradient_speedup_stats['max'] == 5.0
-        assert abs(statistics.gradient_speedup_stats['mean'] - 3.33) < 0.1
+        assert statistics.evaluation_speedup_stats["min"] == 1.5
+        assert statistics.evaluation_speedup_stats["max"] == 4.0
+        assert abs(statistics.evaluation_speedup_stats["mean"] - 2.5) < 0.1
+
+        assert statistics.gradient_speedup_stats["min"] == 2.0
+        assert statistics.gradient_speedup_stats["max"] == 5.0
+        assert abs(statistics.gradient_speedup_stats["mean"] - 3.33) < 0.1
 
     def test_statistics_problem_type_breakdown(self):
         """Test problem type breakdown in statistics computation."""
         # Create metrics with different problem types
-        metrics1 = self._create_sample_metrics("test_001", problem_type="crank_center", within_tolerance=True)
-        metrics2 = self._create_sample_metrics("test_002", problem_type="crank_center", within_tolerance=True)
-        metrics3 = self._create_sample_metrics("test_003", problem_type="litvin", within_tolerance=False)
-        metrics4 = self._create_sample_metrics("test_004", problem_type="litvin", within_tolerance=True)
-        
+        metrics1 = self._create_sample_metrics(
+            "test_001", problem_type="crank_center", within_tolerance=True,
+        )
+        metrics2 = self._create_sample_metrics(
+            "test_002", problem_type="crank_center", within_tolerance=True,
+        )
+        metrics3 = self._create_sample_metrics(
+            "test_003", problem_type="litvin", within_tolerance=False,
+        )
+        metrics4 = self._create_sample_metrics(
+            "test_004", problem_type="litvin", within_tolerance=True,
+        )
+
         self.collector.add_validation_metrics(metrics1)
         self.collector.add_validation_metrics(metrics2)
         self.collector.add_validation_metrics(metrics3)
         self.collector.add_validation_metrics(metrics4)
-        
+
         statistics = self.collector.compute_statistics()
-        
+
         # Check problem type counts
         assert statistics.problem_type_counts["crank_center"] == 2
         assert statistics.problem_type_counts["litvin"] == 2
-        
+
         # Check success rates
         assert statistics.problem_type_success_rates["crank_center"] == 1.0  # 2/2
         assert statistics.problem_type_success_rates["litvin"] == 0.5  # 1/2
@@ -197,36 +208,37 @@ class TestValidationStatisticsCollection:
         """Test saving and loading statistics."""
         metrics = self._create_sample_metrics("test_001")
         self.collector.add_validation_metrics(metrics)
-        
+
         statistics = self.collector.compute_statistics()
         filepath = self.collector.save_statistics(statistics)
-        
+
         # Verify file was created
         assert filepath.exists()
-        
+
         # Verify file content
         import json
-        with open(filepath, 'r') as f:
+
+        with open(filepath) as f:
             data = json.load(f)
-        
-        assert data['total_validations'] == 1
-        assert data['tolerance_success_rate'] == 1.0
+
+        assert data["total_validations"] == 1
+        assert data["tolerance_success_rate"] == 1.0
 
     def test_generate_report(self):
         """Test generating human-readable validation report."""
         metrics = self._create_sample_metrics("test_001")
         self.collector.add_validation_metrics(metrics)
-        
+
         statistics = self.collector.compute_statistics()
         report = self.collector.generate_report(statistics)
-        
+
         # Check that report contains expected sections
         assert "# CasADi Physics Validation Report" in report
         assert "## Summary" in report
         assert "## Parity Analysis" in report
         assert "## Performance Analysis" in report
         assert "## Recommendation" in report
-        
+
         # Check that recommendation is positive for good results
         assert "✅ **RECOMMEND ENABLING**" in report
 
@@ -235,12 +247,14 @@ class TestValidationStatisticsCollection:
         # Create metrics with 90% success rate (conditional)
         for i in range(10):
             within_tolerance = i < 9  # 9 out of 10 within tolerance
-            metrics = self._create_sample_metrics(f"test_{i:03d}", within_tolerance=within_tolerance)
+            metrics = self._create_sample_metrics(
+                f"test_{i:03d}", within_tolerance=within_tolerance,
+            )
             self.collector.add_validation_metrics(metrics)
-        
+
         statistics = self.collector.compute_statistics()
         report = self.collector.generate_report(statistics)
-        
+
         assert "⚠️ **CONDITIONAL ENABLING**" in report
 
     def test_generate_report_negative_recommendation(self):
@@ -248,42 +262,44 @@ class TestValidationStatisticsCollection:
         # Create metrics with 80% success rate (below threshold)
         for i in range(10):
             within_tolerance = i < 8  # 8 out of 10 within tolerance
-            metrics = self._create_sample_metrics(f"test_{i:03d}", within_tolerance=within_tolerance)
+            metrics = self._create_sample_metrics(
+                f"test_{i:03d}", within_tolerance=within_tolerance,
+            )
             self.collector.add_validation_metrics(metrics)
-        
+
         statistics = self.collector.compute_statistics()
         report = self.collector.generate_report(statistics)
-        
+
         assert "❌ **DO NOT ENABLE**" in report
 
     def test_save_report(self):
         """Test saving validation report to file."""
         metrics = self._create_sample_metrics("test_001")
         self.collector.add_validation_metrics(metrics)
-        
+
         statistics = self.collector.compute_statistics()
         report = self.collector.generate_report(statistics)
         filepath = self.collector.save_report(report)
-        
+
         # Verify file was created
         assert filepath.exists()
-        assert filepath.suffix == '.md'
-        
+        assert filepath.suffix == ".md"
+
         # Verify file content
-        with open(filepath, 'r') as f:
+        with open(filepath) as f:
             content = f.read()
-        
+
         assert "# CasADi Physics Validation Report" in content
 
     def test_clear_metrics(self):
         """Test clearing collected metrics."""
         metrics = self._create_sample_metrics("test_001")
         self.collector.add_validation_metrics(metrics)
-        
+
         assert len(self.collector.metrics) == 1
-        
+
         self.collector.clear_metrics()
-        
+
         assert len(self.collector.metrics) == 0
 
     def test_get_metrics_summary(self):
@@ -291,16 +307,16 @@ class TestValidationStatisticsCollection:
         # Empty collector
         summary = self.collector.get_metrics_summary()
         assert summary["total_metrics"] == 0
-        
+
         # Add some metrics
         metrics1 = self._create_sample_metrics("test_001", problem_type="crank_center")
         metrics2 = self._create_sample_metrics("test_002", problem_type="litvin")
-        
+
         self.collector.add_validation_metrics(metrics1)
         self.collector.add_validation_metrics(metrics2)
-        
+
         summary = self.collector.get_metrics_summary()
-        
+
         assert summary["total_metrics"] == 2
         assert set(summary["problem_types"]) == {"crank_center", "litvin"}
         assert "date_range" in summary
@@ -315,7 +331,7 @@ class TestValidationStatisticsCollection:
         assert stats["mean"] == 0.0
         assert stats["std"] == 0.0
         assert stats["median"] == 0.0
-        
+
         # Test with single value
         stats = self.collector._compute_stats_dict([5.0])
         assert stats["min"] == 5.0
@@ -367,11 +383,11 @@ class TestValidationStatisticsCollection:
             "tolerance_threshold": 1e-4,
             "casadi_version": "3.6.0",
             "python_version": "3.11.5",
-            "hardware_info": {"cpu": "test", "memory": "8GB"}
+            "hardware_info": {"cpu": "test", "memory": "8GB"},
         }
-        
+
         # Update defaults with any provided kwargs
         defaults.update(kwargs)
         defaults["problem_id"] = problem_id
-        
+
         return ValidationMetrics(**defaults)

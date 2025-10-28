@@ -104,7 +104,9 @@ class TestThermalEfficiencyAdapter:
     @patch("campro.optimization.thermal_efficiency_adapter.ComplexMotionLawOptimizer")
     def test_complex_optimizer_setup_failure(self, mock_optimizer_class):
         """Test complex optimizer setup failure."""
-        mock_optimizer_class.side_effect = ImportError("Complex optimizer not available")
+        mock_optimizer_class.side_effect = ImportError(
+            "Complex optimizer not available",
+        )
 
         config = ThermalEfficiencyConfig()
         adapter = ThermalEfficiencyAdapter(config)
@@ -290,7 +292,10 @@ class TestUnifiedFrameworkIntegration:
 
         assert framework.settings.use_thermal_efficiency is True
         assert framework.settings.thermal_efficiency_config is not None
-        assert framework.settings.thermal_efficiency_config["thermal_efficiency_weight"] == 2.0
+        assert (
+            framework.settings.thermal_efficiency_config["thermal_efficiency_weight"]
+            == 2.0
+        )
 
     def test_primary_optimization_with_thermal_efficiency_fallback(self):
         """Test primary optimization with thermal efficiency fallback."""
@@ -460,7 +465,9 @@ class TestDataConversion:
         )
 
         # Test data extraction
-        motion_law_data = adapter._extract_motion_law_data(mock_complex_result, constraints)
+        motion_law_data = adapter._extract_motion_law_data(
+            mock_complex_result, constraints,
+        )
 
         assert motion_law_data is not None
         assert "theta" in motion_law_data
@@ -534,7 +541,10 @@ class TestErrorHandling:
         result = adapter.optimize(None, constraints)
 
         assert result is not None
-        assert result.status in [OptimizationStatus.CONVERGED, OptimizationStatus.FAILED]
+        assert result.status in [
+            OptimizationStatus.CONVERGED,
+            OptimizationStatus.FAILED,
+        ]
 
     def test_optimization_with_missing_constraints(self):
         """Test optimization with missing constraint attributes."""
@@ -565,7 +575,9 @@ class TestErrorHandling:
 
         # Mock complex optimizer that fails
         mock_optimizer = Mock()
-        mock_optimizer.optimize_with_validation.side_effect = Exception("Complex optimizer failed")
+        mock_optimizer.optimize_with_validation.side_effect = Exception(
+            "Complex optimizer failed",
+        )
         adapter.complex_optimizer = mock_optimizer
 
         constraints = MotionLawConstraints(
@@ -598,6 +610,7 @@ class TestPerformanceAndConvergence:
         )
 
         import time
+
         start_time = time.time()
         result = adapter.optimize(None, constraints)
         end_time = time.time()
@@ -689,7 +702,9 @@ def test_objective_from_thermal_efficiency():
                 "max_temperature": 1500.0,
                 "min_piston_gap": 0.002,
             }
-            self.objective_value = 123.456  # Should be ignored by adapter objective computation
+            self.objective_value = (
+                123.456  # Should be ignored by adapter objective computation
+            )
             self.iterations = 10
             self.cpu_time = 0.1
 

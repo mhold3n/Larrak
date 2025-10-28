@@ -134,7 +134,13 @@ def demo_three_layer_optimization():
     print(f"  - Initial linkage length: {initial_linkage.linkage_length} mm")
     print(f"  - Initial linkage angle: {initial_linkage.linkage_angle}°")
 
-    return registry, cam_constraints, primary_optimizer, secondary_optimizer, tertiary_optimizer
+    return (
+        registry,
+        cam_constraints,
+        primary_optimizer,
+        secondary_optimizer,
+        tertiary_optimizer,
+    )
 
 
 def run_primary_optimization(cam_constraints, primary_optimizer):
@@ -245,12 +251,24 @@ def run_tertiary_optimization(tertiary_optimizer):
         print("Complete optimization context available:")
         print(f"  - Primary results: {list(context['primary_results'].keys())}")
         print(f"  - Secondary results: {list(context['secondary_results'].keys())}")
-        print(f"  - Primary constraints: {'Available' if context['primary_constraints'] else 'None'}")
-        print(f"  - Primary rules: {'Available' if context['primary_rules'] else 'None'}")
-        print(f"  - Primary settings: {'Available' if context['primary_settings'] else 'None'}")
-        print(f"  - Secondary constraints: {'Available' if context['secondary_constraints'] else 'None'}")
-        print(f"  - Secondary rules: {'Available' if context['secondary_rules'] else 'None'}")
-        print(f"  - Secondary settings: {'Available' if context['secondary_settings'] else 'None'}")
+        print(
+            f"  - Primary constraints: {'Available' if context['primary_constraints'] else 'None'}",
+        )
+        print(
+            f"  - Primary rules: {'Available' if context['primary_rules'] else 'None'}",
+        )
+        print(
+            f"  - Primary settings: {'Available' if context['primary_settings'] else 'None'}",
+        )
+        print(
+            f"  - Secondary constraints: {'Available' if context['secondary_constraints'] else 'None'}",
+        )
+        print(
+            f"  - Secondary rules: {'Available' if context['secondary_rules'] else 'None'}",
+        )
+        print(
+            f"  - Secondary settings: {'Available' if context['secondary_settings'] else 'None'}",
+        )
         print(f"  - Linkage parameters: {context['linkage_parameters']}")
 
     except Exception as e:
@@ -304,9 +322,15 @@ def run_tertiary_optimization(tertiary_optimizer):
         # Show optimized linkage parameters
         if "linkage_parameters" in linkage_result.solution:
             linkage_params = linkage_result.solution["linkage_parameters"]
-            print(f"  - Optimized linkage length: {linkage_params['linkage_length']:.2f} mm")
-            print(f"  - Optimized linkage angle: {linkage_params['linkage_angle']:.2f}°")
-            print(f"  - Follower center position: ({linkage_params['follower_center_x']:.2f}, {linkage_params['follower_center_y']:.2f})")
+            print(
+                f"  - Optimized linkage length: {linkage_params['linkage_length']:.2f} mm",
+            )
+            print(
+                f"  - Optimized linkage angle: {linkage_params['linkage_angle']:.2f}°",
+            )
+            print(
+                f"  - Follower center position: ({linkage_params['follower_center_x']:.2f}, {linkage_params['follower_center_y']:.2f})",
+            )
 
         tertiary_results["linkage_placement"] = linkage_result
 
@@ -350,7 +374,9 @@ def compare_three_layer_results(primary_result, secondary_result, tertiary_resul
     primary_summary = primary_result.get_solution_summary()
     print("Primary optimization solution:")
     for key, stats in primary_summary.items():
-        print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+        print(
+            f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+        )
 
     # Compare with secondary results
     if secondary_result and secondary_result.is_successful():
@@ -359,13 +385,30 @@ def compare_three_layer_results(primary_result, secondary_result, tertiary_resul
         for key, stats in secondary_summary.items():
             if key in primary_summary:
                 primary_stats = primary_summary[key]
-                print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+                print(
+                    f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+                )
 
                 # Compare with primary
-                range_change = ((stats["max"] - stats["min"]) - (primary_stats["max"] - primary_stats["min"])) / (primary_stats["max"] - primary_stats["min"]) * 100
-                mean_change = (stats["mean"] - primary_stats["mean"]) / abs(primary_stats["mean"]) * 100 if primary_stats["mean"] != 0 else 0
+                range_change = (
+                    (
+                        (stats["max"] - stats["min"])
+                        - (primary_stats["max"] - primary_stats["min"])
+                    )
+                    / (primary_stats["max"] - primary_stats["min"])
+                    * 100
+                )
+                mean_change = (
+                    (stats["mean"] - primary_stats["mean"])
+                    / abs(primary_stats["mean"])
+                    * 100
+                    if primary_stats["mean"] != 0
+                    else 0
+                )
 
-                print(f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%")
+                print(
+                    f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%",
+                )
 
     # Compare with tertiary results
     for result_type, result in tertiary_results.items():
@@ -375,13 +418,30 @@ def compare_three_layer_results(primary_result, secondary_result, tertiary_resul
             for key, stats in tertiary_summary.items():
                 if key in primary_summary:
                     primary_stats = primary_summary[key]
-                    print(f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}")
+                    print(
+                        f"  - {key}: range [{stats['min']:.2f}, {stats['max']:.2f}], mean {stats['mean']:.2f}",
+                    )
 
                     # Compare with primary
-                    range_change = ((stats["max"] - stats["min"]) - (primary_stats["max"] - primary_stats["min"])) / (primary_stats["max"] - primary_stats["min"]) * 100
-                    mean_change = (stats["mean"] - primary_stats["mean"]) / abs(primary_stats["mean"]) * 100 if primary_stats["mean"] != 0 else 0
+                    range_change = (
+                        (
+                            (stats["max"] - stats["min"])
+                            - (primary_stats["max"] - primary_stats["min"])
+                        )
+                        / (primary_stats["max"] - primary_stats["min"])
+                        * 100
+                    )
+                    mean_change = (
+                        (stats["mean"] - primary_stats["mean"])
+                        / abs(primary_stats["mean"])
+                        * 100
+                        if primary_stats["mean"] != 0
+                        else 0
+                    )
 
-                    print(f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%")
+                    print(
+                        f"    Range change: {range_change:+.1f}%, Mean change: {mean_change:+.1f}%",
+                    )
 
 
 def create_three_layer_plots(primary_result, secondary_result, tertiary_results):
@@ -465,7 +525,11 @@ def demo_registry_functionality(registry):
 
     # Show context visibility for each optimizer
     print("\nContext visibility:")
-    for optimizer_id in ["motion_optimizer", "secondary_optimizer", "tertiary_optimizer"]:
+    for optimizer_id in [
+        "motion_optimizer",
+        "secondary_optimizer",
+        "tertiary_optimizer",
+    ]:
         available_results = registry.get_available_results(optimizer_id)
         print(f"  - {optimizer_id}: can access {list(available_results.keys())}")
 
@@ -477,7 +541,13 @@ def main():
 
     try:
         # Setup three-layer optimization system
-        registry, cam_constraints, primary_optimizer, secondary_optimizer, tertiary_optimizer = demo_three_layer_optimization()
+        (
+            registry,
+            cam_constraints,
+            primary_optimizer,
+            secondary_optimizer,
+            tertiary_optimizer,
+        ) = demo_three_layer_optimization()
 
         # Run primary optimization
         primary_result = run_primary_optimization(cam_constraints, primary_optimizer)
@@ -511,10 +581,9 @@ def main():
     except Exception as e:
         print(f"\nDemo failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 if __name__ == "__main__":
     main()
-
-

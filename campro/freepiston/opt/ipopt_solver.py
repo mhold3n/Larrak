@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from campro.constants import HSLLIB_PATH, IPOPT_LOG_DIR, IPOPT_OPT_PATH
+from campro.constants import IPOPT_LOG_DIR
 from campro.logging import get_logger
 
 log = get_logger(__name__)
@@ -17,6 +17,7 @@ log = get_logger(__name__)
 @dataclass
 class IPOPTOptions:
     """IPOPT solver options."""
+
     # Basic solver options
     max_iter: int = 3000
     max_cpu_time: float = 3600.0  # 1 hour
@@ -70,6 +71,7 @@ class IPOPTOptions:
 @dataclass
 class IPOPTResult:
     """Result of IPOPT optimization."""
+
     success: bool
     x_opt: np.ndarray
     f_opt: float
@@ -94,7 +96,7 @@ class IPOPTResult:
 class IPOPTSolver:
     """
     IPOPT solver wrapper for large-scale nonlinear optimization.
-    
+
     This class provides a Python interface to the IPOPT solver for solving
     the collocation-based NLP problems in the OP engine optimization.
     """
@@ -102,7 +104,7 @@ class IPOPTSolver:
     def __init__(self, options: Optional[IPOPTOptions] = None):
         """
         Initialize IPOPT solver.
-        
+
         Args:
             options: IPOPT solver options
         """
@@ -113,9 +115,11 @@ class IPOPTSolver:
         """Check if IPOPT is available."""
         try:
             import casadi as ca
+
             # Prefer a direct instantiation probe to handle builds without nlpsol_plugins
             try:
                 from campro.optimization.ipopt_factory import create_ipopt_solver
+
                 nlp = {"x": ca.SX.sym("x"), "f": 0, "g": ca.SX([])}
                 _ = create_ipopt_solver("probe", nlp, linear_solver="ma27")
                 self.ipopt_available = True
@@ -127,7 +131,9 @@ class IPOPTSolver:
                         plugins = ca.nlpsol_plugins()
                         self.ipopt_available = "ipopt" in plugins
                         if not self.ipopt_available:
-                            log.warning("IPOPT not available in CasADi plugins. Using alternative solver.")
+                            log.warning(
+                                "IPOPT not available in CasADi plugins. Using alternative solver.",
+                            )
                         return
                     except Exception:
                         pass
@@ -149,7 +155,7 @@ class IPOPTSolver:
     ) -> IPOPTResult:
         """
         Solve NLP using IPOPT.
-        
+
         Args:
             nlp: CasADi NLP object
             x0: Initial guess for variables
@@ -158,7 +164,7 @@ class IPOPTSolver:
             lbg: Lower bounds on constraints
             ubg: Upper bounds on constraints
             p: Parameters
-            
+
         Returns:
             IPOPT result
         """
@@ -189,15 +195,25 @@ class IPOPTSolver:
             warm_kwargs: Dict[str, Any] = {}
             try:
                 if str(self.options.warm_start_init_point).lower() == "yes":
-                    from campro.diagnostics.warmstart import load_warmstart, save_warmstart
+                    from campro.diagnostics.warmstart import (
+                        load_warmstart,
+                        save_warmstart,
+                    )
+
                     n_x = int(np.asarray(x0).size)
-                    n_g = int(np.asarray(lbg).size) if lbg is not None else (int(np.asarray(ubg).size) if ubg is not None else 0)
+                    n_g = (
+                        int(np.asarray(lbg).size)
+                        if lbg is not None
+                        else (int(np.asarray(ubg).size) if ubg is not None else 0)
+                    )
                     warm_kwargs = load_warmstart(n_x, n_g)
             except Exception:
                 warm_kwargs = {}
 
             # Solve
-            result = solver(x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs)
+            result = solver(
+                x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs,
+            )
 
             # Extract solution
             x_opt = result["x"].full().flatten()
@@ -248,6 +264,7 @@ class IPOPTSolver:
             try:
                 if str(self.options.warm_start_init_point).lower() == "yes":
                     from campro.diagnostics.warmstart import save_warmstart
+
                     # Multipliers for constraints are available as lam_g; lam_x may be present too
                     lam_g = result.get("lam_g", None)
                     lam_x = result.get("lam_x", None)
@@ -265,13 +282,13 @@ class IPOPTSolver:
 
     def _create_solver(self, nlp: Any) -> Any:
         """Create IPOPT solver with options."""
-        import casadi as ca
 
         # Convert options to CasADi format
         opts = self._convert_options()
 
         # Use centralized factory with explicit linear solver
         from campro.optimization.ipopt_factory import create_ipopt_solver
+
         solver = create_ipopt_solver("solver", nlp, opts, linear_solver="ma27")
 
         return solver
@@ -308,7 +325,7 @@ class IPOPTSolver:
         opts["ipopt.print_level"] = self.options.print_level
         opts["ipopt.print_frequency_iter"] = self.options.print_frequency_iter
         opts["ipopt.print_frequency_time"] = self.options.print_frequency_time
-        
+
         # Handle analysis output options
         if self.options.output_file:
             opts["ipopt.output_file"] = self.options.output_file
@@ -322,27 +339,35 @@ class IPOPTSolver:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             out_file = str(log_dir / f"ipopt_{ts}.log")
             opts["ipopt.output_file"] = out_file
-            
+
         if self.options.print_timing_statistics:
             opts["ipopt.print_timing_statistics"] = "yes"
 
         # Warm start
         opts["ipopt.warm_start_init_point"] = self.options.warm_start_init_point
         opts["ipopt.warm_start_bound_push"] = self.options.warm_start_bound_push
-        opts["ipopt.warm_start_mult_bound_push"] = self.options.warm_start_mult_bound_push
+        opts["ipopt.warm_start_mult_bound_push"] = (
+            self.options.warm_start_mult_bound_push
+        )
 
         # Advanced options
         opts["ipopt.hessian_approximation"] = self.options.hessian_approximation
-        opts["ipopt.limited_memory_max_history"] = self.options.limited_memory_max_history
-        opts["ipopt.limited_memory_update_type"] = self.options.limited_memory_update_type
+        opts["ipopt.limited_memory_max_history"] = (
+            self.options.limited_memory_max_history
+        )
+        opts["ipopt.limited_memory_update_type"] = (
+            self.options.limited_memory_update_type
+        )
 
         # Add linear solver options if provided
         for key, value in self.options.linear_solver_options.items():
             opts[f"ipopt.{key}"] = value
 
         # Log configuration for debugging
-        log.debug(f"IPOPT options configured: linear_solver={self.options.linear_solver}, "
-                 f"max_iter={self.options.max_iter}, tol={self.options.tol}")
+        log.debug(
+            f"IPOPT options configured: linear_solver={self.options.linear_solver}, "
+            f"max_iter={self.options.max_iter}, tol={self.options.tol}",
+        )
         log.debug(f"Full IPOPT options dict: {opts}")
 
         return opts
@@ -356,7 +381,6 @@ class IPOPTSolver:
     ) -> float:
         """Compute KKT error for solution quality assessment."""
         try:
-
             # Evaluate gradient of objective
             grad_f = nlp.grad_f(x, p)["grad_f_x"].full().flatten()
 
@@ -485,7 +509,7 @@ def solve_with_ipopt(
 ) -> IPOPTResult:
     """
     Convenience function to solve NLP with IPOPT.
-    
+
     Args:
         nlp: CasADi NLP object
         options: IPOPT solver options
@@ -495,7 +519,7 @@ def solve_with_ipopt(
         lbg: Lower bounds on constraints
         ubg: Upper bounds on constraints
         p: Parameters
-        
+
     Returns:
         IPOPT result
     """
@@ -506,10 +530,10 @@ def solve_with_ipopt(
 def create_ipopt_options_from_dict(options_dict: Dict[str, Any]) -> IPOPTOptions:
     """
     Create IPOPTOptions from dictionary.
-    
+
     Args:
         options_dict: Dictionary of options
-        
+
     Returns:
         IPOPTOptions object
     """

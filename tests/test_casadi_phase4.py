@@ -5,12 +5,11 @@ This module tests the unified physics function and its integration into
 optimization problems, including toy NLP and performance benchmarks.
 """
 
-import numpy as np
-import pytest
 import time
 
 import casadi as ca
-from campro.physics.casadi import create_unified_physics, create_toy_nlp_optimizer
+import numpy as np
+from campro.physics.casadi import create_toy_nlp_optimizer, create_unified_physics
 
 
 class TestCasadiUnifiedPhysics:
@@ -21,7 +20,7 @@ class TestCasadiUnifiedPhysics:
         self.unified_fn = create_unified_physics()
 
         # Test parameters
-        self.theta_vec = np.linspace(0, 2*np.pi, 10)
+        self.theta_vec = np.linspace(0, 2 * np.pi, 10)
         self.pressure_vec = 1e5 * np.ones(10)  # Pa
         self.r = 50.0  # mm
         self.l = 150.0  # mm
@@ -29,7 +28,9 @@ class TestCasadiUnifiedPhysics:
         self.y_off = 2.0  # mm
         self.bore = 100.0  # mm
         self.max_side_threshold = 200.0  # N
-        self.litvin_config = np.array([50.0, 20.0, 2.0, 20.0, 25.0, 1.0])  # enable Litvin
+        self.litvin_config = np.array(
+            [50.0, 20.0, 2.0, 20.0, 25.0, 1.0],
+        )  # enable Litvin
 
     def test_unified_physics_function_creation(self):
         """Test that unified physics function is created successfully."""
@@ -38,9 +39,22 @@ class TestCasadiUnifiedPhysics:
 
     def test_unified_physics_outputs(self):
         """Test unified physics function outputs."""
-        torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-            self.theta_vec, self.pressure_vec, self.r, self.l, self.x_off, self.y_off,
-            self.bore, self.max_side_threshold, self.litvin_config
+        (
+            torque_avg,
+            torque_ripple,
+            side_load_penalty,
+            litvin_objective,
+            litvin_closure,
+        ) = self.unified_fn(
+            self.theta_vec,
+            self.pressure_vec,
+            self.r,
+            self.l,
+            self.x_off,
+            self.y_off,
+            self.bore,
+            self.max_side_threshold,
+            self.litvin_config,
         )
 
         # Check output shapes
@@ -74,16 +88,42 @@ class TestCasadiUnifiedPhysics:
         """Test that Litvin calculations can be toggled on/off."""
         # Test with Litvin enabled
         litvin_config_enabled = np.array([50.0, 20.0, 2.0, 20.0, 25.0, 1.0])
-        torque_avg_en, torque_ripple_en, side_load_penalty_en, litvin_objective_en, litvin_closure_en = self.unified_fn(
-            self.theta_vec, self.pressure_vec, self.r, self.l, self.x_off, self.y_off,
-            self.bore, self.max_side_threshold, litvin_config_enabled
+        (
+            torque_avg_en,
+            torque_ripple_en,
+            side_load_penalty_en,
+            litvin_objective_en,
+            litvin_closure_en,
+        ) = self.unified_fn(
+            self.theta_vec,
+            self.pressure_vec,
+            self.r,
+            self.l,
+            self.x_off,
+            self.y_off,
+            self.bore,
+            self.max_side_threshold,
+            litvin_config_enabled,
         )
 
         # Test with Litvin disabled
         litvin_config_disabled = np.array([50.0, 20.0, 2.0, 20.0, 25.0, 0.0])
-        torque_avg_dis, torque_ripple_dis, side_load_penalty_dis, litvin_objective_dis, litvin_closure_dis = self.unified_fn(
-            self.theta_vec, self.pressure_vec, self.r, self.l, self.x_off, self.y_off,
-            self.bore, self.max_side_threshold, litvin_config_disabled
+        (
+            torque_avg_dis,
+            torque_ripple_dis,
+            side_load_penalty_dis,
+            litvin_objective_dis,
+            litvin_closure_dis,
+        ) = self.unified_fn(
+            self.theta_vec,
+            self.pressure_vec,
+            self.r,
+            self.l,
+            self.x_off,
+            self.y_off,
+            self.bore,
+            self.max_side_threshold,
+            litvin_config_disabled,
         )
 
         # Torque and side load should be the same
@@ -106,9 +146,22 @@ class TestCasadiUnifiedPhysics:
         l_sym = ca.MX.sym("l")
 
         # Compute unified physics
-        torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-            self.theta_vec, self.pressure_vec, r_sym, l_sym, self.x_off, self.y_off,
-            self.bore, self.max_side_threshold, self.litvin_config
+        (
+            torque_avg,
+            torque_ripple,
+            side_load_penalty,
+            litvin_objective,
+            litvin_closure,
+        ) = self.unified_fn(
+            self.theta_vec,
+            self.pressure_vec,
+            r_sym,
+            l_sym,
+            self.x_off,
+            self.y_off,
+            self.bore,
+            self.max_side_threshold,
+            self.litvin_config,
         )
 
         # Compute gradients
@@ -121,12 +174,13 @@ class TestCasadiUnifiedPhysics:
         grad_fn = ca.Function(
             "unified_physics_gradients",
             [r_sym, l_sym],
-            [dtorque_dr, dtorque_dl, dpenalty_dr, dpenalty_dl]
+            [dtorque_dr, dtorque_dl, dpenalty_dr, dpenalty_dl],
         )
 
         # Evaluate gradients
         dtorque_dr_val, dtorque_dl_val, dpenalty_dr_val, dpenalty_dl_val = grad_fn(
-            self.r, self.l
+            self.r,
+            self.l,
         )
 
         # Check for NaN/Inf
@@ -146,9 +200,22 @@ class TestCasadiUnifiedPhysics:
         r_values = [40.0, 50.0, 60.0]
 
         for r in r_values:
-            torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-                self.theta_vec, self.pressure_vec, r, self.l, self.x_off, self.y_off,
-                self.bore, self.max_side_threshold, self.litvin_config
+            (
+                torque_avg,
+                torque_ripple,
+                side_load_penalty,
+                litvin_objective,
+                litvin_closure,
+            ) = self.unified_fn(
+                self.theta_vec,
+                self.pressure_vec,
+                r,
+                self.l,
+                self.x_off,
+                self.y_off,
+                self.bore,
+                self.max_side_threshold,
+                self.litvin_config,
             )
 
             # Should produce finite results
@@ -185,7 +252,8 @@ class TestCasadiToyNlpOptimizer:
     def test_toy_nlp_optimization(self):
         """Test toy NLP function outputs."""
         torque_avg, side_load_penalty, objective, constraint = self.nlp_fn(
-            self.r, self.l
+            self.r,
+            self.l,
         )
 
         # Check output shapes
@@ -213,20 +281,22 @@ class TestCasadiToyNlpOptimizer:
     def test_toy_nlp_constraint_satisfaction(self):
         """Test that constraint function works correctly."""
         torque_avg, side_load_penalty, objective, constraint = self.nlp_fn(
-            self.r, self.l
+            self.r,
+            self.l,
         )
 
         # Constraint: side_load_penalty <= 0.1
         # constraint is the constraint value (penalty - 0.1), should be <= 0 when satisfied
         # For the test parameters (r=50, l=150), this constraint is violated
         assert constraint > 0.0  # Constraint is violated for these parameters
-        
+
         # Test with parameters that should satisfy the constraint
         # Use smaller r and larger l to reduce side load penalty
         torque_avg2, side_load_penalty2, objective2, constraint2 = self.nlp_fn(
-            5.0, 200.0  # Very small r, large l should reduce penalty
+            5.0,
+            200.0,  # Very small r, large l should reduce penalty
         )
-        
+
         # This should satisfy the constraint
         assert constraint2 <= 0.0
 
@@ -240,7 +310,8 @@ class TestCasadiToyNlpOptimizer:
 
         for r, l in test_params:
             torque_avg, side_load_penalty, objective, constraint = self.nlp_fn(
-                r, l
+                r,
+                l,
             )
 
             # Should produce finite results
@@ -267,7 +338,7 @@ class TestCasadiPerformanceBenchmark:
         self.unified_fn = create_unified_physics()
 
         # Test parameters
-        self.theta_vec = np.linspace(0, 2*np.pi, 10)
+        self.theta_vec = np.linspace(0, 2 * np.pi, 10)
         self.pressure_vec = 1e5 * np.ones(10)  # Pa
         self.r = 50.0  # mm
         self.l = 150.0  # mm
@@ -284,9 +355,22 @@ class TestCasadiPerformanceBenchmark:
         # Time the evaluations
         start_time = time.time()
         for _ in range(n_evaluations):
-            torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-                self.theta_vec, self.pressure_vec, self.r, self.l, self.x_off, self.y_off,
-                self.bore, self.max_side_threshold, self.litvin_config
+            (
+                torque_avg,
+                torque_ripple,
+                side_load_penalty,
+                litvin_objective,
+                litvin_closure,
+            ) = self.unified_fn(
+                self.theta_vec,
+                self.pressure_vec,
+                self.r,
+                self.l,
+                self.x_off,
+                self.y_off,
+                self.bore,
+                self.max_side_threshold,
+                self.litvin_config,
             )
         end_time = time.time()
 
@@ -297,7 +381,9 @@ class TestCasadiPerformanceBenchmark:
         assert avg_time_per_eval < 0.001  # 1ms
 
         # Log performance for reference
-        print(f"Unified physics evaluation time: {avg_time_per_eval*1000:.2f} ms per evaluation")
+        print(
+            f"Unified physics evaluation time: {avg_time_per_eval * 1000:.2f} ms per evaluation",
+        )
 
     def test_unified_physics_gradient_speed(self):
         """Test gradient computation speed."""
@@ -306,9 +392,22 @@ class TestCasadiPerformanceBenchmark:
         l_sym = ca.MX.sym("l")
 
         # Compute unified physics
-        torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-            self.theta_vec, self.pressure_vec, r_sym, l_sym, self.x_off, self.y_off,
-            self.bore, self.max_side_threshold, self.litvin_config
+        (
+            torque_avg,
+            torque_ripple,
+            side_load_penalty,
+            litvin_objective,
+            litvin_closure,
+        ) = self.unified_fn(
+            self.theta_vec,
+            self.pressure_vec,
+            r_sym,
+            l_sym,
+            self.x_off,
+            self.y_off,
+            self.bore,
+            self.max_side_threshold,
+            self.litvin_config,
         )
 
         # Compute gradients
@@ -319,7 +418,7 @@ class TestCasadiPerformanceBenchmark:
         grad_fn = ca.Function(
             "unified_physics_gradients",
             [r_sym, l_sym],
-            [dtorque_dr, dtorque_dl]
+            [dtorque_dr, dtorque_dl],
         )
 
         # Time gradient evaluations
@@ -333,10 +432,14 @@ class TestCasadiPerformanceBenchmark:
         avg_time_per_eval = total_time / n_evaluations
 
         # Should be reasonably fast (less than 2ms per evaluation)
-        assert avg_time_per_eval < 0.005  # 5ms (more realistic for complex unified physics)
+        assert (
+            avg_time_per_eval < 0.005
+        )  # 5ms (more realistic for complex unified physics)
 
         # Log performance for reference
-        print(f"Unified physics gradient time: {avg_time_per_eval*1000:.2f} ms per evaluation")
+        print(
+            f"Unified physics gradient time: {avg_time_per_eval * 1000:.2f} ms per evaluation",
+        )
 
 
 class TestCasadiIntegrationParity:
@@ -347,7 +450,7 @@ class TestCasadiIntegrationParity:
         self.unified_fn = create_unified_physics()
 
         # Test parameters
-        self.theta_vec = np.linspace(0, 2*np.pi, 10)
+        self.theta_vec = np.linspace(0, 2 * np.pi, 10)
         self.pressure_vec = 1e5 * np.ones(10)  # Pa
         self.r = 50.0  # mm
         self.l = 150.0  # mm
@@ -355,18 +458,41 @@ class TestCasadiIntegrationParity:
         self.y_off = 2.0  # mm
         self.bore = 100.0  # mm
         self.max_side_threshold = 200.0  # N
-        self.litvin_config = np.array([50.0, 20.0, 2.0, 20.0, 25.0, 0.0])  # Litvin disabled
+        self.litvin_config = np.array(
+            [50.0, 20.0, 2.0, 20.0, 25.0, 0.0],
+        )  # Litvin disabled
 
     def test_unified_physics_consistency(self):
         """Test that unified physics produces consistent results."""
         # Run multiple times with same inputs
         results = []
         for _ in range(5):
-            torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-                self.theta_vec, self.pressure_vec, self.r, self.l, self.x_off, self.y_off,
-                self.bore, self.max_side_threshold, self.litvin_config
+            (
+                torque_avg,
+                torque_ripple,
+                side_load_penalty,
+                litvin_objective,
+                litvin_closure,
+            ) = self.unified_fn(
+                self.theta_vec,
+                self.pressure_vec,
+                self.r,
+                self.l,
+                self.x_off,
+                self.y_off,
+                self.bore,
+                self.max_side_threshold,
+                self.litvin_config,
             )
-            results.append((torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure))
+            results.append(
+                (
+                    torque_avg,
+                    torque_ripple,
+                    side_load_penalty,
+                    litvin_objective,
+                    litvin_closure,
+                ),
+            )
 
         # All results should be identical
         for i in range(1, len(results)):
@@ -383,26 +509,56 @@ class TestCasadiIntegrationParity:
         torque_values = []
 
         for r in r_values:
-            torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-                self.theta_vec, self.pressure_vec, r, self.l, self.x_off, self.y_off,
-                self.bore, self.max_side_threshold, self.litvin_config
+            (
+                torque_avg,
+                torque_ripple,
+                side_load_penalty,
+                litvin_objective,
+                litvin_closure,
+            ) = self.unified_fn(
+                self.theta_vec,
+                self.pressure_vec,
+                r,
+                self.l,
+                self.x_off,
+                self.y_off,
+                self.bore,
+                self.max_side_threshold,
+                self.litvin_config,
             )
             torque_values.append(torque_avg)
 
         # Torque should generally increase with crank radius
         # (This is a physical expectation, though not strictly guaranteed)
-        assert torque_values[1] > torque_values[0] or torque_values[2] > torque_values[1]
+        assert (
+            torque_values[1] > torque_values[0] or torque_values[2] > torque_values[1]
+        )
 
     def test_unified_physics_physical_bounds(self):
         """Test that physics outputs are within physically reasonable bounds."""
-        torque_avg, torque_ripple, side_load_penalty, litvin_objective, litvin_closure = self.unified_fn(
-            self.theta_vec, self.pressure_vec, self.r, self.l, self.x_off, self.y_off,
-            self.bore, self.max_side_threshold, self.litvin_config
+        (
+            torque_avg,
+            torque_ripple,
+            side_load_penalty,
+            litvin_objective,
+            litvin_closure,
+        ) = self.unified_fn(
+            self.theta_vec,
+            self.pressure_vec,
+            self.r,
+            self.l,
+            self.x_off,
+            self.y_off,
+            self.bore,
+            self.max_side_threshold,
+            self.litvin_config,
         )
 
         # Check physically reasonable bounds
         assert 0 <= torque_avg < 1000.0  # Reasonable torque range (N⋅m)
         assert 0 <= torque_ripple < 10.0  # Reasonable ripple range
-        assert 0 <= side_load_penalty < 20000.0  # Reasonable penalty range (adjusted for realistic values)
+        assert (
+            0 <= side_load_penalty < 20000.0
+        )  # Reasonable penalty range (adjusted for realistic values)
         assert 0 <= litvin_objective < 1000.0  # Reasonable objective range
         assert 0 <= litvin_closure < 100.0  # Reasonable closure range (mm)

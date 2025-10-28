@@ -8,9 +8,9 @@ problems using direct collocation methods with CasADi and Ipopt.
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple
 
+import casadi as ca
 import numpy as np
 
-import casadi as ca
 from campro.constants import (
     COLLOCATION_METHODS,
     COLLOCATION_TOLERANCE,
@@ -20,6 +20,7 @@ from campro.constants import (
 from campro.logging import get_logger
 
 log = get_logger(__name__)
+
 
 # Validate environment on module import
 def _validate_environment():
@@ -46,6 +47,7 @@ def _validate_environment():
     except Exception as e:
         log.error(f"Error during environment validation: {e}")
         log.error("Environment validation failed.")
+
 
 # Perform validation
 _validate_environment()
@@ -77,7 +79,7 @@ class MotionConstraints:
 class CamMotionConstraints:
     """
     Simplified constraints for cam follower motion law problems.
-    
+
     This class provides intuitive cam-specific constraints that are easier to use
     than the general motion constraints.
     """
@@ -85,7 +87,9 @@ class CamMotionConstraints:
     # Core cam parameters
     stroke: float  # Total follower stroke (required)
     upstroke_duration_percent: float  # % of cycle for upstroke (0-100)
-    zero_accel_duration_percent: Optional[float] = None  # % of cycle with zero acceleration (can be anywhere in cycle)
+    zero_accel_duration_percent: Optional[float] = (
+        None  # % of cycle with zero acceleration (can be anywhere in cycle)
+    )
 
     # Optional constraints
     max_velocity: Optional[float] = None
@@ -104,7 +108,9 @@ class CamMotionConstraints:
             raise ValueError("Upstroke duration percent must be between 0 and 100")
         if self.zero_accel_duration_percent is not None:
             if not 0 <= self.zero_accel_duration_percent <= 100:
-                raise ValueError("Zero acceleration duration percent must be between 0 and 100")
+                raise ValueError(
+                    "Zero acceleration duration percent must be between 0 and 100",
+                )
             # Note: Zero acceleration duration can be anywhere in the cycle
             # and is not limited by upstroke duration
 
@@ -123,7 +129,7 @@ class CollocationSettings:
 class OptimalMotionSolver:
     """
     Solver for optimal motion law problems using direct collocation.
-    
+
     This class implements various optimal motion law problems using CasADi
     and Ipopt with direct collocation methods for accurate solutions.
     """
@@ -131,7 +137,7 @@ class OptimalMotionSolver:
     def __init__(self, settings: Optional[CollocationSettings] = None):
         """
         Initialize the optimal motion solver.
-        
+
         Parameters
         ----------
         settings : CollocationSettings, optional
@@ -147,7 +153,9 @@ class OptimalMotionSolver:
         self.a = ca.SX.sym("a")  # Acceleration
         self.u = ca.SX.sym("u")  # Control input
 
-        log.info(f"Initialized OptimalMotionSolver with {self.settings.method} collocation")
+        log.info(
+            f"Initialized OptimalMotionSolver with {self.settings.method} collocation",
+        )
 
     def _validate_settings(self) -> None:
         """Validate collocation settings."""
@@ -169,7 +177,7 @@ class OptimalMotionSolver:
     ) -> Dict[str, np.ndarray]:
         """
         Solve minimum time motion law problem.
-        
+
         Parameters
         ----------
         constraints : MotionConstraints
@@ -182,7 +190,7 @@ class OptimalMotionSolver:
             Maximum allowed acceleration
         max_jerk : float
             Maximum allowed jerk
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -192,27 +200,54 @@ class OptimalMotionSolver:
 
         # For now, return a simple analytical solution
         # This is a placeholder until we implement the full CasADi integration
-        return self._generate_simple_motion_law(distance, max_velocity, max_acceleration, max_jerk, time_horizon, "minimum_time")
+        return self._generate_simple_motion_law(
+            distance,
+            max_velocity,
+            max_acceleration,
+            max_jerk,
+            time_horizon,
+            "minimum_time",
+        )
 
-    def _generate_simple_motion_law(self, distance: float, max_velocity: float,
-                                   max_acceleration: float, max_jerk: float,
-                                   time_horizon: float = None, motion_type: str = "minimum_jerk") -> Dict[str, np.ndarray]:
+    def _generate_simple_motion_law(
+        self,
+        distance: float,
+        max_velocity: float,
+        max_acceleration: float,
+        max_jerk: float,
+        time_horizon: float = None,
+        motion_type: str = "minimum_jerk",
+    ) -> Dict[str, np.ndarray]:
         """
         Generate a smooth sinusoidal motion law that respects bounds.
-        
+
         We use s(t) = d * (1 - cos(π t / T)) / 2 with zero velocity/accel at endpoints.
         Choose T to satisfy max velocity, acceleration, and jerk if time_horizon is None.
         """
         log.info(f"Generating motion law using minimum-jerk polynomial: {motion_type}")
-        log.info(f"Parameters: distance={distance}, max_velocity={max_velocity}, max_acceleration={max_acceleration}, max_jerk={max_jerk}")
+        log.info(
+            f"Parameters: distance={distance}, max_velocity={max_velocity}, max_acceleration={max_acceleration}, max_jerk={max_jerk}",
+        )
 
         # Determine total time T
         if time_horizon is None:
             # Bounds derived from 5th-order minimum-jerk profile s(τ)=d(10τ^3-15τ^4+6τ^5)
             # v_max ≈ 1.875 d / T, a_max ≈ 5.766 d / T^2, j_max = 60 d / T^3
-            T_v = (1.875 * distance) / max(max_velocity, 1e-9) if max_velocity is not None else 0.0
-            T_a = np.sqrt((5.766 * distance) / max(max_acceleration, 1e-9)) if max_acceleration is not None else 0.0
-            T_j = np.cbrt((60.0 * distance) / max(max_jerk, 1e-9)) if max_jerk is not None else 0.0
+            T_v = (
+                (1.875 * distance) / max(max_velocity, 1e-9)
+                if max_velocity is not None
+                else 0.0
+            )
+            T_a = (
+                np.sqrt((5.766 * distance) / max(max_acceleration, 1e-9))
+                if max_acceleration is not None
+                else 0.0
+            )
+            T_j = (
+                np.cbrt((60.0 * distance) / max(max_jerk, 1e-9))
+                if max_jerk is not None
+                else 0.0
+            )
             T = max(T_v, T_a, T_j, 1e-3)
         else:
             T = max(time_horizon, 1e-3)
@@ -230,7 +265,9 @@ class OptimalMotionSolver:
                 scales.append((max_velocity * T) / (vmax_coeff * max(distance, 1e-12)))
             if max_acceleration is not None:
                 amax_coeff = 5.766  # a_max ≈ 5.766 d / T^2 for min-jerk
-                scales.append((max_acceleration * T * T) / (amax_coeff * max(distance, 1e-12)))
+                scales.append(
+                    (max_acceleration * T * T) / (amax_coeff * max(distance, 1e-12)),
+                )
             if scales:
                 safety = 0.98
                 d_eff = distance * min(1.0, min(scales) * safety)
@@ -261,8 +298,12 @@ class OptimalMotionSolver:
                     t = np.linspace(0.0, T, n_points)
                     tau = t / T
                     position = distance * (10.0 * tau**3 - 15.0 * tau**4 + 6.0 * tau**5)
-                    velocity = (distance / T) * (30.0 * tau**2 - 60.0 * tau**3 + 30.0 * tau**4)
-                    acceleration = (distance / T**2) * (60.0 * tau - 180.0 * tau**2 + 120.0 * tau**3)
+                    velocity = (distance / T) * (
+                        30.0 * tau**2 - 60.0 * tau**3 + 30.0 * tau**4
+                    )
+                    acceleration = (distance / T**2) * (
+                        60.0 * tau - 180.0 * tau**2 + 120.0 * tau**3
+                    )
                     jerk = (distance / T**3) * (60.0 - 360.0 * tau + 360.0 * tau**2)
 
         sol = {
@@ -278,13 +319,18 @@ class OptimalMotionSolver:
         if time_horizon is not None:
             delta = distance - sol["position"][-1]
             if abs(delta) > 1e-9:
-                sol["position"] += (delta * (t / T))  # keep start at 0, end at distance
+                sol["position"] += delta * (t / T)  # keep start at 0, end at distance
 
         return sol
 
-    def _generate_fallback_motion_law(self, distance: float, max_velocity: float,
-                                    max_acceleration: float, max_jerk: float,
-                                    time_horizon: float = None) -> Dict[str, np.ndarray]:
+    def _generate_fallback_motion_law(
+        self,
+        distance: float,
+        max_velocity: float,
+        max_acceleration: float,
+        max_jerk: float,
+        time_horizon: float = None,
+    ) -> Dict[str, np.ndarray]:
         """Generate a simple fallback motion law when optimization fails."""
         log.warning("Using fallback motion law generation")
 
@@ -335,7 +381,7 @@ class OptimalMotionSolver:
                 # Minimum time: aggressive acceleration/deceleration, minimal constant velocity
                 t_accel = total_time * 0.45  # 45% for acceleration
                 t_decel = total_time * 0.45  # 45% for deceleration
-                t_const = total_time * 0.1   # 10% for constant velocity
+                t_const = total_time * 0.1  # 10% for constant velocity
             else:
                 # Default: balanced approach
                 t_accel = total_time * 0.3  # 30% for acceleration
@@ -343,9 +389,15 @@ class OptimalMotionSolver:
                 t_const = total_time * 0.4  # 40% for constant velocity
 
             print(f"DEBUG: Motion type '{motion_type}' phase distribution:")
-            print(f"  - Acceleration: {t_accel:.3f}s ({t_accel/total_time*100:.1f}%)")
-            print(f"  - Constant velocity: {t_const:.3f}s ({t_const/total_time*100:.1f}%)")
-            print(f"  - Deceleration: {t_decel:.3f}s ({t_decel/total_time*100:.1f}%)")
+            print(
+                f"  - Acceleration: {t_accel:.3f}s ({t_accel / total_time * 100:.1f}%)",
+            )
+            print(
+                f"  - Constant velocity: {t_const:.3f}s ({t_const / total_time * 100:.1f}%)",
+            )
+            print(
+                f"  - Deceleration: {t_decel:.3f}s ({t_decel / total_time * 100:.1f}%)",
+            )
 
             # Calculate actual max velocity based on time constraints
             actual_max_vel = min(max_velocity, max_acceleration * t_accel)
@@ -360,7 +412,9 @@ class OptimalMotionSolver:
             if total_distance_calculated > 0:
                 scale_factor = distance / total_distance_calculated
                 actual_max_vel *= scale_factor
-                print(f"DEBUG: Scaling motion law by factor {scale_factor:.3f} to achieve stroke of {distance} mm")
+                print(
+                    f"DEBUG: Scaling motion law by factor {scale_factor:.3f} to achieve stroke of {distance} mm",
+                )
 
             for i, time in enumerate(t):
                 if time <= t_accel:
@@ -371,13 +425,20 @@ class OptimalMotionSolver:
                 elif time <= t_accel + t_const:
                     # Constant velocity phase
                     velocity[i] = actual_max_vel
-                    position[i] = 0.5 * actual_max_vel * t_accel + actual_max_vel * (time - t_accel)
+                    position[i] = 0.5 * actual_max_vel * t_accel + actual_max_vel * (
+                        time - t_accel
+                    )
                     acceleration[i] = 0
                 else:
                     # Deceleration phase
                     decel_time = time - t_accel - t_const
                     velocity[i] = actual_max_vel * (1 - decel_time / t_decel)
-                    position[i] = 0.5 * actual_max_vel * t_accel + actual_max_vel * t_const + actual_max_vel * decel_time - 0.5 * actual_max_vel * decel_time**2 / t_decel
+                    position[i] = (
+                        0.5 * actual_max_vel * t_accel
+                        + actual_max_vel * t_const
+                        + actual_max_vel * decel_time
+                        - 0.5 * actual_max_vel * decel_time**2 / t_decel
+                    )
                     acceleration[i] = -actual_max_vel / t_decel
         else:
             # Original logic for when no time horizon is provided
@@ -396,7 +457,12 @@ class OptimalMotionSolver:
                     # Deceleration phase
                     decel_time = time - t_accel - t_const
                     velocity[i] = actual_max_vel - max_acceleration * decel_time
-                    position[i] = d_accel + d_const + actual_max_vel * decel_time - 0.5 * max_acceleration * decel_time**2
+                    position[i] = (
+                        d_accel
+                        + d_const
+                        + actual_max_vel * decel_time
+                        - 0.5 * max_acceleration * decel_time**2
+                    )
                     acceleration[i] = -max_acceleration
 
         # Calculate jerk (derivative of acceleration)
@@ -420,7 +486,7 @@ class OptimalMotionSolver:
     ) -> Dict[str, np.ndarray]:
         """
         Solve minimum energy motion law problem.
-        
+
         Parameters
         ----------
         constraints : MotionConstraints
@@ -433,7 +499,7 @@ class OptimalMotionSolver:
             Maximum allowed velocity
         max_acceleration : float
             Maximum allowed acceleration
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -442,7 +508,14 @@ class OptimalMotionSolver:
         log.info("Solving minimum energy motion law problem")
 
         # For now, return a simple analytical solution
-        return self._generate_simple_motion_law(distance, max_velocity, max_acceleration, 1.0, time_horizon, "minimum_energy")
+        return self._generate_simple_motion_law(
+            distance,
+            max_velocity,
+            max_acceleration,
+            1.0,
+            time_horizon,
+            "minimum_energy",
+        )
 
     def solve_minimum_jerk(
         self,
@@ -454,7 +527,7 @@ class OptimalMotionSolver:
     ) -> Dict[str, np.ndarray]:
         """
         Solve minimum jerk motion law problem.
-        
+
         Parameters
         ----------
         constraints : MotionConstraints
@@ -467,7 +540,7 @@ class OptimalMotionSolver:
             Maximum allowed velocity
         max_acceleration : float
             Maximum allowed acceleration
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -476,7 +549,9 @@ class OptimalMotionSolver:
         log.info("Solving minimum jerk motion law problem")
 
         # For now, return a simple analytical solution
-        return self._generate_simple_motion_law(distance, max_velocity, max_acceleration, 1.0, time_horizon, "minimum_jerk")
+        return self._generate_simple_motion_law(
+            distance, max_velocity, max_acceleration, 1.0, time_horizon, "minimum_jerk",
+        )
 
     def solve_cam_motion_law(
         self,
@@ -486,7 +561,7 @@ class OptimalMotionSolver:
     ) -> Dict[str, np.ndarray]:
         """
         Solve cam follower motion law problem with simplified constraints.
-        
+
         Parameters
         ----------
         cam_constraints : CamMotionConstraints
@@ -495,7 +570,7 @@ class OptimalMotionSolver:
             Type of motion law: "minimum_time", "minimum_energy", "minimum_jerk"
         cycle_time : float, default 1.0
             Total cycle time (360° duration)
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -504,7 +579,9 @@ class OptimalMotionSolver:
         log.info(f"Solving cam motion law: {motion_type}")
 
         # Convert cam constraints to general motion constraints
-        motion_constraints = self._convert_cam_to_motion_constraints(cam_constraints, cycle_time)
+        motion_constraints = self._convert_cam_to_motion_constraints(
+            cam_constraints, cycle_time,
+        )
 
         # Calculate time horizons
         upstroke_time = cycle_time * cam_constraints.upstroke_duration_percent / 100.0
@@ -512,11 +589,17 @@ class OptimalMotionSolver:
 
         # Solve based on motion type
         if motion_type == "minimum_time":
-            return self._solve_cam_minimum_time(cam_constraints, motion_constraints, cycle_time)
+            return self._solve_cam_minimum_time(
+                cam_constraints, motion_constraints, cycle_time,
+            )
         if motion_type == "minimum_energy":
-            return self._solve_cam_minimum_energy(cam_constraints, motion_constraints, cycle_time)
+            return self._solve_cam_minimum_energy(
+                cam_constraints, motion_constraints, cycle_time,
+            )
         if motion_type == "minimum_jerk":
-            return self._solve_cam_minimum_jerk(cam_constraints, motion_constraints, cycle_time)
+            return self._solve_cam_minimum_jerk(
+                cam_constraints, motion_constraints, cycle_time,
+            )
         raise ValueError(f"Unknown motion type: {motion_type}")
 
     def _convert_cam_to_motion_constraints(
@@ -536,16 +619,26 @@ class OptimalMotionSolver:
             initial_position=0.0,  # At TDC
             initial_velocity=0.0 if cam_constraints.dwell_at_tdc else None,
             initial_acceleration=0.0,
-
             # Final conditions (back to TDC after 360°)
             final_position=0.0,  # Back to TDC
             final_velocity=0.0 if cam_constraints.dwell_at_tdc else None,
             final_acceleration=0.0,
-
             # Path constraints
-            velocity_bounds=(-cam_constraints.max_velocity, cam_constraints.max_velocity) if cam_constraints.max_velocity else None,
-            acceleration_bounds=(-cam_constraints.max_acceleration, cam_constraints.max_acceleration) if cam_constraints.max_acceleration else None,
-            jerk_bounds=(-cam_constraints.max_jerk, cam_constraints.max_jerk) if cam_constraints.max_jerk else None,
+            velocity_bounds=(
+                -cam_constraints.max_velocity,
+                cam_constraints.max_velocity,
+            )
+            if cam_constraints.max_velocity
+            else None,
+            acceleration_bounds=(
+                -cam_constraints.max_acceleration,
+                cam_constraints.max_acceleration,
+            )
+            if cam_constraints.max_acceleration
+            else None,
+            jerk_bounds=(-cam_constraints.max_jerk, cam_constraints.max_jerk)
+            if cam_constraints.max_jerk
+            else None,
         )
 
         return motion_constraints
@@ -583,7 +676,9 @@ class OptimalMotionSolver:
         )
 
         # Combine solutions
-        return self._combine_cam_solutions(upstroke_solution, downstroke_solution, cycle_time)
+        return self._combine_cam_solutions(
+            upstroke_solution, downstroke_solution, cycle_time,
+        )
 
     def _solve_cam_minimum_energy(
         self,
@@ -615,7 +710,9 @@ class OptimalMotionSolver:
         )
 
         # Combine solutions
-        return self._combine_cam_solutions(upstroke_solution, downstroke_solution, cycle_time)
+        return self._combine_cam_solutions(
+            upstroke_solution, downstroke_solution, cycle_time,
+        )
 
     def _solve_cam_minimum_jerk(
         self,
@@ -631,7 +728,9 @@ class OptimalMotionSolver:
         # Debug: Print the actual parameters being used
         print("DEBUG: _solve_cam_minimum_jerk called with:")
         print(f"  - stroke: {cam_constraints.stroke}")
-        print(f"  - upstroke_duration_percent: {cam_constraints.upstroke_duration_percent}")
+        print(
+            f"  - upstroke_duration_percent: {cam_constraints.upstroke_duration_percent}",
+        )
         print(f"  - max_velocity: {cam_constraints.max_velocity or 100.0}")
         print(f"  - max_acceleration: {cam_constraints.max_acceleration or 50.0}")
         print(f"  - cycle_time: {cycle_time}")
@@ -643,8 +742,12 @@ class OptimalMotionSolver:
             motion_constraints,
             distance=cam_constraints.stroke,
             time_horizon=upstroke_time,
-            max_velocity=cam_constraints.max_velocity if cam_constraints.max_velocity is not None else None,
-            max_acceleration=cam_constraints.max_acceleration if cam_constraints.max_acceleration is not None else None,
+            max_velocity=cam_constraints.max_velocity
+            if cam_constraints.max_velocity is not None
+            else None,
+            max_acceleration=cam_constraints.max_acceleration
+            if cam_constraints.max_acceleration is not None
+            else None,
         )
 
         # Solve downstroke
@@ -652,12 +755,18 @@ class OptimalMotionSolver:
             motion_constraints,
             distance=cam_constraints.stroke,
             time_horizon=downstroke_time,
-            max_velocity=cam_constraints.max_velocity if cam_constraints.max_velocity is not None else None,
-            max_acceleration=cam_constraints.max_acceleration if cam_constraints.max_acceleration is not None else None,
+            max_velocity=cam_constraints.max_velocity
+            if cam_constraints.max_velocity is not None
+            else None,
+            max_acceleration=cam_constraints.max_acceleration
+            if cam_constraints.max_acceleration is not None
+            else None,
         )
 
         # Combine solutions
-        return self._combine_cam_solutions(upstroke_solution, downstroke_solution, cycle_time)
+        return self._combine_cam_solutions(
+            upstroke_solution, downstroke_solution, cycle_time,
+        )
 
     def _combine_cam_solutions(
         self,
@@ -675,7 +784,9 @@ class OptimalMotionSolver:
         t_down_adjusted = t_down + t_up[-1]
 
         # Combine time arrays
-        t_combined = np.concatenate([t_up, t_down_adjusted[1:]])  # Skip first point to avoid duplication
+        t_combined = np.concatenate(
+            [t_up, t_down_adjusted[1:]],
+        )  # Skip first point to avoid duplication
 
         # Combine position arrays
         x_up = upstroke_solution["position"]
@@ -683,7 +794,9 @@ class OptimalMotionSolver:
 
         # For cam motion: upstroke goes 0->stroke, downstroke goes stroke->0
         # The downstroke should be inverted and offset to continue from the upstroke end
-        x_down_inverted = x_up[-1] - x_down  # Invert downstroke relative to upstroke end
+        x_down_inverted = (
+            x_up[-1] - x_down
+        )  # Invert downstroke relative to upstroke end
         x_combined = np.concatenate([x_up, x_down_inverted[1:]])
 
         # Combine velocity arrays
@@ -732,7 +845,7 @@ class OptimalMotionSolver:
     ) -> Dict[str, np.ndarray]:
         """
         Solve motion law problem with custom objective function.
-        
+
         Parameters
         ----------
         objective_function : Callable
@@ -745,7 +858,7 @@ class OptimalMotionSolver:
             Fixed time horizon (if None, time is free)
         **kwargs
             Additional parameters for the objective function
-            
+
         Returns
         -------
         Dict[str, np.ndarray]
@@ -757,7 +870,9 @@ class OptimalMotionSolver:
         ocp = self._setup_ocp()
 
         # Custom objective
-        ocp.minimize(objective_function(self.t, self.x, self.v, self.a, self.u, **kwargs))
+        ocp.minimize(
+            objective_function(self.t, self.x, self.v, self.a, self.u, **kwargs),
+        )
 
         # Dynamics: x' = v, v' = a, a' = u
         ocp.subject_to(ca.der(self.x) == self.v)
@@ -793,7 +908,7 @@ class OptimalMotionSolver:
     def _solve_collocation(self, ocp: ca.Opti) -> Dict[str, np.ndarray]:
         """
         Placeholder for collocation solving.
-        
+
         Note: This is a placeholder until we implement the full CasADi integration
         with the new API.
         """
@@ -803,11 +918,15 @@ class OptimalMotionSolver:
         # This is a temporary fix until proper CasADi integration
         return self._generate_simple_motion_law(20.0, 10.0, 5.0, 2.0)
 
-    def plot_solution(self, solution: Dict[str, np.ndarray], save_path: Optional[str] = None,
-                     use_cam_angle: bool = False) -> None:
+    def plot_solution(
+        self,
+        solution: Dict[str, np.ndarray],
+        save_path: Optional[str] = None,
+        use_cam_angle: bool = False,
+    ) -> None:
         """
         Plot the motion law solution.
-        
+
         Parameters
         ----------
         solution : Dict[str, np.ndarray]
@@ -843,8 +962,12 @@ class OptimalMotionSolver:
 
             # Add TDC/BDC markers for cam plots
             if use_cam_angle and "cam_angle" in solution:
-                axes[0, 0].axvline(x=0, color="r", linestyle="--", alpha=0.7, label="TDC")
-                axes[0, 0].axvline(x=180, color="b", linestyle="--", alpha=0.7, label="BDC")
+                axes[0, 0].axvline(
+                    x=0, color="r", linestyle="--", alpha=0.7, label="TDC",
+                )
+                axes[0, 0].axvline(
+                    x=180, color="b", linestyle="--", alpha=0.7, label="BDC",
+                )
                 axes[0, 0].legend()
 
             # Velocity
@@ -909,7 +1032,7 @@ def solve_minimum_time_motion(
 ) -> Dict[str, np.ndarray]:
     """
     Convenience function for minimum time motion law.
-    
+
     Parameters
     ----------
     distance : float
@@ -926,7 +1049,7 @@ def solve_minimum_time_motion(
         Final velocity
     settings : CollocationSettings, optional
         Collocation method settings
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -939,7 +1062,11 @@ def solve_minimum_time_motion(
     )
 
     return solver.solve_minimum_time(
-        constraints, distance, max_velocity, max_acceleration, max_jerk,
+        constraints,
+        distance,
+        max_velocity,
+        max_acceleration,
+        max_jerk,
     )
 
 
@@ -954,7 +1081,7 @@ def solve_minimum_energy_motion(
 ) -> Dict[str, np.ndarray]:
     """
     Convenience function for minimum energy motion law.
-    
+
     Parameters
     ----------
     distance : float
@@ -971,7 +1098,7 @@ def solve_minimum_energy_motion(
         Final velocity
     settings : CollocationSettings, optional
         Collocation method settings
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -984,7 +1111,11 @@ def solve_minimum_energy_motion(
     )
 
     return solver.solve_minimum_energy(
-        constraints, distance, time_horizon, max_velocity, max_acceleration,
+        constraints,
+        distance,
+        time_horizon,
+        max_velocity,
+        max_acceleration,
     )
 
 
@@ -999,7 +1130,7 @@ def solve_minimum_jerk_motion(
 ) -> Dict[str, np.ndarray]:
     """
     Convenience function for minimum jerk motion law.
-    
+
     Parameters
     ----------
     distance : float
@@ -1016,7 +1147,7 @@ def solve_minimum_jerk_motion(
         Final velocity
     settings : CollocationSettings, optional
         Collocation method settings
-        
+
     Returns
     -------
     Dict[str, np.ndarray]
@@ -1029,7 +1160,11 @@ def solve_minimum_jerk_motion(
     )
 
     return solver.solve_minimum_jerk(
-        constraints, distance, time_horizon, max_velocity, max_acceleration,
+        constraints,
+        distance,
+        time_horizon,
+        max_velocity,
+        max_acceleration,
     )
 
 
@@ -1049,7 +1184,7 @@ def solve_cam_motion_law(
 ) -> Dict[str, np.ndarray]:
     """
     Convenience function for cam motion law problems.
-    
+
     Parameters
     ----------
     stroke : float
@@ -1074,7 +1209,7 @@ def solve_cam_motion_law(
         Whether to dwell (zero velocity) at BDC
     settings : CollocationSettings, optional
         Collocation method settings
-        
+
     Returns
     -------
     Dict[str, np.ndarray]

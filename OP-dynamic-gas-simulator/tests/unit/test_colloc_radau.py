@@ -25,5 +25,3 @@ def test_radau_iia_s3_coefficients_shape_and_sanity():
     assert len(grid.a) == 3 and len(grid.a[0]) == 3
     # basic sanity: weights sum to 1 on [0,1]
     assert abs(sum(grid.weights) - 1.0) < 1e-12
-
-

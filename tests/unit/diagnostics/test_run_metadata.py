@@ -9,4 +9,3 @@ def test_log_run_metadata_creates_file(tmp_path, monkeypatch):
     path = log_run_metadata({"status": "ok"}, folder=str(folder))
     assert Path(path).exists()
     assert RUN_ID in Path(path).name
-

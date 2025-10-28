@@ -14,19 +14,22 @@ from campro.logging import get_logger
 log = get_logger(__name__)
 
 
-def validate_inputs(inputs: Dict[str, Any], required_keys: List[str],
-                   optional_keys: Optional[List[str]] = None) -> bool:
+def validate_inputs(
+    inputs: Dict[str, Any],
+    required_keys: List[str],
+    optional_keys: Optional[List[str]] = None,
+) -> bool:
     """
     Validate input dictionary has required keys.
-    
+
     Args:
         inputs: Dictionary to validate
         required_keys: List of required keys
         optional_keys: List of optional keys (for validation)
-        
+
     Returns:
         bool: True if validation passes
-        
+
     Raises:
         ValueError: If validation fails
     """
@@ -51,13 +54,13 @@ def validate_inputs(inputs: Dict[str, Any], required_keys: List[str],
 def validate_constraints(constraints: Any) -> bool:
     """
     Validate constraint object.
-    
+
     Args:
         constraints: Constraint object to validate
-        
+
     Returns:
         bool: True if validation passes
-        
+
     Raises:
         ValueError: If validation fails
     """
@@ -71,20 +74,24 @@ def validate_constraints(constraints: Any) -> bool:
     return True
 
 
-def validate_numeric_range(value: float, min_val: Optional[float] = None,
-                          max_val: Optional[float] = None, name: str = "value") -> bool:
+def validate_numeric_range(
+    value: float,
+    min_val: Optional[float] = None,
+    max_val: Optional[float] = None,
+    name: str = "value",
+) -> bool:
     """
     Validate numeric value is within specified range.
-    
+
     Args:
         value: Value to validate
         min_val: Minimum allowed value
         max_val: Maximum allowed value
         name: Name of the value for error messages
-        
+
     Returns:
         bool: True if validation passes
-        
+
     Raises:
         ValueError: If validation fails
     """
@@ -103,19 +110,20 @@ def validate_numeric_range(value: float, min_val: Optional[float] = None,
     return True
 
 
-def validate_array_shape(array: np.ndarray, expected_shape: Tuple[int, ...],
-                        name: str = "array") -> bool:
+def validate_array_shape(
+    array: np.ndarray, expected_shape: Tuple[int, ...], name: str = "array",
+) -> bool:
     """
     Validate array has expected shape.
-    
+
     Args:
         array: Array to validate
         expected_shape: Expected shape tuple
         name: Name of the array for error messages
-        
+
     Returns:
         bool: True if validation passes
-        
+
     Raises:
         ValueError: If validation fails
     """
@@ -131,14 +139,14 @@ def validate_array_shape(array: np.ndarray, expected_shape: Tuple[int, ...],
 def validate_positive(value: float, name: str = "value") -> bool:
     """
     Validate value is positive.
-    
+
     Args:
         value: Value to validate
         name: Name of the value for error messages
-        
+
     Returns:
         bool: True if validation passes
-        
+
     Raises:
         ValueError: If validation fails
     """
@@ -148,17 +156,15 @@ def validate_positive(value: float, name: str = "value") -> bool:
 def validate_percentage(value: float, name: str = "percentage") -> bool:
     """
     Validate value is a valid percentage (0-100).
-    
+
     Args:
         value: Value to validate
         name: Name of the value for error messages
-        
+
     Returns:
         bool: True if validation passes
-        
+
     Raises:
         ValueError: If validation fails
     """
     return validate_numeric_range(value, min_val=0.0, max_val=100.0, name=name)
-
-

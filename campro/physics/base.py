@@ -82,7 +82,7 @@ class PhysicsResult:
 class BasePhysicsModel(ABC):
     """
     Base class for all physics simulation models.
-    
+
     Provides a common interface for physics simulation across different
     domains (combustion, thermodynamics, fluid dynamics).
     """
@@ -97,7 +97,7 @@ class BasePhysicsModel(ABC):
     def configure(self, **kwargs) -> None:
         """
         Configure the physics model with problem-specific parameters.
-        
+
         Args:
             **kwargs: Configuration parameters
         """
@@ -106,11 +106,11 @@ class BasePhysicsModel(ABC):
     def simulate(self, inputs: Dict[str, Any], **kwargs) -> PhysicsResult:
         """
         Run a physics simulation.
-        
+
         Args:
             inputs: Input parameters for simulation
             **kwargs: Additional simulation parameters
-            
+
         Returns:
             PhysicsResult object
         """
@@ -138,12 +138,17 @@ class BasePhysicsModel(ABC):
         self._current_result = result
         return result
 
-    def _finish_simulation(self, result: PhysicsResult,
-                          data: Dict[str, np.ndarray],
-                          convergence_info: Optional[Dict[str, Any]] = None,
-                          error_message: Optional[str] = None) -> PhysicsResult:
+    def _finish_simulation(
+        self,
+        result: PhysicsResult,
+        data: Dict[str, np.ndarray],
+        convergence_info: Optional[Dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+    ) -> PhysicsResult:
         """Finish a simulation process."""
-        result.simulation_time = time.time() - result.simulation_time if result.simulation_time else None
+        result.simulation_time = (
+            time.time() - result.simulation_time if result.simulation_time else None
+        )
         result.data = data
         result.convergence_info = convergence_info or {}
         result.error_message = error_message
@@ -171,7 +176,9 @@ class BasePhysicsModel(ABC):
             raise ValueError("Inputs must be a dictionary")
 
         if not self._is_configured:
-            raise RuntimeError(f"Physics model {self.name} is not configured. Call configure() first.")
+            raise RuntimeError(
+                f"Physics model {self.name} is not configured. Call configure() first.",
+            )
 
     def get_performance_summary(self) -> Dict[str, Any]:
         """Get performance summary across all simulations."""
@@ -187,12 +194,14 @@ class BasePhysicsModel(ABC):
         }
 
         if successful_results:
-            simulation_times = [r.simulation_time for r in successful_results if r.simulation_time is not None]
+            simulation_times = [
+                r.simulation_time
+                for r in successful_results
+                if r.simulation_time is not None
+            ]
             if simulation_times:
                 summary["avg_simulation_time"] = np.mean(simulation_times)
                 summary["min_simulation_time"] = np.min(simulation_times)
                 summary["max_simulation_time"] = np.max(simulation_times)
 
         return summary
-
-

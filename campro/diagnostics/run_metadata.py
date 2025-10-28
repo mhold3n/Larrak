@@ -31,4 +31,3 @@ def log_run_metadata(meta: Dict, folder: str = "runs") -> str:
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
     return str(out_path)
-

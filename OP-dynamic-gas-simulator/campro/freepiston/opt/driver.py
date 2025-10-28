@@ -24,13 +24,13 @@ log = get_logger(__name__)
 def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
     """
     Solve OP engine cycle optimization using IPOPT.
-    
+
     This function builds the collocation NLP and solves it using IPOPT
     with appropriate options for OP engine optimization.
-    
+
     Args:
         P: Problem parameters dictionary
-        
+
     Returns:
         Solution object with optimization results
     """
@@ -65,7 +65,9 @@ def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
 
         if result.success:
             log.info(f"Optimization successful: {result.message}")
-            log.info(f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s")
+            log.info(
+                f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s",
+            )
             log.info(f"Objective value: {result.f_opt:.6e}")
             log.info(f"KKT error: {result.kkt_error:.2e}")
             log.info(f"Feasibility error: {result.feasibility_error:.2e}")
@@ -90,7 +92,11 @@ def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
         run_dir = P.get("run_dir")
         if run_dir:
             try:
-                save_json({"meta": meta, "opt": optimization_result}, run_dir, filename="checkpoint.json")
+                save_json(
+                    {"meta": meta, "opt": optimization_result},
+                    run_dir,
+                    filename="checkpoint.json",
+                )
             except Exception as exc:  # pragma: no cover
                 log.warning(f"Checkpoint save failed: {exc}")
 
@@ -114,7 +120,9 @@ def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPOPTOptions:
+def _create_ipopt_options(
+    solver_opts: Dict[str, Any], P: Dict[str, Any],
+) -> IPOPTOptions:
     """Create IPOPT options from problem parameters."""
     # Get problem type to select appropriate options
     problem_type = P.get("problem_type", "default")
@@ -137,7 +145,9 @@ def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPO
     C = int(num.get("C", 3))
 
     # Estimate problem size
-    n_vars = K * C * 6  # Rough estimate: K collocation points, C stages, 6 variables per point
+    n_vars = (
+        K * C * 6
+    )  # Rough estimate: K collocation points, C stages, 6 variables per point
     n_constraints = K * C * 4  # Rough estimate: 4 constraints per collocation point
 
     if n_vars > 1000 or n_constraints > 1000:
@@ -145,7 +155,9 @@ def _create_ipopt_options(solver_opts: Dict[str, Any], P: Dict[str, Any]) -> IPO
         options.linear_solver = "ma57"
         options.hessian_approximation = "limited-memory"
         options.max_iter = 10000
-        log.info(f"Large problem detected ({n_vars} vars, {n_constraints} constraints), using robust settings")
+        log.info(
+            f"Large problem detected ({n_vars} vars, {n_constraints} constraints), using robust settings",
+        )
 
     return options
 
@@ -228,34 +240,34 @@ def _apply_problem_bounds(
 
     for i in range(0, n_vars, n_per_point):
         if i < n_vars:
-            lbx[i] = x_L_min      # x_L
+            lbx[i] = x_L_min  # x_L
             ubx[i] = x_L_max
-        if i+1 < n_vars:
-            lbx[i+1] = -v_max     # v_L
-            ubx[i+1] = v_max
-        if i+2 < n_vars:
-            lbx[i+2] = x_R_min    # x_R
-            ubx[i+2] = x_R_max
-        if i+3 < n_vars:
-            lbx[i+3] = -v_max     # v_R
-            ubx[i+3] = v_max
-        if i+4 < n_vars:
-            lbx[i+4] = 0.1        # rho (density)
-            ubx[i+4] = 100.0
-        if i+5 < n_vars:
-            lbx[i+5] = T_min      # T (temperature)
-            ubx[i+5] = T_max
+        if i + 1 < n_vars:
+            lbx[i + 1] = -v_max  # v_L
+            ubx[i + 1] = v_max
+        if i + 2 < n_vars:
+            lbx[i + 2] = x_R_min  # x_R
+            ubx[i + 2] = x_R_max
+        if i + 3 < n_vars:
+            lbx[i + 3] = -v_max  # v_R
+            ubx[i + 3] = v_max
+        if i + 4 < n_vars:
+            lbx[i + 4] = 0.1  # rho (density)
+            ubx[i + 4] = 100.0
+        if i + 5 < n_vars:
+            lbx[i + 5] = T_min  # T (temperature)
+            ubx[i + 5] = T_max
 
 
 def solve_cycle_robust(P: Dict[str, Any]) -> Dict[str, Any]:
     """
     Solve OP engine cycle with robust IPOPT settings.
-    
+
     This function uses more conservative IPOPT settings for difficult problems.
-    
+
     Args:
         P: Problem parameters dictionary
-        
+
     Returns:
         Solution object with optimization results
     """
@@ -272,11 +284,11 @@ def solve_cycle_with_warm_start(
 ) -> Dict[str, Any]:
     """
     Solve OP engine cycle with warm start.
-    
+
     Args:
         P: Problem parameters dictionary
         x0: Initial guess for optimization variables
-        
+
     Returns:
         Solution object with optimization results
     """
@@ -293,11 +305,11 @@ def solve_cycle_with_refinement(
 ) -> Dict[str, Any]:
     """
     Solve cycle with 0D to 1D refinement switching.
-    
+
     Args:
         P: Problem parameters
         refinement_strategy: Refinement strategy ("adaptive", "fixed", "error_based")
-        
+
     Returns:
         Solution dictionary
     """
@@ -458,11 +470,11 @@ def solve_cycle_adaptive(
 ) -> Dict[str, Any]:
     """
     Solve cycle with adaptive refinement strategy.
-    
+
     Args:
         P: Problem parameters
         max_refinements: Maximum number of refinements
-        
+
     Returns:
         Solution dictionary
     """
@@ -518,10 +530,10 @@ def solve_cycle_adaptive(
 def get_driver_function(driver_type: str = "standard"):
     """
     Get driver function by type.
-    
+
     Args:
         driver_type: Type of driver function
-        
+
     Returns:
         Driver function
     """
@@ -537,5 +549,3 @@ def get_driver_function(driver_type: str = "standard"):
         raise ValueError(f"Unknown driver type: {driver_type}")
 
     return functions[driver_type]
-
-

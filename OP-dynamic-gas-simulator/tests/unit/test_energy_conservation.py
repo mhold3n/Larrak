@@ -44,26 +44,36 @@ def test_real_gas_energy_conservation():
     air_components = {
         "N2": {
             "W": 0.028014,  # kg/mol
-            "Tc": 126.2,    # K
+            "Tc": 126.2,  # K
             "Pc": 3.396e6,  # Pa
             "omega": 0.037,
             "janaf_coeffs": JANAFCoeffs(
-                a1=28.98641, a2=1.853978e-3, a3=-9.647459e-6,
-                a4=1.667610e-8, a5=-7.376064e-12,
-                T_low=100.0, T_high=500.0,
-                h_formation=0.0, s_formation=191.61,
+                a1=28.98641,
+                a2=1.853978e-3,
+                a3=-9.647459e-6,
+                a4=1.667610e-8,
+                a5=-7.376064e-12,
+                T_low=100.0,
+                T_high=500.0,
+                h_formation=0.0,
+                s_formation=191.61,
             ),
         },
         "O2": {
             "W": 0.031999,  # kg/mol
-            "Tc": 154.6,    # K
+            "Tc": 154.6,  # K
             "Pc": 5.043e6,  # Pa
             "omega": 0.022,
             "janaf_coeffs": JANAFCoeffs(
-                a1=31.32234, a2=-2.005262e-3, a3=1.222427e-5,
-                a4=-1.188127e-8, a5=4.135702e-12,
-                T_low=100.0, T_high=500.0,
-                h_formation=0.0, s_formation=205.15,
+                a1=31.32234,
+                a2=-2.005262e-3,
+                a3=1.222427e-5,
+                a4=-1.188127e-8,
+                a5=4.135702e-12,
+                T_low=100.0,
+                T_high=500.0,
+                h_formation=0.0,
+                s_formation=205.15,
             ),
         },
     }
@@ -129,7 +139,11 @@ def test_characteristic_boundary_conditions():
     """Test energy conservation in characteristic boundary conditions."""
     # Interior state
     rho_int, u_int, p_int = 1.0, 100.0, 1e5  # kg/m^3, m/s, Pa
-    U_int = (rho_int, rho_int * u_int, rho_int * (p_int / (0.4 * rho_int) + 0.5 * u_int**2))
+    U_int = (
+        rho_int,
+        rho_int * u_int,
+        rho_int * (p_int / (0.4 * rho_int) + 0.5 * u_int**2),
+    )
 
     # Test non-reflecting inlet
     p_target, T_target = 1.2e5, 350.0  # Pa, K
@@ -202,20 +216,27 @@ def test_thermodynamic_consistency():
     methane_components = {
         "CH4": {
             "W": 0.016043,  # kg/mol
-            "Tc": 190.6,    # K
+            "Tc": 190.6,  # K
             "Pc": 4.599e6,  # Pa
             "omega": 0.011,
             "janaf_coeffs": JANAFCoeffs(
-                a1=19.2516, a2=5.2132e-2, a3=1.1974e-5,
-                a4=-1.1322e-8, a5=0.0,
-                T_low=100.0, T_high=1000.0,
-                h_formation=-74.87e3, s_formation=186.25,
+                a1=19.2516,
+                a2=5.2132e-2,
+                a3=1.1974e-5,
+                a4=-1.1322e-8,
+                a5=0.0,
+                T_low=100.0,
+                T_high=1000.0,
+                h_formation=-74.87e3,
+                s_formation=186.25,
             ),
         },
     }
 
     methane_fractions = {"CH4": 1.0}
-    methane = RealGasEOS(components=methane_components, mole_fractions=methane_fractions)
+    methane = RealGasEOS(
+        components=methane_components, mole_fractions=methane_fractions,
+    )
 
     # Test at critical conditions
     T_crit = 190.6  # K
