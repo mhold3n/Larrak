@@ -49,7 +49,7 @@ jobs:
 
       - name: Lint (ruff --fix)
         run: |
-          ruff check --fix .
+          ruff check --fix . --exclude '.*\\.png$'
 
       - name: Type check (mypy --strict)
         run: |
