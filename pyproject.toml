@@ -260,6 +260,40 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_equality = true
+exclude = [
+    "miniforge3",
+    "CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5",
+    "services",
+    "runs",
+    "plots",
+    "docs",
+    "examples",
+    "specs",
+    "cfg",
+    "*.png",
+    "*.log",
+    "*.npz",
+    "*.txt",
+    "*.md",
+    "*.yml",
+    "*.yaml",
+    "*.toml",
+    "*.json",
+    "*.ps1",
+    "*.sh",
+    "*.bat",
+    "*.exe",
+    "*.dll",
+    "*.h",
+    "*.0+",
+    "*.pyc",
+    "__pycache__",
+    ".git",
+    ".pytest_cache",
+    "build",
+    "dist",
+    "*.egg-info"
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
