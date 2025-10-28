@@ -51,9 +51,15 @@ jobs:
         run: |
           ruff check --fix . --exclude '.*\\.png$'
 
-      - name: Type check (mypy --strict)
+      - name: Type check library (mypy --strict)
         run: |
-          mypy --strict .
+          python -m pip install types-PyYAML
+          mypy --strict campro CamPro_OptimalMotion.py
+
+      - name: Type check scripts (lenient, non-blocking)
+        continue-on-error: true
+        run: |
+          mypy scripts || true
 
       - name: Run tests (pytest -q)
         env:

@@ -84,7 +84,15 @@ PY
       shell: bash -l {0}
       run: |
         conda activate larrak
+        python -m pip install types-PyYAML
         mypy --strict campro/ CamPro_OptimalMotion.py
+
+    - name: Run mypy on scripts (lenient, non-blocking)
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        conda activate larrak
+        mypy scripts || true
 
     - name: Run pytest with coverage
       shell: bash -l {0}
