@@ -60,8 +60,6 @@ line-length = 88
 exclude = [
     "miniforge3",
     "CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5",
-    "Motion Law Profiler",
-    "OP-dynamic-gas-simulator",
     "services",
     "runs",
     "plots",
