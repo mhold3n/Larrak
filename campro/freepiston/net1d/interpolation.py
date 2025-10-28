@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
 
 import numpy as np
 
@@ -224,7 +223,7 @@ def _monotonic_conservative_interpolation(
     return U_new
 
 
-def _find_surrounding_cells(x: float, mesh: MeshState) -> Tuple[int, int]:
+def _find_surrounding_cells(x: float, mesh: MeshState) -> tuple[int, int]:
     """Find the two cells surrounding position x."""
     # Binary search for efficiency
     left = 0
@@ -395,7 +394,7 @@ def piston_boundary_motion(
     piston_position_new: float,
     U_old: np.ndarray,
     params: InterpolationParameters,
-) -> Tuple[MeshState, np.ndarray]:
+) -> tuple[MeshState, np.ndarray]:
     """
     Handle piston boundary motion with conservative remapping.
 

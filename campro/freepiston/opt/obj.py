@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Dict, List
 
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.logging import get_logger
@@ -44,7 +43,7 @@ def smoothness_penalty(*, accel: Iterable[float], weights: Iterable[float]) -> f
 
 
 def indicated_work_trapezoidal(
-    *, p_series: List[float], V_series: List[float],
+    *, p_series: list[float], V_series: list[float],
 ) -> float:
     """Indicated work calculation using trapezoidal integration.
 
@@ -75,7 +74,7 @@ def indicated_work_trapezoidal(
     return W_ind
 
 
-def indicated_work_simpson(*, p_series: List[float], V_series: List[float]) -> float:
+def indicated_work_simpson(*, p_series: list[float], V_series: list[float]) -> float:
     """Indicated work calculation using Simpson's rule.
 
     More accurate than trapezoidal rule for smooth functions.
@@ -125,7 +124,7 @@ def indicated_work_simpson(*, p_series: List[float], V_series: List[float]) -> f
 
 
 def indicated_work_gauss(
-    *, p_series: List[float], V_series: List[float], n_points: int = 3,
+    *, p_series: list[float], V_series: list[float], n_points: int = 3,
 ) -> float:
     """Indicated work calculation using Gauss quadrature.
 
@@ -174,7 +173,7 @@ def indicated_work_gauss(
 
 
 def indicated_work(
-    *, p_series: List[float], V_series: List[float], method: str = "trapezoidal",
+    *, p_series: list[float], V_series: list[float], method: str = "trapezoidal",
 ) -> float:
     """Indicated work calculation with multiple integration methods.
 
@@ -313,14 +312,14 @@ def short_circuit_loss(*, m_short_circuit: float, m_total: float) -> float:
 
 def cycle_analysis(
     *,
-    p_series: List[float],
-    V_series: List[float],
-    T_series: List[float],
-    m_series: List[float],
+    p_series: list[float],
+    V_series: list[float],
+    T_series: list[float],
+    m_series: list[float],
     Q_in: float,
     W_friction: float = 0.0,
     params: WorkCalculationParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Comprehensive cycle analysis.
 
     Computes all relevant efficiency metrics and work terms.
@@ -422,7 +421,7 @@ def scavenging_penalty(*, short_circuit_fraction: float, weight: float) -> float
 
 
 def multi_objective_scalarization(
-    *, objectives: Dict[str, float], weights: Dict[str, float],
+    *, objectives: dict[str, float], weights: dict[str, float],
 ) -> float:
     """Multi-objective scalarization.
 
@@ -449,11 +448,11 @@ def multi_objective_scalarization(
 
 
 def comprehensive_scavenging_objectives(
-    states: Dict[str, List[Any]],
-    controls: Dict[str, List[Any]],
-    geometry: Dict[str, float],
-    weights: Dict[str, float],
-) -> Dict[str, Any]:
+    states: dict[str, list[Any]],
+    controls: dict[str, list[Any]],
+    geometry: dict[str, float],
+    weights: dict[str, float],
+) -> dict[str, Any]:
     """
     Comprehensive scavenging objectives for two-stroke OP engines.
 
@@ -504,11 +503,11 @@ def comprehensive_scavenging_objectives(
 
 
 def scavenging_phase_timing_objectives(
-    states: Dict[str, List[Any]],
-    controls: Dict[str, List[Any]],
-    targets: Dict[str, float],
-    weights: Dict[str, float],
-) -> Dict[str, Any]:
+    states: dict[str, list[Any]],
+    controls: dict[str, list[Any]],
+    targets: dict[str, float],
+    weights: dict[str, float],
+) -> dict[str, Any]:
     """
     Objectives for optimal scavenging phase timing.
 
@@ -555,7 +554,7 @@ def scavenging_phase_timing_objectives(
     return objectives
 
 
-def find_phase_start(valve_areas: List[Any], threshold: float) -> Any:
+def find_phase_start(valve_areas: list[Any], threshold: float) -> Any:
     """Find the start time of a valve opening phase."""
     ca = _import_casadi()
 
@@ -568,7 +567,7 @@ def find_phase_start(valve_areas: List[Any], threshold: float) -> Any:
     return 0.0
 
 
-def find_phase_end(valve_areas: List[Any], threshold: float) -> Any:
+def find_phase_end(valve_areas: list[Any], threshold: float) -> Any:
     """Find the end time of a valve opening phase."""
     ca = _import_casadi()
 
@@ -581,7 +580,7 @@ def find_phase_end(valve_areas: List[Any], threshold: float) -> Any:
     return float(len(valve_areas) - 1)
 
 
-def calculate_overlap_penalty(A_in: List[Any], A_ex: List[Any]) -> Any:
+def calculate_overlap_penalty(A_in: list[Any], A_ex: list[Any]) -> Any:
     """Calculate penalty for valve overlap."""
     ca = _import_casadi()
 
@@ -599,7 +598,7 @@ def enhanced_scavenging_efficiency(
     m_total_trapped: float,
     m_delivered: float,
     m_short_circuit: float,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Enhanced scavenging efficiency calculation with multiple metrics.
 
@@ -652,8 +651,8 @@ def blowdown_efficiency(
 
 
 def scavenging_quality_index(
-    fresh_charge_distribution: List[float],
-    target_distribution: List[float] = None,
+    fresh_charge_distribution: list[float],
+    target_distribution: list[float] = None,
 ) -> float:
     """
     Scavenging quality index based on fresh charge distribution uniformity.

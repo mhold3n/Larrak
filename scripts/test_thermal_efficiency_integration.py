@@ -13,16 +13,19 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import numpy as np
+import numpy as np  # noqa: E402
 
-from campro.logging import get_logger
-from campro.optimization.motion_law import MotionLawConstraints, MotionType
-from campro.optimization.motion_law_optimizer import MotionLawOptimizer
-from campro.optimization.thermal_efficiency_adapter import (
+from campro.logging import get_logger  # noqa: E402
+from campro.optimization.motion_law import (  # noqa: E402
+    MotionLawConstraints,
+    MotionType,
+)
+from campro.optimization.motion_law_optimizer import MotionLawOptimizer  # noqa: E402
+from campro.optimization.thermal_efficiency_adapter import (  # noqa: E402
     ThermalEfficiencyAdapter,
     ThermalEfficiencyConfig,
 )
-from campro.optimization.unified_framework import (
+from campro.optimization.unified_framework import (  # noqa: E402
     UnifiedOptimizationFramework,
 )
 

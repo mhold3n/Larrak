@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import pi, sqrt
-from typing import List, Tuple
 
 from campro.constants import PROFILE_CLOSURE_TOL
 from campro.logging import get_logger
@@ -50,9 +49,9 @@ def evaluate_order0_metrics(config: PlanetSynthesisConfig) -> Order0Metrics:
     theta_vals = [2.0 * pi * i / n_theta for i in range(n_theta + 1)]
     h = 1e-4
 
-    pts: List[Tuple[float, float]] = []
-    slips: List[float] = []
-    phi_hits: List[float] = []
+    pts: list[tuple[float, float]] = []
+    slips: list[float] = []
+    phi_hits: list[float] = []
 
     prev_phi: float | None = None
     for theta_r in theta_vals:
@@ -139,9 +138,9 @@ def evaluate_order0_metrics_given_phi(
     theta_vals = [2.0 * pi * i / n_theta for i in range(n_theta + 1)]
     h = 1e-4
 
-    pts: List[Tuple[float, float]] = []
-    slips: List[float] = []
-    phi_hits: List[float] = []
+    pts: list[tuple[float, float]] = []
+    slips: list[float] = []
+    phi_hits: list[float] = []
 
     for theta_r, phi in zip(theta_vals, phi_values):
         (pt, tangent) = _planet_coords(flank, kin, phi, theta_r)

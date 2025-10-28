@@ -5,12 +5,13 @@ This module defines the fundamental optimization framework that all
 optimization methods inherit from, providing a consistent interface
 for optimization problems, results, and status tracking.
 """
+from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 import numpy as np
 
@@ -36,24 +37,24 @@ class OptimizationResult:
     """Result of an optimization process."""
 
     # Solution data
-    solution: Dict[str, np.ndarray] = field(default_factory=dict)
+    solution: dict[str, np.ndarray] = field(default_factory=dict)
 
     # Optimization status
     status: OptimizationStatus = OptimizationStatus.PENDING
 
     # Performance metrics
-    objective_value: Optional[float] = None
-    solve_time: Optional[float] = None
-    iterations: Optional[int] = None
+    objective_value: float | None = None
+    solve_time: float | None = None
+    iterations: int | None = None
 
     # Convergence information
-    convergence_info: Dict[str, Any] = field(default_factory=dict)
+    convergence_info: dict[str, Any] = field(default_factory=dict)
 
     # Error information
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     # Additional metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def is_successful(self) -> bool:
         """Check if optimization was successful."""
@@ -63,7 +64,7 @@ class OptimizationResult:
         """Check if solution data is available."""
         return len(self.solution) > 0
 
-    def get_solution_summary(self) -> Dict[str, Any]:
+    def get_solution_summary(self) -> dict[str, Any]:
         """Get a summary of the solution."""
         if not self.has_solution():
             return {}
@@ -93,8 +94,8 @@ class BaseOptimizer(ABC):
     def __init__(self, name: str = "BaseOptimizer"):
         self.name = name
         self._is_configured = False
-        self._current_result: Optional[OptimizationResult] = None
-        self._optimization_history: List[OptimizationResult] = []
+        self._current_result: OptimizationResult | None = None
+        self._optimization_history: list[OptimizationResult] = []
 
     @abstractmethod
     def configure(self, **kwargs) -> None:
@@ -110,7 +111,7 @@ class BaseOptimizer(ABC):
         self,
         objective: Callable,
         constraints: Any,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -130,11 +131,11 @@ class BaseOptimizer(ABC):
         """Check if optimizer is configured."""
         return self._is_configured
 
-    def get_current_result(self) -> Optional[OptimizationResult]:
+    def get_current_result(self) -> OptimizationResult | None:
         """Get the most recent optimization result."""
         return self._current_result
 
-    def get_optimization_history(self) -> List[OptimizationResult]:
+    def get_optimization_history(self) -> list[OptimizationResult]:
         """Get all optimization results."""
         return self._optimization_history.copy()
 
@@ -152,10 +153,10 @@ class BaseOptimizer(ABC):
     def _finish_optimization(
         self,
         result: OptimizationResult,
-        solution: Dict[str, np.ndarray],
-        objective_value: Optional[float] = None,
-        convergence_info: Optional[Dict[str, Any]] = None,
-        error_message: Optional[str] = None,
+        solution: dict[str, np.ndarray],
+        objective_value: float | None = None,
+        convergence_info: dict[str, Any] | None = None,
+        error_message: str | None = None,
     ) -> OptimizationResult:
         """Finish an optimization process."""
         result.solve_time = (
@@ -188,7 +189,7 @@ class BaseOptimizer(ABC):
     def _validate_inputs(self, objective: Callable, constraints: Any) -> None:
         """Validate optimization inputs."""
         if not callable(objective):
-            raise ValueError("Objective must be callable")
+            raise TypeError("Objective must be callable")
 
         if constraints is None:
             raise ValueError("Constraints cannot be None")
@@ -198,7 +199,7 @@ class BaseOptimizer(ABC):
                 f"Optimizer {self.name} is not configured. Call configure() first.",
             )
 
-    def get_performance_summary(self) -> Dict[str, Any]:
+    def get_performance_summary(self) -> dict[str, Any]:
         """Get performance summary across all optimizations."""
         if not self._optimization_history:
             return {}

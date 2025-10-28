@@ -8,7 +8,7 @@ configurations for different scenarios and use cases.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
 
 import yaml
 
@@ -227,7 +227,7 @@ class ConfigFactory:
         return config
 
     @staticmethod
-    def from_yaml(file_path: Union[str, Path]) -> OptimizationConfig:
+    def from_yaml(file_path: str | Path) -> OptimizationConfig:
         """Load configuration from YAML file."""
         file_path = Path(file_path)
 
@@ -245,7 +245,7 @@ class ConfigFactory:
             raise
 
     @staticmethod
-    def from_dict(config_dict: Dict[str, Any]) -> OptimizationConfig:
+    def from_dict(config_dict: dict[str, Any]) -> OptimizationConfig:
         """Create configuration from dictionary."""
         return OptimizationConfig(
             geometry=config_dict.get("geometry", {}),
@@ -266,7 +266,7 @@ class ConfigFactory:
         )
 
     @staticmethod
-    def to_yaml(config: OptimizationConfig, file_path: Union[str, Path]) -> None:
+    def to_yaml(config: OptimizationConfig, file_path: str | Path) -> None:
         """Save configuration to YAML file."""
         file_path = Path(file_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)

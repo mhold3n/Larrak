@@ -1,7 +1,6 @@
 """Sod shock tube test cases for validation of 1D gas dynamics solver."""
 
 import math
-from typing import List, Tuple
 
 import pytest
 
@@ -9,8 +8,8 @@ from campro.freepiston.net1d.bc import non_reflecting_inlet_bc, non_reflecting_o
 from campro.freepiston.net1d.flux import hllc_flux, primitive_from_conservative
 
 
-def sod_shock_tube_initial_conditions() -> Tuple[
-    List[Tuple[float, float, float]], List[Tuple[float, float, float]],
+def sod_shock_tube_initial_conditions() -> tuple[
+    list[tuple[float, float, float]], list[tuple[float, float, float]],
 ]:
     """Initial conditions for Sod shock tube problem.
 
@@ -47,7 +46,7 @@ def sod_shock_tube_initial_conditions() -> Tuple[
 
 def sod_shock_tube_analytical_solution(
     x: float, t: float, x0: float = 0.5,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Analytical solution for Sod shock tube problem.
 
     Parameters

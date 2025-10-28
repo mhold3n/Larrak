@@ -3,7 +3,6 @@ import random
 import time
 import uuid
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 
@@ -20,7 +19,7 @@ def set_global_seeds(seed: int = 1337) -> None:
     np.random.seed(seed)
 
 
-def log_run_metadata(meta: Dict, folder: str = "runs") -> str:
+def log_run_metadata(meta: dict, folder: str = "runs") -> str:
     """Write run metadata JSON next to solver logs.
 
     Returns the path to the JSON file for convenience.

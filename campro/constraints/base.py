@@ -5,11 +5,12 @@ This module defines the fundamental constraint system that all other
 constraint types inherit from, providing a consistent interface for
 constraint definition, validation, and violation checking.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -46,7 +47,7 @@ class ConstraintViolation:
     constraint_name: str
     violation_value: float
     limit_value: float
-    time_index: Optional[int] = None
+    time_index: int | None = None
     message: str = ""
 
     def __post_init__(self):
@@ -63,8 +64,8 @@ class BaseConstraints(ABC):
     """
 
     def __init__(self):
-        self._constraints: Dict[str, Any] = {}
-        self._violations: List[ConstraintViolation] = []
+        self._constraints: dict[str, Any] = {}
+        self._violations: list[ConstraintViolation] = []
 
     @abstractmethod
     def validate(self) -> bool:
@@ -77,8 +78,8 @@ class BaseConstraints(ABC):
 
     @abstractmethod
     def check_violations(
-        self, solution: Dict[str, np.ndarray],
-    ) -> List[ConstraintViolation]:
+        self, solution: dict[str, np.ndarray],
+    ) -> list[ConstraintViolation]:
         """
         Check for constraint violations in a solution.
 
@@ -104,7 +105,7 @@ class BaseConstraints(ABC):
             del self._constraints[name]
             log.debug(f"Removed constraint: {name}")
 
-    def list_constraints(self) -> List[str]:
+    def list_constraints(self) -> list[str]:
         """List all constraint names."""
         return list(self._constraints.keys())
 
@@ -112,7 +113,7 @@ class BaseConstraints(ABC):
         """Clear all constraint violations."""
         self._violations.clear()
 
-    def get_violations(self) -> List[ConstraintViolation]:
+    def get_violations(self) -> list[ConstraintViolation]:
         """Get all constraint violations."""
         return self._violations.copy()
 
@@ -128,10 +129,10 @@ class BaseConstraints(ABC):
     def _check_bounds(
         self,
         values: np.ndarray,
-        bounds: Tuple[float, float],
+        bounds: tuple[float, float],
         constraint_type: ConstraintType,
         name: str,
-    ) -> List[ConstraintViolation]:
+    ) -> list[ConstraintViolation]:
         """
         Check if values are within specified bounds.
 
@@ -188,7 +189,7 @@ class BaseConstraints(ABC):
         constraint_type: ConstraintType,
         name: str,
         tolerance: float = 1e-6,
-    ) -> Optional[ConstraintViolation]:
+    ) -> ConstraintViolation | None:
         """
         Check if a boundary condition is satisfied.
 

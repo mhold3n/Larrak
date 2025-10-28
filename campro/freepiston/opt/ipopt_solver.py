@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -27,7 +27,7 @@ class IPOPTOptions:
 
     # Linear solver options (unused when option_file_name is provided)
     linear_solver: str = "ma27"  # kept for backward compatibility
-    linear_solver_options: Dict[str, Any] = None
+    linear_solver_options: dict[str, Any] = None
 
     # Barrier parameter options
     mu_strategy: str = "adaptive"  # "monotone", "adaptive"
@@ -47,7 +47,7 @@ class IPOPTOptions:
     print_level: int = 5  # 0=silent, 5=normal, 12=verbose
     print_frequency_iter: int = 1
     print_frequency_time: float = 5.0
-    output_file: Optional[str] = None
+    output_file: str | None = None
     print_timing_statistics: bool = False
 
     # Warm start options
@@ -101,7 +101,7 @@ class IPOPTSolver:
     the collocation-based NLP problems in the OP engine optimization.
     """
 
-    def __init__(self, options: Optional[IPOPTOptions] = None):
+    def __init__(self, options: IPOPTOptions | None = None):
         """
         Initialize IPOPT solver.
 
@@ -146,12 +146,12 @@ class IPOPTSolver:
     def solve(
         self,
         nlp: Any,  # CasADi NLP object
-        x0: Optional[np.ndarray] = None,
-        lbx: Optional[np.ndarray] = None,
-        ubx: Optional[np.ndarray] = None,
-        lbg: Optional[np.ndarray] = None,
-        ubg: Optional[np.ndarray] = None,
-        p: Optional[np.ndarray] = None,
+        x0: np.ndarray | None = None,
+        lbx: np.ndarray | None = None,
+        ubx: np.ndarray | None = None,
+        lbg: np.ndarray | None = None,
+        ubg: np.ndarray | None = None,
+        p: np.ndarray | None = None,
     ) -> IPOPTResult:
         """
         Solve NLP using IPOPT.
@@ -192,7 +192,7 @@ class IPOPTSolver:
                 p = np.array([])
 
             # Try warm-start persistence if enabled
-            warm_kwargs: Dict[str, Any] = {}
+            warm_kwargs: dict[str, Any] = {}
             try:
                 if str(self.options.warm_start_init_point).lower() == "yes":
                     from campro.diagnostics.warmstart import (
@@ -293,7 +293,7 @@ class IPOPTSolver:
 
         return solver
 
-    def _convert_options(self) -> Dict[str, Any]:
+    def _convert_options(self) -> dict[str, Any]:
         """Convert IPOPTOptions to CasADi format."""
         opts = {}
 
@@ -438,12 +438,12 @@ class IPOPTSolver:
     def _fallback_solve(
         self,
         nlp: Any,
-        x0: Optional[np.ndarray] = None,
-        lbx: Optional[np.ndarray] = None,
-        ubx: Optional[np.ndarray] = None,
-        lbg: Optional[np.ndarray] = None,
-        ubg: Optional[np.ndarray] = None,
-        p: Optional[np.ndarray] = None,
+        x0: np.ndarray | None = None,
+        lbx: np.ndarray | None = None,
+        ubx: np.ndarray | None = None,
+        lbg: np.ndarray | None = None,
+        ubg: np.ndarray | None = None,
+        p: np.ndarray | None = None,
     ) -> IPOPTResult:
         """Fallback solver when IPOPT is not available."""
         log.warning("IPOPT not available, using fallback solver")
@@ -499,13 +499,13 @@ class IPOPTSolver:
 
 def solve_with_ipopt(
     nlp: Any,
-    options: Optional[IPOPTOptions] = None,
-    x0: Optional[np.ndarray] = None,
-    lbx: Optional[np.ndarray] = None,
-    ubx: Optional[np.ndarray] = None,
-    lbg: Optional[np.ndarray] = None,
-    ubg: Optional[np.ndarray] = None,
-    p: Optional[np.ndarray] = None,
+    options: IPOPTOptions | None = None,
+    x0: np.ndarray | None = None,
+    lbx: np.ndarray | None = None,
+    ubx: np.ndarray | None = None,
+    lbg: np.ndarray | None = None,
+    ubg: np.ndarray | None = None,
+    p: np.ndarray | None = None,
 ) -> IPOPTResult:
     """
     Convenience function to solve NLP with IPOPT.
@@ -527,7 +527,7 @@ def solve_with_ipopt(
     return solver.solve(nlp, x0, lbx, ubx, lbg, ubg, p)
 
 
-def create_ipopt_options_from_dict(options_dict: Dict[str, Any]) -> IPOPTOptions:
+def create_ipopt_options_from_dict(options_dict: dict[str, Any]) -> IPOPTOptions:
     """
     Create IPOPTOptions from dictionary.
 

@@ -5,7 +5,6 @@ This module provides a modular component for coordinate transformations
 between different reference frames.
 """
 
-from typing import Dict, List
 
 import numpy as np
 
@@ -28,7 +27,7 @@ class CoordinateTransformComponent(BaseComponent):
         """Validate component parameters."""
         # No specific parameters required for basic transformations
 
-    def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
+    def compute(self, inputs: dict[str, np.ndarray]) -> ComponentResult:
         """
         Perform coordinate transformations.
 
@@ -95,7 +94,7 @@ class CoordinateTransformComponent(BaseComponent):
 
     def _polar_to_cartesian(
         self, theta: np.ndarray, r: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Convert polar to cartesian coordinates."""
         x = r * np.cos(theta)
         y = r * np.sin(theta)
@@ -109,7 +108,7 @@ class CoordinateTransformComponent(BaseComponent):
 
     def _cartesian_to_polar(
         self, x: np.ndarray, y: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Convert cartesian to polar coordinates."""
         r = np.sqrt(x**2 + y**2)
         theta = np.arctan2(y, x)
@@ -121,14 +120,14 @@ class CoordinateTransformComponent(BaseComponent):
             "r": r,
         }
 
-    def get_required_inputs(self) -> List[str]:
+    def get_required_inputs(self) -> list[str]:
         """Get list of required input names."""
         return ["theta", "r"]
 
-    def get_optional_inputs(self) -> List[str]:
+    def get_optional_inputs(self) -> list[str]:
         """Get list of optional input names."""
         return ["transform_type"]
 
-    def get_outputs(self) -> List[str]:
+    def get_outputs(self) -> list[str]:
         """Get list of output names."""
         return ["x", "y", "theta", "r"]

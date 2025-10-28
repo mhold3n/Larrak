@@ -4,9 +4,9 @@ Plotting utilities for motion law visualization.
 This module provides functions for creating and customizing plots
 of motion law solutions with smart scaling and professional styling.
 """
+from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, Union
 
 import numpy as np
 from matplotlib.figure import Figure
@@ -17,8 +17,8 @@ log = get_logger(__name__)
 
 
 def plot_solution(
-    solution: Dict[str, np.ndarray],
-    save_path: Optional[Union[str, Path]] = None,
+    solution: dict[str, np.ndarray],
+    save_path: str | Path | None = None,
     title: str = "Motion Law Solution",
     use_cam_angle: bool = False,
 ) -> Figure:

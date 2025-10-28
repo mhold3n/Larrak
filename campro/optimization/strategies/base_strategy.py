@@ -4,11 +4,12 @@ Base optimization strategy interface.
 This module defines the fundamental interface for optimization strategies,
 enabling pluggable optimization approaches for different problem types.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 from campro.logging import get_logger
 
@@ -31,12 +32,12 @@ class OptimizationStrategyResult:
     """Result from an optimization strategy."""
 
     status: OptimizationStatus
-    solution: Dict[str, Any]
+    solution: dict[str, Any]
     objective_value: float
     iterations: int
-    metadata: Dict[str, Any]
-    error_message: Optional[str] = None
-    warnings: Optional[List[str]] = None
+    metadata: dict[str, Any]
+    error_message: str | None = None
+    warnings: list[str] | None = None
 
     def __post_init__(self):
         """Initialize warnings list if not provided."""
@@ -62,7 +63,7 @@ class BaseOptimizationStrategy(ABC):
     enabling modular optimization approaches and easy testing.
     """
 
-    def __init__(self, name: Optional[str] = None):
+    def __init__(self, name: str | None = None):
         """
         Initialize the optimization strategy.
 
@@ -90,10 +91,10 @@ class BaseOptimizationStrategy(ABC):
     def optimize(
         self,
         objective_function: Callable,
-        initial_guess: Dict[str, Any],
-        constraints: Optional[List[Callable]] = None,
-        bounds: Optional[Dict[str, tuple]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        initial_guess: dict[str, Any],
+        constraints: list[Callable] | None = None,
+        bounds: dict[str, tuple] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> OptimizationStrategyResult:
         """
         Perform optimization.
@@ -117,7 +118,7 @@ class BaseOptimizationStrategy(ABC):
             Optimization result
         """
 
-    def get_strategy_info(self) -> Dict[str, Any]:
+    def get_strategy_info(self) -> dict[str, Any]:
         """
         Get strategy information.
 
@@ -133,7 +134,7 @@ class BaseOptimizationStrategy(ABC):
         }
 
     def validate_inputs(
-        self, objective_function: Callable, initial_guess: Dict[str, Any],
+        self, objective_function: Callable, initial_guess: dict[str, Any],
     ) -> bool:
         """
         Validate optimization inputs.

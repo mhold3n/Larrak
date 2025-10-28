@@ -517,7 +517,6 @@ class TestCasadiPhysicsToggleIntegration:
         if USE_CASADI_PHYSICS:
             # If enabled, verify that CasADi is available
             try:
-                import casadi as ca
                 from campro.physics.casadi import create_unified_physics
 
                 unified_fn = create_unified_physics()

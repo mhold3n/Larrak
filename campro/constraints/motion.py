@@ -5,10 +5,10 @@ This module defines constraints for general motion law problems,
 including position, velocity, acceleration, and jerk bounds,
 as well as boundary conditions.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -45,21 +45,21 @@ class MotionConstraints(BaseConstraints):
     """
 
     # State constraints
-    position_bounds: Optional[Tuple[float, float]] = None
-    velocity_bounds: Optional[Tuple[float, float]] = None
-    acceleration_bounds: Optional[Tuple[float, float]] = None
-    jerk_bounds: Optional[Tuple[float, float]] = None
+    position_bounds: tuple[float, float] | None = None
+    velocity_bounds: tuple[float, float] | None = None
+    acceleration_bounds: tuple[float, float] | None = None
+    jerk_bounds: tuple[float, float] | None = None
 
     # Control constraints
-    control_bounds: Optional[Tuple[float, float]] = None
+    control_bounds: tuple[float, float] | None = None
 
     # Boundary conditions
-    initial_position: Optional[float] = None
-    initial_velocity: Optional[float] = None
-    initial_acceleration: Optional[float] = None
-    final_position: Optional[float] = None
-    final_velocity: Optional[float] = None
-    final_acceleration: Optional[float] = None
+    initial_position: float | None = None
+    initial_velocity: float | None = None
+    initial_acceleration: float | None = None
+    final_position: float | None = None
+    final_velocity: float | None = None
+    final_acceleration: float | None = None
 
     def __post_init__(self):
         """Initialize the constraint system."""
@@ -149,8 +149,8 @@ class MotionConstraints(BaseConstraints):
         return is_valid
 
     def check_violations(
-        self, solution: Dict[str, np.ndarray],
-    ) -> List[ConstraintViolation]:
+        self, solution: dict[str, np.ndarray],
+    ) -> list[ConstraintViolation]:
         """
         Check for constraint violations in a motion law solution.
 
@@ -287,7 +287,7 @@ class MotionConstraints(BaseConstraints):
         log.info(f"Found {len(self._violations)} constraint violations")
         return self._violations.copy()
 
-    def to_dict(self) -> Dict[str, any]:
+    def to_dict(self) -> dict[str, any]:
         """Convert constraints to dictionary format."""
         return {
             "position_bounds": self.position_bounds,
@@ -304,6 +304,6 @@ class MotionConstraints(BaseConstraints):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, any]) -> "MotionConstraints":
+    def from_dict(cls, data: dict[str, any]) -> MotionConstraints:
         """Create constraints from dictionary format."""
         return cls(**data)

@@ -1,7 +1,7 @@
 """Method of manufactured solutions for validation of gas dynamics solvers."""
 
 import math
-from typing import Callable, Tuple
+from typing import Callable
 
 import pytest
 
@@ -11,7 +11,7 @@ from campro.freepiston.net1d.flux import hllc_flux, primitive_from_conservative
 
 def manufactured_solution_sine_wave(
     x: float, t: float, L: float = 1.0, T_period: float = 1.0,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Manufactured solution with sine wave variations.
 
     Parameters
@@ -58,7 +58,7 @@ def manufactured_solution_sine_wave(
 
 def manufactured_solution_polynomial(
     x: float, t: float, L: float = 1.0,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Manufactured solution with polynomial variations.
 
     Parameters
@@ -98,7 +98,7 @@ def manufactured_solution_polynomial(
 
 def manufactured_solution_exponential(
     x: float, t: float, L: float = 1.0,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Manufactured solution with exponential variations.
 
     Parameters
@@ -144,7 +144,7 @@ def compute_source_terms_analytical(
     t: float,
     L: float = 1.0,
     T_period: float = 1.0,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Compute source terms analytically for sine wave manufactured solution.
 
     Parameters
@@ -234,7 +234,7 @@ def compute_source_terms_analytical(
 
 def compute_source_terms(
     rho: float, u: float, p: float, x: float, t: float, solution_func: Callable,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Compute source terms for manufactured solution using analytical derivatives.
 
     Parameters

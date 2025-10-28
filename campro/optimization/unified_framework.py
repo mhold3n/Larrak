@@ -5,11 +5,12 @@ This module provides a unified framework that homogenizes all three optimization
 processes (primary motion law, secondary cam-ring, tertiary sun gear) to use
 shared solution methods, libraries, and data structures.
 """
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -111,7 +112,7 @@ class UnifiedOptimizationSettings:
 
     # Thermal-efficiency-focused primary optimization (complex gas optimizer)
     use_thermal_efficiency: bool = False
-    thermal_efficiency_config: Optional[Dict[str, Any]] = None
+    thermal_efficiency_config: dict[str, Any] | None = None
     # If true, fail fast when TE is enabled but unavailable/non-converged
     require_thermal_efficiency: bool = False
     # Phase-1: constant load model (free piston against generator)
@@ -133,9 +134,9 @@ class UnifiedOptimizationConstraints:
     stroke_max: float = 100.0
     cycle_time_min: float = 0.1
     cycle_time_max: float = 10.0
-    max_velocity: Optional[float] = None
-    max_acceleration: Optional[float] = None
-    max_jerk: Optional[float] = None
+    max_velocity: float | None = None
+    max_acceleration: float | None = None
+    max_jerk: float | None = None
 
     # Secondary layer constraints (cam-ring)
     base_radius_min: float = 5.0
@@ -216,44 +217,44 @@ class UnifiedOptimizationData:
     motion_type: str = "minimum_jerk"
 
     # Primary results
-    primary_theta: Optional[np.ndarray] = None
-    primary_position: Optional[np.ndarray] = None
-    primary_velocity: Optional[np.ndarray] = None
-    primary_acceleration: Optional[np.ndarray] = None
-    primary_jerk: Optional[np.ndarray] = None
-    primary_load_profile: Optional[np.ndarray] = None
-    primary_constant_load_value: Optional[float] = None
-    primary_constant_temperature_K: Optional[float] = None
+    primary_theta: np.ndarray | None = None
+    primary_position: np.ndarray | None = None
+    primary_velocity: np.ndarray | None = None
+    primary_acceleration: np.ndarray | None = None
+    primary_jerk: np.ndarray | None = None
+    primary_load_profile: np.ndarray | None = None
+    primary_constant_load_value: float | None = None
+    primary_constant_temperature_K: float | None = None
 
     # Secondary results
-    secondary_base_radius: Optional[float] = None
+    secondary_base_radius: float | None = None
     # secondary_rod_length: Optional[float] = None  # Removed for phase 2 simplification
-    secondary_cam_curves: Optional[Dict[str, np.ndarray]] = None
-    secondary_psi: Optional[np.ndarray] = None
-    secondary_R_psi: Optional[np.ndarray] = None
-    secondary_gear_geometry: Optional[Dict[str, Any]] = None
+    secondary_cam_curves: dict[str, np.ndarray] | None = None
+    secondary_psi: np.ndarray | None = None
+    secondary_R_psi: np.ndarray | None = None
+    secondary_gear_geometry: dict[str, Any] | None = None
 
     # Tertiary results (crank center optimization)
-    tertiary_crank_center_x: Optional[float] = None
-    tertiary_crank_center_y: Optional[float] = None
-    tertiary_crank_radius: Optional[float] = None
-    tertiary_rod_length: Optional[float] = None
-    tertiary_torque_output: Optional[float] = None
-    tertiary_side_load_penalty: Optional[float] = None
-    tertiary_max_torque: Optional[float] = None
-    tertiary_torque_ripple: Optional[float] = None
-    tertiary_power_output: Optional[float] = None
-    tertiary_max_side_load: Optional[float] = None
+    tertiary_crank_center_x: float | None = None
+    tertiary_crank_center_y: float | None = None
+    tertiary_crank_radius: float | None = None
+    tertiary_rod_length: float | None = None
+    tertiary_torque_output: float | None = None
+    tertiary_side_load_penalty: float | None = None
+    tertiary_max_torque: float | None = None
+    tertiary_torque_ripple: float | None = None
+    tertiary_power_output: float | None = None
+    tertiary_max_side_load: float | None = None
 
     # Metadata
-    optimization_method: Optional[OptimizationMethod] = None
+    optimization_method: OptimizationMethod | None = None
     total_solve_time: float = 0.0
-    convergence_info: Dict[str, Any] = field(default_factory=dict)
+    convergence_info: dict[str, Any] = field(default_factory=dict)
 
     # Per-phase Ipopt analysis results
-    primary_ipopt_analysis: Optional[MA57ReadinessReport] = None
-    secondary_ipopt_analysis: Optional[MA57ReadinessReport] = None
-    tertiary_ipopt_analysis: Optional[MA57ReadinessReport] = None
+    primary_ipopt_analysis: MA57ReadinessReport | None = None
+    secondary_ipopt_analysis: MA57ReadinessReport | None = None
+    tertiary_ipopt_analysis: MA57ReadinessReport | None = None
 
 
 class UnifiedOptimizationFramework:
@@ -267,7 +268,7 @@ class UnifiedOptimizationFramework:
     def __init__(
         self,
         name: str = "UnifiedOptimizationFramework",
-        settings: Optional[UnifiedOptimizationSettings] = None,
+        settings: UnifiedOptimizationSettings | None = None,
     ):
         self.name = name
         self.settings = settings or UnifiedOptimizationSettings()
@@ -319,9 +320,9 @@ class UnifiedOptimizationFramework:
 
     def configure(
         self,
-        settings: Optional[UnifiedOptimizationSettings] = None,
-        constraints: Optional[UnifiedOptimizationConstraints] = None,
-        targets: Optional[UnifiedOptimizationTargets] = None,
+        settings: UnifiedOptimizationSettings | None = None,
+        constraints: UnifiedOptimizationConstraints | None = None,
+        targets: UnifiedOptimizationTargets | None = None,
         **kwargs,
     ) -> None:
         """
@@ -441,7 +442,7 @@ class UnifiedOptimizationFramework:
                 f"Validation tolerance: {self.settings.casadi_validation_tolerance}",
             )
 
-    def optimize_cascaded(self, input_data: Dict[str, Any]) -> UnifiedOptimizationData:
+    def optimize_cascaded(self, input_data: dict[str, Any]) -> UnifiedOptimizationData:
         """
         Perform cascaded optimization across all three layers.
 
@@ -628,7 +629,7 @@ class UnifiedOptimizationFramework:
         self.settings.enable_casadi_validation_mode = False
         log.info("CasADi validation mode disabled")
 
-    def _update_data_from_input(self, input_data: Dict[str, Any]):
+    def _update_data_from_input(self, input_data: dict[str, Any]):
         """Update data structure from input parameters."""
         self.data.stroke = input_data.get("stroke", 20.0)
         self.data.cycle_time = input_data.get("cycle_time", 1.0)
@@ -938,7 +939,7 @@ class UnifiedOptimizationFramework:
 
         return result
 
-    def get_phase2_animation_inputs(self) -> Dict[str, Any]:
+    def get_phase2_animation_inputs(self) -> dict[str, Any]:
         """Return minimal deterministic inputs for Phase-2 animation.
 
         Returns
@@ -1298,7 +1299,7 @@ class UnifiedOptimizationFramework:
             else "",
         }
 
-    def get_optimization_summary(self) -> Dict[str, Any]:
+    def get_optimization_summary(self) -> dict[str, Any]:
         """Get a summary of the complete optimization process."""
         return {
             "method": self.data.optimization_method.value
@@ -1340,7 +1341,7 @@ class UnifiedOptimizationFramework:
             },
         }
 
-    def get_migration_analysis(self) -> Dict[str, Any]:
+    def get_migration_analysis(self) -> dict[str, Any]:
         """Get MA57 migration analysis and recommendations."""
         if not self.settings.enable_ipopt_analysis:
             return {"error": "Ipopt analysis is not enabled"}

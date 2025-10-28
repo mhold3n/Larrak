@@ -4,11 +4,12 @@ Base component interface for physics components.
 This module defines the fundamental interface that all physics components
 must implement, ensuring consistency and enabling modular system design.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -32,9 +33,9 @@ class ComponentResult:
     """Result from a component computation."""
 
     status: ComponentStatus
-    outputs: Dict[str, np.ndarray]
-    metadata: Dict[str, Any]
-    error_message: Optional[str] = None
+    outputs: dict[str, np.ndarray]
+    metadata: dict[str, Any]
+    error_message: str | None = None
 
     @property
     def is_successful(self) -> bool:
@@ -55,7 +56,7 @@ class BaseComponent(ABC):
     enabling modular system design and easy testing.
     """
 
-    def __init__(self, parameters: Dict[str, Any], name: Optional[str] = None):
+    def __init__(self, parameters: dict[str, Any], name: str | None = None):
         """
         Initialize the component.
 
@@ -85,7 +86,7 @@ class BaseComponent(ABC):
         """
 
     @abstractmethod
-    def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
+    def compute(self, inputs: dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute component outputs from inputs.
 
@@ -100,7 +101,7 @@ class BaseComponent(ABC):
             Computation result with outputs and metadata
         """
 
-    def get_parameters(self) -> Dict[str, Any]:
+    def get_parameters(self) -> dict[str, Any]:
         """
         Get component parameters.
 
@@ -111,7 +112,7 @@ class BaseComponent(ABC):
         """
         return self.parameters.copy()
 
-    def update_parameters(self, parameters: Dict[str, Any]) -> None:
+    def update_parameters(self, parameters: dict[str, Any]) -> None:
         """
         Update component parameters.
 
@@ -124,7 +125,7 @@ class BaseComponent(ABC):
         self._validate_parameters()
         log.debug(f"Updated parameters for component {self.name}")
 
-    def get_required_inputs(self) -> List[str]:
+    def get_required_inputs(self) -> list[str]:
         """
         Get list of required input names.
 
@@ -135,7 +136,7 @@ class BaseComponent(ABC):
         """
         return []
 
-    def get_optional_inputs(self) -> List[str]:
+    def get_optional_inputs(self) -> list[str]:
         """
         Get list of optional input names.
 
@@ -146,7 +147,7 @@ class BaseComponent(ABC):
         """
         return []
 
-    def get_outputs(self) -> List[str]:
+    def get_outputs(self) -> list[str]:
         """
         Get list of output names.
 
@@ -157,7 +158,7 @@ class BaseComponent(ABC):
         """
         return []
 
-    def validate_inputs(self, inputs: Dict[str, np.ndarray]) -> bool:
+    def validate_inputs(self, inputs: dict[str, np.ndarray]) -> bool:
         """
         Validate input data.
 

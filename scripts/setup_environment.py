@@ -19,8 +19,8 @@ sys.path.insert(0, str(project_root))
 # Avoid import-time validation before env exists
 os.environ.setdefault("CAMPRO_SKIP_VALIDATION", "1")
 
-from campro.environment.validator import validate_environment
-from campro.logging import get_logger
+from campro.environment.validator import validate_environment  # noqa: E402
+from campro.logging import get_logger  # noqa: E402
 
 log = get_logger(__name__)
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Tuple
 
 from .motion import RadialSlotMotion
 
@@ -22,8 +21,8 @@ class PlanetSynthesisConfig:
 class GeometrySearchConfig:
     ring_teeth_candidates: Sequence[int]
     planet_teeth_candidates: Sequence[int]
-    pressure_angle_deg_bounds: Tuple[float, float]
-    addendum_factor_bounds: Tuple[float, float]
+    pressure_angle_deg_bounds: tuple[float, float]
+    addendum_factor_bounds: tuple[float, float]
     base_center_radius: float
     samples_per_rev: int
     motion: RadialSlotMotion

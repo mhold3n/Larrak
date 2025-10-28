@@ -6,9 +6,9 @@ assembly states for animation and analysis. The assembly is driven by
 ring contact angle psi (radians) and ring radius R_psi (mm) and uses
 base-circle kinematics to compute the planet (cam) orbit and spin.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import numpy as np
 
@@ -29,11 +29,11 @@ class AssemblyInputs:
     R_psi: np.ndarray  # ring instantaneous radius [mm]
     theta_cam_rad: np.ndarray  # cam profile theta [rad], aligned with psi if available
     # Center stepping inputs (Phase 2)
-    center_base_radius: Optional[float] = (
+    center_base_radius: float | None = (
         None  # C0 [mm], user-provided initial planet center radius
     )
-    motion_theta_deg: Optional[np.ndarray] = None  # θ grid (deg) of primary motion
-    motion_offset_mm: Optional[np.ndarray] = None  # x(θ) in mm (≥0)
+    motion_theta_deg: np.ndarray | None = None  # θ grid (deg) of primary motion
+    motion_offset_mm: np.ndarray | None = None  # x(θ) in mm (≥0)
 
 
 @dataclass
@@ -56,7 +56,7 @@ def _center_distance(rb_ring: float, rb_cam: float, contact_type: str) -> float:
 
 
 def compute_assembly_state(
-    inputs: AssemblyInputs, ring_omega: Optional[float] = None,
+    inputs: AssemblyInputs, ring_omega: float | None = None,
 ) -> AssemblyState:
     """Compute assembly kinematics from Litvin results.
 
@@ -121,7 +121,7 @@ def transform_to_world_polar(
     spin_angle: float,
     tooth_index: int,
     z_cam: int,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Transform a single planet tooth from local polar to world polar.
 
     - Rotate the tooth by total angle = spin_angle + tooth_index * 2π / z_cam

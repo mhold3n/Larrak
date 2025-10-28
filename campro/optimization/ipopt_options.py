@@ -16,13 +16,13 @@ Design goals
 4. No external side-effects unless ``emit_file=True``.
 """
 
-from dataclasses import asdict
-from pathlib import Path
-from typing import Any, Dict, Final
+from dataclasses import asdict  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any, Final  # noqa: E402
 
-from campro.constants import IPOPT_OPT_PATH
-from campro.logging import get_logger
-from campro.optimization.solver_selection import SolverType
+from campro.constants import IPOPT_OPT_PATH  # noqa: E402
+from campro.logging import get_logger  # noqa: E402
+from campro.optimization.solver_selection import SolverType  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -34,7 +34,7 @@ def build_casadi_options(
     solver: SolverType,
     *,
     emit_file: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return CasADi options dict and optionally write *ipopt.opt* file.
 
     Parameters
@@ -48,7 +48,7 @@ def build_casadi_options(
         options dict.  Existing files are overwritten.
     """
 
-    opts: Dict[str, Any] = {}
+    opts: dict[str, Any] = {}
 
     # Map common dataclass fields to ipopt.* keys – prefer explicit list to
     # avoid leaking unwanted attributes.
@@ -116,7 +116,7 @@ def build_casadi_options(
 # -- Private helpers --------------------------------------------------------
 
 
-def _write_option_file(opts: Dict[str, Any]) -> None:
+def _write_option_file(opts: dict[str, Any]) -> None:
     """Write ``ipopt.opt`` file from *opts*.
 
     Only ``ipopt.*`` keys are written; the prefix is stripped.

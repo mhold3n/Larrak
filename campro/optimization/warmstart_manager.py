@@ -4,11 +4,12 @@ Warm-start manager for CasADi optimization.
 This module implements solution history management and initial guess generation
 for warm-starting CasADi optimization problems.
 """
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -28,7 +29,7 @@ class SolutionRecord:
     max_velocity: float
     max_acceleration: float
     max_jerk: float
-    compression_ratio_limits: Tuple[float, float]
+    compression_ratio_limits: tuple[float, float]
 
     # Solution data
     position: np.ndarray
@@ -42,7 +43,7 @@ class SolutionRecord:
     n_segments: int
     timestamp: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "stroke": self.stroke,
@@ -63,7 +64,7 @@ class SolutionRecord:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SolutionRecord":
+    def from_dict(cls, data: dict[str, Any]) -> SolutionRecord:
         """Create from dictionary."""
         return cls(
             stroke=data["stroke"],
@@ -98,7 +99,7 @@ class WarmStartManager:
         self,
         max_history: int = 50,
         tolerance: float = 0.1,
-        storage_path: Optional[str] = None,
+        storage_path: str | None = None,
     ):
         """
         Initialize warm-start manager.
@@ -117,7 +118,7 @@ class WarmStartManager:
         self.storage_path = Path(storage_path) if storage_path else None
 
         # In-memory solution history
-        self.solution_history: List[SolutionRecord] = []
+        self.solution_history: list[SolutionRecord] = []
 
         # Load existing history if storage path exists
         if self.storage_path and self.storage_path.exists():
@@ -130,9 +131,9 @@ class WarmStartManager:
 
     def store_solution(
         self,
-        problem_params: Dict[str, Any],
-        solution_data: Dict[str, np.ndarray],
-        metadata: Dict[str, Any],
+        problem_params: dict[str, Any],
+        solution_data: dict[str, np.ndarray],
+        metadata: dict[str, Any],
     ) -> None:
         """
         Store a solution in the history.
@@ -184,8 +185,8 @@ class WarmStartManager:
         )
 
     def get_initial_guess(
-        self, problem_params: Dict[str, Any],
-    ) -> Optional[Dict[str, np.ndarray]]:
+        self, problem_params: dict[str, Any],
+    ) -> dict[str, np.ndarray] | None:
         """
         Get initial guess for optimization problem.
 
@@ -229,8 +230,8 @@ class WarmStartManager:
         return self._generate_fallback_guess(problem_params)
 
     def _find_closest_solution(
-        self, problem_params: Dict[str, Any],
-    ) -> Optional[SolutionRecord]:
+        self, problem_params: dict[str, Any],
+    ) -> SolutionRecord | None:
         """Find the closest solution by parameter distance."""
         if not self.solution_history:
             return None
@@ -272,8 +273,8 @@ class WarmStartManager:
         return closest_record
 
     def _find_bracketing_solutions(
-        self, problem_params: Dict[str, Any],
-    ) -> List[SolutionRecord]:
+        self, problem_params: dict[str, Any],
+    ) -> list[SolutionRecord]:
         """Find solutions that bracket the target parameters."""
         target_stroke = problem_params["stroke"]
         target_cycle_time = problem_params["cycle_time"]
@@ -296,8 +297,8 @@ class WarmStartManager:
         return bracketing[:4]  # Limit to 4 solutions for interpolation
 
     def _interpolate_solution(
-        self, record: SolutionRecord, problem_params: Dict[str, Any],
-    ) -> Dict[str, np.ndarray]:
+        self, record: SolutionRecord, problem_params: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         """Interpolate solution to match target problem parameters."""
         # Simple linear scaling for now
         scale_factor = problem_params["stroke"] / record.stroke
@@ -317,8 +318,8 @@ class WarmStartManager:
         }
 
     def _interpolate_between_solutions(
-        self, solutions: List[SolutionRecord], problem_params: Dict[str, Any],
-    ) -> Dict[str, np.ndarray]:
+        self, solutions: list[SolutionRecord], problem_params: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         """Interpolate between multiple solutions."""
         if len(solutions) < 2:
             return self._interpolate_solution(solutions[0], problem_params)
@@ -356,8 +357,8 @@ class WarmStartManager:
         return interpolated
 
     def _generate_fallback_guess(
-        self, problem_params: Dict[str, Any],
-    ) -> Dict[str, np.ndarray]:
+        self, problem_params: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         """Generate fallback initial guess from simple motion profiles."""
         stroke = problem_params["stroke"]
         cycle_time = problem_params["cycle_time"]
@@ -458,7 +459,7 @@ class WarmStartManager:
 
         log.info("Cleared solution history")
 
-    def get_history_stats(self) -> Dict[str, Any]:
+    def get_history_stats(self) -> dict[str, Any]:
         """Get statistics about solution history."""
         if not self.solution_history:
             return {"count": 0}

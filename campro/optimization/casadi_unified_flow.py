@@ -5,10 +5,11 @@ This module orchestrates Phase 1 optimization using CasADi Opti stack
 with warm-starting capabilities and integration with the existing
 unified optimization framework.
 """
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -35,7 +36,7 @@ class CasADiOptimizationSettings:
     enable_warmstart: bool = True
     max_history: int = 50
     tolerance: float = 0.1
-    storage_path: Optional[str] = None
+    storage_path: str | None = None
 
     # Collocation settings
     n_segments: int = 50
@@ -48,7 +49,7 @@ class CasADiOptimizationSettings:
     friction_coeff: float = 0.01
 
     # Solver settings
-    solver_options: Dict[str, Any] = None
+    solver_options: dict[str, Any] = None
 
     def __post_init__(self):
         if self.solver_options is None:
@@ -73,7 +74,7 @@ class CasADiUnifiedFlow:
     - Solution storage for future warm-starts
     """
 
-    def __init__(self, settings: Optional[CasADiOptimizationSettings] = None):
+    def __init__(self, settings: CasADiOptimizationSettings | None = None):
         """
         Initialize CasADi unified flow.
 
@@ -113,7 +114,7 @@ class CasADiUnifiedFlow:
         )
 
     def optimize_phase1(
-        self, constraints: Dict[str, Any], targets: Dict[str, Any], **kwargs,
+        self, constraints: dict[str, Any], targets: dict[str, Any], **kwargs,
     ) -> OptimizationResult:
         """
         Optimize Phase 1 motion law with thermal efficiency.
@@ -187,7 +188,7 @@ class CasADiUnifiedFlow:
             )
 
     def _create_problem_from_constraints(
-        self, constraints: Dict[str, Any], targets: Dict[str, Any],
+        self, constraints: dict[str, Any], targets: dict[str, Any],
     ) -> CasADiMotionProblem:
         """Create CasADi problem from constraints and targets."""
         # Extract problem parameters
@@ -260,7 +261,7 @@ class CasADiUnifiedFlow:
         # Store in warm-start manager
         self.warmstart_mgr.store_solution(problem.to_dict(), solution_data, metadata)
 
-    def get_warmstart_stats(self) -> Dict[str, Any]:
+    def get_warmstart_stats(self) -> dict[str, Any]:
         """Get warm-start statistics."""
         return self.warmstart_mgr.get_history_stats()
 
@@ -289,7 +290,7 @@ class CasADiUnifiedFlow:
         # TODO: Implement multiple shooting fallback
 
     def optimize_with_fallback(
-        self, constraints: Dict[str, Any], targets: Dict[str, Any], **kwargs,
+        self, constraints: dict[str, Any], targets: dict[str, Any], **kwargs,
     ) -> OptimizationResult:
         """
         Optimize with fallback to multiple shooting if direct collocation fails.
@@ -319,7 +320,7 @@ class CasADiUnifiedFlow:
 
         return result
 
-    def benchmark_optimization(self, problem_specs: list) -> Dict[str, Any]:
+    def benchmark_optimization(self, problem_specs: list) -> dict[str, Any]:
         """
         Benchmark optimization performance across multiple problem specifications.
 

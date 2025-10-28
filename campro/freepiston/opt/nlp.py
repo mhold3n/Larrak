@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.freepiston.gas import build_gas_model
@@ -73,8 +73,8 @@ def enhanced_piston_dae_constraints(
     aL_c: Any,
     aR_c: Any,
     p_gas_c: Any,
-    geometry: Dict[str, float],
-) -> Tuple[Any, Any]:
+    geometry: dict[str, float],
+) -> tuple[Any, Any]:
     """
     Complete piston DAE with all force components.
 
@@ -136,8 +136,8 @@ def piston_force_balance(
     v_R: Any,
     a_L: Any,
     a_R: Any,
-    geometry: Dict[str, float],
-) -> Tuple[Any, Any]:
+    geometry: dict[str, float],
+) -> tuple[Any, Any]:
     """Enhanced piston force balance with full gas-structure coupling.
 
     This function implements the complete force balance for opposed pistons including:
@@ -255,9 +255,9 @@ def enhanced_gas_dae_constraints(
     mdot_out_c: Any,
     Q_comb_c: Any,
     Q_heat_c: Any,
-    geometry: Dict[str, float],
-    thermo: Dict[str, float],
-) -> Tuple[Any, Any]:
+    geometry: dict[str, float],
+    thermo: dict[str, float],
+) -> tuple[Any, Any]:
     """
     Complete gas DAE with all source terms.
 
@@ -422,8 +422,8 @@ def gas_energy_balance(
 
 
 def build_collocation_nlp_with_1d_coupling(
-    P: Dict[str, Any],
-) -> Tuple[Any, Dict[str, Any]]:
+    P: dict[str, Any],
+) -> tuple[Any, dict[str, Any]]:
     """
     Build NLP with full 1D gas-structure coupling.
 
@@ -446,8 +446,8 @@ def build_collocation_nlp_with_1d_coupling(
 
 
 def _build_1d_collocation_nlp(
-    P: Dict[str, Any], ca: Any, K: int, C: int, grid: CollocationGrid, n_cells: int,
-) -> Tuple[Any, Dict[str, Any]]:
+    P: dict[str, Any], ca: Any, K: int, C: int, grid: CollocationGrid, n_cells: int,
+) -> tuple[Any, dict[str, Any]]:
     """Build 1D gas-structure coupled collocation NLP."""
 
     # Get geometry and parameters
@@ -1009,8 +1009,8 @@ def _calculate_1d_source_terms(
     xR: Any,
     vL: Any,
     vR: Any,
-    geometry: Dict[str, float],
-    flow_cfg: Dict[str, Any],
+    geometry: dict[str, float],
+    flow_cfg: dict[str, Any],
     Q_comb: Any,
     Ain: Any,
     Aex: Any,
@@ -1040,7 +1040,7 @@ def _calculate_1d_source_terms(
     return [S_rho, S_rhou, S_rhoE]
 
 
-def build_collocation_nlp(P: Dict[str, Any]) -> Tuple[Any, Dict[str, Any]]:
+def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     """Build collocation NLP with gas-structure coupling.
 
     Implements a full gas-structure coupled optimization problem with:

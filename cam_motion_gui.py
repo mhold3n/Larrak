@@ -8,6 +8,7 @@ A comprehensive GUI with 5 tabs for three-stage optimization:
 4. Animation - 60-frame discrete animation
 5. Crank Center - Torque and side-loading optimization (Run 3)
 """
+from __future__ import annotations
 
 import os
 import subprocess
@@ -99,24 +100,24 @@ def _validate_gui_environment():
 
 # Perform validation
 _validate_gui_environment()
-from campro.optimization.unified_framework import (
+from campro.optimization.unified_framework import (  # noqa: E402
     OptimizationMethod,
     UnifiedOptimizationConstraints,
     UnifiedOptimizationFramework,
     UnifiedOptimizationSettings,
     UnifiedOptimizationTargets,
 )
-from campro.physics.kinematics.litvin_assembly import (
+from campro.physics.kinematics.litvin_assembly import (  # noqa: E402
     AssemblyInputs,
     compute_assembly_state,
     compute_global_rmax,
     transform_to_world_polar,
 )
-from campro.physics.kinematics.phase2_relationships import (
+from campro.physics.kinematics.phase2_relationships import (  # noqa: E402
     Phase2AnimationInputs,
     build_phase2_relationships,
 )
-from campro.storage import OptimizationRegistry
+from campro.storage import OptimizationRegistry  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -938,7 +939,7 @@ class CamMotionGUI:
             if sys.platform.startswith("darwin"):
                 subprocess.run(["open", str(p)], check=False)
             elif os.name == "nt":  # Windows
-                os.startfile(str(p))  # type: ignore[attr-defined]
+                os.startfile(str(p))  # type: ignore[attr-defined]  # noqa: S606
             else:
                 subprocess.run(["xdg-open", str(p)], check=False)
             self.status_var.set(f"Opened: {p}")
@@ -2167,7 +2168,7 @@ Performance:
   Avg Torque: {result_data.tertiary_torque_output:.2f} N⋅m
   Max Torque: {result_data.tertiary_max_torque:.2f} N⋅m
   Power Output: {result_data.tertiary_power_output:.2f} W
-  
+
 Side-Loading:
   Total Penalty: {result_data.tertiary_side_load_penalty:.2f} N
   Max Side Load: {result_data.tertiary_max_side_load:.2f} N

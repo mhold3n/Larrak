@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Optional, Tuple
 
 from campro.logging import get_logger
 
@@ -10,7 +9,7 @@ log = get_logger(__name__)
 
 def characteristic_variables(
     rho: float, u: float, p: float, gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Compute characteristic variables for 1D Euler equations.
 
     Parameters
@@ -45,7 +44,7 @@ def characteristic_variables(
 
 def primitive_from_characteristics(
     R1: float, R2: float, R3: float, gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Convert characteristic variables back to primitive variables.
 
     Parameters
@@ -80,11 +79,11 @@ def primitive_from_characteristics(
 
 
 def non_reflecting_inlet_bc(
-    U_interior: Tuple[float, float, float],
+    U_interior: tuple[float, float, float],
     p_target: float,
     T_target: float,
     gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Non-reflecting inlet boundary condition using characteristics.
 
     Prescribes target pressure and temperature while allowing outgoing waves
@@ -136,10 +135,10 @@ def non_reflecting_inlet_bc(
 
 
 def non_reflecting_outlet_bc(
-    U_interior: Tuple[float, float, float],
-    p_target: Optional[float] = None,
+    U_interior: tuple[float, float, float],
+    p_target: float | None = None,
     gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Non-reflecting outlet boundary condition using characteristics.
 
     Allows outgoing waves to pass through without reflection.
@@ -192,11 +191,11 @@ def non_reflecting_outlet_bc(
 
 
 def pressure_velocity_switching_bc(
-    U_interior: Tuple[float, float, float],
+    U_interior: tuple[float, float, float],
     bc_type: str,
     bc_value: float,
     gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Pressure/velocity switching boundary condition.
 
     Automatically switches between pressure and velocity boundary conditions
@@ -239,8 +238,8 @@ def pressure_velocity_switching_bc(
 
 
 def _conservative_to_primitive(
-    U: Tuple[float, float, float], gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+    U: tuple[float, float, float], gamma: float = 1.4,
+) -> tuple[float, float, float]:
     """Convert conservative to primitive variables."""
     rho, rhou, rhoE = U
 
@@ -256,7 +255,7 @@ def _conservative_to_primitive(
 
 def _primitive_to_conservative(
     rho: float, u: float, p: float, gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Convert primitive to conservative variables."""
     e = p / ((gamma - 1.0) * rho)
     E = e + 0.5 * u**2
@@ -264,7 +263,7 @@ def _primitive_to_conservative(
     return (rho, rho * u, rho * E)
 
 
-def inlet_bc(p_in: float, T_in: float, rho_in: float) -> Tuple[float, float, float]:
+def inlet_bc(p_in: float, T_in: float, rho_in: float) -> tuple[float, float, float]:
     """Simple inlet boundary condition for 1D solver (legacy)."""
     # Conservative variables at inlet
     u_in = 0.0  # placeholder
@@ -272,7 +271,7 @@ def inlet_bc(p_in: float, T_in: float, rho_in: float) -> Tuple[float, float, flo
     return (rho_in, rho_in * u_in, rhoE_in)
 
 
-def outlet_bc(p_out: float) -> Tuple[float, float, float]:
+def outlet_bc(p_out: float) -> tuple[float, float, float]:
     """Simple outlet boundary condition for 1D solver (legacy)."""
     # Simple outlet: extrapolate from interior
     return (0.0, 0.0, 0.0)  # placeholder

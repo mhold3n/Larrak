@@ -4,8 +4,7 @@ Unit conversion and transformation utilities.
 This module provides functions for converting between different units
 and coordinate systems used in motion law problems.
 """
-
-from typing import Union
+from __future__ import annotations
 
 import numpy as np
 
@@ -15,8 +14,8 @@ log = get_logger(__name__)
 
 
 def convert_units(
-    value: Union[float, np.ndarray], from_unit: str, to_unit: str,
-) -> Union[float, np.ndarray]:
+    value: float | np.ndarray, from_unit: str, to_unit: str,
+) -> float | np.ndarray:
     """
     Convert values between different units.
 
@@ -122,7 +121,7 @@ def cam_angle_to_time(
     return time_array
 
 
-def rpm_to_angular_velocity(rpm: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def rpm_to_angular_velocity(rpm: float | np.ndarray) -> float | np.ndarray:
     """
     Convert RPM to angular velocity in rad/s.
 
@@ -136,8 +135,8 @@ def rpm_to_angular_velocity(rpm: Union[float, np.ndarray]) -> Union[float, np.nd
 
 
 def angular_velocity_to_rpm(
-    angular_velocity: Union[float, np.ndarray],
-) -> Union[float, np.ndarray]:
+    angular_velocity: float | np.ndarray,
+) -> float | np.ndarray:
     """
     Convert angular velocity in rad/s to RPM.
 
@@ -150,7 +149,7 @@ def angular_velocity_to_rpm(
     return angular_velocity * 60 / (2 * np.pi)
 
 
-def frequency_to_rpm(frequency: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def frequency_to_rpm(frequency: float | np.ndarray) -> float | np.ndarray:
     """
     Convert frequency in Hz to RPM.
 
@@ -163,7 +162,7 @@ def frequency_to_rpm(frequency: Union[float, np.ndarray]) -> Union[float, np.nda
     return frequency * 60
 
 
-def rpm_to_frequency(rpm: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def rpm_to_frequency(rpm: float | np.ndarray) -> float | np.ndarray:
     """
     Convert RPM to frequency in Hz.
 
@@ -177,8 +176,8 @@ def rpm_to_frequency(rpm: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
 
 
 def pressure_to_stress(
-    pressure: Union[float, np.ndarray], area: Union[float, np.ndarray],
-) -> Union[float, np.ndarray]:
+    pressure: float | np.ndarray, area: float | np.ndarray,
+) -> float | np.ndarray:
     """
     Convert pressure to stress (force per unit area).
 
@@ -193,8 +192,8 @@ def pressure_to_stress(
 
 
 def stress_to_pressure(
-    stress: Union[float, np.ndarray], area: Union[float, np.ndarray],
-) -> Union[float, np.ndarray]:
+    stress: float | np.ndarray, area: float | np.ndarray,
+) -> float | np.ndarray:
     """
     Convert stress to pressure.
 

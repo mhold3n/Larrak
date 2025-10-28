@@ -5,9 +5,10 @@ This module implements a secondary collocation optimizer that can use
 results from primary motion law optimization to perform additional
 optimization tasks.
 """
+from __future__ import annotations
 
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import numpy as np
 
@@ -32,8 +33,8 @@ class SecondaryOptimizer(BaseOptimizer):
     def __init__(
         self,
         name: str = "SecondaryOptimizer",
-        registry: Optional[OptimizationRegistry] = None,
-        settings: Optional[CollocationSettings] = None,
+        registry: OptimizationRegistry | None = None,
+        settings: CollocationSettings | None = None,
     ):
         super().__init__(name)
         self.registry = registry or OptimizationRegistry()
@@ -63,7 +64,7 @@ class SecondaryOptimizer(BaseOptimizer):
         self,
         objective: Callable,
         constraints: Any,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -159,7 +160,7 @@ class SecondaryOptimizer(BaseOptimizer):
     def _validate_inputs(self, objective: Callable, constraints: Any) -> None:
         """Validate optimization inputs for secondary optimization."""
         if not callable(objective):
-            raise ValueError("Objective must be callable")
+            raise TypeError("Objective must be callable")
 
         # Constraints can be None for secondary optimization as we use primary results
         # if constraints is None:
@@ -173,11 +174,11 @@ class SecondaryOptimizer(BaseOptimizer):
     def process_primary_result(
         self,
         primary_optimizer_id: str = "motion_optimizer",
-        secondary_constraints: Optional[Dict[str, Any]] = None,
-        secondary_relationships: Optional[Dict[str, Any]] = None,
-        optimization_targets: Optional[Dict[str, Any]] = None,
-        processing_function: Optional[Callable] = None,
-        objective_function: Optional[Callable] = None,
+        secondary_constraints: dict[str, Any] | None = None,
+        secondary_relationships: dict[str, Any] | None = None,
+        optimization_targets: dict[str, Any] | None = None,
+        processing_function: Callable | None = None,
+        objective_function: Callable | None = None,
     ) -> OptimizationResult:
         """
         Process primary optimization result using external specifications.
@@ -214,8 +215,8 @@ class SecondaryOptimizer(BaseOptimizer):
         )
 
     def _calculate_objective_value(
-        self, objective: Callable, solution: Dict[str, np.ndarray],
-    ) -> Optional[float]:
+        self, objective: Callable, solution: dict[str, np.ndarray],
+    ) -> float | None:
         """Calculate the objective value for the solution."""
         try:
             # Extract arrays from solution
@@ -231,11 +232,11 @@ class SecondaryOptimizer(BaseOptimizer):
             log.warning(f"Could not calculate objective value: {e}")
             return None
 
-    def get_available_primary_results(self) -> Dict[str, StorageResult]:
+    def get_available_primary_results(self) -> dict[str, StorageResult]:
         """Get all available primary optimization results."""
         return self.registry.get_available_results(self.name)
 
-    def get_optimizer_info(self) -> Dict[str, Any]:
+    def get_optimizer_info(self) -> dict[str, Any]:
         """Get information about the secondary optimizer."""
         return {
             "name": self.name,

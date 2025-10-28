@@ -4,7 +4,6 @@ Time kinematics component.
 This module provides a modular component for time-based kinematic analysis.
 """
 
-from typing import Dict, List
 
 import numpy as np
 
@@ -26,7 +25,7 @@ class TimeKinematicsComponent(BaseComponent):
     def _validate_parameters(self) -> None:
         """Validate component parameters."""
 
-    def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
+    def compute(self, inputs: dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute time kinematics.
 
@@ -59,10 +58,10 @@ class TimeKinematicsComponent(BaseComponent):
                 error_message=str(e),
             )
 
-    def get_required_inputs(self) -> List[str]:
+    def get_required_inputs(self) -> list[str]:
         """Get list of required input names."""
         return []
 
-    def get_outputs(self) -> List[str]:
+    def get_outputs(self) -> list[str]:
         """Get list of output names."""
         return []

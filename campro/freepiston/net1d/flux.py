@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Tuple
 
 from campro.logging import get_logger
 
@@ -9,8 +8,8 @@ log = get_logger(__name__)
 
 
 def primitive_from_conservative(
-    U: Tuple[float, float, float], gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+    U: tuple[float, float, float], gamma: float = 1.4,
+) -> tuple[float, float, float]:
     """Convert conservative variables to primitive variables.
 
     Parameters
@@ -43,7 +42,7 @@ def primitive_from_conservative(
 
 def conservative_from_primitive(
     rho: float, u: float, p: float, gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Convert primitive variables to conservative variables.
 
     Parameters
@@ -68,7 +67,7 @@ def conservative_from_primitive(
     return (rho, rho * u, rho * E)
 
 
-def flux_from_primitive(rho: float, u: float, p: float) -> Tuple[float, float, float]:
+def flux_from_primitive(rho: float, u: float, p: float) -> tuple[float, float, float]:
     """Compute flux from primitive variables.
 
     Parameters
@@ -93,8 +92,8 @@ def flux_from_primitive(rho: float, u: float, p: float) -> Tuple[float, float, f
 
 
 def roe_averages(
-    U_L: Tuple[float, float, float], U_R: Tuple[float, float, float], gamma: float = 1.4,
-) -> Tuple[float, float, float, float]:
+    U_L: tuple[float, float, float], U_R: tuple[float, float, float], gamma: float = 1.4,
+) -> tuple[float, float, float, float]:
     """Compute Roe-averaged quantities for wave speed estimation.
 
     Parameters
@@ -140,8 +139,8 @@ def roe_averages(
 
 
 def wave_speeds(
-    U_L: Tuple[float, float, float], U_R: Tuple[float, float, float], gamma: float = 1.4,
-) -> Tuple[float, float, float, float]:
+    U_L: tuple[float, float, float], U_R: tuple[float, float, float], gamma: float = 1.4,
+) -> tuple[float, float, float, float]:
     """Compute wave speeds for HLLC solver.
 
     Parameters
@@ -204,12 +203,12 @@ def wave_speeds(
 
 
 def hllc_star_state(
-    U: Tuple[float, float, float],
+    U: tuple[float, float, float],
     S: float,
     S_star: float,
     p_star: float,
     gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Compute HLLC star state.
 
     Parameters
@@ -248,8 +247,8 @@ def hllc_star_state(
 
 
 def hllc_flux(
-    U_L: Tuple[float, float, float], U_R: Tuple[float, float, float], gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+    U_L: tuple[float, float, float], U_R: tuple[float, float, float], gamma: float = 1.4,
+) -> tuple[float, float, float]:
     """HLLC Riemann solver for 1D Euler equations.
 
     Implements the HLLC (Harten-Lax-van Leer-Contact) approximate Riemann solver
@@ -308,11 +307,11 @@ def hllc_flux(
 
 
 def enhanced_hllc_flux(
-    U_L: Tuple[float, float, float],
-    U_R: Tuple[float, float, float],
+    U_L: tuple[float, float, float],
+    U_R: tuple[float, float, float],
     gamma: float = 1.4,
     entropy_fix: bool = True,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Enhanced HLLC Riemann solver with entropy fix and improved robustness.
 
     This enhanced version includes:
@@ -383,8 +382,8 @@ def enhanced_hllc_flux(
 
 
 def enhanced_wave_speeds(
-    U_L: Tuple[float, float, float], U_R: Tuple[float, float, float], gamma: float = 1.4,
-) -> Tuple[float, float, float, float]:
+    U_L: tuple[float, float, float], U_R: tuple[float, float, float], gamma: float = 1.4,
+) -> tuple[float, float, float, float]:
     """Enhanced wave speed estimation with improved robustness.
 
     This enhanced version includes:
@@ -460,12 +459,12 @@ def enhanced_wave_speeds(
 
 
 def apply_entropy_fix(
-    U_L: Tuple[float, float, float],
-    U_R: Tuple[float, float, float],
+    U_L: tuple[float, float, float],
+    U_R: tuple[float, float, float],
     S_L: float,
     S_R: float,
     gamma: float = 1.4,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """Apply entropy fix to wave speeds for sonic flow conditions.
 
     The entropy fix prevents the formation of expansion shocks by ensuring
@@ -513,12 +512,12 @@ def apply_entropy_fix(
 
 
 def enhanced_hllc_star_state(
-    U: Tuple[float, float, float],
+    U: tuple[float, float, float],
     S: float,
     S_star: float,
     p_star: float,
     gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Enhanced HLLC star state calculation with improved robustness.
 
     This enhanced version includes:
@@ -576,8 +575,8 @@ def enhanced_hllc_star_state(
 
 
 def roe_flux(
-    U_L: Tuple[float, float, float], U_R: Tuple[float, float, float], gamma: float = 1.4,
-) -> Tuple[float, float, float]:
+    U_L: tuple[float, float, float], U_R: tuple[float, float, float], gamma: float = 1.4,
+) -> tuple[float, float, float]:
     """Roe flux difference splitting for 1D Euler equations.
 
     Alternative to HLLC solver using Roe's approximate Riemann solver.

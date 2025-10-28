@@ -4,8 +4,9 @@ Parameter management utilities.
 This module provides tools for managing and validating parameters
 across the modular system.
 """
+from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -46,7 +47,7 @@ class ParameterValidator:
             return False
 
     @staticmethod
-    def validate_choice(value: Any, name: str, choices: List[str]) -> bool:
+    def validate_choice(value: Any, name: str, choices: list[str]) -> bool:
         """Validate that a value is one of the allowed choices."""
         if value not in choices:
             log.error(f"{name} must be one of {choices}, got {value}")
@@ -64,7 +65,7 @@ class ParameterManager:
         self.log = get_logger(__name__)
 
     def add_parameter(
-        self, name: str, value: Any, validator: Optional[callable] = None,
+        self, name: str, value: Any, validator: callable | None = None,
     ) -> None:
         """Add a parameter with optional validation."""
         if validator and not validator(value):
@@ -96,6 +97,6 @@ class ParameterManager:
                     return False
         return True
 
-    def get_all_parameters(self) -> Dict[str, Any]:
+    def get_all_parameters(self) -> dict[str, Any]:
         """Get all parameters."""
         return self.parameters.copy()

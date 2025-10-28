@@ -4,12 +4,13 @@ MA57 Migration Analyzer
 This module provides comprehensive analysis and migration planning for transitioning
 from MA27 to MA57 linear solver in Ipopt optimization problems.
 """
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from campro.logging import get_logger
 from campro.optimization.solver_analysis import MA57ReadinessReport
@@ -23,12 +24,12 @@ class MigrationDataPoint:
 
     timestamp: datetime
     phase: str  # "primary", "secondary", "tertiary"
-    problem_size: Tuple[int, int]  # (n_variables, n_constraints)
+    problem_size: tuple[int, int]  # (n_variables, n_constraints)
     ma27_report: MA57ReadinessReport
-    ma57_report: Optional[MA57ReadinessReport] = None
-    performance_improvement: Optional[float] = None  # Speedup factor
-    convergence_improvement: Optional[bool] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    ma57_report: MA57ReadinessReport | None = None
+    performance_improvement: float | None = None  # Speedup factor
+    convergence_improvement: bool | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -37,11 +38,11 @@ class MigrationAnalysis:
 
     total_runs: int
     ma57_beneficial_runs: int
-    average_speedup: Optional[float]
+    average_speedup: float | None
     convergence_improvements: int
-    problem_size_analysis: Dict[str, Any]
-    phase_analysis: Dict[str, Any]
-    recommendations: List[str]
+    problem_size_analysis: dict[str, Any]
+    phase_analysis: dict[str, Any]
+    recommendations: list[str]
     migration_priority: str  # "low", "medium", "high"
     estimated_effort: str  # "low", "medium", "high"
 
@@ -51,7 +52,7 @@ class MA57MigrationAnalyzer:
     Analyzes optimization runs to determine MA57 migration benefits and priorities.
     """
 
-    def __init__(self, data_file: Optional[str] = None):
+    def __init__(self, data_file: str | None = None):
         """
         Initialize the MA57 migration analyzer.
 
@@ -59,7 +60,7 @@ class MA57MigrationAnalyzer:
             data_file: Path to JSON file for persistent data storage
         """
         self.data_file = data_file or "ma57_migration_data.json"
-        self.data_points: List[MigrationDataPoint] = []
+        self.data_points: list[MigrationDataPoint] = []
         self._load_data()
 
     def _load_data(self):
@@ -127,9 +128,9 @@ class MA57MigrationAnalyzer:
     def add_ma27_run(
         self,
         phase: str,
-        problem_size: Tuple[int, int],
+        problem_size: tuple[int, int],
         ma27_report: MA57ReadinessReport,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> MigrationDataPoint:
         """
         Add a MA27 run to the migration analysis.
@@ -161,8 +162,8 @@ class MA57MigrationAnalyzer:
         self,
         data_point: MigrationDataPoint,
         ma57_report: MA57ReadinessReport,
-        performance_improvement: Optional[float] = None,
-        convergence_improvement: Optional[bool] = None,
+        performance_improvement: float | None = None,
+        convergence_improvement: bool | None = None,
     ):
         """
         Update a data point with MA57 run results.
@@ -289,7 +290,7 @@ class MA57MigrationAnalyzer:
 
         return grade_benefit.get((ma27_grade, ma57_grade), False)
 
-    def _analyze_by_problem_size(self) -> Dict[str, Any]:
+    def _analyze_by_problem_size(self) -> dict[str, Any]:
         """Analyze migration benefits by problem size."""
         if not self.data_points:
             return {}
@@ -302,8 +303,8 @@ class MA57MigrationAnalyzer:
         large_problems = [dp for dp in self.data_points if sum(dp.problem_size) >= 500]
 
         def analyze_group(
-            problems: List[MigrationDataPoint], name: str,
-        ) -> Dict[str, Any]:
+            problems: list[MigrationDataPoint], name: str,
+        ) -> dict[str, Any]:
             if not problems:
                 return {"count": 0, "ma57_beneficial": 0, "avg_speedup": None}
 
@@ -333,7 +334,7 @@ class MA57MigrationAnalyzer:
             "large_problems": analyze_group(large_problems, "large"),
         }
 
-    def _analyze_by_phase(self) -> Dict[str, Any]:
+    def _analyze_by_phase(self) -> dict[str, Any]:
         """Analyze migration benefits by optimization phase."""
         phases = ["primary", "secondary", "tertiary"]
         analysis = {}
@@ -374,9 +375,9 @@ class MA57MigrationAnalyzer:
         self,
         total_runs: int,
         ma57_beneficial_runs: int,
-        average_speedup: Optional[float],
+        average_speedup: float | None,
         convergence_improvements: int,
-    ) -> List[str]:
+    ) -> list[str]:
         """Generate migration recommendations based on analysis."""
         recommendations = []
 
@@ -426,7 +427,7 @@ class MA57MigrationAnalyzer:
         self,
         ma57_beneficial_runs: int,
         total_runs: int,
-        average_speedup: Optional[float],
+        average_speedup: float | None,
         convergence_improvements: int,
     ) -> str:
         """Determine migration priority based on analysis."""
@@ -461,7 +462,7 @@ class MA57MigrationAnalyzer:
             return "low" if total_runs < 20 else "medium"
         return "low"
 
-    def get_migration_plan(self) -> Dict[str, Any]:
+    def get_migration_plan(self) -> dict[str, Any]:
         """
         Generate a comprehensive migration plan.
 
@@ -489,8 +490,8 @@ class MA57MigrationAnalyzer:
         return plan
 
     def _get_phase_priorities(
-        self, phase_analysis: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        self, phase_analysis: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """Get phase priorities for migration."""
         phases = []
         for phase, analysis in phase_analysis.items():
@@ -517,7 +518,7 @@ class MA57MigrationAnalyzer:
 
         return phases
 
-    def _get_implementation_steps(self, priority: str) -> List[str]:
+    def _get_implementation_steps(self, priority: str) -> list[str]:
         """Get implementation steps based on priority."""
         if priority == "high":
             return [
@@ -541,7 +542,7 @@ class MA57MigrationAnalyzer:
             "3. Re-evaluate migration decision in 3-6 months",
         ]
 
-    def _get_success_metrics(self) -> List[str]:
+    def _get_success_metrics(self) -> list[str]:
         """Get success metrics for migration evaluation."""
         return [
             "Average solve time improvement > 20%",
@@ -551,7 +552,7 @@ class MA57MigrationAnalyzer:
             "User satisfaction with optimization performance",
         ]
 
-    def _get_rollback_plan(self) -> List[str]:
+    def _get_rollback_plan(self) -> list[str]:
         """Get rollback plan in case of issues."""
         return [
             "1. Maintain MA27 as fallback option",

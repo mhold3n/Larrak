@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -45,8 +45,8 @@ class ValidationResult:
     success: bool
     max_relative_error: float
     max_absolute_error: float
-    error_metrics: Dict[str, float]
-    solution_comparison: Dict[str, np.ndarray]
+    error_metrics: dict[str, float]
+    solution_comparison: dict[str, np.ndarray]
     validation_message: str
 
     # Timing information
@@ -76,8 +76,8 @@ class ModelComparison:
 
 
 def cross_fidelity_validation(
-    problem_params: Dict[str, Any],
-    validation_params: Optional[ValidationParameters] = None,
+    problem_params: dict[str, Any],
+    validation_params: ValidationParameters | None = None,
 ) -> ValidationResult:
     """
     Perform cross-fidelity validation between 0D and 1D models.
@@ -143,9 +143,9 @@ def cross_fidelity_validation(
 
 
 def _run_0d_simulation(
-    problem_params: Dict[str, Any],
+    problem_params: dict[str, Any],
     validation_params: ValidationParameters,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """Run 0D simulation."""
     # Extract problem parameters
     geom = problem_params.get("geom", {})
@@ -242,9 +242,9 @@ def _run_0d_simulation(
 
 
 def _run_1d_simulation(
-    problem_params: Dict[str, Any],
+    problem_params: dict[str, Any],
     validation_params: ValidationParameters,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """Run 1D simulation."""
     # Extract problem parameters
     geom = problem_params.get("geom", {})
@@ -338,7 +338,7 @@ def _simple_1d_time_step(
     U: np.ndarray,
     dt: float,
     dx: float,
-    problem_params: Dict[str, Any],
+    problem_params: dict[str, Any],
 ) -> np.ndarray:
     """Simple 1D time step (placeholder)."""
     # This is a placeholder implementation
@@ -358,8 +358,8 @@ def _simple_1d_time_step(
 
 
 def _compare_results(
-    result_0d: Dict[str, np.ndarray],
-    result_1d: Dict[str, np.ndarray],
+    result_0d: dict[str, np.ndarray],
+    result_1d: dict[str, np.ndarray],
     validation_params: ValidationParameters,
 ) -> ModelComparison:
     """Compare 0D and 1D results."""
@@ -400,7 +400,7 @@ def _compare_results(
 def _compute_error_metrics(
     comparison: ModelComparison,
     validation_params: ValidationParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute error metrics between 0D and 1D results."""
     error_metrics = {}
 
@@ -470,7 +470,7 @@ def _compute_error_metrics(
 
 
 def _check_validation_success(
-    error_metrics: Dict[str, float],
+    error_metrics: dict[str, float],
     validation_params: ValidationParameters,
 ) -> bool:
     """Check if validation is successful based on error metrics."""
@@ -490,7 +490,7 @@ def _check_validation_success(
 
 def _create_validation_message(
     success: bool,
-    error_metrics: Dict[str, float],
+    error_metrics: dict[str, float],
 ) -> str:
     """Create validation message."""
     if success:
@@ -504,7 +504,7 @@ def _create_validation_message(
 
 def create_validation_report(
     validation_result: ValidationResult,
-    output_file: Optional[str] = None,
+    output_file: str | None = None,
 ) -> str:
     """
     Create a detailed validation report.
@@ -567,7 +567,7 @@ def create_validation_report(
     return report_text
 
 
-def run_validation_suite() -> List[ValidationResult]:
+def run_validation_suite() -> list[ValidationResult]:
     """
     Run a suite of validation tests.
 

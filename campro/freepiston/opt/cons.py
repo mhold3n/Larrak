@@ -7,7 +7,7 @@ in the opposed-piston engine optimization problem.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.logging import get_logger
@@ -30,11 +30,11 @@ def _import_casadi():
 
 
 def comprehensive_path_constraints(
-    states: Dict[str, List[Any]],
-    controls: Dict[str, List[Any]],
-    bounds: Dict[str, float],
+    states: dict[str, list[Any]],
+    controls: dict[str, list[Any]],
+    bounds: dict[str, float],
     grid: Any,
-) -> Tuple[List[Any], List[float], List[float]]:
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Comprehensive path constraints for all states and controls.
 
@@ -140,9 +140,9 @@ def comprehensive_path_constraints(
 
 
 def pressure_constraints(
-    pressure_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    pressure_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Pressure path constraints.
 
@@ -166,9 +166,9 @@ def pressure_constraints(
 
 
 def temperature_constraints(
-    temperature_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    temperature_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Temperature path constraints.
 
@@ -192,10 +192,10 @@ def temperature_constraints(
 
 
 def piston_clearance_constraints(
-    x_L_states: List[Any],
-    x_R_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    x_L_states: list[Any],
+    x_R_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Piston clearance path constraints.
 
@@ -222,10 +222,10 @@ def piston_clearance_constraints(
 
 
 def valve_rate_constraints(
-    valve_states: List[Any],
-    bounds: Dict[str, float],
+    valve_states: list[Any],
+    bounds: dict[str, float],
     grid: Any,
-) -> Tuple[List[Any], List[float], List[float]]:
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Valve rate path constraints.
 
@@ -254,10 +254,10 @@ def valve_rate_constraints(
 
 
 def piston_velocity_constraints(
-    v_L_states: List[Any],
-    v_R_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    v_L_states: list[Any],
+    v_R_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Piston velocity path constraints.
 
@@ -282,11 +282,11 @@ def piston_velocity_constraints(
 
 
 def piston_acceleration_constraints(
-    v_L_states: List[Any],
-    v_R_states: List[Any],
-    bounds: Dict[str, float],
+    v_L_states: list[Any],
+    v_R_states: list[Any],
+    bounds: dict[str, float],
     grid: Any,
-) -> Tuple[List[Any], List[float], List[float]]:
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Piston acceleration path constraints.
 
@@ -321,9 +321,9 @@ def piston_acceleration_constraints(
 
 
 def density_constraints(
-    density_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    density_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Density path constraints.
 
@@ -347,9 +347,9 @@ def density_constraints(
 
 
 def energy_constraints(
-    energy_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    energy_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Energy path constraints.
 
@@ -373,9 +373,9 @@ def energy_constraints(
 
 
 def velocity_constraints(
-    velocity_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    velocity_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Velocity path constraints.
 
@@ -399,10 +399,10 @@ def velocity_constraints(
 
 
 def combustion_timing_constraints(
-    Q_comb_states: List[Any],
-    bounds: Dict[str, float],
-    timing_params: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    Q_comb_states: list[Any],
+    bounds: dict[str, float],
+    timing_params: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Combustion timing path constraints.
 
@@ -429,9 +429,9 @@ def combustion_timing_constraints(
 
 
 def scavenging_constraints(
-    scavenging_states: Dict[str, List[Any]],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    scavenging_states: dict[str, list[Any]],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Scavenging path constraints.
 
@@ -471,9 +471,9 @@ def scavenging_constraints(
 
 
 def wall_temperature_constraints(
-    T_wall_states: List[Any],
-    bounds: Dict[str, float],
-) -> Tuple[List[Any], List[float], List[float]]:
+    T_wall_states: list[Any],
+    bounds: dict[str, float],
+) -> tuple[list[Any], list[float], list[float]]:
     """
     Wall temperature path constraints.
 
@@ -497,7 +497,7 @@ def wall_temperature_constraints(
 
 
 def validate_constraint_bounds(
-    bounds: Dict[str, float],
+    bounds: dict[str, float],
 ) -> bool:
     """
     Validate constraint bounds for consistency.
@@ -541,7 +541,7 @@ def validate_constraint_bounds(
     return True
 
 
-def get_default_bounds() -> Dict[str, float]:
+def get_default_bounds() -> dict[str, float]:
     """
     Get default constraint bounds.
 

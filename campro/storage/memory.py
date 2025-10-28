@@ -5,9 +5,10 @@ This module provides an in-memory storage system for optimization results,
 suitable for temporary storage and sharing between optimization components
 within the same process.
 """
+from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -31,12 +32,12 @@ class MemoryStorage(BaseStorage):
     def store(
         self,
         key: str,
-        data: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
-        constraints: Optional[Dict[str, Any]] = None,
-        optimization_rules: Optional[Dict[str, Any]] = None,
-        solver_settings: Optional[Dict[str, Any]] = None,
-        expires_in: Optional[float] = None,
+        data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        constraints: dict[str, Any] | None = None,
+        optimization_rules: dict[str, Any] | None = None,
+        solver_settings: dict[str, Any] | None = None,
+        expires_in: float | None = None,
     ) -> StorageResult:
         """
         Store optimization result data in memory.
@@ -77,7 +78,7 @@ class MemoryStorage(BaseStorage):
         log.debug(f"Stored data with key '{key}' in {self.name}")
         return result
 
-    def retrieve(self, key: str) -> Optional[StorageResult]:
+    def retrieve(self, key: str) -> StorageResult | None:
         """
         Retrieve stored optimization result from memory.
 
@@ -141,7 +142,7 @@ class MemoryStorage(BaseStorage):
         log.debug(f"Cleaning up oldest entry '{oldest_key}' to make space")
         self.remove(oldest_key)
 
-    def get_memory_usage(self) -> Dict[str, Any]:
+    def get_memory_usage(self) -> dict[str, Any]:
         """Get memory usage statistics."""
         total_size = 0
         data_sizes = {}
@@ -159,7 +160,7 @@ class MemoryStorage(BaseStorage):
             "data_sizes": data_sizes,
         }
 
-    def _estimate_data_size(self, data: Dict[str, Any]) -> int:
+    def _estimate_data_size(self, data: dict[str, Any]) -> int:
         """Estimate the size of data in bytes."""
         import sys
 

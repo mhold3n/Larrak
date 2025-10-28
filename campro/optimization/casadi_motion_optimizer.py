@@ -5,9 +5,10 @@ This module implements Phase 1 optimization using CasADi's Opti stack for
 motion law optimization with thermal efficiency objectives and warm-starting
 capabilities.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from casadi import *
@@ -35,12 +36,12 @@ class CasADiMotionProblem:
     max_velocity: float
     max_acceleration: float
     max_jerk: float
-    compression_ratio_limits: Tuple[float, float] = (20.0, 70.0)
+    compression_ratio_limits: tuple[float, float] = (20.0, 70.0)
 
     # Objectives
     minimize_jerk: bool = True
     maximize_thermal_efficiency: bool = True
-    weights: Dict[str, float] = None
+    weights: dict[str, float] = None
 
     def __post_init__(self):
         if self.weights is None:
@@ -105,7 +106,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
             f"order {poly_order}, method {collocation_method}",
         )
 
-    def setup_collocation(self, problem: CasADiMotionProblem) -> Dict[str, Any]:
+    def setup_collocation(self, problem: CasADiMotionProblem) -> dict[str, Any]:
         """
         Setup direct collocation discretization.
 
@@ -166,7 +167,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
         }
 
     def add_boundary_conditions(
-        self, problem: CasADiMotionProblem, collocation_vars: Dict[str, Any],
+        self, problem: CasADiMotionProblem, collocation_vars: dict[str, Any],
     ) -> None:
         """Add boundary conditions to the optimization problem."""
         x, v = collocation_vars["x"], collocation_vars["v"]
@@ -193,7 +194,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
             self.opti.subject_to(v[i] <= 0)
 
     def add_motion_constraints(
-        self, problem: CasADiMotionProblem, collocation_vars: Dict[str, Any],
+        self, problem: CasADiMotionProblem, collocation_vars: dict[str, Any],
     ) -> None:
         """Add motion constraints (velocity, acceleration, jerk limits)."""
         v, a, j = collocation_vars["v"], collocation_vars["a"], collocation_vars["j"]
@@ -219,7 +220,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
             )
 
     def add_physics_constraints(
-        self, problem: CasADiMotionProblem, collocation_vars: Dict[str, Any],
+        self, problem: CasADiMotionProblem, collocation_vars: dict[str, Any],
     ) -> None:
         """Add physics-based constraints from FPE literature."""
         x, v, a = collocation_vars["x"], collocation_vars["v"], collocation_vars["a"]
@@ -245,7 +246,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
             pressure_rate = abs(a[i + 1] - a[i]) / dt
             self.opti.subject_to(pressure_rate <= max_pressure_rate)
 
-    def add_collocation_constraints(self, collocation_vars: Dict[str, Any]) -> None:
+    def add_collocation_constraints(self, collocation_vars: dict[str, Any]) -> None:
         """Add collocation constraints for state continuity."""
         x, v, a, j = (
             collocation_vars["x"],
@@ -267,7 +268,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
             self.opti.subject_to(a[k + 1] == a[k] + 0.5 * dt * (j[k] + j[k + 1]))
 
     def add_thermal_efficiency_objective(
-        self, problem: CasADiMotionProblem, collocation_vars: Dict[str, Any],
+        self, problem: CasADiMotionProblem, collocation_vars: dict[str, Any],
     ) -> None:
         """Add thermal efficiency objective from FPE literature."""
         x, v, a = collocation_vars["x"], collocation_vars["v"], collocation_vars["a"]
@@ -303,7 +304,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
         )
 
     def add_jerk_objective(
-        self, problem: CasADiMotionProblem, collocation_vars: Dict[str, Any],
+        self, problem: CasADiMotionProblem, collocation_vars: dict[str, Any],
     ) -> None:
         """Add jerk minimization objective for smoothness."""
         j = collocation_vars["j"]
@@ -318,7 +319,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
     def solve(
         self,
         problem: CasADiMotionProblem,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
     ) -> OptimizationResult:
         """
         Solve the motion law optimization problem.

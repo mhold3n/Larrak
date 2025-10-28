@@ -14,7 +14,7 @@ or optimization. It faithfully enforces the Phase-2 relationships:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 
@@ -34,7 +34,7 @@ class Phase2AnimationInputs:
     base_radius_mm: float  # Optimized base radius r_b [mm] (used as C0)
     psi_rad: np.ndarray  # Synthesized ring angle ψ [rad]
     R_psi_mm: np.ndarray  # Ring instantaneous radius R(ψ) [mm]
-    gear_geometry: Dict[str, Any]  # Gear bases and optional flanks/metadata
+    gear_geometry: dict[str, Any]  # Gear bases and optional flanks/metadata
     contact_type: str = "internal"  # "internal" or "external"
     constrain_center_to_x_axis: bool = (
         False  # If True, fix orbit angle to 0 (horizontal axis)

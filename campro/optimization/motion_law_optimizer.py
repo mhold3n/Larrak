@@ -4,9 +4,10 @@ Motion law optimizer using proper collocation methods.
 This module implements real optimization for motion law generation using
 collocation methods with proper constraint handling.
 """
+from __future__ import annotations
 
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 import numpy as np
 from scipy.interpolate import CubicSpline
@@ -111,7 +112,7 @@ class MotionLawOptimizer(BaseOptimizer):
         )
 
     def enable_thermal_efficiency(
-        self, config: Optional[Dict[str, Any]] = None,
+        self, config: dict[str, Any] | None = None,
     ) -> None:
         """Enable thermal efficiency optimization."""
         self.use_thermal_efficiency = True
@@ -133,7 +134,7 @@ class MotionLawOptimizer(BaseOptimizer):
         self,
         objective: Callable,
         constraints: Any,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -563,7 +564,7 @@ class MotionLawOptimizer(BaseOptimizer):
         control_points: np.ndarray,
         collocation_points: np.ndarray,
         constraints: MotionLawConstraints,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Define constraints for motion law optimization."""
         constraint_list = []
 
@@ -648,7 +649,7 @@ class MotionLawOptimizer(BaseOptimizer):
         params: np.ndarray,
         control_points: np.ndarray,
         collocation_points: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Extract solution from optimization result."""
         cs = CubicSpline(control_points, params, bc_type="natural")
 
@@ -666,7 +667,7 @@ class MotionLawOptimizer(BaseOptimizer):
 
     def _solve_trapezoidal_velocity_profile(
         self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Solve trapezoidal velocity profile for minimum time approximation."""
         n_points = len(collocation_points)
         position = np.zeros(n_points)
@@ -776,7 +777,7 @@ class MotionLawOptimizer(BaseOptimizer):
 
     def _solve_smooth_acceleration_profile(
         self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Solve smooth acceleration profile for minimum energy approximation."""
         n_points = len(collocation_points)
         position = np.zeros(n_points)
@@ -829,7 +830,7 @@ class MotionLawOptimizer(BaseOptimizer):
 
     def _solve_bang_bang_control(
         self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Solve minimum time motion law using proper bang-bang control.
 
@@ -912,7 +913,7 @@ class MotionLawOptimizer(BaseOptimizer):
 
     def _solve_minimum_energy_optimization(
         self, collocation_points: np.ndarray, constraints: MotionLawConstraints,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Solve minimum energy motion law optimization.
 
@@ -1049,7 +1050,7 @@ class MotionLawOptimizer(BaseOptimizer):
         params: np.ndarray,
         control_points: np.ndarray,
         collocation_points: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Extract solution from minimum energy optimization result."""
         cs = CubicSpline(control_points, params, bc_type="natural")
 

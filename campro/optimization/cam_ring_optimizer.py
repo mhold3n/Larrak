@@ -5,11 +5,12 @@ This module implements a secondary optimization that optimizes the cam-ring syst
 parameters (cam radius, connecting rod length, ring design) using the same
 collocation approach as the primary motion law optimization.
 """
+from __future__ import annotations
 
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -43,10 +44,10 @@ class CamRingOptimizationConstraints:
     max_curvature: float = 10.0  # Maximum curvature
 
     # NEW: Gear geometry constraints
-    ring_teeth_candidates: List[int] = field(
+    ring_teeth_candidates: list[int] = field(
         default_factory=lambda: [40, 50, 60, 70, 80],
     )
-    planet_teeth_candidates: List[int] = field(
+    planet_teeth_candidates: list[int] = field(
         default_factory=lambda: [20, 25, 30, 35, 40],
     )
     pressure_angle_min: float = 15.0
@@ -97,8 +98,8 @@ class CamRingOptimizer(BaseOptimizer):
     def __init__(
         self,
         name: str = "CamRingOptimizer",
-        settings: Optional[CollocationSettings] = None,
-        enable_order2_micro: Optional[bool] = None,
+        settings: CollocationSettings | None = None,
+        enable_order2_micro: bool | None = None,
     ):
         super().__init__(name)
         self.settings = settings or CollocationSettings()
@@ -114,8 +115,8 @@ class CamRingOptimizer(BaseOptimizer):
 
     def configure(
         self,
-        constraints: Optional[CamRingOptimizationConstraints] = None,
-        targets: Optional[CamRingOptimizationTargets] = None,
+        constraints: CamRingOptimizationConstraints | None = None,
+        targets: CamRingOptimizationTargets | None = None,
         **kwargs,
     ) -> None:
         """
@@ -148,8 +149,8 @@ class CamRingOptimizer(BaseOptimizer):
 
     def optimize(
         self,
-        primary_data: Dict[str, np.ndarray],
-        initial_guess: Optional[Dict[str, float]] = None,
+        primary_data: dict[str, np.ndarray],
+        initial_guess: dict[str, float] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -383,8 +384,8 @@ class CamRingOptimizer(BaseOptimizer):
         return result
 
     def _get_default_initial_guess(
-        self, primary_data: Dict[str, np.ndarray],
-    ) -> Dict[str, float]:
+        self, primary_data: dict[str, np.ndarray],
+    ) -> dict[str, float]:
         """Get default initial guess based on primary data."""
         # Use stroke-based initial guesses
         stroke = np.max(primary_data.get("position", [20.0])) - np.min(
@@ -396,7 +397,7 @@ class CamRingOptimizer(BaseOptimizer):
         }
 
     def _create_radial_slot_motion(
-        self, primary_data: Dict[str, np.ndarray],
+        self, primary_data: dict[str, np.ndarray],
     ) -> RadialSlotMotion:
         """Convert primary motion law to RadialSlotMotion for Litvin synthesis."""
         from scipy.interpolate import interp1d
@@ -423,8 +424,8 @@ class CamRingOptimizer(BaseOptimizer):
         gear_config,
         theta: np.ndarray,
         x_theta: np.ndarray,
-        primary_data: Dict[str, np.ndarray],
-    ) -> Dict[str, Any]:
+        primary_data: dict[str, np.ndarray],
+    ) -> dict[str, Any]:
         """Generate final design using optimized gear geometry."""
         from campro.litvin.planetary_synthesis import synthesize_planet_from_motion
 
@@ -491,8 +492,8 @@ class CamRingOptimizer(BaseOptimizer):
         self,
         theta: np.ndarray,
         x_theta: np.ndarray,
-        primary_data: Dict[str, np.ndarray],
-    ) -> List[Dict]:
+        primary_data: dict[str, np.ndarray],
+    ) -> list[dict]:
         """Define optimization constraints."""
         constraints = []
 

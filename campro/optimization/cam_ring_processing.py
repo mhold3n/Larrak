@@ -5,8 +5,9 @@ This module provides processing functions that can be used with the SecondaryOpt
 to create circular follower (ring) designs based on linear follower motion laws
 from primary optimization.
 """
+from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -17,12 +18,12 @@ log = get_logger(__name__)
 
 
 def process_linear_to_ring_follower(
-    primary_data: Dict[str, np.ndarray],
-    secondary_constraints: Dict[str, Any],
-    secondary_relationships: Dict[str, Any],
-    optimization_targets: Dict[str, Any],
+    primary_data: dict[str, np.ndarray],
+    secondary_constraints: dict[str, Any],
+    secondary_relationships: dict[str, Any],
+    optimization_targets: dict[str, Any],
     **kwargs,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Process primary linear follower motion law to create ring follower design.
 
@@ -134,12 +135,12 @@ def process_linear_to_ring_follower(
 
 
 def process_ring_optimization(
-    primary_data: Dict[str, np.ndarray],
-    secondary_constraints: Dict[str, Any],
-    secondary_relationships: Dict[str, Any],
-    optimization_targets: Dict[str, Any],
+    primary_data: dict[str, np.ndarray],
+    secondary_constraints: dict[str, Any],
+    secondary_relationships: dict[str, Any],
+    optimization_targets: dict[str, Any],
     **kwargs,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Optimize ring follower design based on primary motion law.
 
@@ -191,12 +192,12 @@ def process_ring_optimization(
 
 
 def process_multi_objective_ring_design(
-    primary_data: Dict[str, np.ndarray],
-    secondary_constraints: Dict[str, Any],
-    secondary_relationships: Dict[str, Any],
-    optimization_targets: Dict[str, Any],
+    primary_data: dict[str, np.ndarray],
+    secondary_constraints: dict[str, Any],
+    secondary_relationships: dict[str, Any],
+    optimization_targets: dict[str, Any],
     **kwargs,
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Multi-objective ring follower design optimization.
 
@@ -289,7 +290,7 @@ def process_multi_objective_ring_design(
 
 
 def _calculate_multi_objective_score(
-    result: Dict[str, np.ndarray], weights: Dict[str, float],
+    result: dict[str, np.ndarray], weights: dict[str, float],
 ) -> float:
     """
     Calculate multi-objective score for ring design.
@@ -342,10 +343,10 @@ def _calculate_multi_objective_score(
 
 
 def create_constant_ring_design(
-    primary_data: Dict[str, np.ndarray],
+    primary_data: dict[str, np.ndarray],
     ring_radius: float = 15.0,
-    cam_parameters: Optional[Dict[str, Any]] = None,
-) -> Dict[str, np.ndarray]:
+    cam_parameters: dict[str, Any] | None = None,
+) -> dict[str, np.ndarray]:
     """
     Create a constant radius ring design from linear follower motion.
 
@@ -378,10 +379,10 @@ def create_constant_ring_design(
 
 
 def create_optimized_ring_design(
-    primary_data: Dict[str, np.ndarray],
+    primary_data: dict[str, np.ndarray],
     optimization_objective: str = "minimize_ring_size",
-    cam_parameters: Optional[Dict[str, Any]] = None,
-) -> Dict[str, np.ndarray]:
+    cam_parameters: dict[str, Any] | None = None,
+) -> dict[str, np.ndarray]:
     """
     Create an optimized ring design from linear follower motion.
 

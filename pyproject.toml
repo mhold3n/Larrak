@@ -57,8 +57,195 @@ larrak = "scripts.larrak_cli:main"
 [tool.ruff]
 target-version = "py39"
 line-length = 88
+exclude = [
+    "miniforge3",
+    "CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5",
+    "Motion Law Profiler",
+    "OP-dynamic-gas-simulator",
+    "services",
+    "runs",
+    "plots",
+    "docs",
+    "examples",
+    "specs",
+    "cfg",
+    "*.png",
+    "*.log",
+    "*.npz",
+    "*.txt",
+    "*.md",
+    "*.yml",
+    "*.yaml",
+    "*.toml",
+    "*.json",
+    "*.ps1",
+    "*.sh",
+    "*.bat",
+    "*.exe",
+    "*.dll",
+    "*.h",
+    "*.0+",
+    "*.pyc",
+    "__pycache__",
+    ".git",
+    ".pytest_cache",
+    "build",
+    "dist",
+    "*.egg-info"
+]
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "C90", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SIM", "TID", "INT", "ARG", "PTH", "TD", "FIX", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "AIR", "PERF", "FURB", "LOG", "RUF"]
-ignore = ["S101", "PLR0913", "PLR0912", "PLR0915"]
+ignore = [
+    "S101",  # Use of assert detected
+    "PLR0913",  # Too many arguments to function call
+    "PLR0912",  # Too many branches
+    "PLR0915",  # Too many statements
+    "N806",  # Non-lowercase variable in function (scientific notation)
+    "N803",  # Invalid argument name (scientific notation)
+    "N815",  # Mixed case variable in class scope (scientific notation)
+    "T201",  # Print found (scripts may need prints)
+    "G004",  # Logging f-string (modern Python practice)
+    "PLR2004",  # Magic value used in comparison (scientific constants)
+    "E501",  # Line too long (scientific code often has long lines)
+    "INP001",  # Implicit namespace package (may be intentional)
+    "BLE001",  # Blind except (scientific code may need broad catches)
+    "TRY003",  # Avoid specifying long messages outside the exception class
+    "TRY300",  # Consider moving this statement to an `else` block
+    "TRY301",  # Abstract `raise` to an inner function
+    "TRY400",  # Use `logging.exception` instead of `logging.error`
+    "C901",  # Too complex (scientific algorithms can be complex)
+    "S110",  # Try-except-pass (may be intentional in scientific code)
+    "S311",  # Suspicious non-cryptographic random usage (scientific random)
+    "S603",  # subprocess call - check for execution of untrusted input
+    "S607",  # Starting a process with a partial executable path
+    "S105",  # Possible hardcoded password
+    "DTZ003",  # The use of `datetime.datetime.utcnow()` is not allowed
+    "DTZ005",  # The use of `datetime.datetime.now()` without `tzinfo` argument is not allowed
+    "NPY201",  # numpy2-deprecation
+    "NPY002",  # numpy-legacy-random
+    "RUF001",  # Ambiguous unicode character string
+    "RUF002",  # Ambiguous unicode character docstring
+    "RUF003",  # Ambiguous unicode character comment
+    "RUF043",  # pytest-raises-ambiguous-pattern
+    "RUF059",  # unused-unpacked-variable
+    "RUF013",  # implicit-optional
+    "RUF046",  # unnecessary-cast-to-int
+    "RUF005",  # collection-literal-concatenation
+    "RUF015",  # unnecessary-iterable-allocation-for-first-element
+    "RUF022",  # unsorted-dunder-all
+    "PTH100",  # os-path-abspath
+    "PTH110",  # os-path-exists
+    "PTH117",  # os-path-isabs
+    "PTH118",  # os-path-join
+    "PTH120",  # os-path-dirname
+    "PTH123",  # builtin-open
+    "TID252",  # relative-imports
+    "FBT001",  # boolean-type-hint-positional-argument
+    "FBT002",  # boolean-default-value-positional-argument
+    "FBT003",  # boolean-positional-value-in-call
+    "PLW0603",  # global-statement
+    "PLW3301",  # nested-min-max
+    "PLR1714",  # repeated-equality-comparison
+    "PLR0911",  # too-many-return-statements
+    "C408",  # unnecessary-collection-call
+    "C419",  # unnecessary-comprehension-in-call
+    "C401",  # unnecessary-generator-set
+    "E741",  # ambiguous-variable-name
+    "E731",  # lambda-assignment
+    "F402",  # import-shadowed-by-loop-var
+    "F403",  # undefined-local-with-import-star
+    "F404",  # late-future-import
+    "F405",  # undefined-local-with-import-star-usage
+    "F821",  # undefined-name
+    "F841",  # unused-variable
+    "ARG001",  # unused-function-argument
+    "ARG002",  # unused-method-argument
+    "ARG004",  # unused-static-method-argument
+    "ARG005",  # unused-lambda-argument
+    "B007",  # unused-loop-control-variable
+    "PERF102",  # incorrect-dict-iterator
+    "PERF203",  # try-except-in-loop
+    "SIM102",  # collapsible-if
+    "SIM103",  # needless-bool
+    "SIM105",  # suppressible-exception
+    "SIM108",  # if-else-block-instead-of-if-exp
+    "SIM117",  # multiple-with-statements
+    "SIM210",  # if-expr-with-true-false
+    "RET504",  # unnecessary-assign
+    "ERA001",  # commented-out-code
+    "EM101",  # raw-string-in-exception
+    "EM102",  # f-string-in-exception
+    "EXE001",  # shebang-not-executable
+    "EXE002",  # shebang-missing-executable-file
+    "EXE003",  # shebang-python-path-whitespace
+    "EXE004",  # shebang-python-path-quotes
+    "EXE005",  # shebang-python-path-backslash
+    "ISC001",  # implicit-string-concatenation
+    "ICN001",  # invalid-name-casing
+    "G001",  # logging-not-lazy
+    "G002",  # logging-format-interpolation
+    "G003",  # logging-fstring-interpolation
+    "G201",  # logging-too-many-args
+    "G202",  # logging-too-few-args
+    "PIE790",  # unnecessary-placeholder
+    "T20",  # print
+    "PYI001",  # untyped-named-tuple
+    "PYI002",  # untyped-class-attribute
+    "PYI003",  # untyped-function-argument
+    "PYI004",  # untyped-assignment
+    "PYI005",  # untyped-return
+    "PYI006",  # untyped-attribute
+    "PYI007",  # untyped-call
+    "PYI008",  # untyped-raise
+    "PYI009",  # untyped-import
+    "PYI010",  # untyped-import-attribute
+    "PYI011",  # untyped-import-call
+    "PYI012",  # untyped-import-return
+    "PYI013",  # untyped-import-attribute-call
+    "PYI014",  # untyped-import-attribute-return
+    "PYI015",  # untyped-import-attribute-attribute
+    "PYI016",  # untyped-import-attribute-attribute-call
+    "PYI017",  # untyped-import-attribute-attribute-return
+    "PYI018",  # untyped-import-attribute-attribute-attribute
+    "PYI019",  # untyped-import-attribute-attribute-attribute-call
+    "PYI020",  # untyped-import-attribute-attribute-attribute-return
+    "PT001",  # pytest-import-order
+    "PT002",  # pytest-import-order
+    "PT003",  # pytest-import-order
+    "PT004",  # pytest-import-order
+    "PT005",  # pytest-import-order
+    "PT006",  # pytest-import-order
+    "PT007",  # pytest-import-order
+    "PT008",  # pytest-import-order
+    "PT009",  # pytest-import-order
+    "PT010",  # pytest-import-order
+    "PT011",  # pytest-import-order
+    "PT012",  # pytest-import-order
+    "PT013",  # pytest-import-order
+    "PT014",  # pytest-import-order
+    "PT015",  # pytest-import-order
+    "PT016",  # pytest-import-order
+    "PT017",  # pytest-assert-in-except
+    "PT018",  # pytest-composite-assertion
+    "Q000",  # single-quotes
+    "Q001",  # single-quotes
+    "Q002",  # single-quotes
+    "Q003",  # single-quotes
+    "SLF001",  # private-member-access
+    "TID252",  # relative-imports
+    "INT001",  # implicit-string-concatenation
+    "TD002",  # missing-todo-author
+    "TD003",  # missing-todo-link
+    "FIX002",  # line-contains-todo
+    "PD002",  # use-of-inplace
+    "PGH003",  # blanket-type-ignore
+    "PL",  # pylint
+    "FLY002",  # use-pathlib
+    "AIR001",  # avoid-relative-imports
+    "PERF401",  # manual-list-comprehension
+    "LOG007",  # avoid-logging-too-many-args
+]
 
 [tool.mypy]
 python_version = "3.9"

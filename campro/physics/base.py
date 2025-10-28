@@ -4,12 +4,13 @@ Base physics simulation classes and interfaces.
 This module defines the fundamental physics simulation framework that will
 be extended for combustion simulation, thermodynamics, and valve timing.
 """
+from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -34,23 +35,23 @@ class PhysicsResult:
     """Result of a physics simulation."""
 
     # Simulation data
-    data: Dict[str, np.ndarray] = field(default_factory=dict)
+    data: dict[str, np.ndarray] = field(default_factory=dict)
 
     # Simulation status
     status: PhysicsStatus = PhysicsStatus.PENDING
 
     # Performance metrics
-    simulation_time: Optional[float] = None
-    iterations: Optional[int] = None
+    simulation_time: float | None = None
+    iterations: int | None = None
 
     # Convergence information
-    convergence_info: Dict[str, Any] = field(default_factory=dict)
+    convergence_info: dict[str, Any] = field(default_factory=dict)
 
     # Error information
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     # Additional metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def is_successful(self) -> bool:
         """Check if simulation was successful."""
@@ -60,7 +61,7 @@ class PhysicsResult:
         """Check if simulation data is available."""
         return len(self.data) > 0
 
-    def get_data_summary(self) -> Dict[str, Any]:
+    def get_data_summary(self) -> dict[str, Any]:
         """Get a summary of the simulation data."""
         if not self.has_data():
             return {}
@@ -90,8 +91,8 @@ class BasePhysicsModel(ABC):
     def __init__(self, name: str = "BasePhysicsModel"):
         self.name = name
         self._is_configured = False
-        self._current_result: Optional[PhysicsResult] = None
-        self._simulation_history: List[PhysicsResult] = []
+        self._current_result: PhysicsResult | None = None
+        self._simulation_history: list[PhysicsResult] = []
 
     @abstractmethod
     def configure(self, **kwargs) -> None:
@@ -103,7 +104,7 @@ class BasePhysicsModel(ABC):
         """
 
     @abstractmethod
-    def simulate(self, inputs: Dict[str, Any], **kwargs) -> PhysicsResult:
+    def simulate(self, inputs: dict[str, Any], **kwargs) -> PhysicsResult:
         """
         Run a physics simulation.
 
@@ -119,11 +120,11 @@ class BasePhysicsModel(ABC):
         """Check if physics model is configured."""
         return self._is_configured
 
-    def get_current_result(self) -> Optional[PhysicsResult]:
+    def get_current_result(self) -> PhysicsResult | None:
         """Get the most recent simulation result."""
         return self._current_result
 
-    def get_simulation_history(self) -> List[PhysicsResult]:
+    def get_simulation_history(self) -> list[PhysicsResult]:
         """Get all simulation results."""
         return self._simulation_history.copy()
 
@@ -141,9 +142,9 @@ class BasePhysicsModel(ABC):
     def _finish_simulation(
         self,
         result: PhysicsResult,
-        data: Dict[str, np.ndarray],
-        convergence_info: Optional[Dict[str, Any]] = None,
-        error_message: Optional[str] = None,
+        data: dict[str, np.ndarray],
+        convergence_info: dict[str, Any] | None = None,
+        error_message: str | None = None,
     ) -> PhysicsResult:
         """Finish a simulation process."""
         result.simulation_time = (
@@ -170,17 +171,17 @@ class BasePhysicsModel(ABC):
 
         return result
 
-    def _validate_inputs(self, inputs: Dict[str, Any]) -> None:
+    def _validate_inputs(self, inputs: dict[str, Any]) -> None:
         """Validate simulation inputs."""
         if not isinstance(inputs, dict):
-            raise ValueError("Inputs must be a dictionary")
+            raise TypeError("Inputs must be a dictionary")
 
         if not self._is_configured:
             raise RuntimeError(
                 f"Physics model {self.name} is not configured. Call configure() first.",
             )
 
-    def get_performance_summary(self) -> Dict[str, Any]:
+    def get_performance_summary(self) -> dict[str, Any]:
         """Get performance summary across all simulations."""
         if not self._simulation_history:
             return {}

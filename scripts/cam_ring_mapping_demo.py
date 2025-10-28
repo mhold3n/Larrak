@@ -17,10 +17,13 @@ import numpy as np
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from campro.logging import get_logger
-from campro.optimization import SecondaryOptimizer, process_linear_to_ring_follower
-from campro.physics import CamRingMapper, CamRingParameters
-from campro.storage import OptimizationRegistry
+from campro.logging import get_logger  # noqa: E402
+from campro.optimization import (  # noqa: E402
+    SecondaryOptimizer,
+    process_linear_to_ring_follower,
+)
+from campro.physics import CamRingMapper, CamRingParameters  # noqa: E402
+from campro.storage import OptimizationRegistry  # noqa: E402
 
 log = get_logger(__name__)
 

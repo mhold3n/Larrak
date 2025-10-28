@@ -7,22 +7,21 @@ subsequent solves if dimensions match. Designed to be a lightweight utility
 that callers can opt into.
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Optional, Tuple
+from dataclasses import dataclass  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import numpy as np
+import numpy as np  # noqa: E402
 
-from .run_metadata import RUN_ID
+from .run_metadata import RUN_ID  # noqa: E402
 
 
 @dataclass(slots=True)
 class WarmStart:
     x0: np.ndarray
-    lam_g0: Optional[np.ndarray] = None
-    lam_x0: Optional[np.ndarray] = None
-    zl0: Optional[np.ndarray] = None
-    zu0: Optional[np.ndarray] = None
+    lam_g0: np.ndarray | None = None
+    lam_x0: np.ndarray | None = None
+    zl0: np.ndarray | None = None
+    zu0: np.ndarray | None = None
 
 
 def _runs_dir() -> Path:
@@ -34,12 +33,12 @@ def _runs_dir() -> Path:
 def save_warmstart(
     x: np.ndarray,
     *,
-    lam_g: Optional[np.ndarray] = None,
-    lam_x: Optional[np.ndarray] = None,
-    zl: Optional[np.ndarray] = None,
-    zu: Optional[np.ndarray] = None,
+    lam_g: np.ndarray | None = None,
+    lam_x: np.ndarray | None = None,
+    zl: np.ndarray | None = None,
+    zu: np.ndarray | None = None,
     tag: str = "",
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     """Persist warm-start arrays to `runs/{RUN_ID}-warmstart.npz` and `latest-warmstart.npz`.
 
     Returns `(by_run_path, latest_path)`.
@@ -74,10 +73,10 @@ def save_warmstart(
 
 def load_warmstart(
     n_x: int,
-    n_lam_g: Optional[int] = None,
+    n_lam_g: int | None = None,
     *,
     tag: str = "",
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """Load compatible warm-start arrays if shapes match current problem.
 
     Returns a dict suitable for passing to CasADi `nlpsol`: possibly including
@@ -94,7 +93,8 @@ def load_warmstart(
             continue
         try:
             data = np.load(path, allow_pickle=True)
-        except Exception:
+        except Exception as e:
+            log.debug(f"Skipping warmstart file {path} due to error: {e}")
             continue
         try:
             if int(data.get("n_x", -1)) != int(n_x):
@@ -104,13 +104,14 @@ def load_warmstart(
                 0,
             ):
                 continue
-            out: Dict[str, np.ndarray] = {}
+            out: dict[str, np.ndarray] = {}
             for key in ("x0", "lam_g0", "lam_x0", "zl0", "zu0"):
                 arr = data.get(key, None)
                 if arr is not None and arr is not np.array(None):
                     out[key] = arr
             if "x0" in out:
                 return out
-        except Exception:
+        except Exception as e:
+            log.debug(f"Skipping warmstart file {path} due to error: {e}")
             continue
     return {}

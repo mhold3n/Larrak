@@ -1,8 +1,8 @@
 """Adaptive solver selection based on problem characteristics and analysis history."""
+from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
 
 from campro.logging import get_logger
 from campro.optimization.solver_analysis import MA57ReadinessReport
@@ -43,14 +43,14 @@ class AnalysisHistory:
     avg_linear_solver_ratio: float
     avg_iterations: int
     convergence_issues_count: int
-    ma57_benefits: List[bool]
+    ma57_benefits: list[bool]
 
 
 class AdaptiveSolverSelector:
     """Select optimal solver based on problem characteristics and history."""
 
     def __init__(self):
-        self.analysis_history: Dict[str, AnalysisHistory] = {}
+        self.analysis_history: dict[str, AnalysisHistory] = {}
 
     def select_solver(
         self, problem_chars: ProblemCharacteristics, phase: str,
@@ -111,7 +111,7 @@ class AdaptiveSolverSelector:
 
         return chosen
 
-    def _get_available_solvers(self) -> List[SolverType]:
+    def _get_available_solvers(self) -> list[SolverType]:
         """Check which HSL solvers are available."""
         available = []
 
@@ -155,7 +155,7 @@ class AdaptiveSolverSelector:
 
         return available
 
-    def _fallback_solver(self, available_solvers: List[SolverType]) -> SolverType:
+    def _fallback_solver(self, available_solvers: list[SolverType]) -> SolverType:
         """Select a fallback solver from available options."""
         # Prefer MA27 as the most robust fallback
         if SolverType.MA27 in available_solvers:
@@ -216,7 +216,7 @@ class AdaptiveSolverSelector:
             f"ls_ratio={analysis.stats.get('ls_time_ratio', 0.0):.3f}",
         )
 
-    def get_history_summary(self, phase: str) -> Optional[Dict]:
+    def get_history_summary(self, phase: str) -> dict | None:
         """Get summary of analysis history for a phase."""
         if phase not in self.analysis_history:
             return None
@@ -235,14 +235,14 @@ class AdaptiveSolverSelector:
             "total_analyses": len(history.ma57_benefits),
         }
 
-    def get_all_history_summaries(self) -> Dict[str, Dict]:
+    def get_all_history_summaries(self) -> dict[str, dict]:
         """Get summaries for all phases."""
         return {
             phase: self.get_history_summary(phase)
-            for phase in self.analysis_history.keys()
+            for phase in self.analysis_history
         }
 
-    def clear_history(self, phase: Optional[str] = None):
+    def clear_history(self, phase: str | None = None):
         """Clear analysis history for a phase or all phases."""
         if phase is None:
             self.analysis_history.clear()

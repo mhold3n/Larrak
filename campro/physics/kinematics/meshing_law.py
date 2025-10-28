@@ -5,7 +5,7 @@ This module provides a modular component for solving the meshing law
 that relates cam rotation to ring follower rotation.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -32,7 +32,7 @@ class MeshingLawComponent(BaseComponent):
         """Validate component parameters."""
         # No specific parameters required for meshing law computation
 
-    def _validate_meshing_inputs(self, inputs: Dict[str, Any]) -> bool:
+    def _validate_meshing_inputs(self, inputs: dict[str, Any]) -> bool:
         """Validate meshing law inputs with custom logic."""
         required = ["theta", "rho_c", "psi_initial", "R_psi"]
 
@@ -57,16 +57,13 @@ class MeshingLawComponent(BaseComponent):
             return False
 
         # R_psi can be scalar or array
-        if not (
-            isinstance(inputs["R_psi"], (int, float))
-            or isinstance(inputs["R_psi"], np.ndarray)
-        ):
+        if not isinstance(inputs["R_psi"], (int, float, np.ndarray)):
             log.error("Input R_psi must be a number or numpy array")
             return False
 
         return True
 
-    def compute(self, inputs: Dict[str, Any]) -> ComponentResult:
+    def compute(self, inputs: dict[str, Any]) -> ComponentResult:
         """
         Solve the meshing law to relate cam and ring angles.
 
@@ -251,10 +248,10 @@ class MeshingLawComponent(BaseComponent):
 
         return psi
 
-    def get_required_inputs(self) -> List[str]:
+    def get_required_inputs(self) -> list[str]:
         """Get list of required input names."""
         return ["theta", "rho_c", "psi_initial", "R_psi"]
 
-    def get_outputs(self) -> List[str]:
+    def get_outputs(self) -> list[str]:
         """Get list of output names."""
         return ["psi", "theta", "rho_c"]

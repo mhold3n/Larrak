@@ -5,10 +5,11 @@ This module provides proper motion law optimization using cam angle as the
 independent variable, with real optimization methods instead of analytical
 solutions.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -35,9 +36,9 @@ class MotionLawConstraints:
     zero_accel_duration_percent: float  # % of cycle with zero acceleration (0-100)
 
     # Physical limits (optional)
-    max_velocity: Optional[float] = None  # mm/rad
-    max_acceleration: Optional[float] = None  # mm/rad²
-    max_jerk: Optional[float] = None  # mm/rad³
+    max_velocity: float | None = None  # mm/rad
+    max_acceleration: float | None = None  # mm/rad²
+    max_jerk: float | None = None  # mm/rad³
 
     def __post_init__(self):
         """Validate and sanitize constraints after initialization."""
@@ -88,7 +89,7 @@ class MotionLawConstraints:
         """Zero acceleration angle in radians."""
         return 2 * np.pi * self.zero_accel_duration_percent / 100.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert constraints to dictionary format."""
         return {
             "stroke": self.stroke,
@@ -170,7 +171,7 @@ class MotionLawResult:
         """Cam angles in degrees."""
         return np.degrees(self.cam_angle)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert result to dictionary format."""
         return {
             "cam_angle": self.cam_angle,
@@ -194,7 +195,7 @@ class ValidationResult:
     """Result of motion law validation."""
 
     valid: bool
-    issues: List[str]
+    issues: list[str]
 
     def __str__(self) -> str:
         if self.valid:

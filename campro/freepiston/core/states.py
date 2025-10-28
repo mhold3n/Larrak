@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
 
 from campro.logging import get_logger
 
@@ -29,7 +28,7 @@ class MechState:
     x_R: float
     v_R: float
 
-    def pack(self) -> Tuple[float, float, float, float]:
+    def pack(self) -> tuple[float, float, float, float]:
         return (self.x_L, self.v_L, self.x_R, self.v_R)
 
 
@@ -41,7 +40,7 @@ class GasState:
     the selected fidelity backend. Use typed façades at higher layers.
     """
 
-    data: Tuple[float, ...]
+    data: tuple[float, ...]
 
     def dof(self) -> int:
         return len(self.data)

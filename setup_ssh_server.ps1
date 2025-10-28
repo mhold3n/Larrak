@@ -110,3 +110,4 @@ Write-Host "2. Test the connection from another computer" -ForegroundColor White
 Write-Host "3. Configure Cursor for remote development" -ForegroundColor White
 
 
+

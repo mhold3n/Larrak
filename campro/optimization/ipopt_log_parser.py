@@ -10,13 +10,13 @@ All times are returned in seconds.  Counts are integers.  Ratios are floats in
 [0, 1] where available.
 """
 
-import re
-from dataclasses import dataclass
-from pathlib import Path
-from re import Pattern
-from typing import Any, Dict, Final
+import re  # noqa: E402
+from dataclasses import dataclass  # noqa: E402
+from pathlib import Path  # noqa: E402
+from re import Pattern  # noqa: E402
+from typing import Any, Final  # noqa: E402
 
-from campro.logging import get_logger
+from campro.logging import get_logger  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -43,7 +43,7 @@ class IpoptLogStats:
     dual_inf: float | None = None
     compl_inf: float | None = None
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         """Return stats as a JSON-serialisable dict."""
         return {
             "status": self.status,

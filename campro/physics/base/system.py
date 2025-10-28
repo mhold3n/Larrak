@@ -4,11 +4,12 @@ Base system interface for physics systems.
 This module defines the interface for complete physics systems that coordinate
 multiple components to solve complex problems.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -34,10 +35,10 @@ class SystemResult:
     """Result from a system computation."""
 
     status: SystemStatus
-    outputs: Dict[str, np.ndarray]
-    component_results: Dict[str, ComponentResult]
-    metadata: Dict[str, Any]
-    error_message: Optional[str] = None
+    outputs: dict[str, np.ndarray]
+    component_results: dict[str, ComponentResult]
+    metadata: dict[str, Any]
+    error_message: str | None = None
 
     @property
     def is_successful(self) -> bool:
@@ -59,7 +60,7 @@ class BaseSystem(ABC):
     """
 
     def __init__(
-        self, components: Dict[str, BaseComponent], name: Optional[str] = None,
+        self, components: dict[str, BaseComponent], name: str | None = None,
     ):
         """
         Initialize the system.
@@ -90,7 +91,7 @@ class BaseSystem(ABC):
         """
 
     @abstractmethod
-    def solve(self, inputs: Dict[str, np.ndarray]) -> SystemResult:
+    def solve(self, inputs: dict[str, np.ndarray]) -> SystemResult:
         """
         Solve the complete system.
 
@@ -136,7 +137,7 @@ class BaseSystem(ABC):
         else:
             log.warning(f"Component {name} not found in system {self.name}")
 
-    def get_component(self, name: str) -> Optional[BaseComponent]:
+    def get_component(self, name: str) -> BaseComponent | None:
         """
         Get a component by name.
 
@@ -152,7 +153,7 @@ class BaseSystem(ABC):
         """
         return self.components.get(name)
 
-    def list_components(self) -> List[str]:
+    def list_components(self) -> list[str]:
         """
         Get list of component names.
 
@@ -163,7 +164,7 @@ class BaseSystem(ABC):
         """
         return list(self.components.keys())
 
-    def validate_inputs(self, inputs: Dict[str, np.ndarray]) -> bool:
+    def validate_inputs(self, inputs: dict[str, np.ndarray]) -> bool:
         """
         Validate system inputs.
 
@@ -180,7 +181,7 @@ class BaseSystem(ABC):
         # Override in subclasses for system-specific validation
         return True
 
-    def get_system_info(self) -> Dict[str, Any]:
+    def get_system_info(self) -> dict[str, Any]:
         """
         Get system information.
 

@@ -10,7 +10,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 # Add the project root to the path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -25,7 +25,7 @@ def generate_migration_plan(
     data_file: str,
     output_file: str,
     include_detailed_analysis: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate a comprehensive MA57 migration plan.
 
@@ -105,7 +105,7 @@ def generate_migration_plan(
     return migration_plan
 
 
-def generate_implementation_timeline(priority: str) -> Dict[str, Any]:
+def generate_implementation_timeline(priority: str) -> dict[str, Any]:
     """Generate implementation timeline based on priority."""
     if priority == "high":
         return {
@@ -131,7 +131,7 @@ def generate_implementation_timeline(priority: str) -> Dict[str, Any]:
     }
 
 
-def generate_risk_assessment(analysis) -> Dict[str, Any]:
+def generate_risk_assessment(analysis) -> dict[str, Any]:
     """Generate risk assessment for migration."""
     risks = []
     mitigations = []
@@ -167,7 +167,7 @@ def generate_risk_assessment(analysis) -> Dict[str, Any]:
     }
 
 
-def generate_cost_benefit_analysis(analysis) -> Dict[str, Any]:
+def generate_cost_benefit_analysis(analysis) -> dict[str, Any]:
     """Generate cost-benefit analysis for migration."""
     costs = []
     benefits = []
@@ -209,7 +209,7 @@ def generate_cost_benefit_analysis(analysis) -> Dict[str, Any]:
     }
 
 
-def print_plan_summary(plan: Dict[str, Any]):
+def print_plan_summary(plan: dict[str, Any]):
     """Print a summary of the migration plan."""
     summary = plan["executive_summary"]
 

@@ -4,12 +4,13 @@ Collocation-based optimization methods.
 This module implements optimization using direct collocation methods
 with CasADi and Ipopt, supporting various collocation schemes.
 """
+from __future__ import annotations
 
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable
 
 import numpy as np
 
@@ -40,7 +41,7 @@ def make_uniform_grid(n: int) -> CollocationGrid:
 
 def central_diff(
     values: Sequence[float], h: float,
-) -> Tuple[Sequence[float], Sequence[float]]:
+) -> tuple[Sequence[float], Sequence[float]]:
     n = len(values)
     d = [0.0] * n
     d2 = [0.0] * n
@@ -93,7 +94,7 @@ class CollocationOptimizer(BaseOptimizer):
     optimal control problems with high accuracy.
     """
 
-    def __init__(self, settings: Optional[CollocationSettings] = None):
+    def __init__(self, settings: CollocationSettings | None = None):
         super().__init__("CollocationOptimizer")
         self.settings = settings or CollocationSettings()
         self._is_configured = True
@@ -133,7 +134,7 @@ class CollocationOptimizer(BaseOptimizer):
         self,
         objective: Callable,
         constraints: Any,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -196,8 +197,8 @@ class CollocationOptimizer(BaseOptimizer):
         constraints: Any,
         time_horizon: float,
         n_points: int,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
-    ) -> Dict[str, np.ndarray]:
+        initial_guess: dict[str, np.ndarray] | None = None,
+    ) -> dict[str, np.ndarray]:
         """
         Solve the collocation problem.
 
@@ -229,7 +230,7 @@ class CollocationOptimizer(BaseOptimizer):
 
     def _solve_motion_law_problem(
         self, constraints: Any, time_horizon: float, n_points: int,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Solve motion law problem using the new motion law optimizer.
 
@@ -290,7 +291,7 @@ class CollocationOptimizer(BaseOptimizer):
 
     def _generate_analytical_solution(
         self, t: np.ndarray, constraints: Any, time_horizon: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Generate analytical solutions based on motion type.
 
@@ -355,7 +356,7 @@ class CollocationOptimizer(BaseOptimizer):
         time_horizon: float,
         upstroke_duration_percent: float,
         zero_accel_duration_percent: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Generate a minimum jerk motion profile (smooth S-curve) with user-specified timing."""
         n_points = len(t)
 
@@ -431,7 +432,7 @@ class CollocationOptimizer(BaseOptimizer):
         time_horizon: float,
         upstroke_duration_percent: float,
         zero_accel_duration_percent: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Generate a minimum time motion profile (bang-bang control) with user-specified timing."""
         n_points = len(t)
 
@@ -513,7 +514,7 @@ class CollocationOptimizer(BaseOptimizer):
         time_horizon: float,
         upstroke_duration_percent: float,
         zero_accel_duration_percent: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Generate a minimum energy motion profile (smooth acceleration) with user-specified timing."""
         n_points = len(t)
 
@@ -565,8 +566,8 @@ class CollocationOptimizer(BaseOptimizer):
         }
 
     def _calculate_objective_value(
-        self, objective: Callable, solution: Dict[str, np.ndarray],
-    ) -> Optional[float]:
+        self, objective: Callable, solution: dict[str, np.ndarray],
+    ) -> float | None:
         """Calculate the objective value for the solution."""
         try:
             # Prefer jerk-squared integral when available (common for smoothness minimization)
@@ -587,7 +588,7 @@ class CollocationOptimizer(BaseOptimizer):
             log.warning(f"Could not calculate objective value: {e}")
             return None
 
-    def get_collocation_info(self) -> Dict[str, Any]:
+    def get_collocation_info(self) -> dict[str, Any]:
         """Get information about the collocation method."""
         return {
             "method": self.settings.method,

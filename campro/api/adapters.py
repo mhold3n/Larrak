@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from campro.api.solve_report import SolveReport
 from campro.diagnostics import RUN_ID
@@ -16,7 +16,7 @@ def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  #
     )
 
     # Extract basic residuals if present
-    residuals: Dict[str, float] = {}
+    residuals: dict[str, float] = {}
     conv = getattr(result, "convergence_info", {}) or {}
     for k in (
         "primal_inf",
@@ -49,7 +49,7 @@ def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  #
                 residuals[k_dst] = float(v)
 
     # Artifacts are populated by diagnostics elsewhere; include runs log path
-    artifacts: Dict[str, Any] = {
+    artifacts: dict[str, Any] = {
         "ipopt_log": f"runs/{RUN_ID}-ipopt.log",
         "run_meta": f"runs/{RUN_ID}.json",
     }
@@ -108,7 +108,7 @@ def unified_data_to_solve_report(data: UnifiedOptimizationData) -> SolveReport: 
     status_str = str(final_status).lower()
 
     # Collect residual-like values if available via analyses
-    residuals: Dict[str, float] = {}
+    residuals: dict[str, float] = {}
     for phase_attr in (
         "primary_ipopt_analysis",
         "secondary_ipopt_analysis",
@@ -151,7 +151,7 @@ def unified_data_to_solve_report(data: UnifiedOptimizationData) -> SolveReport: 
             n_iter = it
             break
 
-    artifacts: Dict[str, Any] = {
+    artifacts: dict[str, Any] = {
         "ipopt_log": f"runs/{RUN_ID}-ipopt.log",
         "run_meta": f"runs/{RUN_ID}.json",
     }

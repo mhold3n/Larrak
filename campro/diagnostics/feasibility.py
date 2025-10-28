@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
 
 
 @dataclass
 class FeasibilityReport:
     feasible: bool
     max_violation: float
-    violations: Dict[str, float] = field(default_factory=dict)
-    recommendations: List[str] = field(default_factory=list)
+    violations: dict[str, float] = field(default_factory=dict)
+    recommendations: list[str] = field(default_factory=list)
 
 
-def _pair_ok(bounds: Dict[str, Tuple[float, float]], key: str) -> float:
+def _pair_ok(bounds: dict[str, tuple[float, float]], key: str) -> float:
     try:
         lb, ub = bounds[key]
         return 0.0 if float(lb) < float(ub) else abs(float(lb) - float(ub)) + 1.0
@@ -20,14 +19,14 @@ def _pair_ok(bounds: Dict[str, Tuple[float, float]], key: str) -> float:
         return 0.0
 
 
-def check_feasibility(constraints: Dict, bounds: Dict) -> FeasibilityReport:
+def check_feasibility(constraints: dict, bounds: dict) -> FeasibilityReport:
     """Phase-0 feasibility check using fast heuristics.
 
     The goal is to detect obvious inconsistencies early, before building the NLP.
     This is intentionally lightweight and conservative.
     """
-    violations: Dict[str, float] = {}
-    recs: List[str] = []
+    violations: dict[str, float] = {}
+    recs: list[str] = []
 
     stroke = float(constraints.get("stroke", 0.0) or 0.0)
     cycle_time = float(constraints.get("cycle_time", 0.0) or 0.0)
@@ -91,7 +90,8 @@ def check_feasibility(constraints: Dict, bounds: Dict) -> FeasibilityReport:
                 if float(lb) >= float(ub):
                     violations[f"pair_order:{key}"] = abs(float(lb) - float(ub)) + 1.0
                     recs.append(f"Ensure {key} lower < upper bound")
-            except Exception:
+            except Exception as e:
+                log.debug(f"Skipping constraint pair {key} due to error: {e}")
                 continue
 
     max_violation = max(violations.values()) if violations else 0.0
@@ -105,7 +105,7 @@ def check_feasibility(constraints: Dict, bounds: Dict) -> FeasibilityReport:
     )
 
 
-def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
+def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     """Phase-0 feasibility via slack-minimization NLP using CasADi/Ipopt.
 
     - Variables: position samples x[i] on a uniform grid over θ∈[0, 2π], plus
@@ -182,9 +182,9 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
                 2.0 * (dtheta**3)
             )
 
-    g_list: List[ca.SX] = []
-    lbg: List[float] = []
-    ubg: List[float] = []
+    g_list: list[ca.SX] = []
+    lbg: list[float] = []
+    ubg: list[float] = []
 
     # Equality constraints with two-sided slack: -s <= e(x) <= s
     e_vals = [x[0] - 0.0, x[idx_up] - stroke, x[N - 1] - 0.0]
@@ -311,7 +311,7 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
         s_j_val = z_opt[ptr : ptr + n_sj] if n_sj else np.array([])
 
         # Summarize violations
-        violations: Dict[str, float] = {}
+        violations: dict[str, float] = {}
         eq_names = ["eq_start", "eq_upstroke", "eq_end"]
         for name, v in zip(eq_names, s_eq_val):
             violations[name] = float(abs(v))
@@ -325,7 +325,7 @@ def check_feasibility_nlp(constraints: Dict, bounds: Dict) -> FeasibilityReport:
         max_violation = max(violations.values()) if violations else 0.0
         feasible = max_violation <= 1e-6
 
-        recs: List[str] = []
+        recs: list[str] = []
         # Basic recommendation based on dominant violation
         if not feasible:
             dominant = max(violations, key=violations.get)

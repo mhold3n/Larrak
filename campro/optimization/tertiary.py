@@ -6,10 +6,11 @@ optimization context from previous layers, including results, constraints,
 and optimization rules. This enables robust tuning of initial motion laws
 and follower linkage placement relative to cam center.
 """
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import numpy as np
 
@@ -42,7 +43,7 @@ class LinkageParameters:
     follower_radius: float = 5.0
     follower_offset: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "cam_center_x": self.cam_center_x,
@@ -56,7 +57,7 @@ class LinkageParameters:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LinkageParameters":
+    def from_dict(cls, data: dict[str, Any]) -> LinkageParameters:
         """Create from dictionary."""
         return cls(**data)
 
@@ -75,8 +76,8 @@ class TertiaryOptimizer(BaseOptimizer):
     def __init__(
         self,
         name: str = "TertiaryOptimizer",
-        registry: Optional[OptimizationRegistry] = None,
-        settings: Optional[CollocationSettings] = None,
+        registry: OptimizationRegistry | None = None,
+        settings: CollocationSettings | None = None,
     ):
         super().__init__(name)
         self.registry = registry or OptimizationRegistry()
@@ -111,7 +112,7 @@ class TertiaryOptimizer(BaseOptimizer):
         self,
         objective: Callable,
         constraints: Any,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -215,11 +216,11 @@ class TertiaryOptimizer(BaseOptimizer):
         self,
         primary_optimizer_id: str = "motion_optimizer",
         secondary_optimizer_id: str = "secondary_optimizer",
-        tertiary_constraints: Optional[Dict[str, Any]] = None,
-        tertiary_relationships: Optional[Dict[str, Any]] = None,
-        optimization_targets: Optional[Dict[str, Any]] = None,
-        processing_function: Optional[Callable] = None,
-        objective_function: Optional[Callable] = None,
+        tertiary_constraints: dict[str, Any] | None = None,
+        tertiary_relationships: dict[str, Any] | None = None,
+        optimization_targets: dict[str, Any] | None = None,
+        processing_function: Callable | None = None,
+        objective_function: Callable | None = None,
     ) -> OptimizationResult:
         """
         Process optimization context using external specifications.
@@ -257,7 +258,7 @@ class TertiaryOptimizer(BaseOptimizer):
             processing_function=processing_function,
         )
 
-    def _get_complete_optimization_context(self, **kwargs) -> Dict[str, Any]:
+    def _get_complete_optimization_context(self, **kwargs) -> dict[str, Any]:
         """
         Get complete optimization context including results, constraints, and rules.
 
@@ -311,8 +312,8 @@ class TertiaryOptimizer(BaseOptimizer):
         return context
 
     def _calculate_objective_value(
-        self, objective: Callable, solution: Dict[str, np.ndarray],
-    ) -> Optional[float]:
+        self, objective: Callable, solution: dict[str, np.ndarray],
+    ) -> float | None:
         """Calculate the objective value for the solution."""
         try:
             # Extract arrays from solution
@@ -331,7 +332,7 @@ class TertiaryOptimizer(BaseOptimizer):
     def _validate_inputs(self, objective: Callable, constraints: Any) -> None:
         """Validate optimization inputs for tertiary optimization."""
         if not callable(objective):
-            raise ValueError("Objective must be callable")
+            raise TypeError("Objective must be callable")
 
         # Constraints can be None for tertiary optimization as we use context
         # if constraints is None:
@@ -346,14 +347,14 @@ class TertiaryOptimizer(BaseOptimizer):
         self,
         primary_optimizer_id: str = "motion_optimizer",
         secondary_optimizer_id: str = "secondary_optimizer",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get complete optimization context for analysis."""
         return self._get_complete_optimization_context(
             primary_optimizer_id=primary_optimizer_id,
             secondary_optimizer_id=secondary_optimizer_id,
         )
 
-    def get_optimizer_info(self) -> Dict[str, Any]:
+    def get_optimizer_info(self) -> dict[str, Any]:
         """Get information about the tertiary optimizer."""
         return {
             "name": self.name,

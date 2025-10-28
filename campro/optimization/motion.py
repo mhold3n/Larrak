@@ -4,9 +4,10 @@ Motion law optimization routines.
 This module implements optimization for motion law problems using
 various objective functions and constraint systems.
 """
+from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable
 
 import numpy as np
 
@@ -40,8 +41,8 @@ class MotionOptimizer(BaseOptimizer):
 
     def __init__(
         self,
-        settings: Optional[CollocationSettings] = None,
-        registry: Optional[OptimizationRegistry] = None,
+        settings: CollocationSettings | None = None,
+        registry: OptimizationRegistry | None = None,
     ):
         super().__init__("MotionOptimizer")
         self.collocation_optimizer = CollocationOptimizer(settings)
@@ -62,7 +63,7 @@ class MotionOptimizer(BaseOptimizer):
         self,
         objective: Callable,
         constraints: Any,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -90,12 +91,12 @@ class MotionOptimizer(BaseOptimizer):
 
     def solve_minimum_time(
         self,
-        constraints: Union[MotionConstraints, CamMotionConstraints],
+        constraints: MotionConstraints | CamMotionConstraints,
         distance: float,
         max_velocity: float,
         max_acceleration: float,
         max_jerk: float,
-        time_horizon: Optional[float] = None,
+        time_horizon: float | None = None,
     ) -> OptimizationResult:
         """
         Solve minimum time motion law problem.
@@ -133,7 +134,7 @@ class MotionOptimizer(BaseOptimizer):
 
     def solve_minimum_energy(
         self,
-        constraints: Union[MotionConstraints, CamMotionConstraints],
+        constraints: MotionConstraints | CamMotionConstraints,
         distance: float,
         max_velocity: float,
         max_acceleration: float,
@@ -174,12 +175,12 @@ class MotionOptimizer(BaseOptimizer):
 
     def solve_minimum_jerk(
         self,
-        constraints: Union[MotionConstraints, CamMotionConstraints],
+        constraints: MotionConstraints | CamMotionConstraints,
         distance: float,
         max_velocity: float,
         max_acceleration: float,
         max_jerk: float,
-        time_horizon: Optional[float] = None,
+        time_horizon: float | None = None,
     ) -> OptimizationResult:
         """
         Solve minimum jerk motion law problem.
@@ -218,9 +219,9 @@ class MotionOptimizer(BaseOptimizer):
     def solve_custom_objective(
         self,
         objective_function: Callable,
-        constraints: Union[MotionConstraints, CamMotionConstraints],
+        constraints: MotionConstraints | CamMotionConstraints,
         distance: float,
-        time_horizon: Optional[float] = None,
+        time_horizon: float | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -347,9 +348,9 @@ class MotionOptimizer(BaseOptimizer):
         self,
         result: OptimizationResult,
         optimizer_id: str = "motion_optimizer",
-        metadata: Optional[Dict[str, Any]] = None,
-        constraints: Optional[Dict[str, Any]] = None,
-        optimization_rules: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
+        constraints: dict[str, Any] | None = None,
+        optimization_rules: dict[str, Any] | None = None,
     ) -> None:
         """
         Store optimization result in the registry with complete context.
@@ -411,7 +412,7 @@ class MotionOptimizer(BaseOptimizer):
 
         log.info(f"Stored optimization result with complete context for {optimizer_id}")
 
-    def get_optimizer_info(self) -> Dict[str, Any]:
+    def get_optimizer_info(self) -> dict[str, Any]:
         """Get information about the motion optimizer."""
         return {
             "name": self.name,

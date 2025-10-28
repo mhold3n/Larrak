@@ -3,9 +3,9 @@
 Provides a stable file sink for Ipopt output per run and helpers to parse
 basic statistics from the log file when available.
 """
+from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
 
 from campro.optimization.ipopt_log_parser import parse_ipopt_log_file
 
@@ -25,7 +25,7 @@ def ipopt_output_path() -> str:
     return f"runs/{RUN_ID}-ipopt.log"
 
 
-def inject_ipopt_file_sink(opts: Dict[str, object]) -> Dict[str, object]:
+def inject_ipopt_file_sink(opts: dict[str, object]) -> dict[str, object]:
     """Inject file sink options into an Ipopt options dict if absent.
 
     Does not override existing settings.
@@ -37,7 +37,7 @@ def inject_ipopt_file_sink(opts: Dict[str, object]) -> Dict[str, object]:
     return opts
 
 
-def get_ipopt_log_stats(path: Optional[str] = None) -> Dict[str, object]:
+def get_ipopt_log_stats(path: str | None = None) -> dict[str, object]:
     """Parse Ipopt log file and return a stats dict.
 
     If ``path`` is None, uses the current run's default log path.

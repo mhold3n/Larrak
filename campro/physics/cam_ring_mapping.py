@@ -8,9 +8,10 @@ This module implements the mathematical framework for relating:
 
 Based on the cam-ring-linear follower mapping document.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -40,7 +41,7 @@ class CamRingParameters:
     # Contact parameters
     contact_type: str = "external"  # "external" or "internal"
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Convert to dictionary."""
         return {
             "base_radius": self.base_radius,
@@ -59,7 +60,7 @@ class CamRingMapper:
     to cam geometry and ring follower design through rolling kinematics.
     """
 
-    def __init__(self, parameters: Optional[CamRingParameters] = None):
+    def __init__(self, parameters: CamRingParameters | None = None):
         """
         Initialize the cam-ring mapper.
 
@@ -75,7 +76,7 @@ class CamRingMapper:
 
     def compute_cam_curves(
         self, theta: np.ndarray, x_theta: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Compute cam curves from linear follower motion law via connecting rod.
 
@@ -300,9 +301,9 @@ class CamRingMapper:
         rho_c: np.ndarray,
         R_psi: np.ndarray,
         driver: str = "cam",
-        omega: Optional[float] = None,
-        Omega: Optional[float] = None,
-    ) -> Dict[str, np.ndarray]:
+        omega: float | None = None,
+        Omega: float | None = None,
+    ) -> dict[str, np.ndarray]:
         """
         Compute time-based kinematics for the system.
 
@@ -355,8 +356,8 @@ class CamRingMapper:
         }
 
     def map_linear_to_ring_follower(
-        self, theta: np.ndarray, x_theta: np.ndarray, ring_design: Dict[str, Any],
-    ) -> Dict[str, np.ndarray]:
+        self, theta: np.ndarray, x_theta: np.ndarray, ring_design: dict[str, Any],
+    ) -> dict[str, np.ndarray]:
         """
         Complete mapping from linear follower motion law to ring follower design.
 
@@ -453,7 +454,7 @@ class CamRingMapper:
 
     def _create_enhanced_grid(
         self, theta_rad: np.ndarray, x_theta: np.ndarray, base_length: int,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Create an enhanced grid with higher resolution at critical points (TDC/BDC)
         and enforce proper boundary continuity between 0 and 2π.
@@ -664,7 +665,7 @@ class CamRingMapper:
 
     def _generate_complete_ring_profile(
         self, psi: np.ndarray, R_psi: np.ndarray,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Generate a complete 360° ring profile from the meshing law solution.
 
@@ -709,7 +710,7 @@ class CamRingMapper:
 
         return psi_complete, R_complete
 
-    def validate_design(self, results: Dict[str, np.ndarray]) -> Dict[str, bool]:
+    def validate_design(self, results: dict[str, np.ndarray]) -> dict[str, bool]:
         """
         Validate the cam-ring design for practical constraints.
 

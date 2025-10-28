@@ -5,7 +5,6 @@ This module provides a modular component for computing curvature
 and osculating radius of cam curves.
 """
 
-from typing import Dict, List
 
 import numpy as np
 
@@ -28,7 +27,7 @@ class CurvatureComponent(BaseComponent):
         """Validate component parameters."""
         # No specific parameters required for curvature computation
 
-    def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
+    def compute(self, inputs: dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute curvature and osculating radius.
 
@@ -143,10 +142,10 @@ class CurvatureComponent(BaseComponent):
 
         return dy
 
-    def get_required_inputs(self) -> List[str]:
+    def get_required_inputs(self) -> list[str]:
         """Get list of required input names."""
         return ["theta", "r_theta"]
 
-    def get_outputs(self) -> List[str]:
+    def get_outputs(self) -> list[str]:
         """Get list of output names."""
         return ["kappa", "rho", "r_prime", "r_double_prime"]

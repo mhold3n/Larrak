@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Union
 
 import numpy as np
 
@@ -8,14 +8,14 @@ Number = Union[int, float]
 ArrayLike = Union[Number, np.ndarray]
 
 
-def compute_scaling_vector(bounds: Dict[str, Tuple[float, float]]) -> Dict[str, float]:
+def compute_scaling_vector(bounds: dict[str, tuple[float, float]]) -> dict[str, float]:
     """Compute variable scaling so typical magnitudes are O(1).
 
     For each variable, uses the max(|lb|, |ub|) to compute a scale factor s
     such that the scaled variable z = s * x has magnitude ~O(1).
     If the magnitude is too small, returns 1.0 to avoid blow-ups.
     """
-    scales: Dict[str, float] = {}
+    scales: dict[str, float] = {}
     for var, lr in bounds.items():
         if not isinstance(lr, (tuple, list)) or len(lr) != 2:
             continue
@@ -42,8 +42,8 @@ def unscale_value(value: ArrayLike, scale: ArrayLike) -> ArrayLike:
 
 
 def scale_bounds(
-    bounds: Tuple[ArrayLike, ArrayLike], scale: ArrayLike,
-) -> Tuple[np.ndarray, np.ndarray]:
+    bounds: tuple[ArrayLike, ArrayLike], scale: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
     """Scale lower/upper bounds by factor s (z = s*x).
 
     Returns new (lb_scaled, ub_scaled).
@@ -53,10 +53,10 @@ def scale_bounds(
 
 
 def scale_dict(
-    values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike],
-) -> Dict[str, np.ndarray]:
+    values: dict[str, ArrayLike], scales: dict[str, ArrayLike],
+) -> dict[str, np.ndarray]:
     """Elementwise scale a dict of arrays by matching keys in scales."""
-    out: Dict[str, np.ndarray] = {}
+    out: dict[str, np.ndarray] = {}
     for k, v in values.items():
         s = scales.get(k, 1.0)
         out[k] = scale_value(v, s)
@@ -64,10 +64,10 @@ def scale_dict(
 
 
 def unscale_dict(
-    values: Dict[str, ArrayLike], scales: Dict[str, ArrayLike],
-) -> Dict[str, np.ndarray]:
+    values: dict[str, ArrayLike], scales: dict[str, ArrayLike],
+) -> dict[str, np.ndarray]:
     """Elementwise unscale a dict of arrays by matching keys in scales."""
-    out: Dict[str, np.ndarray] = {}
+    out: dict[str, np.ndarray] = {}
     for k, v in values.items():
         s = scales.get(k, 1.0)
         out[k] = unscale_value(v, s)
@@ -87,7 +87,7 @@ def _import_casadi():  # pragma: no cover - lightweight lazy import
 
 
 def make_scaled_symbol(
-    name: str, shape: Tuple[int, ...] | int, scale: ArrayLike, *, kind: str = "MX",
+    name: str, shape: tuple[int, ...] | int, scale: ArrayLike, *, kind: str = "MX",
 ):
     """Create a scaled decision variable for CasADi NLPs.
 
@@ -156,8 +156,8 @@ def unscale_expr(expr: Any, scale: ArrayLike) -> Any:
 
 
 def build_scaled_nlp(
-    nlp: Dict[str, Any], scale: ArrayLike, *, kind: str | None = None,
-) -> Dict[str, Any]:
+    nlp: dict[str, Any], scale: ArrayLike, *, kind: str | None = None,
+) -> dict[str, Any]:
     """Build a scaled CasADi NLP from an unscaled one.
 
     Given an unscaled NLP dict {'x': x, 'f': f, 'g': g}, constructs a new
@@ -201,7 +201,7 @@ def build_scaled_nlp(
 
 def solve_scaled_nlpsol(
     name: str,
-    nlp: Dict[str, Any],
+    nlp: dict[str, Any],
     scale: ArrayLike,
     *,
     x0: ArrayLike | None = None,
@@ -209,7 +209,7 @@ def solve_scaled_nlpsol(
     ubx: ArrayLike | None = None,
     lbg: ArrayLike | None = None,
     ubg: ArrayLike | None = None,
-    options: Dict[str, Any] | None = None,
+    options: dict[str, Any] | None = None,
     linear_solver: str | None = None,
 ):
     """Create a scaled Ipopt solver and scaled argument dict ready to call.
@@ -225,7 +225,7 @@ def solve_scaled_nlpsol(
         name, nlp_scaled, options or {}, linear_solver=linear_solver,
     )
 
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     if x0 is not None:
         kwargs["x0"] = scale_value(x0, scale)
     if lbx is not None and ubx is not None:

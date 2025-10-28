@@ -4,10 +4,11 @@ Standardized result types for physics computations.
 This module defines common result types used across the physics system
 for consistent data handling and error reporting.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 
@@ -37,10 +38,10 @@ class PhysicsResult:
     """
 
     status: PhysicsStatus
-    data: Dict[str, np.ndarray]
-    metadata: Dict[str, Any]
-    error_message: Optional[str] = None
-    warnings: Optional[list] = None
+    data: dict[str, np.ndarray]
+    metadata: dict[str, Any]
+    error_message: str | None = None
+    warnings: list | None = None
 
     def __post_init__(self):
         """Initialize warnings list if not provided."""
@@ -77,7 +78,7 @@ class PhysicsResult:
             raise KeyError(f"Data key '{key}' not found")
         return self.data[key].shape
 
-    def get_data_info(self) -> Dict[str, Dict[str, Any]]:
+    def get_data_info(self) -> dict[str, dict[str, Any]]:
         """Get information about all data arrays."""
         info = {}
         for key, array in self.data.items():
@@ -101,7 +102,7 @@ class PhysicsResult:
                 return False
         return True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert result to dictionary (excluding numpy arrays)."""
         return {
             "status": self.status.value,
@@ -114,8 +115,8 @@ class PhysicsResult:
 
     @classmethod
     def success(
-        cls, data: Dict[str, np.ndarray], metadata: Optional[Dict[str, Any]] = None,
-    ) -> "PhysicsResult":
+        cls, data: dict[str, np.ndarray], metadata: dict[str, Any] | None = None,
+    ) -> PhysicsResult:
         """Create a successful result."""
         return cls(
             status=PhysicsStatus.COMPLETED,
@@ -125,8 +126,8 @@ class PhysicsResult:
 
     @classmethod
     def failure(
-        cls, error_message: str, metadata: Optional[Dict[str, Any]] = None,
-    ) -> "PhysicsResult":
+        cls, error_message: str, metadata: dict[str, Any] | None = None,
+    ) -> PhysicsResult:
         """Create a failed result."""
         return cls(
             status=PhysicsStatus.FAILED,

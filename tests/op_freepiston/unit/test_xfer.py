@@ -9,7 +9,7 @@ def test_woschni_positive_and_scaling():
     assert h1 > 0.0 and h2 > h1
 
 
-def test_heat_loss_rate_linear_in_area_and_deltaT():
+def test_heat_loss_rate_linear_in_area_and_deltaT():  # noqa: N802
     h = 100.0
     A = 0.02
     Tw = 450.0

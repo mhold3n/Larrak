@@ -80,7 +80,8 @@ def test_ipopt_progress_smoke_under_100_iters(tmp_path, monkeypatch):
                 inf_pr = float(parts[2])
                 inf_du = float(parts[3])
                 rows.append((it, inf_pr, inf_du))
-            except Exception:
+            except Exception as e:
+                log.debug(f"Skipping line due to parsing error: {e}")
                 continue
 
     # Expect a reasonable number of iterations and strong reduction in dual infeasibility

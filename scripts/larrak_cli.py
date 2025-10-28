@@ -12,14 +12,14 @@ import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from campro.api import ProblemSpec, solve_motion
 from campro.diagnostics.run_metadata import RUN_ID
 from campro.optimization.solver_analysis import analyze_ipopt_run
 
 
-def _load_spec(path: Path) -> Dict[str, Any]:
+def _load_spec(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     if path.suffix.lower() in {".yml", ".yaml"}:
         try:
@@ -33,7 +33,7 @@ def _load_spec(path: Path) -> Dict[str, Any]:
     return json.loads(text)
 
 
-def _to_problem_spec(d: Dict[str, Any]) -> ProblemSpec:
+def _to_problem_spec(d: dict[str, Any]) -> ProblemSpec:
     stroke = float(d.get("stroke", 20.0))
     cycle_time = float(d.get("cycle_time", 1.0))
     phases = d.get("phases", {}) or {}

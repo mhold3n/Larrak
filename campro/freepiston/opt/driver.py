@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 
@@ -21,7 +21,7 @@ from campro.logging import get_logger
 log = get_logger(__name__)
 
 
-def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
+def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
     """
     Solve OP engine cycle optimization using IPOPT.
 
@@ -121,7 +121,7 @@ def solve_cycle(P: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _create_ipopt_options(
-    solver_opts: Dict[str, Any], P: Dict[str, Any],
+    solver_opts: dict[str, Any], P: dict[str, Any],
 ) -> IPOPTOptions:
     """Create IPOPT options from problem parameters."""
     # Get problem type to select appropriate options
@@ -169,8 +169,8 @@ def _create_ipopt_options(
 
 def _setup_optimization_bounds(
     nlp: Any,
-    P: Dict[str, Any],
-    warm_start: Dict[str, Any],
+    P: dict[str, Any],
+    warm_start: dict[str, Any],
 ) -> tuple:
     """Set up optimization bounds and initial guess."""
     if nlp is None:
@@ -215,7 +215,7 @@ def _setup_optimization_bounds(
         return None, None, None, None, None, None
 
 
-def _generate_physics_based_initial_guess(n_vars: int, P: Dict[str, Any]) -> np.ndarray:
+def _generate_physics_based_initial_guess(n_vars: int, P: dict[str, Any]) -> np.ndarray:
     """Generate physics-based initial guess for better thermal efficiency convergence."""
     x0 = np.zeros(n_vars)
 
@@ -311,7 +311,7 @@ def _apply_problem_bounds(
     ubx: np.ndarray,
     lbg: np.ndarray,
     ubg: np.ndarray,
-    P: Dict[str, Any],
+    P: dict[str, Any],
 ) -> None:
     """Apply problem-specific bounds."""
     # Get problem parameters
@@ -361,7 +361,7 @@ def _apply_problem_bounds(
             ubx[i + 5] = T_max
 
 
-def solve_cycle_robust(P: Dict[str, Any]) -> Dict[str, Any]:
+def solve_cycle_robust(P: dict[str, Any]) -> dict[str, Any]:
     """
     Solve OP engine cycle with robust IPOPT settings.
 
@@ -381,9 +381,9 @@ def solve_cycle_robust(P: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def solve_cycle_with_warm_start(
-    P: Dict[str, Any],
+    P: dict[str, Any],
     x0: np.ndarray,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Solve OP engine cycle with warm start.
 
@@ -402,9 +402,9 @@ def solve_cycle_with_warm_start(
 
 
 def solve_cycle_with_refinement(
-    P: Dict[str, Any],
+    P: dict[str, Any],
     refinement_strategy: str = "adaptive",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Solve cycle with 0D to 1D refinement switching.
 
@@ -465,7 +465,7 @@ def solve_cycle_with_refinement(
     return result_0d
 
 
-def _should_refine_error_based(result_0d: Dict[str, Any], P: Dict[str, Any]) -> bool:
+def _should_refine_error_based(result_0d: dict[str, Any], P: dict[str, Any]) -> bool:
     """Determine if refinement is needed based on error estimates."""
     # Check convergence criteria
     if result_0d.get("kkt_error", float("inf")) > 1e-4:
@@ -484,7 +484,7 @@ def _should_refine_error_based(result_0d: Dict[str, Any], P: Dict[str, Any]) -> 
     return False
 
 
-def _should_refine_adaptive(result_0d: Dict[str, Any], P: Dict[str, Any]) -> bool:
+def _should_refine_adaptive(result_0d: dict[str, Any], P: dict[str, Any]) -> bool:
     """Determine if refinement is needed based on problem characteristics."""
     # Check problem complexity
     if P.get("complex_geometry", False):
@@ -506,9 +506,9 @@ def _should_refine_adaptive(result_0d: Dict[str, Any], P: Dict[str, Any]) -> boo
 
 
 def _create_warm_start_from_0d(
-    result_0d: Dict[str, Any],
-    P_1d: Dict[str, Any],
-) -> Dict[str, Any]:
+    result_0d: dict[str, Any],
+    P_1d: dict[str, Any],
+) -> dict[str, Any]:
     """Create warm start for 1D solve from 0D solution."""
     if not result_0d["success"] or result_0d["x_opt"] is None:
         return {}
@@ -567,9 +567,9 @@ def _downsample_solution(x_0d: List[float], n_1d: int) -> List[float]:
 
 
 def solve_cycle_adaptive(
-    P: Dict[str, Any],
+    P: dict[str, Any],
     max_refinements: int = 3,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Solve cycle with adaptive refinement strategy.
 

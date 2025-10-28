@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 @dataclass
 class Solution:
-    meta: Dict[str, Any]
-    data: Dict[str, Any]
+    meta: dict[str, Any]
+    data: dict[str, Any]
 
     @property
     def success(self) -> bool:
@@ -21,12 +21,12 @@ class Solution:
         return self.meta.get("optimization", {}).get("iterations", 0)
 
     @property
-    def states(self) -> Dict[str, Any]:
+    def states(self) -> dict[str, Any]:
         """Extract states from data if available."""
         return self.data.get("states", {})
 
     @property
-    def performance_metrics(self) -> Dict[str, Any]:
+    def performance_metrics(self) -> dict[str, Any]:
         """Extract performance metrics from metadata."""
         return self.meta.get("performance_metrics", {})
 

@@ -5,10 +5,11 @@ This module provides torque computation capabilities for crank center optimizati
 integrating motion law data, Litvin gear geometry, and crank kinematics to compute
 instantaneous and cycle-averaged torque outputs.
 """
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -33,7 +34,7 @@ class TorqueAnalysisResult:
     crank_angles: np.ndarray  # Crank angles (rad)
 
     # Analysis parameters
-    crank_center_offset: Tuple[float, float]  # (x, y) offset from gear center (mm)
+    crank_center_offset: tuple[float, float]  # (x, y) offset from gear center (mm)
     crank_radius: float  # Crank radius (mm)
     rod_length: float  # Connecting rod length (mm)
 
@@ -42,7 +43,7 @@ class TorqueAnalysisResult:
     power_output: float  # Average power output (W)
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class PistonTorqueCalculator(BasePhysicsModel):
@@ -56,11 +57,11 @@ class PistonTorqueCalculator(BasePhysicsModel):
 
     def __init__(self, name: str = "PistonTorqueCalculator"):
         super().__init__(name)
-        self._crank_radius: Optional[float] = None
-        self._rod_length: Optional[float] = None
-        self._gear_geometry: Optional[LitvinGearGeometry] = None
-        self._motion_law_data: Optional[Dict[str, np.ndarray]] = None
-        self._load_profile: Optional[np.ndarray] = None
+        self._crank_radius: float | None = None
+        self._rod_length: float | None = None
+        self._gear_geometry: LitvinGearGeometry | None = None
+        self._motion_law_data: dict[str, np.ndarray] | None = None
+        self._load_profile: np.ndarray | None = None
 
     def configure(
         self,
@@ -83,7 +84,7 @@ class PistonTorqueCalculator(BasePhysicsModel):
         if rod_length <= 0:
             raise ValueError("Rod length must be positive")
         if not isinstance(gear_geometry, LitvinGearGeometry):
-            raise ValueError("gear_geometry must be a LitvinGearGeometry instance")
+            raise TypeError("gear_geometry must be a LitvinGearGeometry instance")
 
         self._crank_radius = crank_radius
         self._rod_length = rod_length
@@ -94,7 +95,7 @@ class PistonTorqueCalculator(BasePhysicsModel):
             f"Configured {self.name}: crank_radius={crank_radius}mm, rod_length={rod_length}mm",
         )
 
-    def simulate(self, inputs: Dict[str, Any], **kwargs) -> PhysicsResult:
+    def simulate(self, inputs: dict[str, Any], **kwargs) -> PhysicsResult:
         """
         Compute torque analysis for given inputs.
 
@@ -160,7 +161,7 @@ class PistonTorqueCalculator(BasePhysicsModel):
         self,
         piston_force: float,
         crank_angle: float,
-        crank_center_offset: Tuple[float, float],
+        crank_center_offset: tuple[float, float],
         pressure_angle: float,
     ) -> float:
         """
@@ -201,9 +202,9 @@ class PistonTorqueCalculator(BasePhysicsModel):
 
     def compute_cycle_average_torque(
         self,
-        motion_law_data: Dict[str, np.ndarray],
+        motion_law_data: dict[str, np.ndarray],
         load_profile: np.ndarray,
-        crank_center_offset: Tuple[float, float],
+        crank_center_offset: tuple[float, float],
     ) -> float:
         """
         Compute cycle-averaged torque for complete motion cycle.
@@ -243,9 +244,9 @@ class PistonTorqueCalculator(BasePhysicsModel):
 
     def _compute_torque_analysis(
         self,
-        motion_law_data: Dict[str, np.ndarray],
+        motion_law_data: dict[str, np.ndarray],
         load_profile: np.ndarray,
-        crank_center_offset: Tuple[float, float],
+        crank_center_offset: tuple[float, float],
     ) -> TorqueAnalysisResult:
         """Compute complete torque analysis."""
 
@@ -299,7 +300,7 @@ class PistonTorqueCalculator(BasePhysicsModel):
         )
 
     def _compute_rod_angle(
-        self, crank_angle: float, crank_center_offset: Tuple[float, float],
+        self, crank_angle: float, crank_center_offset: tuple[float, float],
     ) -> float:
         """Compute connecting rod angle accounting for crank center offset."""
 
@@ -315,7 +316,7 @@ class PistonTorqueCalculator(BasePhysicsModel):
         return rod_angle
 
     def _compute_effective_crank_radius(
-        self, crank_angle: float, crank_center_offset: Tuple[float, float],
+        self, crank_angle: float, crank_center_offset: tuple[float, float],
     ) -> float:
         """Compute effective crank radius accounting for center offset."""
 
@@ -339,7 +340,7 @@ class PistonTorqueCalculator(BasePhysicsModel):
         # Use default if not available
         return np.radians(20.0)
 
-    def _validate_motion_law_data(self, motion_law_data: Dict[str, np.ndarray]) -> None:
+    def _validate_motion_law_data(self, motion_law_data: dict[str, np.ndarray]) -> None:
         """Validate motion law data structure."""
 
         required_keys = ["theta", "displacement", "velocity", "acceleration"]
@@ -348,7 +349,7 @@ class PistonTorqueCalculator(BasePhysicsModel):
                 raise ValueError(f"Motion law data missing required key: {key}")
 
             if not isinstance(motion_law_data[key], np.ndarray):
-                raise ValueError(f"Motion law data[{key}] must be numpy array")
+                raise TypeError(f"Motion law data[{key}] must be numpy array")
 
         # Check that all arrays have same length
         lengths = [len(motion_law_data[key]) for key in required_keys]
@@ -356,12 +357,12 @@ class PistonTorqueCalculator(BasePhysicsModel):
             raise ValueError("All motion law arrays must have same length")
 
     def _validate_load_profile(
-        self, load_profile: np.ndarray, motion_law_data: Dict[str, np.ndarray],
+        self, load_profile: np.ndarray, motion_law_data: dict[str, np.ndarray],
     ) -> None:
         """Validate load profile data."""
 
         if not isinstance(load_profile, np.ndarray):
-            raise ValueError("Load profile must be numpy array")
+            raise TypeError("Load profile must be numpy array")
 
         if len(load_profile) != len(motion_law_data["theta"]):
             raise ValueError("Load profile length must match motion law data length")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -24,7 +24,7 @@ class OptimResult:
     best_config: PlanetSynthesisConfig | None
     objective_value: float | None
     feasible: bool
-    ipopt_analysis: Optional[Any] = None  # Will be MA57ReadinessReport when available
+    ipopt_analysis: Any | None = None  # Will be MA57ReadinessReport when available
 
 
 def _order0_objective(cfg: PlanetSynthesisConfig) -> float:

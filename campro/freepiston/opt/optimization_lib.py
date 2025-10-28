@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -46,15 +46,15 @@ class OptimizationConfig:
     """Configuration for motion law optimization."""
 
     # Problem setup
-    geometry: Dict[str, float] = field(default_factory=dict)
-    thermodynamics: Dict[str, float] = field(default_factory=dict)
-    bounds: Dict[str, float] = field(default_factory=dict)
-    constraints: Dict[str, Any] = field(default_factory=dict)
+    geometry: dict[str, float] = field(default_factory=dict)
+    thermodynamics: dict[str, float] = field(default_factory=dict)
+    bounds: dict[str, float] = field(default_factory=dict)
+    constraints: dict[str, Any] = field(default_factory=dict)
 
     # Optimization parameters
-    num: Dict[str, int] = field(default_factory=lambda: {"K": 20, "C": 3})
-    solver: Dict[str, Any] = field(default_factory=dict)
-    objective: Dict[str, Any] = field(
+    num: dict[str, int] = field(default_factory=lambda: {"K": 20, "C": 3})
+    solver: dict[str, Any] = field(default_factory=dict)
+    objective: dict[str, Any] = field(
         default_factory=lambda: {"method": "indicated_work"},
     )
 
@@ -64,11 +64,11 @@ class OptimizationConfig:
     n_cells: int = 50
 
     # Validation and post-processing
-    validation: Dict[str, Any] = field(default_factory=dict)
-    output: Dict[str, Any] = field(default_factory=dict)
+    validation: dict[str, Any] = field(default_factory=dict)
+    output: dict[str, Any] = field(default_factory=dict)
 
     # Advanced options
-    warm_start: Optional[Dict[str, Any]] = None
+    warm_start: dict[str, Any] | None = None
     refinement_strategy: str = "adaptive"
     max_refinements: int = 3
 
@@ -79,7 +79,7 @@ class OptimizationResult:
 
     # Core results
     success: bool
-    solution: Optional[Solution] = None
+    solution: Solution | None = None
     objective_value: float = float("inf")
     iterations: int = 0
     cpu_time: float = 0.0
@@ -91,25 +91,25 @@ class OptimizationResult:
     status: int = -1
 
     # Validation results
-    validation_metrics: Dict[str, Any] = field(default_factory=dict)
-    physics_validation: Dict[str, Any] = field(default_factory=dict)
+    validation_metrics: dict[str, Any] = field(default_factory=dict)
+    physics_validation: dict[str, Any] = field(default_factory=dict)
 
     # Performance metrics
-    performance_metrics: Dict[str, Any] = field(default_factory=dict)
+    performance_metrics: dict[str, Any] = field(default_factory=dict)
 
     # Metadata
-    config: Optional[OptimizationConfig] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    config: OptimizationConfig | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # Warnings and errors
-    warnings: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class SolverBackend(Protocol):
     """Protocol for optimization solver backends."""
 
-    def solve(self, problem: Dict[str, Any]) -> OptimizationResult:
+    def solve(self, problem: dict[str, Any]) -> OptimizationResult:
         """Solve the optimization problem."""
         ...
 
@@ -117,10 +117,10 @@ class SolverBackend(Protocol):
 class IPOPTBackend:
     """IPOPT solver backend."""
 
-    def __init__(self, options: Optional[Dict[str, Any]] = None):
+    def __init__(self, options: dict[str, Any] | None = None):
         self.options = options or {}
 
-    def solve(self, problem: Dict[str, Any]) -> OptimizationResult:
+    def solve(self, problem: dict[str, Any]) -> OptimizationResult:
         """Solve using IPOPT."""
         start_time = time.time()
 
@@ -160,10 +160,10 @@ class IPOPTBackend:
 class RobustIPOPTBackend:
     """Robust IPOPT solver backend with conservative settings."""
 
-    def __init__(self, options: Optional[Dict[str, Any]] = None):
+    def __init__(self, options: dict[str, Any] | None = None):
         self.options = options or {}
 
-    def solve(self, problem: Dict[str, Any]) -> OptimizationResult:
+    def solve(self, problem: dict[str, Any]) -> OptimizationResult:
         """Solve using robust IPOPT settings."""
         start_time = time.time()
 
@@ -202,12 +202,12 @@ class AdaptiveBackend:
     """Adaptive solver backend with refinement strategy."""
 
     def __init__(
-        self, max_refinements: int = 3, options: Optional[Dict[str, Any]] = None,
+        self, max_refinements: int = 3, options: dict[str, Any] | None = None,
     ):
         self.max_refinements = max_refinements
         self.options = options or {}
 
-    def solve(self, problem: Dict[str, Any]) -> OptimizationResult:
+    def solve(self, problem: dict[str, Any]) -> OptimizationResult:
         """Solve using adaptive refinement strategy."""
         start_time = time.time()
 
@@ -247,9 +247,9 @@ class ProblemBuilder:
 
     def __init__(self, config: OptimizationConfig):
         self.config = config
-        self._problem: Dict[str, Any] = {}
+        self._problem: dict[str, Any] = {}
 
-    def build(self) -> Dict[str, Any]:
+    def build(self) -> dict[str, Any]:
         """Build the complete optimization problem."""
         self._problem = {
             "geometry": self.config.geometry,
@@ -274,32 +274,32 @@ class ProblemBuilder:
 
         return self._problem
 
-    def with_geometry(self, geometry: Dict[str, float]) -> ProblemBuilder:
+    def with_geometry(self, geometry: dict[str, float]) -> ProblemBuilder:
         """Set geometry parameters."""
         self.config.geometry.update(geometry)
         return self
 
-    def with_thermodynamics(self, thermo: Dict[str, float]) -> ProblemBuilder:
+    def with_thermodynamics(self, thermo: dict[str, float]) -> ProblemBuilder:
         """Set thermodynamics parameters."""
         self.config.thermodynamics.update(thermo)
         return self
 
-    def with_bounds(self, bounds: Dict[str, float]) -> ProblemBuilder:
+    def with_bounds(self, bounds: dict[str, float]) -> ProblemBuilder:
         """Set variable bounds."""
         self.config.bounds.update(bounds)
         return self
 
-    def with_constraints(self, constraints: Dict[str, Any]) -> ProblemBuilder:
+    def with_constraints(self, constraints: dict[str, Any]) -> ProblemBuilder:
         """Set constraints."""
         self.config.constraints.update(constraints)
         return self
 
-    def with_objective(self, objective: Dict[str, Any]) -> ProblemBuilder:
+    def with_objective(self, objective: dict[str, Any]) -> ProblemBuilder:
         """Set objective function."""
         self.config.objective.update(objective)
         return self
 
-    def with_solver_options(self, options: Dict[str, Any]) -> ProblemBuilder:
+    def with_solver_options(self, options: dict[str, Any]) -> ProblemBuilder:
         """Set solver options."""
         self.config.solver.update(options)
         return self
@@ -356,7 +356,7 @@ class ResultProcessor:
 
         return result
 
-    def _validate_solution(self, solution: Solution) -> Dict[str, Any]:
+    def _validate_solution(self, solution: Solution) -> dict[str, Any]:
         """Validate the optimization solution."""
         try:
             return self.solution_validator.validate_solution(solution)
@@ -364,7 +364,7 @@ class ResultProcessor:
             log.warning(f"Solution validation failed: {e}")
             return {"warnings": [f"Solution validation failed: {e}"]}
 
-    def _validate_physics(self, solution: Solution) -> Dict[str, Any]:
+    def _validate_physics(self, solution: Solution) -> dict[str, Any]:
         """Validate physics constraints."""
         try:
             return self.physics_validator.validate_physics(solution)
@@ -372,7 +372,7 @@ class ResultProcessor:
             log.warning(f"Physics validation failed: {e}")
             return {"warnings": [f"Physics validation failed: {e}"]}
 
-    def _compute_performance_metrics(self, solution: Solution) -> Dict[str, Any]:
+    def _compute_performance_metrics(self, solution: Solution) -> dict[str, Any]:
         """Compute performance metrics from solution."""
         metrics = {}
 
@@ -414,8 +414,8 @@ class MotionLawOptimizer:
 
     def __init__(
         self,
-        config: Union[OptimizationConfig, Dict[str, Any]],
-        solver_backend: Optional[SolverBackend] = None,
+        config: OptimizationConfig | dict[str, Any],
+        solver_backend: SolverBackend | None = None,
     ):
         """
         Initialize the motion law optimizer.
@@ -502,7 +502,7 @@ class MotionLawOptimizer:
         """Set the solver backend."""
         self.solver_backend = backend
 
-    def _dict_to_config(self, config_dict: Dict[str, Any]) -> OptimizationConfig:
+    def _dict_to_config(self, config_dict: dict[str, Any]) -> OptimizationConfig:
         """Convert dictionary to OptimizationConfig."""
         return OptimizationConfig(
             geometry=config_dict.get("geometry", {}),
@@ -527,28 +527,28 @@ class MotionLawOptimizer:
 
 
 def create_standard_optimizer(
-    config: Union[OptimizationConfig, Dict[str, Any]],
+    config: OptimizationConfig | dict[str, Any],
 ) -> MotionLawOptimizer:
     """Create a standard optimizer with IPOPT backend."""
     return MotionLawOptimizer(config, IPOPTBackend())
 
 
 def create_robust_optimizer(
-    config: Union[OptimizationConfig, Dict[str, Any]],
+    config: OptimizationConfig | dict[str, Any],
 ) -> MotionLawOptimizer:
     """Create a robust optimizer with conservative IPOPT settings."""
     return MotionLawOptimizer(config, RobustIPOPTBackend())
 
 
 def create_adaptive_optimizer(
-    config: Union[OptimizationConfig, Dict[str, Any]], max_refinements: int = 3,
+    config: OptimizationConfig | dict[str, Any], max_refinements: int = 3,
 ) -> MotionLawOptimizer:
     """Create an adaptive optimizer with refinement strategy."""
     return MotionLawOptimizer(config, AdaptiveBackend(max_refinements))
 
 
 def quick_optimize(
-    config: Union[OptimizationConfig, Dict[str, Any]], backend: str = "standard",
+    config: OptimizationConfig | dict[str, Any], backend: str = "standard",
 ) -> OptimizationResult:
     """
     Quick optimization with minimal setup.

@@ -9,9 +9,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from campro.constants import HSLLIB_PATH, IPOPT_OPT_PATH
-from campro.logging import get_logger
-from campro.optimization.solver_analysis import analyze_ipopt_run
+from campro.constants import HSLLIB_PATH, IPOPT_OPT_PATH  # noqa: E402
+from campro.logging import get_logger  # noqa: E402
+from campro.optimization.solver_analysis import analyze_ipopt_run  # noqa: E402
 
 log = get_logger(__name__)
 

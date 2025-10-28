@@ -14,7 +14,7 @@ for a desired average ratio while ensuring 2π periodicity.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -30,7 +30,7 @@ class LitvinSynthesisResult:
     psi: np.ndarray  # ψ(θ) mapping, θ-domain grid
     R_psi: np.ndarray  # R(ψ(θ)) sampled over θ grid
     rho_c: np.ndarray  # ρ_c(θ) cam osculating radius
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class LitvinSynthesis:
@@ -190,7 +190,7 @@ class LitvinGearGeometry:
     z_ring: int  # teeth count ring gear
     interference_flag: bool
     # Manufacturing flanks and detailed checks
-    flanks: Dict[str, np.ndarray] | None = (
+    flanks: dict[str, np.ndarray] | None = (
         None  # {'addendum': Nx2, 'dedendum': Mx2, 'fillet': Kx2}
     )
     undercut_flags: np.ndarray | None = None  # per tooth flag

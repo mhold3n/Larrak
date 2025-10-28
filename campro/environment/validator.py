@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -66,12 +66,12 @@ class ValidationResult:
 
     status: ValidationStatus
     message: str
-    details: Optional[str] = None
-    suggestion: Optional[str] = None
-    version: Optional[str] = None
+    details: str | None = None
+    suggestion: str | None = None
+    version: str | None = None
 
 
-def validate_python_version(min_version: Tuple[int, int] = (3, 9)) -> ValidationResult:
+def validate_python_version(min_version: tuple[int, int] = (3, 9)) -> ValidationResult:
     """Validate Python version against a minimum required version."""
     current_version = sys.version_info[:2]
 
@@ -163,9 +163,9 @@ def validate_casadi_ipopt() -> ValidationResult:
         )
 
 
-def validate_hsl_solvers() -> List[ValidationResult]:
+def validate_hsl_solvers() -> list[ValidationResult]:
     """Validate HSL solver availability (MA27, MA57, MA77, MA86, MA97) - optional but improves performance."""
-    results: List[ValidationResult] = []
+    results: list[ValidationResult] = []
 
     # Check for all HSL solvers availability through CasADi
     try:
@@ -257,15 +257,15 @@ def validate_hsl_solvers() -> List[ValidationResult]:
     return results
 
 
-def validate_required_packages() -> List[ValidationResult]:
+def validate_required_packages() -> list[ValidationResult]:
     """Validate required packages are importable (reports versions if available)."""
-    required_packages: Dict[str, str] = {
+    required_packages: dict[str, str] = {
         "numpy": "1.24.0",
         "scipy": "1.10.0",
         "matplotlib": "3.7.0",
     }
 
-    results: List[ValidationResult] = []
+    results: list[ValidationResult] = []
     for package, min_version in required_packages.items():
         try:
             module = __import__(package)
@@ -310,14 +310,14 @@ def validate_required_packages() -> List[ValidationResult]:
     return results
 
 
-def validate_environment() -> Dict[str, Any]:
+def validate_environment() -> dict[str, Any]:
     """Perform comprehensive environment validation and return structured results."""
     log.info("Starting environment validation")
 
     # Validate MA27 usage first - fail hard if a non-HSL fallback is detected
     _validate_ma27_usage()
 
-    results: Dict[str, Any] = {
+    results: dict[str, Any] = {
         "python_version": validate_python_version(),
         "casadi_ipopt": validate_casadi_ipopt(),
         "required_packages": validate_required_packages(),
@@ -325,7 +325,7 @@ def validate_environment() -> Dict[str, Any]:
     }
 
     # Aggregate results (HSL solvers are optional, so they don't affect overall status)
-    all_results: List[ValidationResult] = [
+    all_results: list[ValidationResult] = [
         results["python_version"],
         results["casadi_ipopt"],
         *results["required_packages"],
@@ -335,7 +335,7 @@ def validate_environment() -> Dict[str, Any]:
     hsl_results = results["hsl_solvers"]
     all_results.extend(hsl_results)
 
-    status_counts: Dict[ValidationStatus, int] = {
+    status_counts: dict[ValidationStatus, int] = {
         ValidationStatus.PASS: 0,
         ValidationStatus.WARNING: 0,
         ValidationStatus.ERROR: 0,
@@ -352,7 +352,7 @@ def validate_environment() -> Dict[str, Any]:
         status_counts[res.status] += 1
 
     # Count all results for total
-    total_status_counts: Dict[ValidationStatus, int] = {
+    total_status_counts: dict[ValidationStatus, int] = {
         ValidationStatus.PASS: 0,
         ValidationStatus.WARNING: 0,
         ValidationStatus.ERROR: 0,

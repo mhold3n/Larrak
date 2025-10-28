@@ -4,8 +4,9 @@ Input validation utilities.
 This module provides functions for validating inputs, constraints,
 and other data structures used throughout the campro library.
 """
+from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -15,9 +16,9 @@ log = get_logger(__name__)
 
 
 def validate_inputs(
-    inputs: Dict[str, Any],
-    required_keys: List[str],
-    optional_keys: Optional[List[str]] = None,
+    inputs: dict[str, Any],
+    required_keys: list[str],
+    optional_keys: list[str] | None = None,
 ) -> bool:
     """
     Validate input dictionary has required keys.
@@ -34,7 +35,7 @@ def validate_inputs(
         ValueError: If validation fails
     """
     if not isinstance(inputs, dict):
-        raise ValueError("Inputs must be a dictionary")
+        raise TypeError("Inputs must be a dictionary")
 
     # Check required keys
     missing_keys = [key for key in required_keys if key not in inputs]
@@ -76,8 +77,8 @@ def validate_constraints(constraints: Any) -> bool:
 
 def validate_numeric_range(
     value: float,
-    min_val: Optional[float] = None,
-    max_val: Optional[float] = None,
+    min_val: float | None = None,
+    max_val: float | None = None,
     name: str = "value",
 ) -> bool:
     """
@@ -96,7 +97,7 @@ def validate_numeric_range(
         ValueError: If validation fails
     """
     if not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be numeric, got {type(value)}")
+        raise TypeError(f"{name} must be numeric, got {type(value)}")
 
     if not np.isfinite(value):
         raise ValueError(f"{name} must be finite, got {value}")
@@ -111,7 +112,7 @@ def validate_numeric_range(
 
 
 def validate_array_shape(
-    array: np.ndarray, expected_shape: Tuple[int, ...], name: str = "array",
+    array: np.ndarray, expected_shape: tuple[int, ...], name: str = "array",
 ) -> bool:
     """
     Validate array has expected shape.
@@ -128,7 +129,7 @@ def validate_array_shape(
         ValueError: If validation fails
     """
     if not isinstance(array, np.ndarray):
-        raise ValueError(f"{name} must be numpy array, got {type(array)}")
+        raise TypeError(f"{name} must be numpy array, got {type(array)}")
 
     if array.shape != expected_shape:
         raise ValueError(f"{name} must have shape {expected_shape}, got {array.shape}")

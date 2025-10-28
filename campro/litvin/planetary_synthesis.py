@@ -4,7 +4,6 @@ from bisect import bisect_left
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import cos, pi, sin
-from typing import List, Tuple
 
 from campro.constants import PROFILE_CLOSURE_TOL
 from campro.logging import get_logger
@@ -18,13 +17,13 @@ log = get_logger(__name__)
 
 @dataclass(frozen=True)
 class PlanetToothProfile:
-    points: Sequence[Tuple[float, float]]
+    points: Sequence[tuple[float, float]]
 
 
 # Config imported from campro.litvin.config
 
 
-def _rotate(theta: float, x: float, y: float) -> Tuple[float, float]:
+def _rotate(theta: float, x: float, y: float) -> tuple[float, float]:
     c = cos(theta)
     s = sin(theta)
     return c * x - s * y, s * x + c * y
@@ -32,7 +31,7 @@ def _rotate(theta: float, x: float, y: float) -> Tuple[float, float]:
 
 def _interpolate_flank(
     flank: InvoluteFlank, phi: float,
-) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+) -> tuple[tuple[float, float], tuple[float, float]]:
     phis = flank.phi
     if phi <= phis[0]:
         return flank.points[0], flank.tangents[0]
@@ -55,7 +54,7 @@ def _interpolate_flank(
 
 def _planet_coords(
     flank: InvoluteFlank, kin: PlanetKinematics, phi: float, theta_r: float,
-) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+) -> tuple[tuple[float, float], tuple[float, float]]:
     (x_ring, y_ring), (tx_ring, ty_ring) = _interpolate_flank(flank, phi)
 
     x_world, y_world = _rotate(theta_r, x_ring, y_ring)
@@ -73,7 +72,7 @@ def _planet_coords(
 
 def _partial_theta(
     flank: InvoluteFlank, kin: PlanetKinematics, phi: float, theta_r: float, h: float,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     x1, _ = _planet_coords(flank, kin, phi, theta_r + h)
     x0, _ = _planet_coords(flank, kin, phi, theta_r - h)
     return ((x1[0] - x0[0]) / (2 * h), (x1[1] - x0[1]) / (2 * h))
@@ -129,12 +128,12 @@ def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothP
     n_theta = max(32, int(config.samples_per_rev))
     theta_vals = [2.0 * pi * i / n_theta for i in range(n_theta + 1)]
     h = 1e-4
-    pts: List[Tuple[float, float]] = []
+    pts: list[tuple[float, float]] = []
 
     # predictor-corrector: start from minimal |w|, then use Newton with previous phi
     prev_phi: float | None = None
     for theta_r in theta_vals:
-        crossings: List[Tuple[float, float]] = []
+        crossings: list[tuple[float, float]] = []
         prev_w = None
         prev_phi = None
         for phi in flank.phi:
@@ -194,7 +193,7 @@ def synthesize_planet_from_motion(config: PlanetSynthesisConfig) -> PlanetToothP
     if config.planet_teeth <= 1:
         return PlanetToothProfile(points=pts)
 
-    replicated: List[Tuple[float, float]] = []
+    replicated: list[tuple[float, float]] = []
     for k in range(config.planet_teeth):
         ang = 2.0 * pi * k / config.planet_teeth
         c = cos(ang)

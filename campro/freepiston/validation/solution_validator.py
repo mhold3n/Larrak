@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict
+from typing import Any
 
 from campro.freepiston.opt.solution import Solution
 from campro.logging import get_logger
@@ -14,7 +14,7 @@ log = get_logger(__name__)
 class SolutionValidator:
     """Comprehensive solution validator for OP engine optimization."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize solution validator.
 
         Args:
@@ -44,7 +44,7 @@ class SolutionValidator:
         if "limits" in config:
             self.default_limits.update(config["limits"])
 
-    def validate_solution(self, solution: Solution) -> Dict[str, Any]:
+    def validate_solution(self, solution: Solution) -> dict[str, Any]:
         """Validate optimization solution.
 
         Args:
@@ -116,7 +116,7 @@ class SolutionValidator:
         return validation_results
 
     def _validate_basic_properties(
-        self, solution: Solution, results: Dict[str, Any],
+        self, solution: Solution, results: dict[str, Any],
     ) -> None:
         """Validate basic solution properties."""
         # Check if solution has the expected structure
@@ -149,7 +149,7 @@ class SolutionValidator:
             )
 
     def _validate_convergence(
-        self, solution: Solution, results: Dict[str, Any],
+        self, solution: Solution, results: dict[str, Any],
     ) -> None:
         """Validate solution convergence."""
         # Check both property and metadata for success
@@ -200,7 +200,7 @@ class SolutionValidator:
             results["warnings"].append("Objective function value is infinite")
 
     def _validate_physical_constraints(
-        self, solution: Solution, results: Dict[str, Any],
+        self, solution: Solution, results: dict[str, Any],
     ) -> None:
         """Validate physical constraints."""
         if not hasattr(solution, "states"):
@@ -278,7 +278,7 @@ class SolutionValidator:
             log.info("Physical constraints satisfied")
 
     def _validate_scavenging_constraints(
-        self, solution: Solution, results: Dict[str, Any],
+        self, solution: Solution, results: dict[str, Any],
     ) -> None:
         """Validate scavenging constraints."""
         # Check if scavenging state is available
@@ -321,7 +321,7 @@ class SolutionValidator:
             log.info("No scavenging data available for validation")
 
     def _validate_performance_constraints(
-        self, solution: Solution, results: Dict[str, Any],
+        self, solution: Solution, results: dict[str, Any],
     ) -> None:
         """Validate performance constraints."""
         # Check if performance metrics are available (use property with fallback)
@@ -356,7 +356,7 @@ class SolutionValidator:
             log.info("No performance data available for validation")
 
     def _calculate_validation_metrics(
-        self, solution: Solution, results: Dict[str, Any],
+        self, solution: Solution, results: dict[str, Any],
     ) -> None:
         """Calculate validation metrics."""
         metrics = {}
@@ -425,7 +425,7 @@ class SolutionValidator:
         results["metrics"] = metrics
         log.info(f"Validation metrics calculated: {len(metrics)} metrics")
 
-    def generate_validation_report(self, validation_results: Dict[str, Any]) -> str:
+    def generate_validation_report(self, validation_results: dict[str, Any]) -> str:
         """Generate detailed validation report.
 
         Args:

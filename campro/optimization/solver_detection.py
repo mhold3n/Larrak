@@ -14,11 +14,11 @@ The implementation is intentionally **side-effect free**: it never raises on
 failure and logs the outcome via the project logger.
 """
 
-from typing import Final
+from typing import Final  # noqa: E402
 
-import casadi as ca
+import casadi as ca  # noqa: E402
 
-from campro.logging import get_logger
+from campro.logging import get_logger  # noqa: E402
 
 __all__: Final = ["is_ma57_available"]
 

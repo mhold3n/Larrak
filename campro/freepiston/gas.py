@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.logging import get_logger
@@ -109,7 +109,7 @@ def _q_woschni_like() -> HeatTransferFunction:
     return fn
 
 
-def build_gas_model(P: Dict[str, Any]) -> GasModel:
+def build_gas_model(P: dict[str, Any]) -> GasModel:
     """Factory: unified gas model interface for NLP assembly.
 
     Returns small symbolic-friendly closures for mass flow and wall heat transfer,

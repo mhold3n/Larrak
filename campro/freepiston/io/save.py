@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -10,7 +10,7 @@ log = get_logger(__name__)
 
 
 def save_json(
-    obj: Dict[str, Any], path: str | Path, filename: str = "state.json",
+    obj: dict[str, Any], path: str | Path, filename: str = "state.json",
 ) -> None:
     p = Path(path)
     p.mkdir(parents=True, exist_ok=True)

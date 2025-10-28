@@ -5,10 +5,11 @@ This module provides side-loading computation capabilities for crank center opti
 integrating with existing piston dynamics to compute lateral forces and side-loading
 penalties during compression and combustion phases.
 """
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -37,15 +38,15 @@ class SideLoadResult:
     crank_angles: np.ndarray  # Crank angles (rad)
 
     # Analysis parameters
-    crank_center_offset: Tuple[float, float]  # (x, y) offset from gear center (mm)
-    piston_geometry: Dict[str, float]  # Piston geometry parameters
+    crank_center_offset: tuple[float, float]  # (x, y) offset from gear center (mm)
+    piston_geometry: dict[str, float]  # Piston geometry parameters
 
     # Performance metrics
     side_load_ripple: float  # Side-loading variation coefficient
     total_penalty: float  # Combined side-loading penalty
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class SideLoadAnalyzer(BasePhysicsModel):
@@ -59,11 +60,11 @@ class SideLoadAnalyzer(BasePhysicsModel):
 
     def __init__(self, name: str = "SideLoadAnalyzer"):
         super().__init__(name)
-        self._piston_geometry: Optional[Dict[str, float]] = None
-        self._motion_law_data: Optional[Dict[str, np.ndarray]] = None
-        self._load_profile: Optional[np.ndarray] = None
+        self._piston_geometry: dict[str, float] | None = None
+        self._motion_law_data: dict[str, np.ndarray] | None = None
+        self._load_profile: np.ndarray | None = None
 
-    def configure(self, piston_geometry: Dict[str, float], **kwargs) -> None:
+    def configure(self, piston_geometry: dict[str, float], **kwargs) -> None:
         """
         Configure the side-load analyzer with piston geometry parameters.
 
@@ -95,7 +96,7 @@ class SideLoadAnalyzer(BasePhysicsModel):
             f"clearance={piston_geometry['piston_clearance']}mm",
         )
 
-    def simulate(self, inputs: Dict[str, Any], **kwargs) -> PhysicsResult:
+    def simulate(self, inputs: dict[str, Any], **kwargs) -> PhysicsResult:
         """
         Compute side-loading analysis for given inputs.
 
@@ -165,8 +166,8 @@ class SideLoadAnalyzer(BasePhysicsModel):
 
     def compute_side_load_profile(
         self,
-        motion_law_data: Dict[str, np.ndarray],
-        crank_center_offset: Tuple[float, float],
+        motion_law_data: dict[str, np.ndarray],
+        crank_center_offset: tuple[float, float],
     ) -> np.ndarray:
         """
         Compute side-loading profile for complete motion cycle.
@@ -195,8 +196,8 @@ class SideLoadAnalyzer(BasePhysicsModel):
     def compute_side_load_penalty(
         self,
         side_load_profile: np.ndarray,
-        compression_phases: Optional[np.ndarray] = None,
-        combustion_phases: Optional[np.ndarray] = None,
+        compression_phases: np.ndarray | None = None,
+        combustion_phases: np.ndarray | None = None,
     ) -> float:
         """
         Compute side-loading penalty considering phase-specific effects.
@@ -241,11 +242,11 @@ class SideLoadAnalyzer(BasePhysicsModel):
 
     def _compute_side_load_analysis(
         self,
-        motion_law_data: Dict[str, np.ndarray],
+        motion_law_data: dict[str, np.ndarray],
         load_profile: np.ndarray,
-        crank_center_offset: Tuple[float, float],
-        compression_phases: Optional[np.ndarray] = None,
-        combustion_phases: Optional[np.ndarray] = None,
+        crank_center_offset: tuple[float, float],
+        compression_phases: np.ndarray | None = None,
+        combustion_phases: np.ndarray | None = None,
     ) -> SideLoadResult:
         """Compute complete side-loading analysis."""
 
@@ -307,7 +308,7 @@ class SideLoadAnalyzer(BasePhysicsModel):
         )
 
     def _compute_instantaneous_side_load(
-        self, crank_angle: float, crank_center_offset: Tuple[float, float],
+        self, crank_angle: float, crank_center_offset: tuple[float, float],
     ) -> float:
         """Compute instantaneous side-loading force."""
 
@@ -344,7 +345,7 @@ class SideLoadAnalyzer(BasePhysicsModel):
 
         return side_load
 
-    def _validate_motion_law_data(self, motion_law_data: Dict[str, np.ndarray]) -> None:
+    def _validate_motion_law_data(self, motion_law_data: dict[str, np.ndarray]) -> None:
         """Validate motion law data structure."""
 
         required_keys = ["theta", "displacement", "velocity", "acceleration"]
@@ -353,7 +354,7 @@ class SideLoadAnalyzer(BasePhysicsModel):
                 raise ValueError(f"Motion law data missing required key: {key}")
 
             if not isinstance(motion_law_data[key], np.ndarray):
-                raise ValueError(f"Motion law data[{key}] must be numpy array")
+                raise TypeError(f"Motion law data[{key}] must be numpy array")
 
         # Check that all arrays have same length
         lengths = [len(motion_law_data[key]) for key in required_keys]
@@ -361,12 +362,12 @@ class SideLoadAnalyzer(BasePhysicsModel):
             raise ValueError("All motion law arrays must have same length")
 
     def _validate_load_profile(
-        self, load_profile: np.ndarray, motion_law_data: Dict[str, np.ndarray],
+        self, load_profile: np.ndarray, motion_law_data: dict[str, np.ndarray],
     ) -> None:
         """Validate load profile data."""
 
         if not isinstance(load_profile, np.ndarray):
-            raise ValueError("Load profile must be numpy array")
+            raise TypeError("Load profile must be numpy array")
 
         if len(load_profile) != len(motion_law_data["theta"]):
             raise ValueError("Load profile length must match motion law data length")

@@ -16,7 +16,7 @@ def test_imports():
     print("Testing imports...")
 
     try:
-        import tkinter as tk
+        import tkinter as tk  # noqa: F401
 
         print("+ tkinter imported successfully")
     except ImportError as e:
@@ -24,7 +24,7 @@ def test_imports():
         return False
 
     try:
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt  # noqa: F401
 
         print("+ matplotlib imported successfully")
     except ImportError as e:
@@ -32,7 +32,7 @@ def test_imports():
         return False
 
     try:
-        import numpy as np
+        import numpy as np  # noqa: F401
 
         print("+ numpy imported successfully")
     except ImportError as e:
@@ -40,7 +40,10 @@ def test_imports():
         return False
 
     try:
-        from CamPro_OptimalMotion import CollocationSettings, solve_cam_motion_law
+        from CamPro_OptimalMotion import (  # noqa: F401
+            CollocationSettings,
+            solve_cam_motion_law,
+        )
 
         print("+ CamPro_OptimalMotion imported successfully")
     except ImportError as e:
@@ -48,7 +51,7 @@ def test_imports():
         return False
 
     try:
-        from campro.logging import get_logger
+        from campro.logging import get_logger  # noqa: F401
 
         print("+ campro.logging imported successfully")
     except ImportError as e:

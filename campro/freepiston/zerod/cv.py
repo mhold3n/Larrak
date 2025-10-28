@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 from campro.freepiston.core.geom import chamber_volume, piston_area
 from campro.freepiston.core.states import MechState
@@ -41,7 +40,7 @@ class GasComposition:
             self.fuel /= total
             self.burned_gas /= total
 
-    def get_mixture_properties(self, T: float, p: float) -> Dict[str, float]:
+    def get_mixture_properties(self, T: float, p: float) -> dict[str, float]:
         """Get mixture properties based on composition."""
         # Simplified mixture properties calculation
         # In practice, this would use proper mixture rules
@@ -119,8 +118,8 @@ def volume_from_pistons(*, B: float, Vc: float, x_L: float, x_R: float) -> float
 
 
 def cv_residual(
-    mech: MechState, gas: Dict[str, float], params: Dict[str, object],
-) -> Dict[str, float]:
+    mech: MechState, gas: dict[str, float], params: dict[str, object],
+) -> dict[str, float]:
     """Enhanced 0D control-volume residuals for mass and total energy.
 
     This enhanced version includes:
@@ -536,7 +535,7 @@ def create_control_volume_state(
     T: float,
     V: float,
     dV_dt: float = 0.0,
-    composition: Optional[GasComposition] = None,
+    composition: GasComposition | None = None,
 ) -> ControlVolumeState:
     """
     Create a control volume state from basic thermodynamic properties.
@@ -589,8 +588,8 @@ def create_control_volume_state(
 def update_control_volume_state(
     state: ControlVolumeState,
     dt: float,
-    residuals: Dict[str, float],
-    eos: Optional[RealGasEOS] = None,
+    residuals: dict[str, float],
+    eos: RealGasEOS | None = None,
 ) -> ControlVolumeState:
     """
     Update control volume state using residuals from cv_residual.
@@ -755,7 +754,7 @@ def detect_scavenging_phases(
     A_in_max: float,
     A_ex_max: float,
     threshold: float = 0.01,
-) -> Dict[str, bool]:
+) -> dict[str, bool]:
     """
     Detect current scavenging phase based on valve areas.
 
@@ -793,7 +792,7 @@ def calculate_scavenging_metrics(
     mdot_in: float,
     mdot_ex: float,
     dt: float,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Calculate scavenging efficiency metrics for two-stroke engines.
 
@@ -911,7 +910,7 @@ def enhanced_scavenging_tracking(
 
 def calculate_phase_timing_metrics(
     scavenging_state: ScavengingState,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Calculate phase timing metrics for scavenging optimization.
 

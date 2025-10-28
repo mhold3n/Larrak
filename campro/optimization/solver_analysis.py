@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -13,9 +13,9 @@ log = get_logger(__name__)
 @dataclass
 class MA57ReadinessReport:
     grade: str  # "low" | "medium" | "high"
-    reasons: List[str]
+    reasons: list[str]
     suggested_action: str
-    stats: Dict[str, Any]
+    stats: dict[str, Any]
 
     def to_json(self) -> str:
         return json.dumps(
@@ -29,7 +29,7 @@ class MA57ReadinessReport:
         )
 
 
-def _safe_get(d: Dict[str, Any], key: str, default: Any) -> Any:
+def _safe_get(d: dict[str, Any], key: str, default: Any) -> Any:
     try:
         return d.get(key, default)
     except Exception:
@@ -37,14 +37,14 @@ def _safe_get(d: Dict[str, Any], key: str, default: Any) -> Any:
 
 
 def analyze_ipopt_run(
-    stats: Dict[str, Any], ipopt_output_file: Optional[str],
+    stats: dict[str, Any], ipopt_output_file: str | None,
 ) -> MA57ReadinessReport:
     """
     Analyze an Ipopt run (stats + optional output file) and estimate whether MA57
     would likely yield better robustness/performance than MA27.
     """
-    reasons: List[str] = []
-    indicators: List[str] = []
+    reasons: list[str] = []
+    indicators: list[str] = []
 
     success = bool(_safe_get(stats, "success", False))
     return_status = str(_safe_get(stats, "return_status", ""))
@@ -53,7 +53,7 @@ def analyze_ipopt_run(
     dual_inf = float(_safe_get(stats, "dual_inf", 0.0))
 
     # Parse output file if present
-    ls_time_ratio: Optional[float] = None
+    ls_time_ratio: float | None = None
     refactorizations: int = 0
     restoration_occurrences: int = 0
     inertia_corrections: int = 0

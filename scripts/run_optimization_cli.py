@@ -13,7 +13,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 # Check if we're in the correct conda environment
@@ -49,8 +49,8 @@ check_environment()
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from campro.logging import get_logger
-from campro.optimization.unified_framework import (
+from campro.logging import get_logger  # noqa: E402
+from campro.optimization.unified_framework import (  # noqa: E402
     OptimizationMethod,
     UnifiedOptimizationFramework,
     UnifiedOptimizationSettings,
@@ -59,7 +59,7 @@ from campro.optimization.unified_framework import (
 log = get_logger(__name__)
 
 
-def create_default_input_data() -> Dict[str, Any]:
+def create_default_input_data() -> dict[str, Any]:
     """Create default input data matching GUI defaults."""
     return {
         "stroke": 20.0,  # mm
@@ -108,7 +108,7 @@ def create_optimization_settings(
 
 
 def run_optimization(
-    input_data: Dict[str, Any],
+    input_data: dict[str, Any],
     settings: UnifiedOptimizationSettings,
     show_progress: bool = True,
 ) -> Any:
@@ -267,16 +267,16 @@ def main():
 Examples:
   # Run with default parameters
   python scripts/run_optimization_cli.py
-  
+
   # Run with custom stroke
   python scripts/run_optimization_cli.py --stroke 25.0
-  
+
   # Run without thermal efficiency
   python scripts/run_optimization_cli.py --no-thermal-efficiency
-  
+
   # Run with different method
   python scripts/run_optimization_cli.py --method radau_collocation
-  
+
   # Run quietly (minimal output)
   python scripts/run_optimization_cli.py --quiet
         """,

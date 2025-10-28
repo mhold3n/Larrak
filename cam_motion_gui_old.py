@@ -14,29 +14,29 @@ warnings.warn(
     stacklevel=2,
 )
 
-import threading
-import tkinter as tk
-from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+import threading  # noqa: E402
+import tkinter as tk  # noqa: E402
+from pathlib import Path  # noqa: E402
+from tkinter import filedialog, messagebox, ttk  # noqa: E402
 
-import numpy as np
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
+import numpy as np  # noqa: E402
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
 
-from campro.logging import get_logger
+from campro.logging import get_logger  # noqa: E402
 
 # Import unified optimization framework
-from campro.optimization.unified_framework import (
+from campro.optimization.unified_framework import (  # noqa: E402
     OptimizationMethod,
     UnifiedOptimizationConstraints,
     UnifiedOptimizationFramework,
     UnifiedOptimizationSettings,
     UnifiedOptimizationTargets,
 )
-from campro.storage import OptimizationRegistry
+from campro.storage import OptimizationRegistry  # noqa: E402
 
 # Import our cam motion law solver
-from CamPro_OptimalMotion import CollocationSettings, solve_cam_motion_law
+from CamPro_OptimalMotion import CollocationSettings, solve_cam_motion_law  # noqa: E402
 
 log = get_logger(__name__)
 

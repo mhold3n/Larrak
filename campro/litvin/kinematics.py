@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import cos, sin
-from typing import Tuple
 
 from campro.logging import get_logger
 
@@ -24,7 +23,7 @@ class PlanetKinematics:
 
     def transform_ring_to_planet(
         self, theta_r: float,
-    ) -> Tuple[Tuple[Tuple[float, float], Tuple[float, float]], Tuple[float, float]]:
+    ) -> tuple[tuple[tuple[float, float], tuple[float, float]], tuple[float, float]]:
         d = self.center_distance(theta_r)
         theta_p = self.planet_angle(theta_r)
         cos_p = cos(theta_p)

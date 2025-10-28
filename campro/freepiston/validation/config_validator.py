@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -49,7 +49,7 @@ class ConfigValidator:
             "v_max",
         ]
 
-    def validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_config(self, config: dict[str, Any]) -> dict[str, Any]:
         """Validate configuration dictionary.
 
         Args:
@@ -123,7 +123,7 @@ class ConfigValidator:
         return validation_results
 
     def _validate_sections(
-        self, config: Dict[str, Any], results: Dict[str, Any],
+        self, config: dict[str, Any], results: dict[str, Any],
     ) -> None:
         """Validate required configuration sections."""
         for section in self.required_sections:
@@ -134,7 +134,7 @@ class ConfigValidator:
                 results["errors"].append(f"Section '{section}' must be a dictionary")
 
     def _validate_geometry(
-        self, geometry: Dict[str, Any], results: Dict[str, Any],
+        self, geometry: dict[str, Any], results: dict[str, Any],
     ) -> None:
         """Validate geometry parameters."""
         for param in self.required_geometry:
@@ -178,7 +178,7 @@ class ConfigValidator:
                 results["warnings"].append("Piston mass is unusually high")
 
     def _validate_thermodynamics(
-        self, thermo: Dict[str, Any], results: Dict[str, Any],
+        self, thermo: dict[str, Any], results: dict[str, Any],
     ) -> None:
         """Validate thermodynamics parameters."""
         for param in self.required_thermo:
@@ -221,7 +221,7 @@ class ConfigValidator:
                 )
 
     def _validate_optimization(
-        self, opt: Dict[str, Any], results: Dict[str, Any],
+        self, opt: dict[str, Any], results: dict[str, Any],
     ) -> None:
         """Validate optimization parameters."""
         for param in self.required_optimization:
@@ -272,7 +272,7 @@ class ConfigValidator:
                     "Maximum iterations is high, may take long time",
                 )
 
-    def _validate_bounds(self, bounds: Dict[str, Any], results: Dict[str, Any]) -> None:
+    def _validate_bounds(self, bounds: dict[str, Any], results: dict[str, Any]) -> None:
         """Validate bounds parameters."""
         for param in self.required_bounds:
             if param not in bounds:
@@ -323,7 +323,7 @@ class ConfigValidator:
                 results["warnings"].append("Maximum velocity is high")
 
     def _validate_parameter_relationships(
-        self, config: Dict[str, Any], results: Dict[str, Any],
+        self, config: dict[str, Any], results: dict[str, Any],
     ) -> None:
         """Validate relationships between parameters."""
         geometry = config.get("geometry", {})
@@ -357,7 +357,7 @@ class ConfigValidator:
                 results["warnings"].append("Low temperature for high gamma gas")
 
     def _generate_recommendations(
-        self, config: Dict[str, Any], results: Dict[str, Any],
+        self, config: dict[str, Any], results: dict[str, Any],
     ) -> None:
         """Generate configuration recommendations."""
         geometry = config.get("geometry", {})
@@ -411,7 +411,7 @@ class ConfigValidator:
                     "Consider decreasing maximum pressure for safety",
                 )
 
-    def generate_validation_report(self, validation_results: Dict[str, Any]) -> str:
+    def generate_validation_report(self, validation_results: dict[str, Any]) -> str:
         """Generate detailed validation report.
 
         Args:

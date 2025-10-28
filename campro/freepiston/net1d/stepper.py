@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable
 
 import numpy as np
 
@@ -54,7 +54,7 @@ def estimate_error(
     U_low: np.ndarray,
     rtol: float,
     atol: float,
-) -> Tuple[float, bool]:
+) -> tuple[float, bool]:
     """
     Estimate local truncation error using embedded Runge-Kutta methods.
 
@@ -126,8 +126,8 @@ def runge_kutta_45_step(
     dUdt: Callable[[np.ndarray, float], np.ndarray],
     t: float,
     dt: float,
-    params: Dict[str, Any],
-) -> Tuple[np.ndarray, np.ndarray, float]:
+    params: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of 4th/5th order Runge-Kutta method with error estimation.
 
@@ -188,8 +188,8 @@ def runge_kutta_23_step(
     dUdt: Callable[[np.ndarray, float], np.ndarray],
     t: float,
     dt: float,
-    params: Dict[str, Any],
-) -> Tuple[np.ndarray, np.ndarray, float]:
+    params: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of 2nd/3rd order Runge-Kutta method with error estimation.
 
@@ -226,8 +226,8 @@ def bdf1_step(
     dUdt: Callable[[np.ndarray, float], np.ndarray],
     t: float,
     dt: float,
-    params: Dict[str, Any],
-) -> Tuple[np.ndarray, np.ndarray, float]:
+    params: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of BDF1 (Backward Euler) method.
 
@@ -287,8 +287,8 @@ def bdf2_step(
     t: float,
     dt: float,
     dt_prev: float,
-    params: Dict[str, Any],
-) -> Tuple[np.ndarray, np.ndarray, float]:
+    params: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of BDF2 method.
 
@@ -353,8 +353,8 @@ def bdf3_step(
     dt: float,
     dt_prev: float,
     dt_prev2: float,
-    params: Dict[str, Any],
-) -> Tuple[np.ndarray, np.ndarray, float]:
+    params: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray, float]:
     """
     Single step of BDF3 method.
 
@@ -591,8 +591,8 @@ def adaptive_time_step(
     t: float,
     dt: float,
     params: TimeStepParameters,
-    method_params: Dict[str, Any],
-    history: Optional[Dict[str, Any]] = None,
+    method_params: dict[str, Any],
+    history: dict[str, Any] | None = None,
 ) -> TimeStepResult:
     """
     Perform adaptive time step with error control.
@@ -708,10 +708,10 @@ def adaptive_time_step(
 def integrate_adaptive(
     U0: np.ndarray,
     dUdt: Callable[[np.ndarray, float], np.ndarray],
-    t_span: Tuple[float, float],
+    t_span: tuple[float, float],
     params: TimeStepParameters,
-    method_params: Optional[Dict[str, Any]] = None,
-) -> Tuple[np.ndarray, np.ndarray]:
+    method_params: dict[str, Any] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Integrate ODE system with adaptive time stepping.
 
@@ -798,8 +798,8 @@ def integrate_adaptive(
 
 
 def step_1d(
-    U: List[Tuple[float, float, float]], mesh: Any, dt: float, params: Dict[str, Any],
-) -> List[Tuple[float, float, float]]:
+    U: list[tuple[float, float, float]], mesh: Any, dt: float, params: dict[str, Any],
+) -> list[tuple[float, float, float]]:
     """
     Enhanced time step for 1D gas dynamics with adaptive error control.
 
@@ -819,7 +819,7 @@ def step_1d(
     U_np = np.array(U)
 
     # Define right-hand side function for 1D gas dynamics with wall models
-    def dUdt(U_vec: np.ndarray, t: float) -> np.ndarray:
+    def dUdt(U_vec: np.ndarray, t: float) -> np.ndarray:  # noqa: N802
         """Enhanced right-hand side of 1D gas dynamics equations with wall models.
 
         This function computes the spatial derivatives and fluxes for the
@@ -955,7 +955,7 @@ def step_1d(
     return U
 
 
-def _is_near_wall_cell(cell_index: int, mesh: Any, params: Dict[str, Any]) -> bool:
+def _is_near_wall_cell(cell_index: int, mesh: Any, params: dict[str, Any]) -> bool:
     """Check if a cell is near a wall boundary.
 
     Args:
@@ -1012,7 +1012,7 @@ def _calculate_wall_distance(cell_index: int, mesh: Any) -> float:
 
 
 def _calculate_wall_source_terms(
-    wall_result: Dict[str, float], U: np.ndarray, params: Dict[str, Any],
+    wall_result: dict[str, float], U: np.ndarray, params: dict[str, Any],
 ) -> np.ndarray:
     """Calculate wall source terms for the 1D gas dynamics equations.
 
@@ -1055,7 +1055,7 @@ def _calculate_wall_source_terms(
 def gas_structure_coupled_step(
     U: np.ndarray,
     mesh: Any,
-    piston_forces: Dict[str, float],
+    piston_forces: dict[str, float],
     dt: float,
     params: TimeStepParameters,
 ) -> TimeStepResult:
@@ -1248,7 +1248,7 @@ def calculate_source_terms(
 
 def calculate_piston_forces(
     U: np.ndarray, mesh: Any, params: TimeStepParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Calculate gas forces on pistons.
 

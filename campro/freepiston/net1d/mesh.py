@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -15,8 +15,8 @@ log = get_logger(__name__)
 class FVMesh:
     """1D finite-volume mesh for cylinder/ports."""
 
-    x: List[float]  # cell centers
-    dx: List[float]  # cell widths
+    x: list[float]  # cell centers
+    dx: list[float]  # cell widths
     n_cells: int
 
     def __post_init__(self) -> None:
@@ -34,7 +34,7 @@ class ALEMesh:
 
     # Mesh motion parameters
     motion_type: str = "linear"  # "linear", "sinusoidal", "adaptive"
-    motion_params: Dict[str, Any] = None
+    motion_params: dict[str, Any] = None
 
     def __post_init__(self) -> None:
         if self.motion_params is None:
@@ -56,7 +56,7 @@ class MeshMotion:
     motion_type: str = "linear"  # "linear", "sinusoidal", "adaptive"
 
     # Motion parameters
-    motion_params: Dict[str, Any] = None
+    motion_params: dict[str, Any] = None
 
     def __post_init__(self) -> None:
         if self.motion_params is None:
@@ -80,14 +80,14 @@ class MovingBoundaryMesh:
     v_faces: np.ndarray | None = None
 
     # Enhanced ALE capabilities
-    piston_positions: Dict[str, float] = None  # {"left": x_L, "right": x_R}
-    piston_velocities: Dict[str, float] = None  # {"left": v_L, "right": v_R}
+    piston_positions: dict[str, float] = None  # {"left": x_L, "right": x_R}
+    piston_velocities: dict[str, float] = None  # {"left": v_L, "right": v_R}
     mesh_velocity: np.ndarray = None  # Grid velocity at each cell
     volume_change_rate: np.ndarray = None  # dV/dt for each cell
 
     # Mesh motion parameters
     motion_type: str = "linear"  # "linear", "sinusoidal", "adaptive"
-    motion_params: Dict[str, Any] = None
+    motion_params: dict[str, Any] = None
 
     def __post_init__(self) -> None:
         if self.piston_positions is None:
@@ -251,7 +251,7 @@ def create_ale_mesh(
     x_right: float,
     n_cells: int,
     motion_type: str = "linear",
-    motion_params: Optional[Dict[str, Any]] = None,
+    motion_params: dict[str, Any] | None = None,
 ) -> ALEMesh:
     """
     Create ALE mesh for moving boundaries.
@@ -395,7 +395,7 @@ def adaptive_mesh_motion(
     mesh: ALEMesh,
     x_left_new: float,
     x_right_new: float,
-    refinement_criteria: Optional[Dict[str, Any]] = None,
+    refinement_criteria: dict[str, Any] | None = None,
 ) -> ALEMesh:
     """
     Apply adaptive mesh motion based on solution gradients.
@@ -466,7 +466,7 @@ def calculate_face_velocity(
     return v_faces
 
 
-def check_mesh_quality(mesh: ALEMesh) -> Dict[str, float]:
+def check_mesh_quality(mesh: ALEMesh) -> dict[str, float]:
     """
     Check mesh quality metrics.
 
@@ -606,11 +606,11 @@ def conservative_remapping_ale(
 
 def piston_boundary_ale_motion(
     mesh_old: ALEMesh,
-    piston_position_old: Tuple[float, float],
-    piston_position_new: Tuple[float, float],
+    piston_position_old: tuple[float, float],
+    piston_position_new: tuple[float, float],
     U_old: np.ndarray,
     interpolation_method: str = "linear",
-) -> Tuple[ALEMesh, np.ndarray]:
+) -> tuple[ALEMesh, np.ndarray]:
     """
     Handle piston boundary motion with conservative ALE remapping.
 
@@ -656,7 +656,7 @@ def validate_conservation(
     U_new: np.ndarray,
     mesh_new: ALEMesh,
     tolerance: float = 1e-12,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Validate conservation during ALE remapping.
 

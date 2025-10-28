@@ -4,10 +4,10 @@ Cam-specific constraint definitions.
 This module defines constraints specific to cam follower motion law problems,
 including stroke, timing, and cam-specific boundary conditions.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -45,14 +45,14 @@ class CamMotionConstraints(BaseConstraints):
     # Core cam parameters
     stroke: float  # Total follower stroke (required)
     upstroke_duration_percent: float  # % of cycle for upstroke (0-100)
-    zero_accel_duration_percent: Optional[float] = (
+    zero_accel_duration_percent: float | None = (
         None  # % of cycle with zero acceleration (can be anywhere in cycle)
     )
 
     # Optional constraints
-    max_velocity: Optional[float] = None
-    max_acceleration: Optional[float] = None
-    max_jerk: Optional[float] = None
+    max_velocity: float | None = None
+    max_acceleration: float | None = None
+    max_jerk: float | None = None
 
     # Boundary conditions (optional - defaults to dwell at TDC and BDC)
     dwell_at_tdc: bool = True  # Zero velocity at TDC (0°)
@@ -161,8 +161,8 @@ class CamMotionConstraints(BaseConstraints):
         return is_valid
 
     def check_violations(
-        self, solution: Dict[str, np.ndarray],
-    ) -> List[ConstraintViolation]:
+        self, solution: dict[str, np.ndarray],
+    ) -> list[ConstraintViolation]:
         """
         Check for constraint violations in a cam motion law solution.
 
@@ -303,7 +303,7 @@ class CamMotionConstraints(BaseConstraints):
 
         return motion_constraints
 
-    def to_dict(self) -> Dict[str, any]:
+    def to_dict(self) -> dict[str, any]:
         """Convert cam constraints to dictionary format."""
         return {
             "stroke": self.stroke,
@@ -317,6 +317,6 @@ class CamMotionConstraints(BaseConstraints):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, any]) -> "CamMotionConstraints":
+    def from_dict(cls, data: dict[str, any]) -> CamMotionConstraints:
         """Create cam constraints from dictionary format."""
         return cls(**data)

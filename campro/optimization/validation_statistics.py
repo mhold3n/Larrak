@@ -4,12 +4,13 @@ Validation statistics collection for CasADi physics validation mode.
 This module provides comprehensive statistics collection and analysis
 for comparing Python and CasADi physics implementations during validation mode.
 """
+from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -30,8 +31,8 @@ class ValidationMetrics:
     # Parameter ranges
     stroke: float
     cycle_time: float
-    crank_radius_range: Tuple[float, float]
-    rod_length_range: Tuple[float, float]
+    crank_radius_range: tuple[float, float]
+    rod_length_range: tuple[float, float]
 
     # Results comparison
     python_torque_avg: float
@@ -82,7 +83,7 @@ class ValidationMetrics:
     # Additional metadata
     casadi_version: str
     python_version: str
-    hardware_info: Dict[str, Any]
+    hardware_info: dict[str, Any]
 
 
 @dataclass
@@ -97,15 +98,15 @@ class ValidationStatistics:
     tolerance_exceeded_count: int
 
     # Parity statistics
-    torque_avg_stats: Dict[str, float]  # min, max, mean, std of differences
-    torque_ripple_stats: Dict[str, float]
-    side_load_penalty_stats: Dict[str, float]
-    litvin_objective_stats: Dict[str, float]
-    litvin_closure_stats: Dict[str, float]
+    torque_avg_stats: dict[str, float]  # min, max, mean, std of differences
+    torque_ripple_stats: dict[str, float]
+    side_load_penalty_stats: dict[str, float]
+    litvin_objective_stats: dict[str, float]
+    litvin_closure_stats: dict[str, float]
 
     # Performance statistics
-    evaluation_speedup_stats: Dict[str, float]
-    gradient_speedup_stats: Dict[str, float]
+    evaluation_speedup_stats: dict[str, float]
+    gradient_speedup_stats: dict[str, float]
 
     # Convergence statistics
     python_convergence_rate: float
@@ -116,8 +117,8 @@ class ValidationStatistics:
     tolerance_threshold: float
 
     # Problem type breakdown
-    problem_type_counts: Dict[str, int]
-    problem_type_success_rates: Dict[str, float]
+    problem_type_counts: dict[str, int]
+    problem_type_success_rates: dict[str, float]
 
     # Time period
     collection_start: str
@@ -133,7 +134,7 @@ class ValidationStatisticsCollector:
     for comparing Python and CasADi physics implementations.
     """
 
-    def __init__(self, output_dir: Optional[Path] = None):
+    def __init__(self, output_dir: Path | None = None):
         """
         Initialize the validation statistics collector.
 
@@ -145,7 +146,7 @@ class ValidationStatisticsCollector:
         self.output_dir = output_dir or Path("logs/validation_stats")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.metrics: List[ValidationMetrics] = []
+        self.metrics: list[ValidationMetrics] = []
         self.current_session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         log.info(
@@ -267,7 +268,7 @@ class ValidationStatisticsCollector:
             collection_duration_days=collection_duration,
         )
 
-    def _compute_stats_dict(self, values: List[float]) -> Dict[str, float]:
+    def _compute_stats_dict(self, values: list[float]) -> dict[str, float]:
         """Compute statistics dictionary for a list of values."""
         if not values:
             return {"min": 0.0, "max": 0.0, "mean": 0.0, "std": 0.0, "median": 0.0}
@@ -411,7 +412,7 @@ class ValidationStatisticsCollector:
         self.metrics.clear()
         log.info("Validation metrics cleared")
 
-    def get_metrics_summary(self) -> Dict[str, Any]:
+    def get_metrics_summary(self) -> dict[str, Any]:
         """
         Get a summary of collected metrics.
 

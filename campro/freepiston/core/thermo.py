@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 from campro.logging import get_logger
 
@@ -38,10 +37,10 @@ class RealGasEOS:
     """
 
     # Component data
-    components: Dict[
-        str, Dict[str, float],
+    components: dict[
+        str, dict[str, float],
     ]  # species -> {W, Tc, Pc, omega, janaf_coeffs}
-    mole_fractions: Dict[str, float]
+    mole_fractions: dict[str, float]
 
     def __post_init__(self):
         """Validate and compute mixture properties."""
@@ -221,7 +220,7 @@ class RealGasEOS:
 
         return 1.0 / v_guess
 
-    def transport_properties(self, T: float) -> Tuple[float, float, float]:
+    def transport_properties(self, T: float) -> tuple[float, float, float]:
         """Compute temperature-dependent transport properties.
 
         Returns
@@ -267,17 +266,17 @@ class IdealMix:
     gamma_ref: float
     W_mix: float
 
-    def gas_constants(self) -> Tuple[float, float]:
+    def gas_constants(self) -> tuple[float, float]:
         R = R_UNIVERSAL / self.W_mix
         cp = self.gamma_ref * R / (self.gamma_ref - 1.0)
         return R, cp
 
-    def h_T(self, T: float) -> float:
+    def h_T(self, T: float) -> float:  # noqa: N802
         """Sensible enthalpy relative to 0 K with constant cp."""
         _, cp = self.gas_constants()
         return cp * T
 
-    def s_Tp(self, T: float, p: float) -> float:
+    def s_Tp(self, T: float, p: float) -> float:  # noqa: N802
         """Ideal-mix entropy up to a constant reference.
 
         s(T,p) = cp ln(T) - R ln(p)

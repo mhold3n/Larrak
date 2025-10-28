@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
 
 from campro.logging import get_logger
 
@@ -63,7 +62,7 @@ def piston_force_balance(
     T_gas: float,
     V_chamber: float,
     omega: float = 0.0,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Full piston force balance with gas pressure coupling.
 
     Computes the net force on the piston considering:
@@ -127,7 +126,7 @@ def piston_force_balance(
 
 def connecting_rod_kinematics(
     *, x: float, v: float, a: float, rod_length: float, stroke: float,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Connecting rod kinematics for piston motion.
 
     Computes connecting rod angle, angular velocity, and angular acceleration.
@@ -218,7 +217,7 @@ def piston_ring_dynamics(
     state: PistonState,
     p_gas: float,
     p_crankcase: float = 1e5,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """Piston ring dynamics and blow-by calculation.
 
     Computes ring friction and blow-by mass flow rate.
@@ -290,7 +289,7 @@ def clearance_penalty(*, gap: float, gap_min: float, k: float) -> float:
 
 def piston_energy_balance(
     *, geometry: PistonGeometry, state: PistonState, dt: float,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Piston energy balance for validation.
 
     Computes energy transfer rates and validates conservation.
@@ -379,7 +378,7 @@ def piston_dae_residual(
     V_chamber: float,
     omega: float = 0.0,
     dt: float = 1e-6,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Piston DAE residual for gas-structure coupling.
 
@@ -445,9 +444,9 @@ def gas_structure_coupling(
     *,
     geometry: PistonGeometry,
     state: PistonState,
-    gas_state: Dict[str, float],
-    coupling_params: Optional[Dict[str, Any]] = None,
-) -> Dict[str, float]:
+    gas_state: dict[str, float],
+    coupling_params: dict[str, Any] | None = None,
+) -> dict[str, float]:
     """
     Gas-structure coupling for piston-gas interaction.
 
@@ -515,7 +514,7 @@ def piston_mass_inertia_calculation(
     *,
     geometry: PistonGeometry,
     state: PistonState,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Calculate mass and moment of inertia for piston system.
 
@@ -563,7 +562,7 @@ def piston_clearance_validation(
     *,
     geometry: PistonGeometry,
     state: PistonState,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Validate piston clearance and compute clearance-related forces.
 

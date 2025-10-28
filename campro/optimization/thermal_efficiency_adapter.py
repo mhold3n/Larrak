@@ -5,10 +5,11 @@ This adapter provides a bridge between the existing motion law optimization
 system and the complex gas optimizer, focusing specifically on thermal
 efficiency optimization for acceleration zones.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -92,10 +93,10 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
     acceleration zone optimization.
     """
 
-    def __init__(self, config: Optional[ThermalEfficiencyConfig] = None):
+    def __init__(self, config: ThermalEfficiencyConfig | None = None):
         super().__init__("ThermalEfficiencyAdapter")
         self.config = config or ThermalEfficiencyConfig()
-        self.complex_optimizer: Optional[Any] = None
+        self.complex_optimizer: Any | None = None
         self._setup_complex_optimizer()
 
     def _setup_complex_optimizer(self) -> None:
@@ -106,7 +107,6 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             from campro.freepiston.opt.optimization_lib import (
                 MotionLawOptimizer as _ComplexMotionLawOptimizer,
             )
-            from campro.freepiston.opt.optimization_lib import OptimizationConfig
 
             # Expose name in module globals so tests can patch it
             global ComplexMotionLawOptimizer  # type: ignore
@@ -244,7 +244,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
         self,
         objective,
         constraints: MotionLawConstraints,
-        initial_guess: Optional[Dict[str, np.ndarray]] = None,
+        initial_guess: dict[str, np.ndarray] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -367,7 +367,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
 
     def _extract_motion_law_data(
         self, complex_result, constraints: MotionLawConstraints,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Extract motion law data from complex optimization result."""
         try:
             # Extract optimized motion law from complex result
@@ -483,7 +483,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
 
     def _generate_fallback_motion_law(
         self, constraints: MotionLawConstraints,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Generate fallback motion law when complex optimization fails."""
         theta = np.linspace(0, 2 * np.pi, 360)
 
@@ -546,7 +546,7 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             log.error(f"Result validation failed: {e}")
             return False
 
-    def _get_log_file_path(self) -> Optional[str]:
+    def _get_log_file_path(self) -> str | None:
         """Get the most recent Ipopt log file for analysis."""
         from campro.constants import IPOPT_LOG_DIR
 

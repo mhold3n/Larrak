@@ -15,10 +15,11 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from campro.config import SystemBuilder
-from campro.logging import get_logger
-from campro.physics.geometry import CamCurveComponent, CurvatureComponent
-from campro.physics.kinematics import MeshingLawComponent
+# Import after path modification
+from campro.config import SystemBuilder  # noqa: E402
+from campro.logging import get_logger  # noqa: E402
+from campro.physics.geometry import CamCurveComponent, CurvatureComponent  # noqa: E402
+from campro.physics.kinematics import MeshingLawComponent  # noqa: E402
 
 log = get_logger(__name__)
 

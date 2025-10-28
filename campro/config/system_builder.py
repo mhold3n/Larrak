@@ -4,9 +4,10 @@ System builder for creating configurable physics systems.
 This module provides a builder pattern for creating complex systems
 from modular components with flexible configuration.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Type
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -22,9 +23,9 @@ class SystemConfiguration:
     """Configuration for a complete system."""
 
     name: str
-    components: Dict[str, Dict[str, Any]]
-    connections: List[Dict[str, str]]
-    parameters: Dict[str, Any]
+    components: dict[str, dict[str, Any]]
+    connections: list[dict[str, str]]
+    parameters: dict[str, Any]
 
 
 class SystemBuilder:
@@ -51,7 +52,7 @@ class SystemBuilder:
         self._component_registry = self._initialize_component_registry()
         log.debug(f"Initialized system builder for: {name}")
 
-    def _initialize_component_registry(self) -> Dict[str, Type[BaseComponent]]:
+    def _initialize_component_registry(self) -> dict[str, type[BaseComponent]]:
         """Initialize registry of available components."""
         return {
             "cam_curve": CamCurveComponent,
@@ -64,8 +65,8 @@ class SystemBuilder:
         self,
         name: str,
         component_type: str,
-        parameters: Optional[Dict[str, Any]] = None,
-    ) -> "SystemBuilder":
+        parameters: dict[str, Any] | None = None,
+    ) -> SystemBuilder:
         """
         Add a component to the system.
 
@@ -100,7 +101,7 @@ class SystemBuilder:
 
     def connect_components(
         self, from_component: str, to_component: str, connection_type: str = "data_flow",
-    ) -> "SystemBuilder":
+    ) -> SystemBuilder:
         """
         Connect components in the system.
 
@@ -134,7 +135,7 @@ class SystemBuilder:
         log.debug(f"Connected {from_component} -> {to_component} ({connection_type})")
         return self
 
-    def set_parameters(self, parameters: Dict[str, Any]) -> "SystemBuilder":
+    def set_parameters(self, parameters: dict[str, Any]) -> SystemBuilder:
         """
         Set system-level parameters.
 
@@ -154,7 +155,7 @@ class SystemBuilder:
 
     def build_cam_ring_system(
         self, base_radius: float = 10.0, connecting_rod_length: float = 25.0,
-    ) -> "SystemBuilder":
+    ) -> SystemBuilder:
         """
         Build a standard cam-ring system configuration.
 

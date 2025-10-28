@@ -1,7 +1,7 @@
 """Larrak: Optimal motion law problems using CasADi and Ipopt collocation."""
+from __future__ import annotations
 
 import os
-from typing import Optional
 
 from campro.diagnostics.run_metadata import set_global_seeds
 from campro.logging import get_logger
@@ -11,7 +11,7 @@ __version__ = "0.1.0"
 log = get_logger(__name__)
 
 # Global flag to track ipopt availability
-_IPOPT_AVAILABLE: Optional[bool] = None
+_IPOPT_AVAILABLE: bool | None = None
 
 
 def _check_ipopt_availability() -> bool:

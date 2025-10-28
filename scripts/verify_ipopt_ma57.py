@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, Final
+from typing import Any, Final
 
 # Ensure repository root is on sys.path so 'campro' package can be imported
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import argparse
+import argparse  # noqa: E402
 
-from campro.logging import get_logger
+from campro.logging import get_logger  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -45,10 +45,10 @@ def verify_ipopt_with_solver(solver_name: str) -> int:
 
     # Simple scalar quadratic: f(x) = (x - 1)^2
     x = ca.SX.sym("x")
-    nlp: Dict[str, Any] = {"x": x, "f": (x - 1) ** 2}
+    nlp: dict[str, Any] = {"x": x, "f": (x - 1) ** 2}
 
     # Provide creation-time options so Ipopt initializes MA57 & HSL before reading ipopt.opt
-    opts: Dict[str, Any] = {
+    opts: dict[str, Any] = {
         "ipopt.linear_solver": solver_name,
         "ipopt.hsllib": HSL_LIB_PATH,
         "ipopt.option_file_name": IPOPT_OPT_PATH,
@@ -67,7 +67,7 @@ def verify_ipopt_with_solver(solver_name: str) -> int:
         log.error(f"Ipopt solve failed: {exc}")
         return 4
 
-    stats: Dict[str, Any] = dict(solver.stats())
+    stats: dict[str, Any] = dict(solver.stats())
     linear_solver = stats.get("linear_solver")
     success = bool(stats.get("success", False))
     return_status = stats.get("return_status")

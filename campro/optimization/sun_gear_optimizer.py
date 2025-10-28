@@ -5,10 +5,11 @@ This module implements a third optimization layer that introduces a sun gear
 between the cam and ring follower to eliminate interference constraints and
 enable optimal journal placement with back rotation capabilities.
 """
+from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 from scipy.optimize import minimize
@@ -45,7 +46,7 @@ class SunGearParameters:
     journal_offset_y: float = 0.0
     journal_radius: float = 5.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "sun_gear_radius": self.sun_gear_radius,
@@ -134,7 +135,7 @@ class SunGearOptimizer(BaseOptimizer):
     def __init__(
         self,
         name: str = "SunGearOptimizer",
-        settings: Optional[CollocationSettings] = None,
+        settings: CollocationSettings | None = None,
     ):
         super().__init__(name)
         self.settings = settings or CollocationSettings()
@@ -144,8 +145,8 @@ class SunGearOptimizer(BaseOptimizer):
 
     def configure(
         self,
-        constraints: Optional[SunGearOptimizationConstraints] = None,
-        targets: Optional[SunGearOptimizationTargets] = None,
+        constraints: SunGearOptimizationConstraints | None = None,
+        targets: SunGearOptimizationTargets | None = None,
         **kwargs,
     ) -> None:
         """
@@ -175,9 +176,9 @@ class SunGearOptimizer(BaseOptimizer):
 
     def optimize(
         self,
-        primary_data: Dict[str, np.ndarray],
-        secondary_data: Dict[str, np.ndarray],
-        initial_guess: Optional[Dict[str, float]] = None,
+        primary_data: dict[str, np.ndarray],
+        secondary_data: dict[str, np.ndarray],
+        initial_guess: dict[str, float] | None = None,
         **kwargs,
     ) -> OptimizationResult:
         """
@@ -369,8 +370,8 @@ class SunGearOptimizer(BaseOptimizer):
         return result
 
     def _get_default_initial_guess(
-        self, primary_data: Dict[str, np.ndarray], secondary_data: Dict[str, np.ndarray],
-    ) -> Dict[str, float]:
+        self, primary_data: dict[str, np.ndarray], secondary_data: dict[str, np.ndarray],
+    ) -> dict[str, float]:
         """Get default initial guess based on previous optimization results."""
         # Use optimized cam parameters from secondary optimization
         optimized_params = secondary_data.get("optimized_parameters", {})
@@ -394,13 +395,13 @@ class SunGearOptimizer(BaseOptimizer):
     def _objective_function(
         self,
         params: np.ndarray,
-        param_names: List[str],
+        param_names: list[str],
         theta: np.ndarray,
         x_theta: np.ndarray,
-        cam_curves: Dict[str, np.ndarray],
-        optimized_params: Dict[str, float],
-        primary_data: Dict[str, np.ndarray],
-        secondary_data: Dict[str, np.ndarray],
+        cam_curves: dict[str, np.ndarray],
+        optimized_params: dict[str, float],
+        primary_data: dict[str, np.ndarray],
+        secondary_data: dict[str, np.ndarray],
     ) -> float:
         """Calculate objective function value for sun gear system."""
         try:
@@ -460,9 +461,9 @@ class SunGearOptimizer(BaseOptimizer):
         self,
         theta: np.ndarray,
         x_theta: np.ndarray,
-        cam_curves: Dict[str, np.ndarray],
-        optimized_params: Dict[str, float],
-    ) -> List[Dict]:
+        cam_curves: dict[str, np.ndarray],
+        optimized_params: dict[str, float],
+    ) -> list[dict]:
         """Define optimization constraints for sun gear system."""
         constraints = []
 
@@ -517,14 +518,14 @@ class SunGearOptimizer(BaseOptimizer):
 
     def _generate_final_design(
         self,
-        optimized_params: Dict[str, float],
+        optimized_params: dict[str, float],
         theta: np.ndarray,
         x_theta: np.ndarray,
-        cam_curves: Dict[str, np.ndarray],
-        cam_optimized_params: Dict[str, float],
-        primary_data: Dict[str, np.ndarray],
-        secondary_data: Dict[str, np.ndarray],
-    ) -> Dict[str, Any]:
+        cam_curves: dict[str, np.ndarray],
+        cam_optimized_params: dict[str, float],
+        primary_data: dict[str, np.ndarray],
+        secondary_data: dict[str, np.ndarray],
+    ) -> dict[str, Any]:
         """Generate final sun gear design with optimized parameters."""
         # Create optimized sun gear parameters
         sun_gear_params = SunGearParameters(

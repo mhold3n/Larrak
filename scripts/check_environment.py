@@ -11,19 +11,19 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 # Add project root to path for imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from campro.environment.validator import (
+from campro.environment.validator import (  # noqa: E402
     ValidationResult,
     ValidationStatus,
     get_installation_instructions,
     validate_environment,
 )
-from campro.logging import get_logger
+from campro.logging import get_logger  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -93,7 +93,7 @@ def print_validation_result(result: ValidationResult, indent: str = "") -> None:
 
 
 def print_environment_report(
-    results: Dict[str, Any], json_output: bool = False,
+    results: dict[str, Any], json_output: bool = False,
 ) -> None:
     """
     Print comprehensive environment validation report.

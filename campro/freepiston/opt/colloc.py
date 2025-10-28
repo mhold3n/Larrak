@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Literal
+from typing import Literal
 
 from campro.logging import get_logger
 
@@ -10,9 +10,9 @@ log = get_logger(__name__)
 
 @dataclass
 class CollocationGrid:
-    nodes: List[float]
-    weights: List[float]
-    a: List[List[float]]  # coefficients a_cj
+    nodes: list[float]
+    weights: list[float]
+    a: list[list[float]]  # coefficients a_cj
 
 
 def make_grid(

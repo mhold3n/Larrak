@@ -4,9 +4,10 @@ Base physics model class.
 This module defines the fundamental physics simulation framework that will
 be extended for various physics models.
 """
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -26,8 +27,8 @@ class BasePhysicsModel(ABC):
     def __init__(self, name: str = "BasePhysicsModel"):
         self.name = name
         self._is_configured = False
-        self._current_result: Optional[PhysicsResult] = None
-        self._simulation_history: List[PhysicsResult] = []
+        self._current_result: PhysicsResult | None = None
+        self._simulation_history: list[PhysicsResult] = []
 
     @abstractmethod
     def configure(self, **kwargs) -> None:
@@ -39,7 +40,7 @@ class BasePhysicsModel(ABC):
         """
 
     @abstractmethod
-    def simulate(self, inputs: Dict[str, Any], **kwargs) -> PhysicsResult:
+    def simulate(self, inputs: dict[str, Any], **kwargs) -> PhysicsResult:
         """
         Run a physics simulation.
 
@@ -55,11 +56,11 @@ class BasePhysicsModel(ABC):
         """Check if physics model is configured."""
         return self._is_configured
 
-    def get_current_result(self) -> Optional[PhysicsResult]:
+    def get_current_result(self) -> PhysicsResult | None:
         """Get the most recent simulation result."""
         return self._current_result
 
-    def get_simulation_history(self) -> List[PhysicsResult]:
+    def get_simulation_history(self) -> list[PhysicsResult]:
         """Get all simulation results."""
         return self._simulation_history.copy()
 
@@ -80,9 +81,9 @@ class BasePhysicsModel(ABC):
     def _finish_simulation(
         self,
         result: PhysicsResult,
-        data: Dict[str, Any],
-        convergence_info: Optional[Dict[str, Any]] = None,
-        error_message: Optional[str] = None,
+        data: dict[str, Any],
+        convergence_info: dict[str, Any] | None = None,
+        error_message: str | None = None,
     ) -> PhysicsResult:
         """Finish a simulation process."""
         # Update result data
@@ -105,17 +106,17 @@ class BasePhysicsModel(ABC):
 
         return result
 
-    def _validate_inputs(self, inputs: Dict[str, Any]) -> None:
+    def _validate_inputs(self, inputs: dict[str, Any]) -> None:
         """Validate simulation inputs."""
         if not isinstance(inputs, dict):
-            raise ValueError("Inputs must be a dictionary")
+            raise TypeError("Inputs must be a dictionary")
 
         if not self._is_configured:
             raise RuntimeError(
                 f"Physics model {self.name} is not configured. Call configure() first.",
             )
 
-    def get_performance_summary(self) -> Dict[str, Any]:
+    def get_performance_summary(self) -> dict[str, Any]:
         """Get performance summary across all simulations."""
         if not self._simulation_history:
             return {}

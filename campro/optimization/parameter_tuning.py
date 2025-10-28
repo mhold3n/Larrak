@@ -1,7 +1,7 @@
 """Dynamic parameter tuning based on problem characteristics."""
+from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 from campro.logging import get_logger
 from campro.optimization.solver_selection import AnalysisHistory, ProblemCharacteristics
@@ -38,7 +38,7 @@ class DynamicParameterTuner:
         self,
         phase: str,
         problem_chars: ProblemCharacteristics,
-        analysis_history: Optional[AnalysisHistory],
+        analysis_history: AnalysisHistory | None,
     ) -> SolverParameters:
         """Tune parameters for optimal performance."""
 
@@ -196,7 +196,7 @@ class DynamicParameterTuner:
         phase: str,
         n_variables: int,
         n_constraints: int,
-        analysis_history: Optional[AnalysisHistory] = None,
+        analysis_history: AnalysisHistory | None = None,
     ) -> SolverParameters:
         """Convenience method to tune parameters for a specific phase."""
 
@@ -239,7 +239,7 @@ class DynamicParameterTuner:
         phase: str,
         problem_chars: ProblemCharacteristics,
         params: SolverParameters,
-    ) -> List[str]:
+    ) -> list[str]:
         """Get rationale for parameter tuning decisions."""
         rationale = []
 

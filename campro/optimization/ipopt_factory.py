@@ -8,7 +8,7 @@ multiple solvers try to set the same option.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import casadi as ca
 
@@ -26,8 +26,8 @@ DEFAULT_LINEAR_SOLVER = "ma27"
 def create_ipopt_solver(
     name: str,
     nlp: Any,
-    options: Optional[Dict[str, Any]] = None,
-    linear_solver: Optional[str] = None,
+    options: dict[str, Any] | None = None,
+    linear_solver: str | None = None,
 ) -> Any:
     """
     Create an IPOPT solver with explicit linear solver configuration.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict
 
 from campro.logging import get_logger
 
@@ -296,8 +295,8 @@ def fuel_mass_from_heat(*, Q_release: float, params: CombustionParameters) -> fl
 
 
 def multi_zone_combustion(
-    *, zones: Dict[str, Dict[str, float]], params: CombustionParameters,
-) -> Dict[str, float]:
+    *, zones: dict[str, dict[str, float]], params: CombustionParameters,
+) -> dict[str, float]:
     """Multi-zone combustion model.
 
     Computes heat release for multiple combustion zones.
@@ -334,7 +333,7 @@ def multi_zone_combustion(
 
 def combustion_timing_optimization(
     *, theta_start: float, theta_duration: float, params: CombustionParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Combustion timing optimization.
 
     Optimizes combustion timing for maximum efficiency.

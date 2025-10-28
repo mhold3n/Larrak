@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Dict, Protocol
+from typing import Callable, Protocol
 
 from .motion import RadialSlotMotion
 
@@ -19,7 +19,7 @@ def from_provider(provider: MotionProvider) -> RadialSlotMotion:
     )
 
 
-def from_dict(funcs: Dict[str, Callable[[float], float]]) -> RadialSlotMotion:
+def from_dict(funcs: dict[str, Callable[[float], float]]) -> RadialSlotMotion:
     return RadialSlotMotion(
         center_offset_fn=funcs["center_offset"],
         planet_angle_fn=funcs["planet_angle"],

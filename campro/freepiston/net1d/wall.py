@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -61,7 +61,7 @@ def calculate_y_plus(
     u: float,
     mu: float,
     y: float,
-    u_tau: Optional[float] = None,
+    u_tau: float | None = None,
 ) -> float:
     """
     Calculate y+ value for wall function.
@@ -122,7 +122,7 @@ def compressible_wall_function(
     T: float,
     T_wall: float,
     params: WallModelParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Compressible wall function with y+ calculation.
 
@@ -237,7 +237,7 @@ def roughness_effects(
     y_plus: float,
     roughness_relative: float,
     params: WallModelParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Account for wall roughness effects in wall function.
 
@@ -283,7 +283,7 @@ def compressible_corrections(
     T: float,
     T_wall: float,
     params: WallModelParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Apply compressibility corrections to wall function.
 
@@ -326,7 +326,7 @@ def wall_function_validation(
     y_plus: float,
     u_plus: float,
     params: WallModelParameters,
-) -> Dict[str, bool]:
+) -> dict[str, bool]:
     """
     Validate wall function results.
 
@@ -367,7 +367,7 @@ def wall_temperature_evolution(
     T_wall_old: float,
     q_wall: float,
     dt: float,
-    wall_properties: Dict[str, float],
+    wall_properties: dict[str, float],
 ) -> float:
     """
     Evolve wall temperature based on heat transfer.
@@ -406,7 +406,7 @@ def multi_layer_wall_heat_transfer(
     T_wall_surface: float,
     wall_layers: list,
     params: WallModelParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Multi-layer wall heat transfer with thermal resistance.
 
@@ -488,7 +488,7 @@ def advanced_heat_transfer_correlation(
     T_wall: float,
     D_hydraulic: float,
     params: WallModelParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Advanced heat transfer correlation for engine walls.
 
@@ -557,7 +557,7 @@ def wall_function_with_roughness(
     T: float,
     T_wall: float,
     params: WallModelParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Enhanced wall function with roughness effects.
 
@@ -665,7 +665,7 @@ def spalding_wall_function(
     E: float = 9.0,
     max_iterations: int = 100,
     tolerance: float = 1e-8,
-) -> Tuple[float, Dict[str, float]]:
+) -> tuple[float, dict[str, float]]:
     """
     Compute u+ from Spalding's law given y+ using Newton iterations.
 
@@ -736,7 +736,7 @@ def spalding_wall_function(
         else:
             u_plus = u_plus_new
 
-    diagnostics: Dict[str, float] = {
+    diagnostics: dict[str, float] = {
         "converged": True if converged else False,
         "iterations": float(iterations),
         "residual": float(residual),
@@ -748,9 +748,9 @@ def spalding_wall_function(
 def enhanced_wall_treatment(
     *,
     mesh: Any,
-    flow_params: Dict[str, float],
+    flow_params: dict[str, float],
     wall_params: WallModelParameters,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Enhanced wall treatment with automatic model selection and simple blending.
 

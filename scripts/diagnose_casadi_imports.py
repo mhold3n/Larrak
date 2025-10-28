@@ -106,11 +106,8 @@ def test_optimization_lib_components():
 
     try:
         from campro.freepiston.opt.optimization_lib import (
-            IPOPTBackend,
             MotionLawOptimizer,
             OptimizationConfig,
-            ProblemBuilder,
-            ResultProcessor,
         )
 
         print("✓ All optimization_lib components imported successfully")
@@ -147,7 +144,6 @@ def test_config_factory():
 
     try:
         from campro.freepiston.opt.config_factory import (
-            ConfigFactory,
             create_optimization_scenario,
         )
 

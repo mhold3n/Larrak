@@ -4,9 +4,10 @@ Optimal motion law problems using CasADi and Ipopt collocation methods.
 This module provides a comprehensive framework for solving optimal motion law
 problems using direct collocation methods with CasADi and Ipopt.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable
 
 import casadi as ca
 import numpy as np
@@ -58,21 +59,21 @@ class MotionConstraints:
     """Constraints for optimal motion law problems."""
 
     # State constraints
-    position_bounds: Optional[Tuple[float, float]] = None
-    velocity_bounds: Optional[Tuple[float, float]] = None
-    acceleration_bounds: Optional[Tuple[float, float]] = None
-    jerk_bounds: Optional[Tuple[float, float]] = None
+    position_bounds: tuple[float, float] | None = None
+    velocity_bounds: tuple[float, float] | None = None
+    acceleration_bounds: tuple[float, float] | None = None
+    jerk_bounds: tuple[float, float] | None = None
 
     # Control constraints
-    control_bounds: Optional[Tuple[float, float]] = None
+    control_bounds: tuple[float, float] | None = None
 
     # Boundary conditions
-    initial_position: Optional[float] = None
-    initial_velocity: Optional[float] = None
-    initial_acceleration: Optional[float] = None
-    final_position: Optional[float] = None
-    final_velocity: Optional[float] = None
-    final_acceleration: Optional[float] = None
+    initial_position: float | None = None
+    initial_velocity: float | None = None
+    initial_acceleration: float | None = None
+    final_position: float | None = None
+    final_velocity: float | None = None
+    final_acceleration: float | None = None
 
 
 @dataclass
@@ -87,14 +88,14 @@ class CamMotionConstraints:
     # Core cam parameters
     stroke: float  # Total follower stroke (required)
     upstroke_duration_percent: float  # % of cycle for upstroke (0-100)
-    zero_accel_duration_percent: Optional[float] = (
+    zero_accel_duration_percent: float | None = (
         None  # % of cycle with zero acceleration (can be anywhere in cycle)
     )
 
     # Optional constraints
-    max_velocity: Optional[float] = None
-    max_acceleration: Optional[float] = None
-    max_jerk: Optional[float] = None
+    max_velocity: float | None = None
+    max_acceleration: float | None = None
+    max_jerk: float | None = None
 
     # Boundary conditions (optional - defaults to dwell at TDC and BDC)
     dwell_at_tdc: bool = True  # Zero velocity at TDC (0°)
@@ -134,7 +135,7 @@ class OptimalMotionSolver:
     and Ipopt with direct collocation methods for accurate solutions.
     """
 
-    def __init__(self, settings: Optional[CollocationSettings] = None):
+    def __init__(self, settings: CollocationSettings | None = None):
         """
         Initialize the optimal motion solver.
 
@@ -174,7 +175,7 @@ class OptimalMotionSolver:
         max_acceleration: float,
         max_jerk: float,
         time_horizon: float = None,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Solve minimum time motion law problem.
 
@@ -217,7 +218,7 @@ class OptimalMotionSolver:
         max_jerk: float,
         time_horizon: float = None,
         motion_type: str = "minimum_jerk",
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Generate a smooth sinusoidal motion law that respects bounds.
 
@@ -330,7 +331,7 @@ class OptimalMotionSolver:
         max_acceleration: float,
         max_jerk: float,
         time_horizon: float = None,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Generate a simple fallback motion law when optimization fails."""
         log.warning("Using fallback motion law generation")
 
@@ -483,7 +484,7 @@ class OptimalMotionSolver:
         time_horizon: float,
         max_velocity: float,
         max_acceleration: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Solve minimum energy motion law problem.
 
@@ -524,7 +525,7 @@ class OptimalMotionSolver:
         time_horizon: float,
         max_velocity: float,
         max_acceleration: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Solve minimum jerk motion law problem.
 
@@ -558,7 +559,7 @@ class OptimalMotionSolver:
         cam_constraints: CamMotionConstraints,
         motion_type: str = "minimum_jerk",
         cycle_time: float = 1.0,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Solve cam follower motion law problem with simplified constraints.
 
@@ -648,7 +649,7 @@ class OptimalMotionSolver:
         cam_constraints: CamMotionConstraints,
         motion_constraints: MotionConstraints,
         cycle_time: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Solve minimum time cam motion law."""
 
         # Calculate time segments
@@ -685,7 +686,7 @@ class OptimalMotionSolver:
         cam_constraints: CamMotionConstraints,
         motion_constraints: MotionConstraints,
         cycle_time: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Solve minimum energy cam motion law."""
 
         upstroke_time = cycle_time * cam_constraints.upstroke_duration_percent / 100.0
@@ -719,7 +720,7 @@ class OptimalMotionSolver:
         cam_constraints: CamMotionConstraints,
         motion_constraints: MotionConstraints,
         cycle_time: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Solve minimum jerk cam motion law."""
 
         upstroke_time = cycle_time * cam_constraints.upstroke_duration_percent / 100.0
@@ -770,10 +771,10 @@ class OptimalMotionSolver:
 
     def _combine_cam_solutions(
         self,
-        upstroke_solution: Dict[str, np.ndarray],
-        downstroke_solution: Dict[str, np.ndarray],
+        upstroke_solution: dict[str, np.ndarray],
+        downstroke_solution: dict[str, np.ndarray],
         cycle_time: float,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Combine upstroke and downstroke solutions into complete cam cycle."""
 
         # Get time arrays
@@ -840,9 +841,9 @@ class OptimalMotionSolver:
         objective_function: Callable,
         constraints: MotionConstraints,
         distance: float,
-        time_horizon: Optional[float] = None,
+        time_horizon: float | None = None,
         **kwargs,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Solve motion law problem with custom objective function.
 
@@ -898,14 +899,14 @@ class OptimalMotionSolver:
         ocp: ca.Opti,
         constraints: MotionConstraints,
         distance: float,
-        time_horizon: Optional[float] = None,
+        time_horizon: float | None = None,
     ) -> None:
         """Apply motion constraints to the OCP."""
 
         # Note: This is a simplified version for the new CasADi API
         # The full implementation would need to be rewritten for the new API
 
-    def _solve_collocation(self, ocp: ca.Opti) -> Dict[str, np.ndarray]:
+    def _solve_collocation(self, ocp: ca.Opti) -> dict[str, np.ndarray]:
         """
         Placeholder for collocation solving.
 
@@ -920,8 +921,8 @@ class OptimalMotionSolver:
 
     def plot_solution(
         self,
-        solution: Dict[str, np.ndarray],
-        save_path: Optional[str] = None,
+        solution: dict[str, np.ndarray],
+        save_path: str | None = None,
         use_cam_angle: bool = False,
     ) -> None:
         """
@@ -1028,8 +1029,8 @@ def solve_minimum_time_motion(
     max_jerk: float,
     initial_velocity: float = 0.0,
     final_velocity: float = 0.0,
-    settings: Optional[CollocationSettings] = None,
-) -> Dict[str, np.ndarray]:
+    settings: CollocationSettings | None = None,
+) -> dict[str, np.ndarray]:
     """
     Convenience function for minimum time motion law.
 
@@ -1077,8 +1078,8 @@ def solve_minimum_energy_motion(
     max_acceleration: float,
     initial_velocity: float = 0.0,
     final_velocity: float = 0.0,
-    settings: Optional[CollocationSettings] = None,
-) -> Dict[str, np.ndarray]:
+    settings: CollocationSettings | None = None,
+) -> dict[str, np.ndarray]:
     """
     Convenience function for minimum energy motion law.
 
@@ -1126,8 +1127,8 @@ def solve_minimum_jerk_motion(
     max_acceleration: float,
     initial_velocity: float = 0.0,
     final_velocity: float = 0.0,
-    settings: Optional[CollocationSettings] = None,
-) -> Dict[str, np.ndarray]:
+    settings: CollocationSettings | None = None,
+) -> dict[str, np.ndarray]:
     """
     Convenience function for minimum jerk motion law.
 
@@ -1174,14 +1175,14 @@ def solve_cam_motion_law(
     upstroke_duration_percent: float,
     motion_type: str = "minimum_jerk",
     cycle_time: float = 1.0,
-    max_velocity: Optional[float] = None,
-    max_acceleration: Optional[float] = None,
-    max_jerk: Optional[float] = None,
-    zero_accel_duration_percent: Optional[float] = None,
+    max_velocity: float | None = None,
+    max_acceleration: float | None = None,
+    max_jerk: float | None = None,
+    zero_accel_duration_percent: float | None = None,
     dwell_at_tdc: bool = True,
     dwell_at_bdc: bool = True,
-    settings: Optional[CollocationSettings] = None,
-) -> Dict[str, np.ndarray]:
+    settings: CollocationSettings | None = None,
+) -> dict[str, np.ndarray]:
     """
     Convenience function for cam motion law problems.
 

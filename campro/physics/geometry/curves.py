@@ -5,7 +5,6 @@ This module provides a modular component for computing cam curves
 from linear follower motion laws.
 """
 
-from typing import Dict, List
 
 import numpy as np
 
@@ -34,7 +33,7 @@ class CamCurveComponent(BaseComponent):
         if self.parameters["base_radius"] <= 0:
             raise ValueError("Base radius must be positive")
 
-    def compute(self, inputs: Dict[str, np.ndarray]) -> ComponentResult:
+    def compute(self, inputs: dict[str, np.ndarray]) -> ComponentResult:
         """
         Compute cam curves from linear follower motion law.
 
@@ -114,10 +113,10 @@ class CamCurveComponent(BaseComponent):
                 error_message=str(e),
             )
 
-    def get_required_inputs(self) -> List[str]:
+    def get_required_inputs(self) -> list[str]:
         """Get list of required input names."""
         return ["theta", "x_theta"]
 
-    def get_outputs(self) -> List[str]:
+    def get_outputs(self) -> list[str]:
         """Get list of output names."""
         return ["pitch_radius", "profile_radius", "contact_radius"]

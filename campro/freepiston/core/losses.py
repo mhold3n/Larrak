@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
 from campro.logging import get_logger
 
@@ -45,7 +44,7 @@ def piston_ring_friction(
     v: float,
     p_gas: float,
     p_crankcase: float,
-    geometry: Dict[str, float],
+    geometry: dict[str, float],
     params: FrictionParameters,
 ) -> float:
     """Piston ring friction model.
@@ -134,7 +133,7 @@ def pumping_losses(
     v: float,
     p_gas: float,
     V_chamber: float,
-    geometry: Dict[str, float],
+    geometry: dict[str, float],
     params: FrictionParameters,
 ) -> float:
     """Pumping losses in gas flow.
@@ -179,7 +178,7 @@ def viscous_losses(
     v: float,
     rho: float,
     mu: float,
-    geometry: Dict[str, float],
+    geometry: dict[str, float],
     params: FrictionParameters,
 ) -> float:
     """Viscous losses in gas flow.
@@ -219,8 +218,8 @@ def viscous_losses(
 
 
 def blow_by_losses(
-    *, p_gas: float, p_crankcase: float, geometry: Dict[str, float],
-) -> Tuple[float, float]:
+    *, p_gas: float, p_crankcase: float, geometry: dict[str, float],
+) -> tuple[float, float]:
     """Blow-by losses through piston rings.
 
     Computes mass flow rate and energy loss due to blow-by.
@@ -276,9 +275,9 @@ def total_friction_force(
     rho: float,
     mu: float,
     V_chamber: float,
-    geometry: Dict[str, float],
+    geometry: dict[str, float],
     params: FrictionParameters,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Total friction force from all sources.
 
     Computes combined friction force from all loss mechanisms.
@@ -340,8 +339,8 @@ def total_friction_force(
 
 
 def friction_power_loss(
-    *, v: float, omega: float, friction_forces: Dict[str, float],
-) -> Dict[str, float]:
+    *, v: float, omega: float, friction_forces: dict[str, float],
+) -> dict[str, float]:
     """Friction power losses.
 
     Computes power losses from friction forces.

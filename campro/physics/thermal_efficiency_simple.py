@@ -6,9 +6,10 @@ with key constraints from free-piston engine literature, using
 simplified models that are suitable for optimization while
 maintaining physical fidelity.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 from casadi import *
@@ -29,7 +30,7 @@ class ThermalEfficiencyConfig:
 
     # Efficiency targets from FPE literature
     efficiency_target: float = 0.55  # 55% target from FPE studies
-    compression_ratio_range: Tuple[float, float] = (20.0, 70.0)
+    compression_ratio_range: tuple[float, float] = (20.0, 70.0)
 
     # Heat transfer parameters (simplified Woschni correlation)
     heat_transfer_coeff: float = 0.1
@@ -51,7 +52,7 @@ class SimplifiedThermalModel:
     - Pressure rate constraints
     """
 
-    def __init__(self, config: Optional[ThermalEfficiencyConfig] = None):
+    def __init__(self, config: ThermalEfficiencyConfig | None = None):
         """
         Initialize thermal efficiency model.
 
@@ -69,7 +70,7 @@ class SimplifiedThermalModel:
         )
 
     def compute_compression_ratio(
-        self, position: Any, clearance: Optional[float] = None,
+        self, position: Any, clearance: float | None = None,
     ) -> Any:
         """
         Compute compression ratio from piston position.
@@ -313,7 +314,7 @@ class SimplifiedThermalModel:
 
     def evaluate_efficiency(
         self, position: np.ndarray, velocity: np.ndarray, acceleration: np.ndarray,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Evaluate thermal efficiency for given motion profile.
 

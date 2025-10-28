@@ -5,13 +5,14 @@ This module defines the fundamental storage system for optimization results,
 providing a consistent interface for storing, retrieving, and sharing results
 between different optimization components.
 """
+from __future__ import annotations
 
 import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -42,22 +43,22 @@ class StorageResult:
     status: StorageStatus = StorageStatus.PENDING
 
     # Stored data
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # Optimization context (NEW)
-    constraints: Optional[Dict[str, Any]] = None
-    optimization_rules: Optional[Dict[str, Any]] = None
-    solver_settings: Optional[Dict[str, Any]] = None
+    constraints: dict[str, Any] | None = None
+    optimization_rules: dict[str, Any] | None = None
+    solver_settings: dict[str, Any] | None = None
 
     # Access information
     access_count: int = 0
-    last_accessed: Optional[float] = None
+    last_accessed: float | None = None
 
     # Expiration
-    expires_at: Optional[float] = None
+    expires_at: float | None = None
 
     def is_expired(self) -> bool:
         """Check if the stored result has expired."""
@@ -89,21 +90,21 @@ class BaseStorage(ABC):
 
     def __init__(self, name: str = "BaseStorage"):
         self.name = name
-        self._storage: Dict[str, StorageResult] = {}
-        self._access_history: List[
-            Tuple[str, float, str]
+        self._storage: dict[str, StorageResult] = {}
+        self._access_history: list[
+            tuple[str, float, str]
         ] = []  # (id, timestamp, operation)
 
     @abstractmethod
     def store(
         self,
         key: str,
-        data: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
-        constraints: Optional[Dict[str, Any]] = None,
-        optimization_rules: Optional[Dict[str, Any]] = None,
-        solver_settings: Optional[Dict[str, Any]] = None,
-        expires_in: Optional[float] = None,
+        data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        constraints: dict[str, Any] | None = None,
+        optimization_rules: dict[str, Any] | None = None,
+        solver_settings: dict[str, Any] | None = None,
+        expires_in: float | None = None,
     ) -> StorageResult:
         """
         Store optimization result data.
@@ -122,7 +123,7 @@ class BaseStorage(ABC):
         """
 
     @abstractmethod
-    def retrieve(self, key: str) -> Optional[StorageResult]:
+    def retrieve(self, key: str) -> StorageResult | None:
         """
         Retrieve stored optimization result.
 
@@ -145,11 +146,11 @@ class BaseStorage(ABC):
             True if removed successfully, False otherwise
         """
 
-    def list_keys(self) -> List[str]:
+    def list_keys(self) -> list[str]:
         """List all stored keys."""
         return list(self._storage.keys())
 
-    def list_accessible_keys(self) -> List[str]:
+    def list_accessible_keys(self) -> list[str]:
         """List all accessible (non-expired) keys."""
         return [key for key, result in self._storage.items() if result.is_accessible()]
 
@@ -165,7 +166,7 @@ class BaseStorage(ABC):
         log.info(f"Cleaned up {len(expired_keys)} expired entries")
         return len(expired_keys)
 
-    def get_storage_stats(self) -> Dict[str, Any]:
+    def get_storage_stats(self) -> dict[str, Any]:
         """Get storage statistics."""
         total_entries = len(self._storage)
         accessible_entries = len(self.list_accessible_keys())
@@ -198,8 +199,8 @@ class BaseStorage(ABC):
             self._access_history = self._access_history[-1000:]
 
     def get_access_history(
-        self, limit: Optional[int] = None,
-    ) -> List[Tuple[str, float, str]]:
+        self, limit: int | None = None,
+    ) -> list[tuple[str, float, str]]:
         """Get access history."""
         if limit is None:
             return self._access_history.copy()

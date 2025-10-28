@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Tuple
 
 
 @dataclass(frozen=True)
@@ -20,7 +19,7 @@ def make_uniform_grid(n: int) -> CollocationGrid:
 
 def central_diff(
     values: Sequence[float], h: float,
-) -> Tuple[Sequence[float], Sequence[float]]:
+) -> tuple[Sequence[float], Sequence[float]]:
     n = len(values)
     d = [0.0] * n
     d2 = [0.0] * n

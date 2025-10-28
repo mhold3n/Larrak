@@ -21,14 +21,14 @@ Strategy order (configurable):
 Each stage logs parameters, elapsed time and outcome via project logger.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import time
-from collections.abc import Sequence
-from copy import deepcopy
-from typing import Any, Callable, Dict
+import time  # noqa: E402
+from collections.abc import Sequence  # noqa: E402
+from copy import deepcopy  # noqa: E402
+from typing import Any, Callable  # noqa: E402
 
-from campro.logging import get_logger
+from campro.logging import get_logger  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -38,17 +38,17 @@ __all__ = ["safe_solve"]
 class SolveResultProtocol:  # pragma: no cover – used only for typing
     success: bool
     status: str
-    info: Dict[str, Any]
+    info: dict[str, Any]
 
 
 # Type alias for a function that performs a solve given option overrides
-SolveFn = Callable[[Dict[str, Any]], "SolveResultProtocol"]
+SolveFn = Callable[[dict[str, Any]], "SolveResultProtocol"]
 
 
 class RetryStrategy:
     """Single retry strategy descriptor."""
 
-    def __init__(self, name: str, overrides: Dict[str, Any] | None = None):
+    def __init__(self, name: str, overrides: dict[str, Any] | None = None):
         self.name = name
         self.overrides = overrides or {}
 
@@ -92,14 +92,14 @@ _DEFAULT_STRATEGIES: Sequence[RetryStrategy] = [
 ]
 
 
-class MaxRetriesExceeded(Exception):
+class MaxRetriesExceededError(Exception):
     """Raised when all retry strategies fail."""
 
 
 def safe_solve(
     solve_fn: SolveFn,
     *,
-    base_options: Dict[str, Any],
+    base_options: dict[str, Any],
     strategies: Sequence[RetryStrategy] | None = None,
 ) -> SolveResultProtocol:
     """Attempt NLP solve with staged recovery.
@@ -156,4 +156,4 @@ def safe_solve(
             elapsed,
         )
 
-    raise MaxRetriesExceeded("All retry strategies exhausted without success")
+    raise MaxRetriesExceededError("All retry strategies exhausted without success")

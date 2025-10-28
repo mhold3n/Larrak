@@ -4,10 +4,11 @@ Problem specification interface for CasADi optimization.
 This module provides clean interfaces for defining optimization problems
 with proper validation and conversion utilities.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -52,10 +53,10 @@ class CasADiMotionProblem:
     max_velocity: float
     max_acceleration: float
     max_jerk: float
-    compression_ratio_limits: Tuple[float, float] = (20.0, 70.0)
+    compression_ratio_limits: tuple[float, float] = (20.0, 70.0)
 
     # Optimization objectives
-    objectives: List[OptimizationObjective] = field(
+    objectives: list[OptimizationObjective] = field(
         default_factory=lambda: [
             OptimizationObjective.MINIMIZE_JERK,
             OptimizationObjective.MAXIMIZE_THERMAL_EFFICIENCY,
@@ -63,7 +64,7 @@ class CasADiMotionProblem:
     )
 
     # Objective weights
-    weights: Dict[str, float] = field(
+    weights: dict[str, float] = field(
         default_factory=lambda: {
             "jerk": 1.0,
             "thermal_efficiency": 0.1,
@@ -79,7 +80,7 @@ class CasADiMotionProblem:
     collocation_method: CollocationMethod = CollocationMethod.LEGENDRE
 
     # Solver settings
-    solver_options: Dict[str, Any] = field(
+    solver_options: dict[str, Any] = field(
         default_factory=lambda: {
             "ipopt.linear_solver": "ma57",
             "ipopt.max_iter": 1000,
@@ -138,7 +139,7 @@ class CasADiMotionProblem:
             for key in self.weights:
                 self.weights[key] /= total_weight
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert problem to dictionary."""
         return {
             "stroke": self.stroke,
@@ -160,7 +161,7 @@ class CasADiMotionProblem:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "CasADiMotionProblem":
+    def from_dict(cls, data: dict[str, Any]) -> CasADiMotionProblem:
         """Create problem from dictionary."""
         # Convert objectives back to enum
         objectives = [OptimizationObjective(obj) for obj in data.get("objectives", [])]
@@ -268,10 +269,10 @@ class CasADiOptimizationResult:
 
     # Metadata
     problem_spec: CasADiMotionProblem
-    solver_stats: Dict[str, Any]
-    thermal_efficiency: Optional[float] = None
+    solver_stats: dict[str, Any]
+    thermal_efficiency: float | None = None
 
-    def get_motion_profile(self) -> Dict[str, np.ndarray]:
+    def get_motion_profile(self) -> dict[str, np.ndarray]:
         """Get complete motion profile."""
         return {
             "position": self.position,
@@ -280,7 +281,7 @@ class CasADiOptimizationResult:
             "jerk": self.jerk,
         }
 
-    def get_efficiency_metrics(self) -> Dict[str, float]:
+    def get_efficiency_metrics(self) -> dict[str, float]:
         """Get thermal efficiency metrics."""
         if self.thermal_efficiency is None:
             return {}
@@ -292,7 +293,7 @@ class CasADiOptimizationResult:
             >= self.problem_spec.thermal_efficiency_target,
         }
 
-    def get_performance_metrics(self) -> Dict[str, float]:
+    def get_performance_metrics(self) -> dict[str, float]:
         """Get performance metrics."""
         return {
             "solve_time": self.solve_time,

@@ -25,7 +25,7 @@ COLLOCATION_METHODS = [
 ]
 
 # Geometry and gear synthesis constants (Litvin)
-from math import pi as _pi
+from math import pi as _pi  # noqa: E402
 
 DEG_TO_RAD = _pi / 180.0
 RAD_TO_DEG = 180.0 / _pi

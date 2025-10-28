@@ -2,9 +2,10 @@
 
 Exposes data classes and façade functions for common workflows.
 """
+from __future__ import annotations
 
 from dataclasses import asdict as _asdict
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from campro.constraints.cam import CamMotionConstraints
 from campro.diagnostics.feasibility import check_feasibility_nlp
@@ -68,13 +69,13 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     motion_type = obj_map.get(spec.objective, "minimum_jerk")
 
     # Phase-0 feasibility check (fast infeasibility detection)
-    feas_constraints: Dict[str, Any] = {
+    feas_constraints: dict[str, Any] = {
         "stroke": float(spec.stroke),
         "cycle_time": float(spec.cycle_time),
         "upstroke_percent": float(up_pct),
         "zero_accel_percent": float(zero_pct) if zero_pct is not None else None,
     }
-    feas_bounds: Dict[str, Any] = {}
+    feas_bounds: dict[str, Any] = {}
     for k in ("max_velocity", "max_acceleration", "max_jerk"):
         if k in bounds and bounds[k] is not None:
             try:
@@ -89,7 +90,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
         feas = None
 
     # Prepare simple scaling stats (O(1) normalization hints)
-    def _infer_scales() -> Dict[str, float]:
+    def _infer_scales() -> dict[str, float]:
         x_s = max(1.0, abs(float(spec.stroke)))
         v_s = max(1.0, abs(float(bounds.get("max_velocity", 1.0) or 1.0)))
         a_s = max(1.0, abs(float(bounds.get("max_acceleration", 1.0) or 1.0)))
@@ -123,7 +124,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
         report.scaling_stats.update(scaling_stats)
 
         # Persist lightweight run metadata
-        meta: Dict[str, Any] = {
+        meta: dict[str, Any] = {
             "run_id": RUN_ID,
             "objective": motion_type,
             "stroke": spec.stroke,
@@ -147,7 +148,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     )
 
     # Persist lightweight run metadata
-    meta: Dict[str, Any] = {
+    meta: dict[str, Any] = {
         "run_id": RUN_ID,
         "objective": motion_type,
         "stroke": spec.stroke,
@@ -179,12 +180,12 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     return report
 
 
-def design_gear(spec: ProblemSpec, motion: SolveReport) -> Tuple[dict, SolveReport]:
+def design_gear(spec: ProblemSpec, motion: SolveReport) -> tuple[dict, SolveReport]:
     """Stub for future Litvin synthesis integration."""
     raise NotImplementedError("design_gear is scheduled for a future sprint")
 
 
-def evaluate_tribology(gear: Dict[str, Any], duty: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_tribology(gear: dict[str, Any], duty: dict[str, Any]) -> dict[str, Any]:
     """Stub for future EHL/Λ analysis."""
     raise NotImplementedError("evaluate_tribology is scheduled for a future sprint")
 

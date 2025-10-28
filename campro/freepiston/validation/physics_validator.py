@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -13,7 +13,7 @@ log = get_logger(__name__)
 class PhysicsValidator:
     """Physics validation for OP engine optimization results."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize physics validator.
 
         Args:
@@ -37,7 +37,7 @@ class PhysicsValidator:
             "thermodynamic_consistency": 1e-6,
         }
 
-    def validate_physics(self, solution: Any) -> Dict[str, Any]:
+    def validate_physics(self, solution: Any) -> dict[str, Any]:
         """Validate physics of optimization solution.
 
         Args:
@@ -113,7 +113,7 @@ class PhysicsValidator:
         return validation_results
 
     def _validate_mass_conservation(
-        self, solution: Any, results: Dict[str, Any],
+        self, solution: Any, results: dict[str, Any],
     ) -> None:
         """Validate mass conservation."""
         try:
@@ -171,7 +171,7 @@ class PhysicsValidator:
             results["errors"].append(f"Mass conservation validation failed: {e!s}")
 
     def _validate_energy_conservation(
-        self, solution: Any, results: Dict[str, Any],
+        self, solution: Any, results: dict[str, Any],
     ) -> None:
         """Validate energy conservation."""
         try:
@@ -236,7 +236,7 @@ class PhysicsValidator:
             results["errors"].append(f"Energy conservation validation failed: {e!s}")
 
     def _validate_momentum_conservation(
-        self, solution: Any, results: Dict[str, Any],
+        self, solution: Any, results: dict[str, Any],
     ) -> None:
         """Validate momentum conservation."""
         try:
@@ -299,7 +299,7 @@ class PhysicsValidator:
             results["errors"].append(f"Momentum conservation validation failed: {e!s}")
 
     def _validate_entropy_increase(
-        self, solution: Any, results: Dict[str, Any],
+        self, solution: Any, results: dict[str, Any],
     ) -> None:
         """Validate entropy increase (second law of thermodynamics)."""
         try:
@@ -366,7 +366,7 @@ class PhysicsValidator:
             results["errors"].append(f"Entropy validation failed: {e!s}")
 
     def _validate_thermodynamic_consistency(
-        self, solution: Any, results: Dict[str, Any],
+        self, solution: Any, results: dict[str, Any],
     ) -> None:
         """Validate thermodynamic consistency."""
         try:
@@ -434,7 +434,7 @@ class PhysicsValidator:
             )
 
     def _calculate_physics_metrics(
-        self, solution: Any, results: Dict[str, Any],
+        self, solution: Any, results: dict[str, Any],
     ) -> None:
         """Calculate additional physics metrics."""
         try:
@@ -498,7 +498,7 @@ class PhysicsValidator:
         except Exception as e:
             results["warnings"].append(f"Physics metrics calculation failed: {e!s}")
 
-    def generate_physics_report(self, validation_results: Dict[str, Any]) -> str:
+    def generate_physics_report(self, validation_results: dict[str, Any]) -> str:
         """Generate detailed physics validation report.
 
         Args:

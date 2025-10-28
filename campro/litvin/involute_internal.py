@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import cos, sin, sqrt
-from typing import List, Tuple
 
 from campro.constants import DEG_TO_RAD
 
@@ -19,8 +18,8 @@ class InternalGearParams:
 @dataclass(frozen=True)
 class InvoluteFlank:
     phi: Sequence[float]
-    points: Sequence[Tuple[float, float]]
-    tangents: Sequence[Tuple[float, float]]
+    points: Sequence[tuple[float, float]]
+    tangents: Sequence[tuple[float, float]]
 
 
 def base_radius(params: InternalGearParams) -> float:
@@ -33,7 +32,7 @@ def pitch_radius(params: InternalGearParams) -> float:
     return params.module * params.teeth / 2.0
 
 
-def involute_xy(rb: float, phi: float) -> Tuple[float, float]:
+def involute_xy(rb: float, phi: float) -> tuple[float, float]:
     # Parametric involute of a circle of radius rb
     x = rb * (cos(phi) + phi * sin(phi))
     y = rb * (sin(phi) - phi * cos(phi))
@@ -57,9 +56,9 @@ def sample_internal_flank(params: InternalGearParams, n: int = 200) -> InvoluteF
     phi_max = sqrt(ratio - 1.0)
 
     phi_min = max(1e-4, phi_max / (n * 2.0))
-    phis: List[float] = []
-    pts: List[Tuple[float, float]] = []
-    tangents: List[Tuple[float, float]] = []
+    phis: list[float] = []
+    pts: list[tuple[float, float]] = []
+    tangents: list[tuple[float, float]] = []
     for i in range(n):
         phi = phi_min + (phi_max - phi_min) * i / max(1, n - 1)
         x, y = involute_xy(rb, phi)
