@@ -285,7 +285,7 @@ class UnifiedOptimizationFramework:
         # Initialize optimizers
         self._initialize_optimizers()
 
-    def _initialize_optimizers(self):
+    def _initialize_optimizers(self) -> None:
         """Initialize all optimization layers with unified settings."""
         # Create collocation settings
         collocation_settings = CollocationSettings(
@@ -357,7 +357,7 @@ class UnifiedOptimizationFramework:
         self._is_configured = True
         log.info("Configured unified optimization framework")
 
-    def _configure_optimizers(self):
+    def _configure_optimizers(self) -> None:
         """Configure all optimizers with unified settings."""
         # Configure primary optimizer
         if self.settings.method in [
@@ -629,7 +629,7 @@ class UnifiedOptimizationFramework:
         self.settings.enable_casadi_validation_mode = False
         log.info("CasADi validation mode disabled")
 
-    def _update_data_from_input(self, input_data: dict[str, Any]):
+    def _update_data_from_input(self, input_data: dict[str, Any]) -> None:
         """Update data structure from input parameters."""
         self.data.stroke = input_data.get("stroke", 20.0)
         self.data.cycle_time = input_data.get("cycle_time", 1.0)
@@ -1115,7 +1115,7 @@ class UnifiedOptimizationFramework:
 
         return result
 
-    def _update_data_from_primary(self, result: OptimizationResult):
+    def _update_data_from_primary(self, result: OptimizationResult) -> None:
         """Update data structure from primary optimization results."""
         if result.status == OptimizationStatus.CONVERGED:
             solution = result.solution
@@ -1180,7 +1180,7 @@ class UnifiedOptimizationFramework:
                 "solve_time": result.solve_time,
             }
 
-    def _update_data_from_secondary(self, result: OptimizationResult):
+    def _update_data_from_secondary(self, result: OptimizationResult) -> None:
         """Update data structure from secondary optimization results."""
         # Check for convergence (handle both enum and string status)
         is_converged = (
@@ -1235,7 +1235,7 @@ class UnifiedOptimizationFramework:
         else:
             log.warning(f"Secondary optimization not converged: {result.status}")
 
-    def _update_data_from_tertiary(self, result: OptimizationResult):
+    def _update_data_from_tertiary(self, result: OptimizationResult) -> None:
         """Update data structure from tertiary optimization results."""
         if result.status == OptimizationStatus.CONVERGED:
             solution = result.solution
@@ -1362,7 +1362,7 @@ class UnifiedOptimizationFramework:
             "migration_plan": plan,
         }
 
-    def export_migration_report(self, output_file: str):
+    def export_migration_report(self, output_file: str) -> None:
         """Export comprehensive MA57 migration report."""
         if not self.settings.enable_ipopt_analysis:
             raise RuntimeError("Ipopt analysis is not enabled")

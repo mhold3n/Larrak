@@ -11,6 +11,7 @@ import time
 from typing import Any, Callable
 
 import numpy as np
+from numpy.typing import NDArray
 
 from campro.logging import get_logger
 from campro.storage import OptimizationRegistry, StorageResult
@@ -62,10 +63,10 @@ class SecondaryOptimizer(BaseOptimizer):
 
     def optimize(
         self,
-        objective: Callable,
+        objective: Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], float],
         constraints: Any,
-        initial_guess: dict[str, np.ndarray] | None = None,
-        **kwargs,
+        initial_guess: dict[str, NDArray[np.float64]] | None = None,
+        **kwargs: Any,
     ) -> OptimizationResult:
         """
         Solve a secondary optimization problem using primary results and external specifications.
@@ -157,7 +158,11 @@ class SecondaryOptimizer(BaseOptimizer):
 
         return result
 
-    def _validate_inputs(self, objective: Callable, constraints: Any) -> None:
+    def _validate_inputs(
+        self,
+        objective: Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], float],
+        constraints: Any,
+    ) -> None:
         """Validate optimization inputs for secondary optimization."""
         if not callable(objective):
             raise TypeError("Objective must be callable")
@@ -177,8 +182,8 @@ class SecondaryOptimizer(BaseOptimizer):
         secondary_constraints: dict[str, Any] | None = None,
         secondary_relationships: dict[str, Any] | None = None,
         optimization_targets: dict[str, Any] | None = None,
-        processing_function: Callable | None = None,
-        objective_function: Callable | None = None,
+        processing_function: Callable[[dict[str, NDArray[np.float64]], dict[str, Any], dict[str, Any], dict[str, Any]], dict[str, NDArray[np.float64]]] | None = None,
+        objective_function: Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], float] | None = None,
     ) -> OptimizationResult:
         """
         Process primary optimization result using external specifications.
@@ -201,8 +206,14 @@ class SecondaryOptimizer(BaseOptimizer):
         # Use default objective if none provided
         if objective_function is None:
 
-            def objective_function(t, x, v, a, u):
-                return np.trapz(u**2, t)  # Default: minimize jerk
+            def objective_function(
+                t: np.ndarray,
+                x: np.ndarray,
+                v: np.ndarray,
+                a: np.ndarray,
+                u: np.ndarray,
+            ) -> float:
+                return float(np.trapz(u**2, t))  # Default: minimize jerk
 
         return self.optimize(
             objective=objective_function,
@@ -215,7 +226,9 @@ class SecondaryOptimizer(BaseOptimizer):
         )
 
     def _calculate_objective_value(
-        self, objective: Callable, solution: dict[str, np.ndarray],
+        self,
+        objective: Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], float],
+        solution: dict[str, NDArray[np.float64]],
     ) -> float | None:
         """Calculate the objective value for the solution."""
         try:

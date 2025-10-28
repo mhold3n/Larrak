@@ -18,6 +18,9 @@ from .planetary_synthesis import _newton_solve_phi
 
 log = get_logger(__name__)
 
+# Explicit exports for consumers expecting named attributes
+__all__ = ["OptimizationOrder", "optimize_geometry", "OptimResult"]
+
 
 @dataclass(frozen=True)
 class OptimResult:

@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any, Callable
 
 import numpy as np
+from numpy.typing import NDArray
 
 from campro.constraints.cam import CamMotionConstraints
 from campro.constraints.motion import MotionConstraints
@@ -61,10 +62,10 @@ class MotionOptimizer(BaseOptimizer):
 
     def optimize(
         self,
-        objective: Callable,
-        constraints: Any,
-        initial_guess: dict[str, np.ndarray] | None = None,
-        **kwargs,
+        objective: Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], float],
+        constraints: MotionConstraints | CamMotionConstraints,
+        initial_guess: dict[str, NDArray[np.float64]] | None = None,
+        **kwargs: Any,
     ) -> OptimizationResult:
         """
         Solve a motion law optimization problem.
@@ -115,8 +116,14 @@ class MotionOptimizer(BaseOptimizer):
         log.info("Solving minimum time motion law problem")
 
         # Create objective function
-        def objective(t, x, v, a, u):
-            return t[-1]  # Minimize final time
+        def objective(
+            t: np.ndarray,
+            x: np.ndarray,
+            v: np.ndarray,
+            a: np.ndarray,
+            u: np.ndarray,
+        ) -> float:
+            return float(t[-1])  # Minimize final time
 
         # Configure optimization parameters
         opt_params = {
@@ -158,8 +165,14 @@ class MotionOptimizer(BaseOptimizer):
         log.info("Solving minimum energy motion law problem")
 
         # Create objective function
-        def objective(t, x, v, a, u):
-            return np.trapz(u**2, t)  # Minimize energy (integral of jerk squared)
+        def objective(
+            t: np.ndarray,
+            x: np.ndarray,
+            v: np.ndarray,
+            a: np.ndarray,
+            u: np.ndarray,
+        ) -> float:
+            return float(np.trapz(u**2, t))  # Minimize energy (integral of jerk squared)
 
         # Configure optimization parameters
         opt_params = {
@@ -199,8 +212,14 @@ class MotionOptimizer(BaseOptimizer):
         log.info("Solving minimum jerk motion law problem")
 
         # Create objective function
-        def objective(t, x, v, a, u):
-            return np.trapz(u**2, t)  # Minimize jerk (integral of jerk squared)
+        def objective(
+            t: np.ndarray,
+            x: np.ndarray,
+            v: np.ndarray,
+            a: np.ndarray,
+            u: np.ndarray,
+        ) -> float:
+            return float(np.trapz(u**2, t))  # Minimize jerk (integral of jerk squared)
 
         # Configure optimization parameters
         opt_params = {
@@ -218,7 +237,7 @@ class MotionOptimizer(BaseOptimizer):
 
     def solve_custom_objective(
         self,
-        objective_function: Callable,
+        objective_function: Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], float],
         constraints: MotionConstraints | CamMotionConstraints,
         distance: float,
         time_horizon: float | None = None,

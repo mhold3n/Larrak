@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from campro.litvin.config import GeometrySearchConfig
 from campro.litvin.motion import RadialSlotMotion
@@ -149,9 +150,9 @@ class CamRingOptimizer(BaseOptimizer):
 
     def optimize(
         self,
-        primary_data: dict[str, np.ndarray],
+        primary_data: dict[str, NDArray[np.float64]],
         initial_guess: dict[str, float] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> OptimizationResult:
         """
         Optimize cam-ring system parameters using multi-order Litvin optimization.
@@ -384,7 +385,7 @@ class CamRingOptimizer(BaseOptimizer):
         return result
 
     def _get_default_initial_guess(
-        self, primary_data: dict[str, np.ndarray],
+        self, primary_data: dict[str, NDArray[np.float64]],
     ) -> dict[str, float]:
         """Get default initial guess based on primary data."""
         # Use stroke-based initial guesses
@@ -397,7 +398,7 @@ class CamRingOptimizer(BaseOptimizer):
         }
 
     def _create_radial_slot_motion(
-        self, primary_data: dict[str, np.ndarray],
+        self, primary_data: dict[str, NDArray[np.float64]],
     ) -> RadialSlotMotion:
         """Convert primary motion law to RadialSlotMotion for Litvin synthesis."""
         from scipy.interpolate import interp1d
@@ -422,9 +423,9 @@ class CamRingOptimizer(BaseOptimizer):
     def _generate_final_design_from_gear_config(
         self,
         gear_config,
-        theta: np.ndarray,
-        x_theta: np.ndarray,
-        primary_data: dict[str, np.ndarray],
+        theta: NDArray[np.float64],
+        x_theta: NDArray[np.float64],
+        primary_data: dict[str, NDArray[np.float64]],
     ) -> dict[str, Any]:
         """Generate final design using optimized gear geometry."""
         from campro.litvin.planetary_synthesis import synthesize_planet_from_motion
@@ -490,16 +491,16 @@ class CamRingOptimizer(BaseOptimizer):
 
     def _define_constraints(
         self,
-        theta: np.ndarray,
-        x_theta: np.ndarray,
-        primary_data: dict[str, np.ndarray],
-    ) -> list[dict]:
+        theta: NDArray[np.float64],
+        x_theta: NDArray[np.float64],
+        primary_data: dict[str, NDArray[np.float64]],
+    ) -> list[dict[str, Any]]:
         """Define optimization constraints."""
         constraints = []
 
         # Physical constraint: positive base radius
-        def positive_radii_constraint(params):
-            base_radius = params[0]
+        def positive_radii_constraint(params: np.ndarray) -> float:
+            base_radius = float(params[0])
             return base_radius - 1.0
 
         constraints.append(

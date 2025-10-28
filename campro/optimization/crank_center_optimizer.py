@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy.optimize import minimize
 
 from campro.logging import get_logger
@@ -38,7 +39,7 @@ from .collocation import CollocationSettings  # noqa: E402
 # Import CasADi physics when feature toggle is enabled
 if USE_CASADI_PHYSICS:
     try:
-        from campro.physics.casadi import create_unified_physics
+        from campro.physics.casadi import create_unified_physics  # type: ignore[import-not-found]
 
         log.info("CasADi physics integration enabled")
     except ImportError as e:
@@ -193,10 +194,10 @@ class CrankCenterOptimizer(BaseOptimizer):
 
     def optimize(
         self,
-        primary_data: dict[str, np.ndarray],
-        secondary_data: dict[str, np.ndarray],
+        primary_data: dict[str, NDArray[np.float64]],
+        secondary_data: dict[str, NDArray[np.float64] | dict[str, float] | Any],
         initial_guess: dict[str, float] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> OptimizationResult:
         """
         Optimize crank center position for torque maximization and side-loading minimization.
@@ -278,7 +279,7 @@ class CrankCenterOptimizer(BaseOptimizer):
             ]
 
             # Define objective function
-            def objective(params):
+            def objective(params: np.ndarray) -> float:
                 return self._objective_function(
                     params, param_names, motion_law_data, load_profile, gear_geometry,
                 )
@@ -412,8 +413,8 @@ class CrankCenterOptimizer(BaseOptimizer):
         return result
 
     def _extract_optimization_data(
-        self, primary_data: dict[str, np.ndarray], secondary_data: dict[str, np.ndarray],
-    ) -> tuple[dict[str, np.ndarray], np.ndarray, LitvinGearGeometry]:
+        self, primary_data: dict[str, NDArray[np.float64]], secondary_data: dict[str, NDArray[np.float64] | dict[str, float] | Any],
+    ) -> tuple[dict[str, NDArray[np.float64]], NDArray[np.float64], LitvinGearGeometry]:
         """Extract and validate data from previous optimization stages."""
 
         # Extract motion law data from primary optimization
@@ -447,7 +448,7 @@ class CrankCenterOptimizer(BaseOptimizer):
         return motion_law_data, load_profile, gear_geometry
 
     def _extract_gear_geometry(
-        self, secondary_data: dict[str, np.ndarray],
+        self, secondary_data: dict[str, NDArray[np.float64] | dict[str, float] | Any],
     ) -> LitvinGearGeometry:
         """Extract Litvin gear geometry from secondary optimization results."""
 
@@ -472,7 +473,7 @@ class CrankCenterOptimizer(BaseOptimizer):
         return gear_geometry
 
     def _get_default_initial_guess(
-        self, primary_data: dict[str, np.ndarray], secondary_data: dict[str, np.ndarray],
+        self, primary_data: dict[str, NDArray[np.float64]], secondary_data: dict[str, NDArray[np.float64] | dict[str, float] | Any],
     ) -> dict[str, float]:
         """Get default initial guess based on previous optimization results."""
 
@@ -529,8 +530,8 @@ class CrankCenterOptimizer(BaseOptimizer):
         self,
         params: np.ndarray,
         param_names: list[str],
-        motion_law_data: dict[str, np.ndarray],
-        load_profile: np.ndarray,
+        motion_law_data: dict[str, NDArray[np.float64]],
+        load_profile: NDArray[np.float64],
         gear_geometry: LitvinGearGeometry,
     ) -> float:
         """Calculate objective function value for crank center optimization."""
@@ -608,15 +609,15 @@ class CrankCenterOptimizer(BaseOptimizer):
 
     def _define_constraints(
         self,
-        motion_law_data: dict[str, np.ndarray],
-        load_profile: np.ndarray,
+        motion_law_data: dict[str, NDArray[np.float64]],
+        load_profile: NDArray[np.float64],
         gear_geometry: LitvinGearGeometry,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Define optimization constraints for crank center optimization."""
         constraints = []
 
         # Performance constraint: minimum torque output
-        def min_torque_constraint(params):
+        def min_torque_constraint(params: np.ndarray) -> float:
             try:
                 param_dict = dict(
                     zip(
@@ -666,7 +667,7 @@ class CrankCenterOptimizer(BaseOptimizer):
         )
 
         # Performance constraint: maximum side-loading
-        def max_side_load_constraint(params):
+        def max_side_load_constraint(params: np.ndarray) -> float:
             try:
                 param_dict = dict(
                     zip(
@@ -722,8 +723,8 @@ class CrankCenterOptimizer(BaseOptimizer):
     def _generate_final_design(
         self,
         optimized_params: dict[str, float],
-        motion_law_data: dict[str, np.ndarray],
-        load_profile: np.ndarray,
+        motion_law_data: dict[str, NDArray[np.float64]],
+        load_profile: NDArray[np.float64],
         gear_geometry: LitvinGearGeometry,
     ) -> dict[str, Any]:
         """Generate final crank center design with optimized parameters."""
@@ -810,10 +811,10 @@ class CrankCenterOptimizer(BaseOptimizer):
         objective,
         initial_params: np.ndarray,
         bounds: list[tuple[float, float]],
-        constraints: list[dict],
+        constraints: list[dict[str, Any]],
         param_names: list[str],
-        motion_law_data: dict[str, np.ndarray],
-        load_profile: np.ndarray,
+        motion_law_data: dict[str, NDArray[np.float64]],
+        load_profile: NDArray[np.float64],
         gear_geometry: LitvinGearGeometry,
     ):
         """
@@ -1062,10 +1063,10 @@ class CrankCenterOptimizer(BaseOptimizer):
         objective,
         initial_params: np.ndarray,
         bounds: list[tuple[float, float]],
-        constraints: list[dict],
+        constraints: list[dict[str, Any]],
         param_names: list[str],
-        motion_law_data: dict[str, np.ndarray],
-        load_profile: np.ndarray,
+        motion_law_data: dict[str, NDArray[np.float64]],
+        load_profile: NDArray[np.float64],
         gear_geometry: LitvinGearGeometry,
     ):
         """
@@ -1116,10 +1117,10 @@ class CrankCenterOptimizer(BaseOptimizer):
         self,
         params: np.ndarray,
         param_names: list[str],
-        motion_law_data: dict[str, np.ndarray],
-        load_profile: np.ndarray,
+        motion_law_data: dict[str, NDArray[np.float64]],
+        load_profile: NDArray[np.float64],
         gear_geometry: LitvinGearGeometry,
-    ):
+    ) -> dict[str, float] | None:
         """
         Validate CasADi physics at a specific parameter point.
 
