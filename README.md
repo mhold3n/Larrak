@@ -2,8 +2,6 @@
 
 A comprehensive Python framework for solving optimal motion law problems using direct collocation methods with CasADi and Ipopt.
 
-<!-- Workflow test trigger -->
-
 [![CI](https://github.com/yourusername/larrak/workflows/CI/badge.svg)](https://github.com/yourusername/larrak/actions)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
