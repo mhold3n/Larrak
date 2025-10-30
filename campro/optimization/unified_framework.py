@@ -124,6 +124,21 @@ class UnifiedOptimizationSettings:
     enable_casadi_validation_mode: bool = False
     casadi_validation_tolerance: float = 1e-4
 
+    # Phase-1: pressure-slope invariance option (robust to fuel/load via base-pressure scheduling)
+    use_pressure_invariance: bool = False
+    fuel_sweep: list[float] = field(default_factory=lambda: [0.7, 1.0, 1.3])
+    load_sweep: list[float] = field(default_factory=lambda: [50.0, 100.0, 150.0])
+    dpdt_weight: float = 1.0
+    jerk_weight: float = 1.0
+    imep_weight: float = 0.2
+    ema_alpha: float = 0.25
+    outer_iterations: int = 2
+    # Adapter configuration
+    bounce_alpha: float = 30.0  # kPa per 1.0 fuel-mult step
+    bounce_beta: float = 100.0  # kPa base
+    piston_area_mm2: float = 1.0
+    clearance_volume_mm3: float = 1.0
+
 
 @dataclass
 class UnifiedOptimizationConstraints:
@@ -807,6 +822,147 @@ class UnifiedOptimizationFramework:
                     f"Thermal-efficiency adapter path failed: {exc}. "
                     "Cannot fallback to simple optimization. Fix CasADi integration.",
                 ) from exc
+
+        # Pressure-invariance robust objective path (when enabled and TE is not enabled)
+        if getattr(self.settings, "use_pressure_invariance", False):
+            try:
+                from campro.physics.simple_cycle_adapter import (
+                    SimpleCycleAdapter,
+                    CycleGeometry,
+                    CycleThermo,
+                    WiebeParams,
+                )
+                from campro.optimization.motion import MotionOptimizer
+
+                # Initialize adapter and default configs
+                adapter = SimpleCycleAdapter(
+                    wiebe=WiebeParams(a=5.0, m=2.0, start_deg=-5.0, duration_deg=25.0),
+                    alpha_fuel_to_base=float(self.settings.bounce_alpha),
+                    beta_base=float(self.settings.bounce_beta),
+                )
+                geom = CycleGeometry(
+                    area_mm2=float(self.settings.piston_area_mm2),
+                    Vc_mm3=float(self.settings.clearance_volume_mm3),
+                )
+                thermo = CycleThermo(
+                    gamma_bounce=1.25,
+                    p_atm_kpa=101.325,
+                )
+
+                # Seed s_ref from a nominal minimum-jerk solve
+                base_result = self.primary_optimizer.solve_cam_motion_law(
+                    cam_constraints=cam_constraints,
+                    motion_type=motion_type,
+                    cycle_time=self.data.cycle_time,
+                )
+                base_sol = base_result.solution or {}
+                # Fall back to data if solution missing
+                theta_seed = base_sol.get(
+                    "cam_angle",
+                    np.linspace(0.0, 2 * np.pi, 360),
+                )
+                x_seed = base_sol.get("position", np.zeros_like(theta_seed))
+                v_seed = np.gradient(x_seed, theta_seed)
+                # Nominal fuel=1.0, mid load
+                mid_idx = max(0, (len(self.settings.load_sweep) - 1) // 2)
+                c_mid = float(self.settings.load_sweep[mid_idx])
+                out0 = adapter.evaluate(
+                    theta_seed, x_seed, v_seed, 1.0, c_mid, geom, thermo,
+                )
+                s_ref = out0["slope"].astype(float)
+
+                # Build objective closure
+                fuel_sweep = [float(x) for x in (self.settings.fuel_sweep or [1.0])]
+                load_sweep = [float(x) for x in (self.settings.load_sweep or [0.0])]
+                wj = float(self.settings.jerk_weight)
+                wp = float(self.settings.dpdt_weight)
+                ww = float(self.settings.imep_weight)
+
+                def objective(t: np.ndarray, x: np.ndarray, v: np.ndarray, a: np.ndarray, u: np.ndarray) -> float:
+                    # Map time → phase angle θ ∈ [0, 2π]
+                    T = float(self.data.cycle_time)
+                    theta = (2.0 * np.pi) * (np.asarray(t, dtype=float) / max(T, 1e-9))
+                    # Ensure periodic domain alignment
+                    theta[0] = 0.0
+                    theta[-1] = 2.0 * np.pi
+
+                    loss_p = 0.0
+                    imeps = []
+                    for fm in fuel_sweep:
+                        for c in load_sweep:
+                            out = adapter.evaluate(theta, x, np.gradient(x, theta), fm, c, geom, thermo)
+                            s = np.asarray(out["slope"], dtype=float)
+                            s_al = SimpleCycleAdapter.phase_align(s, s_ref)
+                            dth = np.gradient(theta)
+                            loss_p += float(np.sum((s_al - s_ref) ** 2 * dth))
+                            imeps.append(float(out["imep"]))
+                    K = max(1, len(fuel_sweep) * len(load_sweep))
+                    loss_p /= K
+                    imep_avg = float(np.mean(imeps)) if imeps else 0.0
+                    jerk_term = float(np.trapz(u ** 2, t))
+                    return wj * jerk_term + wp * loss_p - ww * imep_avg
+
+                # Outer EMA loop
+                for _iter in range(int(max(1, self.settings.outer_iterations))):
+                    # Solve with custom objective
+                    result = self.primary_optimizer.solve_custom_objective(
+                        objective_function=objective,
+                        constraints=cam_constraints,
+                        distance=self.data.stroke,
+                        time_horizon=self.data.cycle_time,
+                    )
+                    # Update s_ref from solution at nominal (fuel=1.0, load=c_mid)
+                    sol = result.solution or {}
+                    t_arr = sol.get("time")
+                    x_arr = sol.get("position")
+                    th = sol.get("cam_angle")
+                    if th is None and t_arr is not None:
+                        th = (2.0 * np.pi) * (t_arr / max(float(self.data.cycle_time), 1e-9))
+                    if th is not None and x_arr is not None:
+                        v_arr = np.gradient(x_arr, th)
+                        out_nom = adapter.evaluate(th, x_arr, v_arr, 1.0, c_mid, geom, thermo)
+                        s_best = np.asarray(out_nom["slope"], dtype=float)
+                        # EMA update and renormalize
+                        alpha = float(self.settings.ema_alpha)
+                        s_mix = (1.0 - alpha) * s_ref + alpha * s_best
+                        s_ref = (s_mix - np.mean(s_mix))
+                        s_ref = s_ref / (np.sqrt(np.sum(s_ref * s_ref)) + 1e-12)
+
+                # Compute diagnostics on final solution
+                diag_loss = 0.0
+                diag_imeps: list[float] = []
+                if th is not None and x_arr is not None:
+                    v_arr = np.gradient(x_arr, th)
+                    for fm in fuel_sweep:
+                        for c in load_sweep:
+                            out = adapter.evaluate(th, x_arr, v_arr, fm, c, geom, thermo)
+                            s = np.asarray(out["slope"], dtype=float)
+                            s_al = SimpleCycleAdapter.phase_align(s, s_ref)
+                            dth = np.gradient(th)
+                            diag_loss += float(np.sum((s_al - s_ref) ** 2 * dth))
+                            diag_imeps.append(float(out["imep"]))
+                    K = max(1, len(fuel_sweep) * len(load_sweep))
+                    diag_loss /= K
+                result.metadata["pressure_invariance"] = {
+                    "loss_p_mean": diag_loss,
+                    "imep_avg": float(np.mean(diag_imeps)) if diag_imeps else 0.0,
+                    "fuel_sweep": fuel_sweep,
+                    "load_sweep": load_sweep,
+                }
+
+                # Return last result
+                return result
+
+            except Exception as exc:
+                log.error(f"Pressure-invariance primary optimization failed: {exc}")
+                return OptimizationResult(
+                    status=OptimizationStatus.FAILED,
+                    objective_value=float("inf"),
+                    solution={},
+                    iterations=0,
+                    solve_time=0.0,
+                    error_message=f"Primary (pressure-invariance) failed: {exc}",
+                )
 
         # Regular optimization path (when thermal efficiency is not enabled)
         try:

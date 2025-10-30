@@ -167,6 +167,18 @@ def run_optimization(
         print(f"  - Tertiary Rod Length: {result.tertiary_rod_length} mm")
         print()
 
+        # Pressure invariance diagnostics (if available)
+        pi = result.convergence_info.get("primary", {}) if hasattr(result, "convergence_info") else {}
+        md = getattr(result, "metadata", {})
+        pi_meta = md.get("pressure_invariance") if isinstance(md, dict) else None
+        if pi_meta:
+            print("Phase 1 (Pressure Invariance):")
+            print(f"  - Loss_p_mean: {pi_meta.get('loss_p_mean', 0.0):.3e}")
+            print(f"  - iMEP_avg: {pi_meta.get('imep_avg', 0.0):.2f} kPa")
+            print(f"  - Fuel sweep: {pi_meta.get('fuel_sweep')}")
+            print(f"  - Load sweep: {pi_meta.get('load_sweep')}")
+            print()
+
         # Show convergence info
         if hasattr(result, "convergence_info") and result.convergence_info:
             print("Convergence Information:")
@@ -333,6 +345,78 @@ Examples:
         action="store_true",
         help="Disable thermal efficiency optimization",
     )
+    # Pressure invariance options
+    parser.add_argument(
+        "--use-pressure-invariance",
+        action="store_true",
+        help="Enable Phase-1 pressure-slope invariance objective",
+    )
+    parser.add_argument(
+        "--fuel-sweep",
+        type=str,
+        default="0.7,1.0,1.3",
+        help="Comma-separated fuel multipliers (e.g., 0.7,1.0,1.3)",
+    )
+    parser.add_argument(
+        "--load-sweep",
+        type=str,
+        default="50,100,150",
+        help="Comma-separated load damping values (N·s/m equivalent)",
+    )
+    parser.add_argument(
+        "--dpdt-weight",
+        type=float,
+        default=1.0,
+        help="Weight for pressure-slope invariance term",
+    )
+    parser.add_argument(
+        "--jerk-weight",
+        type=float,
+        default=1.0,
+        help="Weight for jerk term",
+    )
+    parser.add_argument(
+        "--imep-weight",
+        type=float,
+        default=0.2,
+        help="Weight for average iMEP reward (subtracted)",
+    )
+    parser.add_argument(
+        "--ema-alpha",
+        type=float,
+        default=0.25,
+        help="EMA alpha for updating reference slope",
+    )
+    parser.add_argument(
+        "--outer-iters",
+        type=int,
+        default=2,
+        help="Number of outer iterations for EMA update",
+    )
+    parser.add_argument(
+        "--bounce-alpha",
+        type=float,
+        default=30.0,
+        help="Fuel→base-pressure slope (kPa per fuel-mult)",
+    )
+    parser.add_argument(
+        "--bounce-beta",
+        type=float,
+        default=100.0,
+        help="Base pressure intercept (kPa)",
+    )
+    parser.add_argument(
+        "--piston-area-mm2",
+        type=float,
+        default=1.0,
+        help="Piston crown area [mm^2] for iMEP scaling",
+    )
+    parser.add_argument(
+        "--clearance-volume-mm3",
+        type=float,
+        default=1.0,
+        help:"Clearance volume [mm^3] for iMEP scaling",
+    )
     parser.add_argument(
         "--no-analysis", action="store_true", help="Disable IPOPT analysis collection",
     )
@@ -365,6 +449,28 @@ Examples:
         enable_analysis=not args.no_analysis,
         verbose=not args.quiet,
     )
+
+    # Apply pressure invariance settings if enabled
+    if args.use_pressure_invariance:
+        settings.use_pressure_invariance = True
+        # Parse sweeps
+        try:
+            settings.fuel_sweep = [float(x) for x in args.fuel_sweep.split(",") if x]
+        except Exception:
+            settings.fuel_sweep = [0.7, 1.0, 1.3]
+        try:
+            settings.load_sweep = [float(x) for x in args.load_sweep.split(",") if x]
+        except Exception:
+            settings.load_sweep = [50.0, 100.0, 150.0]
+        settings.dpdt_weight = float(args.dpdt_weight)
+        settings.jerk_weight = float(args.jerk_weight)
+        settings.imep_weight = float(args.imep_weight)
+        settings.ema_alpha = float(args.ema_alpha)
+        settings.outer_iterations = int(max(1, args.outer_iters))
+        settings.bounce_alpha = float(args.bounce_alpha)
+        settings.bounce_beta = float(args.bounce_beta)
+        settings.piston_area_mm2 = float(args.piston_area_mm2)
+        settings.clearance_volume_mm3 = float(args.clearance_volume_mm3)
 
     try:
         # Run optimization
