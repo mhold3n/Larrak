@@ -29,18 +29,20 @@ if ($pm -eq "conda") {
   conda config --set channel_priority strict | Out-Null
 }
 
-$envName = "larrak"
-$envs = & $pm env list
-if ($envs -match "^$envName\s") {
-  Write-Host "Updating existing environment '$envName'..."
-  & $pm env update -f $EnvFile --name $envName
+# Create local conda environment in project directory
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
+$LocalEnvPath = Join-Path $ProjectRoot "conda_env_windows"
+
+if (Test-Path $LocalEnvPath) {
+  Write-Host "Updating existing local environment at '$LocalEnvPath'..."
+  & $pm env update -f $EnvFile --prefix $LocalEnvPath
 } else {
-  Write-Host "Creating environment '$envName'..."
-  & $pm env create -f $EnvFile
+  Write-Host "Creating local environment at '$LocalEnvPath'..."
+  & $pm env create -f $EnvFile --prefix $LocalEnvPath
 }
 
 Write-Host "Verifying IPOPT availability..."
-& conda activate $envName
+& conda activate $LocalEnvPath
 python - << 'PY'
 import casadi as ca
 try:
@@ -52,4 +54,4 @@ except Exception as e:
     raise SystemExit(1)
 PY
 
-Write-Host "Done. Activate with: conda activate $envName"
+Write-Host "Done. Activate with: conda activate $LocalEnvPath"

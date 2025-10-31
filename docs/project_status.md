@@ -107,7 +107,9 @@ jerk = solution['control']
 ### Advanced Usage with Custom Constraints
 
 ```python
-from CamPro_OptimalMotion import OptimalMotionSolver, MotionConstraints, CollocationSettings
+from CamPro_OptimalMotion import OptimalMotionSolver
+from campro.constraints.motion import MotionConstraints
+from campro.optimization.collocation import CollocationSettings
 
 # Configure solver
 settings = CollocationSettings(

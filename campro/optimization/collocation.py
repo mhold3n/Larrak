@@ -161,13 +161,17 @@ class CollocationOptimizer(BaseOptimizer):
             time_horizon = kwargs.get("time_horizon", 1.0)
             n_points = kwargs.get("n_points", 100)
 
-            # Create collocation problem
+            # Create collocation problem (avoid passing duplicates in kwargs)
+            forwarding_kwargs = dict(kwargs)
+            forwarding_kwargs.pop("time_horizon", None)
+            forwarding_kwargs.pop("n_points", None)
             solution = self._solve_collocation_problem(
                 objective,
                 constraints,
                 time_horizon,
                 n_points,
                 initial_guess,
+                **forwarding_kwargs,
             )
 
             # Calculate objective value
@@ -198,6 +202,7 @@ class CollocationOptimizer(BaseOptimizer):
         time_horizon: float,
         n_points: int,
         initial_guess: dict[str, np.ndarray] | None = None,
+        **kwargs: Any,
     ) -> dict[str, np.ndarray]:
         """
         Solve the collocation problem.
@@ -221,7 +226,22 @@ class CollocationOptimizer(BaseOptimizer):
             constraints, "upstroke_duration_percent",
         ):
             # This is a motion law problem - use the new motion law optimizer
-            return self._solve_motion_law_problem(constraints, time_horizon, n_points)
+            return self._solve_motion_law_problem(constraints, time_horizon, n_points, **kwargs)
+        # Detect generic MotionConstraints (hard feasibility + optional golden tracking)
+        try:
+            from campro.constraints.motion import MotionConstraints as _MC
+        except Exception:  # pragma: no cover - defensive import
+            _MC = None  # type: ignore
+
+        if _MC is not None and isinstance(constraints, _MC):
+            return self._solve_motion_constraints_problem(
+                constraints,
+                time_horizon,
+                n_points,
+                initial_guess,
+                golden_profile=kwargs.get("golden_profile") if isinstance(kwargs, dict) else None,  # type: ignore[name-defined]
+                tracking_weight=kwargs.get("tracking_weight", 1.0) if isinstance(kwargs, dict) else 1.0,  # type: ignore[name-defined]
+            )
         # For non-motion law problems, raise an error to force proper implementation
         raise NotImplementedError(
             f"Collocation optimization for problem type {type(constraints).__name__} "
@@ -229,7 +249,7 @@ class CollocationOptimizer(BaseOptimizer):
         )
 
     def _solve_motion_law_problem(
-        self, constraints: Any, time_horizon: float, n_points: int,
+        self, constraints: Any, time_horizon: float, n_points: int, **kwargs: Any,
     ) -> dict[str, np.ndarray]:
         """
         Solve motion law problem using the new motion law optimizer.
@@ -257,9 +277,14 @@ class CollocationOptimizer(BaseOptimizer):
                 max_jerk=getattr(constraints, "max_jerk", None),
             )
 
-            # Get motion type
-            motion_type_str = getattr(constraints, "objective_type", "minimum_jerk")
-            motion_type = MotionType(motion_type_str)
+            # Get motion type preference: prefer explicit kwarg (from GUI/settings),
+            # otherwise fall back to any legacy field on constraints.
+            motion_type_str = (
+                kwargs.get("motion_type")
+                if isinstance(kwargs, dict) and "motion_type" in kwargs
+                else getattr(constraints, "objective_type", "minimum_jerk")
+            )
+            motion_type = MotionType(str(motion_type_str))
 
             # Create and configure motion law optimizer
             motion_optimizer = MotionLawOptimizer()
@@ -288,6 +313,148 @@ class CollocationOptimizer(BaseOptimizer):
             log.error(f"Motion law optimization failed: {e}")
             # Re-raise the exception instead of falling back to fake solutions
             raise RuntimeError(f"Motion law optimization failed: {e}") from e
+
+    def _solve_motion_constraints_problem(
+        self,
+        constraints: Any,
+        time_horizon: float,
+        n_points: int,
+        initial_guess: dict[str, np.ndarray] | None = None,
+        *,
+        golden_profile: dict[str, np.ndarray] | None = None,
+        tracking_weight: float = 1.0,
+    ) -> dict[str, np.ndarray]:
+        """
+        Solve generic MotionConstraints with hard feasibility and soft tracking to a golden profile.
+
+        Notes:
+        - This uses direct transcription with piecewise-constant jerk over a uniform grid.
+        - GUI-selected method (Lobatto/Radau) is accepted via settings and will control
+          future higher-degree collocation; for now, dynamics use constant-jerk segments.
+        - Golden profile is expected in radial follower coordinates (position/velocity/accel arrays).
+        """
+        import casadi as ca  # Local import to avoid global dependency at module import time
+
+        dt = float(time_horizon) / max(1, int(n_points) - 1)
+        N = max(2, int(n_points))
+
+        opti = ca.Opti()
+
+        # Decision variables (vectors length N)
+        p = opti.variable(N)  # position
+        v = opti.variable(N)  # velocity
+        a = opti.variable(N)  # acceleration
+        j = opti.variable(N - 1)  # piecewise-constant jerk per interval
+
+        # Initial guess
+        if initial_guess:
+            if "position" in initial_guess:
+                opti.set_initial(p, np.asarray(initial_guess["position"]))
+            if "velocity" in initial_guess:
+                opti.set_initial(v, np.asarray(initial_guess["velocity"]))
+            if "acceleration" in initial_guess:
+                opti.set_initial(a, np.asarray(initial_guess["acceleration"]))
+
+        # Hard path bounds
+        if getattr(constraints, "position_bounds", None) is not None:
+            lb, ub = constraints.position_bounds
+            opti.subject_to(p >= lb)
+            opti.subject_to(p <= ub)
+        if getattr(constraints, "velocity_bounds", None) is not None:
+            lb, ub = constraints.velocity_bounds
+            opti.subject_to(v >= lb)
+            opti.subject_to(v <= ub)
+        if getattr(constraints, "acceleration_bounds", None) is not None:
+            lb, ub = constraints.acceleration_bounds
+            opti.subject_to(a >= lb)
+            opti.subject_to(a <= ub)
+        if getattr(constraints, "jerk_bounds", None) is not None:
+            lb, ub = constraints.jerk_bounds
+            opti.subject_to(j >= lb)
+            opti.subject_to(j <= ub)
+
+        # Boundary conditions (if provided)
+        if getattr(constraints, "initial_position", None) is not None:
+            opti.subject_to(p[0] == float(constraints.initial_position))
+        if getattr(constraints, "initial_velocity", None) is not None:
+            opti.subject_to(v[0] == float(constraints.initial_velocity))
+        if getattr(constraints, "initial_acceleration", None) is not None:
+            opti.subject_to(a[0] == float(constraints.initial_acceleration))
+        if getattr(constraints, "final_position", None) is not None:
+            opti.subject_to(p[-1] == float(constraints.final_position))
+        if getattr(constraints, "final_velocity", None) is not None:
+            opti.subject_to(v[-1] == float(constraints.final_velocity))
+        if getattr(constraints, "final_acceleration", None) is not None:
+            opti.subject_to(a[-1] == float(constraints.final_acceleration))
+
+        # Discrete dynamics with piecewise-constant jerk
+        # v[k+1] = v[k] + dt * a[k]
+        # a[k+1] = a[k] + dt * j[k]
+        # p[k+1] = p[k] + dt * v[k] + 0.5 * dt^2 * a[k]
+        for k in range(N - 1):
+            opti.subject_to(v[k + 1] == v[k] + dt * a[k])
+            opti.subject_to(a[k + 1] == a[k] + dt * j[k])
+            opti.subject_to(p[k + 1] == p[k] + dt * v[k] + 0.5 * (dt * dt) * a[k])
+
+        # Tracking objective to golden profile (position/velocity/acceleration)
+        obj = 0
+        if golden_profile is not None:
+            gp_pos = np.asarray(golden_profile.get("position")) if "position" in golden_profile else None
+            gp_vel = np.asarray(golden_profile.get("velocity")) if "velocity" in golden_profile else None
+            gp_acc = np.asarray(golden_profile.get("acceleration")) if "acceleration" in golden_profile else None
+
+            # Ensure shapes match N; if not, interpolate to our grid
+            t = np.linspace(0.0, float(time_horizon), N)
+            if gp_pos is not None and gp_pos.shape[0] != N:
+                # Interpolate using numpy (piecewise linear is acceptable for tracking)
+                gp_t = np.linspace(0.0, float(time_horizon), gp_pos.shape[0])
+                gp_pos = np.interp(t, gp_t, gp_pos)
+            if gp_vel is not None and gp_vel.shape[0] != N:
+                gp_t = np.linspace(0.0, float(time_horizon), gp_vel.shape[0])
+                gp_vel = np.interp(t, gp_t, gp_vel)
+            if gp_acc is not None and gp_acc.shape[0] != N:
+                gp_t = np.linspace(0.0, float(time_horizon), gp_acc.shape[0])
+                gp_acc = np.interp(t, gp_t, gp_acc)
+
+            if gp_pos is not None:
+                obj = obj + tracking_weight * ca.sumsqr(p - gp_pos)
+            if gp_vel is not None:
+                # Smaller weight for velocity tracking unless specified by caller
+                obj = obj + 0.2 * tracking_weight * ca.sumsqr(v - gp_vel)
+            if gp_acc is not None:
+                obj = obj + 0.1 * tracking_weight * ca.sumsqr(a - gp_acc)
+
+        # Mild regularization on jerk to keep smoothness if no golden is provided
+        obj = obj + 1e-6 * ca.sumsqr(j)
+
+        opti.minimize(obj)
+
+        # Solver options
+        p_opts = {"expand": True}
+        s_opts = {
+            "print_time": False,
+            "ipopt": {
+                "tol": float(self.settings.tolerance),
+                "max_iter": int(self.settings.max_iterations),
+                # Keep linear solver selection consistent with environment; ma27 will be used if available
+                # The GUI method (Lobatto/Radau) is currently a global toggle and will govern future higher-degree schemes.
+            },
+        }
+        opti.solver("ipopt", p_opts, s_opts)
+
+        sol = opti.solve()
+
+        p_val = np.asarray(sol.value(p)).reshape(-1)
+        v_val = np.asarray(sol.value(v)).reshape(-1)
+        a_val = np.asarray(sol.value(a)).reshape(-1)
+
+        return {
+            "time": np.linspace(0.0, float(time_horizon), N),
+            "position": p_val,
+            "velocity": v_val,
+            "acceleration": a_val,
+            "control": np.diff(a_val) / dt,
+        }
 
     def _generate_analytical_solution(
         self, t: np.ndarray, constraints: Any, time_horizon: float,

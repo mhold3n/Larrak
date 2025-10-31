@@ -17,6 +17,7 @@ import numpy as np
 from campro.diagnostics.feasibility import check_feasibility
 from campro.diagnostics.scaling import compute_scaling_vector
 from campro.logging import get_logger
+from campro.optimization.grid import GridMapper
 from campro.optimization.ma57_migration_analyzer import MA57MigrationAnalyzer
 from campro.optimization.parameter_tuning import DynamicParameterTuner
 from campro.optimization.solver_analysis import MA57ReadinessReport
@@ -38,6 +39,7 @@ from .crank_center_optimizer import (
     CrankCenterOptimizer,
 )
 from .motion import MotionOptimizer
+from .grid import UniversalGrid, GridMapper
 
 log = get_logger(__name__)
 
@@ -85,6 +87,20 @@ class UnifiedOptimizationSettings:
     # Collocation settings (when using collocation methods)
     collocation_degree: int = 3
     collocation_tolerance: float = 1e-6
+    # Universal grid size (GUI-controlled). Used to unify sampling across stages.
+    universal_n_points: int = 360
+    # Mapper method (linear, pchip, barycentric, projection)
+    mapper_method: str = "linear"
+    # Grid diagnostics and plots
+    enable_grid_diagnostics: bool = False
+    enable_grid_plots: bool = False
+    # GridSpec metadata for stages
+    grid_family: str = "uniform"  # e.g., uniform, LGL, Radau, Chebyshev
+    grid_segments: int = 1
+    # Shared collocation method selection for all modules (GUI dropdown: 'legendre', 'radau', 'lobatto').
+    # Note: This is a temporary global toggle controlled by the GUI. In a future iteration we will
+    # allow granular per-stage method selection (primary/secondary/tertiary) and per-stage degrees.
+    collocation_method: str = "legendre"
 
     # Direct optimization settings
     max_iterations: int = 100
@@ -138,6 +154,19 @@ class UnifiedOptimizationSettings:
     bounce_beta: float = 100.0  # kPa base
     piston_area_mm2: float = 1.0
     clearance_volume_mm3: float = 1.0
+    # TE guardrail (Stage B) parameters
+    pressure_guard_epsilon: float = 1e-3
+    pressure_guard_lambda: float = 1e4
+
+    # Secondary collocation tracking weight (golden profile influence). The GUI can expose this as a
+    # user-tunable numeric field to adjust how strongly secondary tracks the golden motion profile.
+    tracking_weight: float = 1.0
+
+    # Primary phase-1 weighting knobs available for GUI exposure:
+    # - dpdt_weight: pressure-slope alignment weight (guardrails)
+    # - jerk_weight: smoothness (jerk-squared) weight
+    # - imep_weight: efficiency surrogate (higher is better)
+    # These can be surfaced as sliders in the GUI and set here prior to optimization.
 
 
 @dataclass
@@ -261,6 +290,13 @@ class UnifiedOptimizationData:
     tertiary_power_output: float | None = None
     tertiary_max_side_load: float | None = None
 
+    # Golden profile for downstream tracking (radial follower center)
+    golden_profile: dict[str, Any] | None = None
+
+    # Universal grid snapshots
+    universal_theta_deg: np.ndarray | None = None
+    universal_theta_rad: np.ndarray | None = None
+
     # Metadata
     optimization_method: OptimizationMethod | None = None
     total_solve_time: float = 0.0
@@ -302,10 +338,25 @@ class UnifiedOptimizationFramework:
 
     def _initialize_optimizers(self) -> None:
         """Initialize all optimization layers with unified settings."""
-        # Create collocation settings
+        # Create and store universal grid
+        ug = UniversalGrid(n_points=int(self.settings.universal_n_points))
+        self.data.universal_theta_rad = ug.theta_rad
+        self.data.universal_theta_deg = ug.theta_deg
+        # Create GridSpec for stages
+        from .grid import GridSpec
+        self.grid_spec = GridSpec(
+            method=self.settings.collocation_method,
+            degree=self.settings.collocation_degree,
+            n_points=int(self.settings.universal_n_points),
+            periodic=True,
+            family=self.settings.grid_family,
+            segments=self.settings.grid_segments,
+        )
+        # Create collocation settings (method set by GUI dropdown; shared across modules)
         collocation_settings = CollocationSettings(
             degree=self.settings.collocation_degree,
             tolerance=self.settings.collocation_tolerance,
+            method=self.settings.collocation_method,
         )
 
         # Initialize primary optimizer (motion law)
@@ -383,6 +434,7 @@ class UnifiedOptimizationFramework:
             collocation_settings = CollocationSettings(
                 degree=self.settings.collocation_degree,
                 tolerance=self.settings.collocation_tolerance,
+                method=self.settings.collocation_method,
             )
             self.primary_optimizer.configure(settings=collocation_settings)
 
@@ -671,8 +723,12 @@ class UnifiedOptimizationFramework:
             except Exception:
                 pass
 
-    def _optimize_primary(self) -> OptimizationResult:
-        """Perform primary optimization (motion law)."""
+    def _optimize_primary(self, initial_guess: dict[str, Any] | None = None) -> OptimizationResult:
+        """Perform primary optimization (motion law).
+        
+        Args:
+            initial_guess: Optional initial guess for warm-start optimization
+        """
         # Create cam motion constraints with user input parameters
         from campro.constraints.cam import CamMotionConstraints
 
@@ -706,6 +762,272 @@ class UnifiedOptimizationFramework:
 
         # Get motion type from data
         motion_type = self.data.motion_type
+
+        # Always-on Stage A: pressure-invariance robust objective, with optional Stage B TE refine
+        try:
+            from campro.physics.simple_cycle_adapter import (
+                SimpleCycleAdapter,
+                CycleGeometry,
+                CycleThermo,
+                WiebeParams,
+            )
+
+            # Initialize adapter and default configs
+            adapter = SimpleCycleAdapter(
+                wiebe=WiebeParams(a=5.0, m=2.0, start_deg=-5.0, duration_deg=25.0),
+                alpha_fuel_to_base=float(self.settings.bounce_alpha),
+                beta_base=float(self.settings.bounce_beta),
+            )
+            geom = CycleGeometry(
+                area_mm2=float(self.settings.piston_area_mm2),
+                Vc_mm3=float(self.settings.clearance_volume_mm3),
+            )
+            thermo = CycleThermo(
+                gamma_bounce=1.25,
+                p_atm_kpa=101.325,
+            )
+
+            # Seed s_ref from a nominal minimum-jerk solve
+            base_result_seed = self.primary_optimizer.solve_cam_motion_law(
+                cam_constraints=cam_constraints,
+                motion_type=motion_type,
+                cycle_time=self.data.cycle_time,
+                n_points=int(self.settings.universal_n_points),
+            )
+            base_sol = base_result_seed.solution or {}
+            theta_seed = base_sol.get("cam_angle")
+            x_seed = base_sol.get("position")
+            # Map seed to universal grid for consistent downstream comparisons
+            if theta_seed is None or x_seed is None:
+                theta_seed = np.linspace(0.0, 2 * np.pi, int(self.settings.universal_n_points), endpoint=False)
+                x_seed = np.zeros_like(theta_seed)
+            ug_theta = self.data.universal_theta_rad if self.data.universal_theta_rad is not None else theta_seed
+            # Mapper selection (states: interpolation by default)
+            if self.settings.mapper_method == "pchip":
+                x_seed_u = GridMapper.periodic_pchip_resample(theta_seed, x_seed, ug_theta)
+            elif self.settings.mapper_method == "barycentric":
+                x_seed_u = GridMapper.barycentric_resample(theta_seed, x_seed, ug_theta)
+            elif self.settings.mapper_method == "projection":
+                # States: still prefer interpolation; projection reserved for conserved fields
+                x_seed_u = GridMapper.periodic_linear_resample(theta_seed, x_seed, ug_theta)
+            else:
+                x_seed_u = GridMapper.periodic_linear_resample(theta_seed, x_seed, ug_theta)
+            theta_seed = ug_theta
+            x_seed = x_seed_u
+            # Derive velocity on U: prefer spectral derivative on uniform periodic U
+            try:
+                from .grid import GridMapper
+                v_seed = GridMapper.fft_derivative(theta_seed, x_seed)
+            except Exception:
+                v_seed = np.gradient(x_seed, theta_seed)
+            # Nominal fuel=1.0, mid load
+            mid_idx__ = max(0, (len(self.settings.load_sweep) - 1) // 2)
+            c_mid__ = float(self.settings.load_sweep[mid_idx__])
+            out0__ = adapter.evaluate(
+                theta_seed, x_seed, v_seed, 1.0, c_mid__, geom, thermo,
+            )
+            s_ref__ = out0__["slope"].astype(float)
+
+            fuel_sweep__ = [float(x) for x in (self.settings.fuel_sweep or [1.0])]
+            load_sweep__ = [float(x) for x in (self.settings.load_sweep or [0.0])]
+            wj__ = float(self.settings.jerk_weight)
+            wp__ = float(self.settings.dpdt_weight)
+            ww__ = float(self.settings.imep_weight)
+
+            def _loss_p__(theta: np.ndarray, x: np.ndarray) -> tuple[float, float]:
+                loss = 0.0
+                imeps: list[float] = []
+                for fm in fuel_sweep__:
+                    for c in load_sweep__:
+                        # Resample input x to adapter grid if needed (use theta as given)
+                        out = adapter.evaluate(theta, x, np.gradient(x, theta), fm, c, geom, thermo)
+                        s = np.asarray(out["slope"], dtype=float)
+                        # Align slope to universal reference grid for comparisons
+                        theta_u = theta_seed
+                        # Prefer conservative projection for slope/integral-based guardrails if requested
+                        if self.settings.mapper_method == "projection":
+                            w_src = GridMapper.trapz_weights(theta)
+                            s_u = GridMapper.l2_project(theta, s, theta_u, weights_from=w_src)
+                        elif self.settings.mapper_method == "pchip":
+                            s_u = GridMapper.periodic_pchip_resample(theta, s, theta_u)
+                        elif self.settings.mapper_method == "barycentric":
+                            s_u = GridMapper.barycentric_resample(theta, s, theta_u)
+                        else:
+                            s_u = GridMapper.periodic_linear_resample(theta, s, theta_u)
+                        s_al = SimpleCycleAdapter.phase_align(s_u, s_ref__)
+                        w_u = GridMapper.trapz_weights(theta_u)
+                        loss += float(np.sum((s_al - s_ref__) ** 2 * w_u))
+                        imeps.append(float(out["imep"]))
+                K = max(1, len(fuel_sweep__) * len(load_sweep__))
+                return loss / K, (float(np.mean(imeps)) if imeps else 0.0)
+
+            def objective__(t: np.ndarray, x: np.ndarray, v: np.ndarray, a: np.ndarray, u: np.ndarray) -> float:
+                T = float(self.data.cycle_time)
+                theta = (2.0 * np.pi) * (np.asarray(t, dtype=float) / max(T, 1e-9))
+                theta[0] = 0.0
+                theta[-1] = 2.0 * np.pi
+                loss_p, imep_avg = _loss_p__(theta, x)
+                jerk_term = float(np.trapz(u ** 2, t))
+                return wj__ * jerk_term + wp__ * loss_p - ww__ * imep_avg
+
+            # Outer EMA loop
+            for _iter in range(int(max(1, self.settings.outer_iterations))):
+                # Pass initial_guess only on first iteration for warm-start
+                kwargs = {}
+                if _iter == 0 and initial_guess is not None:
+                    kwargs["initial_guess"] = initial_guess
+                result_stage_a__ = self.primary_optimizer.solve_custom_objective(
+                    objective_function=objective__,
+                    constraints=cam_constraints,
+                    distance=self.data.stroke,
+                    time_horizon=self.data.cycle_time,
+                    n_points=int(self.settings.universal_n_points),
+                    **kwargs,
+                )
+                sol__ = result_stage_a__.solution or {}
+                t_arr__ = sol__.get("time")
+                x_arr__ = sol__.get("position")
+                th__ = sol__.get("cam_angle")
+                if th__ is None and t_arr__ is not None:
+                    th__ = (2.0 * np.pi) * (t_arr__ / max(float(self.data.cycle_time), 1e-9))
+                if th__ is not None and x_arr__ is not None:
+                    # Map current solution to universal grid
+                    ug_theta = self.data.universal_theta_rad if self.data.universal_theta_rad is not None else th__
+                    if self.settings.mapper_method == "pchip":
+                        x_u__ = GridMapper.periodic_pchip_resample(th__, x_arr__, ug_theta)
+                    elif self.settings.mapper_method == "barycentric":
+                        x_u__ = GridMapper.barycentric_resample(th__, x_arr__, ug_theta)
+                    elif self.settings.mapper_method == "projection":
+                        # For states, keep interpolation
+                        x_u__ = GridMapper.periodic_linear_resample(th__, x_arr__, ug_theta)
+                    else:
+                        x_u__ = GridMapper.periodic_linear_resample(th__, x_arr__, ug_theta)
+                    try:
+                        v_arr__ = GridMapper.fft_derivative(ug_theta, x_u__)
+                    except Exception:
+                        v_arr__ = np.gradient(x_u__, ug_theta)
+                    out_nom__ = adapter.evaluate(ug_theta, x_u__, v_arr__, 1.0, c_mid__, geom, thermo)
+                    s_best__ = np.asarray(out_nom__["slope"], dtype=float)
+                    alpha__ = float(self.settings.ema_alpha)
+                    s_mix__ = (1.0 - alpha__) * s_ref__ + alpha__ * s_best__
+                    s_ref__ = (s_mix__ - np.mean(s_mix__))
+                    s_ref__ = s_ref__ / (np.sqrt(np.sum(s_ref__ * s_ref__)) + 1e-12)
+
+            # Stage A diagnostics (compute entirely on universal grid)
+            diag_loss__ = 0.0
+            diag_imeps__: list[float] = []
+            if th__ is not None and x_arr__ is not None:
+                # Map state to universal grid
+                ug_th = self.data.universal_theta_rad if self.data.universal_theta_rad is not None else th__
+                if self.settings.mapper_method == "pchip":
+                    x_u_diag__ = GridMapper.periodic_pchip_resample(th__, x_arr__, ug_th)
+                elif self.settings.mapper_method == "barycentric":
+                    x_u_diag__ = GridMapper.barycentric_resample(th__, x_arr__, ug_th)
+                else:
+                    x_u_diag__ = GridMapper.periodic_linear_resample(th__, x_arr__, ug_th)
+                try:
+                    v_u_diag__ = GridMapper.fft_derivative(ug_th, x_u_diag__)
+                except Exception:
+                    v_u_diag__ = np.gradient(x_u_diag__, ug_th)
+                w_u_diag__ = GridMapper.trapz_weights(ug_th)
+                for fm in fuel_sweep__:
+                    for c in load_sweep__:
+                        out = adapter.evaluate(ug_th, x_u_diag__, v_u_diag__, fm, c, geom, thermo)
+                        s_u = np.asarray(out["slope"], dtype=float)
+                        s_al = SimpleCycleAdapter.phase_align(s_u, s_ref__)
+                        diag_loss__ += float(np.sum((s_al - s_ref__) ** 2 * w_u_diag__))
+                        diag_imeps__.append(float(out["imep"]))
+                K = max(1, len(fuel_sweep__) * len(load_sweep__))
+                diag_loss__ /= K
+            result_stage_a__.metadata["pressure_invariance"] = {
+                "loss_p_mean": diag_loss__,
+                "imep_avg": float(np.mean(diag_imeps__)) if diag_imeps__ else 0.0,
+                "fuel_sweep": fuel_sweep__,
+                "load_sweep": load_sweep__,
+            }
+
+            # Stage B: if TE enabled, refine with guardrail; else return Stage A
+            if getattr(self.settings, "use_thermal_efficiency", False):
+                try:
+                    from campro.physics.thermal_efficiency_simple import SimplifiedThermalModel
+
+                    te_model__ = SimplifiedThermalModel()
+                    eps__ = float(self.settings.pressure_guard_epsilon)
+                    lam__ = float(self.settings.pressure_guard_lambda)
+
+                    def objective_te__(t: np.ndarray, x: np.ndarray, v: np.ndarray, a: np.ndarray, u: np.ndarray) -> float:
+                        metrics__ = te_model__.evaluate_efficiency(x, v, a)
+                        te_score__ = float(metrics__.get("total_efficiency", 0.0))
+                        T = float(self.data.cycle_time)
+                        theta = (2.0 * np.pi) * (np.asarray(t, dtype=float) / max(T, 1e-9))
+                        theta[0] = 0.0
+                        theta[-1] = 2.0 * np.pi
+                        loss_p_val__, _ = _loss_p__(theta, x)
+                        viol__ = max(0.0, loss_p_val__ - eps__)
+                        penalty__ = lam__ * (viol__ ** 2)
+                        jerk_term__ = float(np.trapz(u ** 2, t)) * 1e-6
+                        return -te_score__ + penalty__ + jerk_term__
+
+                    # Stage B can use Stage A result as initial guess
+                    kwargs_b = {}
+                    if hasattr(result_stage_a__, "solution") and result_stage_a__.solution:
+                        # Extract solution from Stage A to use as warm-start for Stage B
+                        kwargs_b["initial_guess"] = result_stage_a__.solution
+                    result_stage_b__ = self.primary_optimizer.solve_custom_objective(
+                        objective_function=objective_te__,
+                        constraints=cam_constraints,
+                        distance=self.data.stroke,
+                        time_horizon=self.data.cycle_time,
+                        n_points=int(self.settings.universal_n_points),
+                        **kwargs_b,
+                    )
+
+                    sol_b__ = result_stage_b__.solution or {}
+                    t_b__ = sol_b__.get("time")
+                    x_b__ = sol_b__.get("position")
+                    guard_ok__ = None
+                    loss_p_b__ = None
+                    if t_b__ is not None and x_b__ is not None:
+                        # Map Stage B result to universal grid for consistent guardrail checks
+                        T = float(self.data.cycle_time)
+                        th_tmp__ = (2.0 * np.pi) * (np.asarray(t_b__, dtype=float) / max(T, 1e-9))
+                        th_tmp__[0] = 0.0
+                        th_tmp__[-1] = 2.0 * np.pi
+                        ug_theta = self.data.universal_theta_rad if self.data.universal_theta_rad is not None else th_tmp__
+                        if self.settings.mapper_method == "pchip":
+                            x_b_u__ = GridMapper.periodic_pchip_resample(th_tmp__, x_b__, ug_theta)
+                        elif self.settings.mapper_method == "barycentric":
+                            x_b_u__ = GridMapper.barycentric_resample(th_tmp__, x_b__, ug_theta)
+                        elif self.settings.mapper_method == "projection":
+                            # For guardrail loss, prefer projection to conserve integrals
+                            w_src = GridMapper.trapz_weights(th_tmp__)
+                            x_b_u__ = GridMapper.l2_project(th_tmp__, x_b__, ug_theta, weights_from=w_src)
+                        else:
+                            x_b_u__ = GridMapper.periodic_linear_resample(th_tmp__, x_b__, ug_theta)
+                        loss_p_b__, _ = _loss_p__(ug_theta, x_b_u__)
+                        guard_ok__ = bool(loss_p_b__ <= eps__)
+
+                    result_stage_b__.metadata["pressure_invariance_stage_a"] = result_stage_a__.metadata.get(
+                        "pressure_invariance", {}
+                    )
+                    result_stage_b__.metadata["pressure_guardrail"] = {
+                        "epsilon": eps__,
+                        "lambda": lam__,
+                        "loss_p": loss_p_b__,
+                        "satisfied": guard_ok__,
+                    }
+
+                    return result_stage_b__
+
+                except Exception as exc:
+                    log.error(f"Stage B (TE refine) failed: {exc}")
+                    return result_stage_a__
+            else:
+                return result_stage_a__
+
+        except Exception as exc:
+            log.error(f"Always-on invariance flow failed; falling back: {exc}")
+            # Fall through to legacy branches below as last resort
 
         # If enabled, route primary optimization through thermal-efficiency adapter
         if getattr(self.settings, "use_thermal_efficiency", False):
@@ -904,12 +1226,18 @@ class UnifiedOptimizationFramework:
 
                 # Outer EMA loop
                 for _iter in range(int(max(1, self.settings.outer_iterations))):
+                    # Pass initial_guess only on first iteration for warm-start
+                    kwargs = {}
+                    if _iter == 0 and initial_guess is not None:
+                        kwargs["initial_guess"] = initial_guess
                     # Solve with custom objective
                     result = self.primary_optimizer.solve_custom_objective(
                         objective_function=objective,
                         constraints=cam_constraints,
                         distance=self.data.stroke,
                         time_horizon=self.data.cycle_time,
+                        n_points=int(self.settings.universal_n_points),
+                        **kwargs,
                     )
                     # Update s_ref from solution at nominal (fuel=1.0, load=c_mid)
                     sol = result.solution or {}
@@ -999,6 +1327,8 @@ class UnifiedOptimizationFramework:
 
         # Prepare primary data
         primary_data = {
+            # Ensure secondary consumes the universal grid-aligned motion law
+            # If primary outputs are not on the universal grid, map them here.
             "cam_angle": self.data.primary_theta,
             "position": self.data.primary_position,
             "velocity": self.data.primary_velocity,
@@ -1007,6 +1337,25 @@ class UnifiedOptimizationFramework:
             if self.data.primary_theta is not None
             else np.array([]),
         }
+
+        # Build golden radial profile for downstream collocation tracking
+        try:
+            if (
+                self.data.primary_position is not None
+                and self.data.primary_velocity is not None
+                and self.data.primary_acceleration is not None
+                and self.data.primary_theta is not None
+            ):
+                N = len(self.data.primary_theta)
+                t_grid = np.linspace(0.0, float(self.data.cycle_time), N)
+                self.data.golden_profile = {
+                    "time": t_grid,
+                    "position": np.asarray(self.data.primary_position, dtype=float),
+                    "velocity": np.asarray(self.data.primary_velocity, dtype=float),
+                    "acceleration": np.asarray(self.data.primary_acceleration, dtype=float),
+                }
+        except Exception as _e:
+            log.debug(f"Golden profile construction skipped: {_e}")
 
         # Analyze problem characteristics
         problem_chars = ProblemCharacteristics(
@@ -1055,6 +1404,9 @@ class UnifiedOptimizationFramework:
         result = self.secondary_optimizer.optimize(
             primary_data=primary_data,
             initial_guess=initial_guess,
+            # Provide golden tracking context for any collocation-based steps inside secondary
+            golden_profile=self.data.golden_profile,
+            tracking_weight=float(getattr(self.settings, "tracking_weight", 1.0)),
         )
         log.info(
             f"Secondary optimization completed: status={result.status}, success={result.is_successful()}",
@@ -1269,6 +1621,44 @@ class UnifiedOptimizationFramework:
         else:
             self.data.tertiary_ipopt_analysis = None
 
+        # Map any grid-dependent series returned by tertiary to universal grid and apply sensitivity operators
+        try:
+            sol_t = result.solution or {}
+            th_t = sol_t.get("theta")
+            if th_t is not None and self.data.universal_theta_rad is not None:
+                ug_th = self.data.universal_theta_rad
+                from .grid import GridMapper
+                for key in ("position", "velocity", "acceleration", "control"):
+                    arr = sol_t.get(key)
+                    if arr is not None:
+                        if self.settings.mapper_method == "pchip":
+                            sol_t[key + "_universal"] = GridMapper.periodic_pchip_resample(th_t, arr, ug_th)
+                        elif self.settings.mapper_method == "barycentric":
+                            sol_t[key + "_universal"] = GridMapper.barycentric_resample(th_t, arr, ug_th)
+                        else:
+                            sol_t[key + "_universal"] = GridMapper.periodic_linear_resample(th_t, arr, ug_th)
+                # Sensitivities mapping if present
+                P_u2g, P_g2u = GridMapper.operators(th_t, ug_th, method=getattr(self.settings, "mapper_method", "linear"))
+                grad_gi = sol_t.get("gradient")
+                if grad_gi is not None:
+                    sol_t["gradient_universal"] = GridMapper.pullback_gradient(np.asarray(grad_gi), P_g2u)
+                jac_gi = sol_t.get("jacobian")
+                if jac_gi is not None:
+                    sol_t["jacobian_universal"] = GridMapper.pushforward_jacobian(np.asarray(jac_gi), P_u2g, P_g2u)
+                # If tertiary metrics need an integral on U, demonstrate trapz on U for control if available
+                w_u = GridMapper.trapz_weights(ug_th)
+                if sol_t.get("control_universal") is not None:
+                    sol_t["control_energy_universal"] = float(np.sum(sol_t["control_universal"] ** 2 * w_u))
+                if sol_t.get("velocity_universal") is not None:
+                    sol_t["velocity_energy_universal"] = float(np.sum(sol_t["velocity_universal"] ** 2 * w_u))
+                if sol_t.get("acceleration_universal") is not None:
+                    sol_t["acceleration_energy_universal"] = float(np.sum(sol_t["acceleration_universal"] ** 2 * w_u))
+                if sol_t.get("position_universal") is not None:
+                    # Mean position over cycle
+                    sol_t["position_mean_universal"] = float(np.sum(sol_t["position_universal"] * w_u) / (2.0 * np.pi))
+        except Exception:
+            pass
+
         return result
 
     def _update_data_from_primary(self, result: OptimizationResult) -> None:
@@ -1280,7 +1670,61 @@ class UnifiedOptimizationFramework:
             # No need for time-to-angle conversion
             cam_angle_rad = solution.get("cam_angle")
             if cam_angle_rad is not None:
-                # Convert from radians to degrees for display
+                # If universal grid exists, map result to universal grid first
+                if self.data.universal_theta_rad is not None:
+                    ug_th = self.data.universal_theta_rad
+                    pos = solution.get("position")
+                    vel = solution.get("velocity")
+                    acc = solution.get("acceleration")
+                    if pos is not None and vel is not None and acc is not None:
+                        from .grid import GridMapper
+                        # States mapping (interpolation by selected method; projection not needed here)
+                        if self.settings.mapper_method == "pchip":
+                            pos_u = GridMapper.periodic_pchip_resample(cam_angle_rad, pos, ug_th)
+                            vel_u = GridMapper.periodic_pchip_resample(cam_angle_rad, vel, ug_th)
+                            acc_u = GridMapper.periodic_pchip_resample(cam_angle_rad, acc, ug_th)
+                        elif self.settings.mapper_method == "barycentric":
+                            pos_u = GridMapper.barycentric_resample(cam_angle_rad, pos, ug_th)
+                            vel_u = GridMapper.barycentric_resample(cam_angle_rad, vel, ug_th)
+                            acc_u = GridMapper.barycentric_resample(cam_angle_rad, acc, ug_th)
+                        else:
+                            pos_u = GridMapper.periodic_linear_resample(cam_angle_rad, pos, ug_th)
+                            vel_u = GridMapper.periodic_linear_resample(cam_angle_rad, vel, ug_th)
+                            acc_u = GridMapper.periodic_linear_resample(cam_angle_rad, acc, ug_th)
+                        # Overwrite solution views to be universal-grid aligned
+                        solution["cam_angle"] = ug_th
+                        solution["position"] = pos_u
+                        solution["velocity"] = vel_u
+                        solution["acceleration"] = acc_u
+                        # Sensitivities: if gradients/Jacobians exist on internal grid, pull/push to U
+                        try:
+                            P_u2g, P_g2u = GridMapper.operators(cam_angle_rad, ug_th, method=getattr(self.settings, "mapper_method", "linear"))
+                            grad_gi = solution.get("gradient")
+                            if grad_gi is not None:
+                                grad_u = GridMapper.pullback_gradient(np.asarray(grad_gi), P_g2u)
+                                solution["gradient_universal"] = grad_u
+                            jac_gi = solution.get("jacobian")
+                            if jac_gi is not None:
+                                J_u = GridMapper.pushforward_jacobian(np.asarray(jac_gi), P_u2g, P_g2u)
+                                solution["jacobian_universal"] = J_u
+                        except Exception:
+                            pass
+
+                        # Grid diagnostics (optional)
+                        try:
+                            if getattr(self.settings, "enable_grid_diagnostics", False):
+                                from .grid import GridMapper
+                                P_u2g, P_g2u = GridMapper.operators(cam_angle_rad, ug_th, method=getattr(self.settings, "mapper_method", "linear"))
+                                integ_err = GridMapper.integral_conservation_error(ug_th, pos_u, cam_angle_rad, np.asarray(pos))
+                                harm_err = GridMapper.harmonic_probe_error(ug_th, P_u2g, P_g2u, k=5)
+                                drift_err = GridMapper.derivative_drift(ug_th, cam_angle_rad, P_u2g, P_g2u, pos_u)
+                                log.info(
+                                    f"Grid diagnostics (primary): integral_err={integ_err:.3e}, harmonic_err={harm_err:.3e}, drift_err={drift_err:.3e}",
+                                )
+                        except Exception:
+                            pass
+                        cam_angle_rad = ug_th
+                # Convert from radians to degrees for display after mapping
                 cam_angle_deg = np.degrees(cam_angle_rad)
                 self.data.primary_theta = cam_angle_deg
             else:
@@ -1378,6 +1822,51 @@ class UnifiedOptimizationFramework:
             self.data.secondary_psi = solution.get("psi")
             self.data.secondary_R_psi = solution.get("R_psi")
             self.data.secondary_gear_geometry = solution.get("gear_geometry")
+
+            # Map any grid-dependent cam profile data to the universal grid for consistency
+            try:
+                if self.data.universal_theta_rad is not None:
+                    ug_th = self.data.universal_theta_rad
+                    cam_prof = solution.get("cam_profile")
+                    if isinstance(cam_prof, dict):
+                        th = cam_prof.get("theta")
+                        rprof = cam_prof.get("profile_radius")
+                        if th is not None and rprof is not None:
+                            from .grid import GridMapper
+                            if self.settings.mapper_method == "pchip":
+                                r_u = GridMapper.periodic_pchip_resample(th, rprof, ug_th)
+                            elif self.settings.mapper_method == "barycentric":
+                                r_u = GridMapper.barycentric_resample(th, rprof, ug_th)
+                            else:
+                                r_u = GridMapper.periodic_linear_resample(th, rprof, ug_th)
+                            # Store mapped profile alongside original
+                            if self.data.secondary_cam_curves is None:
+                                self.data.secondary_cam_curves = {}
+                            self.data.secondary_cam_curves["cam_profile_universal"] = {
+                                "theta": ug_th,
+                                "profile_radius": r_u,
+                            }
+                    # Transform any gradient/jacobian fields tied to theta into universal grid
+                    try:
+                        from .grid import GridMapper
+                        # If solution has theta-dependent gradients/jacobians, map them
+                        th_int = None
+                        if isinstance(cam_prof, dict):
+                            th_int = cam_prof.get("theta")
+                        if th_int is None:
+                            th_int = self.data.universal_theta_rad
+                        if th_int is not None and self.data.universal_theta_rad is not None:
+                            P_u2g, P_g2u = GridMapper.operators(th_int, self.data.universal_theta_rad, method=getattr(self.settings, "mapper_method", "linear"))
+                            grad_gi = solution.get("gradient")
+                            if grad_gi is not None:
+                                solution["gradient_universal"] = GridMapper.pullback_gradient(np.asarray(grad_gi), P_g2u)
+                            jac_gi = solution.get("jacobian")
+                            if jac_gi is not None:
+                                solution["jacobian_universal"] = GridMapper.pushforward_jacobian(np.asarray(jac_gi), P_u2g, P_g2u)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
             # Store convergence info
             self.data.convergence_info["secondary"] = {

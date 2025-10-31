@@ -18,6 +18,7 @@ from campro.storage import OptimizationRegistry, StorageResult
 
 from .base import BaseOptimizer, OptimizationResult
 from .collocation import CollocationOptimizer, CollocationSettings
+from .grid import GridSpec
 
 log = get_logger(__name__)
 
@@ -41,6 +42,43 @@ class SecondaryOptimizer(BaseOptimizer):
         self.registry = registry or OptimizationRegistry()
         self.collocation_optimizer = CollocationOptimizer(settings)
         self._is_configured = True
+
+    # Mapping contract (universal grid exchange domain)
+    def inputs_from_universal(
+        self,
+        universal_theta: np.ndarray,
+        primary_position: np.ndarray,
+        grid_spec: GridSpec | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Map universal motion-law inputs into internal grid (default: passthrough).
+
+        If grid_spec.family != "uniform" in the future, a nonuniform mapping can be applied here.
+        """
+        return {"theta": universal_theta, "position": primary_position}
+
+    def outputs_to_universal(
+        self,
+        theta_internal: np.ndarray,
+        position_internal: np.ndarray,
+        universal_theta: np.ndarray,
+        grid_spec: GridSpec | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Map internal results back to universal grid (default: passthrough/resample).
+
+        grid_spec can steer mapper choice (e.g., barycentric for collocation-style nodes).
+        """
+        import numpy as _np
+        if theta_internal.shape == universal_theta.shape and _np.allclose(theta_internal, universal_theta):
+            return {"theta": theta_internal, "position": position_internal}
+        two_pi = 2.0 * _np.pi
+        th = _np.mod(theta_internal, two_pi)
+        order = _np.argsort(th)
+        th = th[order]
+        vals = _np.asarray(position_internal)[order]
+        th_ext = _np.concatenate([th, th[:1] + two_pi])
+        vals_ext = _np.concatenate([vals, vals[:1]])
+        tgt = _np.mod(universal_theta, two_pi)
+        return {"theta": universal_theta, "position": _np.interp(tgt, th_ext, vals_ext)}
 
     def configure(self, **kwargs) -> None:
         """

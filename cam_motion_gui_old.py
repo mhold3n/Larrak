@@ -36,7 +36,8 @@ from campro.optimization.unified_framework import (  # noqa: E402
 from campro.storage import OptimizationRegistry  # noqa: E402
 
 # Import our cam motion law solver
-from CamPro_OptimalMotion import CollocationSettings, solve_cam_motion_law  # noqa: E402
+from campro.optimization.collocation import CollocationSettings  # noqa: E402
+from CamPro_OptimalMotion import solve_cam_motion_law  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -2688,7 +2689,7 @@ def main():
 
     # Test the constraint validation directly
     try:
-        from CamPro_OptimalMotion import CamMotionConstraints
+        from campro.constraints.cam import CamMotionConstraints
 
         test_constraints = CamMotionConstraints(
             stroke=20.0,

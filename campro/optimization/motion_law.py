@@ -24,6 +24,7 @@ class MotionType(Enum):
     MINIMUM_JERK = "minimum_jerk"
     MINIMUM_TIME = "minimum_time"
     MINIMUM_ENERGY = "minimum_energy"
+    P_CURVE_TE = "pcurve_te"
 
 
 @dataclass

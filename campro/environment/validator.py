@@ -22,6 +22,12 @@ _IPOPT_LINEAR_SOLVER_INITIALIZED = False
 
 def _validate_ma27_usage() -> None:
     """Validate that MA27 is being used and fail hard if a non-HSL fallback is detected."""
+    # Skip validation if explicitly disabled (avoids solver clobbering warnings)
+    import os
+    if os.getenv("CAMPRO_SKIP_VALIDATION") == "1":
+        log.info("MA27 validation skipped (CAMPRO_SKIP_VALIDATION=1)")
+        return
+    
     try:
         import casadi as ca
 
@@ -165,6 +171,12 @@ def validate_casadi_ipopt() -> ValidationResult:
 
 def validate_hsl_solvers() -> list[ValidationResult]:
     """Validate HSL solver availability (MA27, MA57, MA77, MA86, MA97) - optional but improves performance."""
+    # Skip validation if explicitly disabled (avoids solver clobbering warnings)
+    import os
+    if os.getenv("CAMPRO_SKIP_VALIDATION") == "1":
+        log.info("HSL solver validation skipped (CAMPRO_SKIP_VALIDATION=1)")
+        return []
+    
     results: list[ValidationResult] = []
 
     # Check for all HSL solvers availability through CasADi
@@ -312,6 +324,28 @@ def validate_required_packages() -> list[ValidationResult]:
 
 def validate_environment() -> dict[str, Any]:
     """Perform comprehensive environment validation and return structured results."""
+    # Skip validation if explicitly disabled (avoids HSL solver clobbering warnings)
+    import os
+    if os.getenv("CAMPRO_SKIP_VALIDATION") == "1":
+        log.info("Environment validation skipped (CAMPRO_SKIP_VALIDATION=1)")
+        # Return minimal results to avoid breaking code that expects this structure
+        from .validator import ValidationStatus, ValidationResult
+        return {
+            "python_version": ValidationResult(
+                status=ValidationStatus.SKIPPED,
+                message="Validation skipped",
+                details="CAMPRO_SKIP_VALIDATION=1",
+            ),
+            "casadi_ipopt": ValidationResult(
+                status=ValidationStatus.SKIPPED,
+                message="Validation skipped",
+                details="CAMPRO_SKIP_VALIDATION=1",
+            ),
+            "required_packages": [],
+            "hsl_solvers": [],
+            "summary": {"overall_status": ValidationStatus.SKIPPED},
+        }
+    
     log.info("Starting environment validation")
 
     # Validate MA27 usage first - fail hard if a non-HSL fallback is detected

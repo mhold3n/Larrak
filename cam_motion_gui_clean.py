@@ -152,7 +152,7 @@ class CamMotionGUI:
         self.motion_type_combo = ttk.Combobox(
             self.control_frame,
             textvariable=self.variables["motion_type"],
-            values=["minimum_jerk", "minimum_energy", "minimum_time"],
+            values=["minimum_jerk", "minimum_energy", "minimum_time", "pcurve_te"],
             state="readonly",
             width=12,
         )

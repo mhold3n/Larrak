@@ -16,7 +16,7 @@ import sys
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -31,11 +31,47 @@ log = get_logger(__name__)
 # Validate environment before starting GUI
 def _validate_gui_environment():
     """Validate environment and show user-friendly error dialog if needed."""
+    # Skip validation if explicitly disabled (avoids HSL solver clobbering warnings)
+    if os.getenv("CAMPRO_SKIP_VALIDATION") == "1":
+        print("[DEBUG] Environment validation skipped (CAMPRO_SKIP_VALIDATION=1)")
+        return
+    
     try:
-        from campro.environment.validator import validate_environment
-
-        results = validate_environment()
-        overall_status = results["summary"]["overall_status"]
+        from campro.environment.validator import (
+            validate_casadi_ipopt,
+            validate_python_version,
+            validate_required_packages,
+        )
+        
+        # Perform lightweight validation without HSL solver tests (which cause clobbering)
+        # We skip validate_environment() because it calls validate_hsl_solvers() which
+        # creates multiple IPOPT solvers with different linear solvers, causing warnings
+        print("[DEBUG] Performing lightweight environment validation (skipping HSL tests)...")
+        
+        # Check critical dependencies only
+        python_ok = validate_python_version()
+        casadi_ok = validate_casadi_ipopt()
+        packages_ok = validate_required_packages()
+        
+        # Determine overall status from critical checks only
+        if python_ok.status.value == "error" or casadi_ok.status.value == "error":
+            overall_status = "error"
+        elif any(p.status.value == "error" for p in packages_ok):
+            overall_status = "error"
+        elif python_ok.status.value == "warning" or casadi_ok.status.value == "warning":
+            overall_status = "warning"
+        elif any(p.status.value == "warning" for p in packages_ok):
+            overall_status = "warning"
+        else:
+            overall_status = "pass"
+        
+        # Create a mock results dict with overall_status
+        class MockStatus:
+            def __init__(self, value):
+                self.value = value
+        
+        overall_status_obj = MockStatus(overall_status)
+        results = {"summary": {"overall_status": overall_status_obj}}
 
         if overall_status.value == "error":
             # Show error dialog
@@ -98,8 +134,8 @@ def _validate_gui_environment():
         print("Environment validation failed.")
 
 
-# Perform validation
-_validate_gui_environment()
+# Skip validation at module load - it will run when user presses optimize button
+# _validate_gui_environment()  # Commented out - validation moved to before optimization
 from campro.optimization.unified_framework import (  # noqa: E402
     OptimizationMethod,
     UnifiedOptimizationConstraints,
@@ -286,6 +322,12 @@ class CamMotionGUI:
             "casadi_collocation_method": tk.StringVar(value="legendre"),
             "thermal_efficiency_target": tk.DoubleVar(value=0.55),
             "enable_thermal_efficiency": tk.BooleanVar(value=True),
+            # Universal grid and mapper selections
+            "universal_n_points": tk.IntVar(value=360),
+            "mapper_method": tk.StringVar(value="linear"),  # linear, pchip, barycentric, projection
+            # Diagnostics toggles
+            "enable_grid_diagnostics": tk.BooleanVar(value=False),
+            "enable_grid_plots": tk.BooleanVar(value=False),
         }
 
     def _create_widgets(self):
@@ -382,7 +424,7 @@ class CamMotionGUI:
         self.motion_type_combo = ttk.Combobox(
             self.control_frame,
             textvariable=self.variables["motion_type"],
-            values=["minimum_jerk", "minimum_energy", "minimum_time"],
+            values=["minimum_jerk", "minimum_energy", "minimum_time", "pcurve_te"],
             state="readonly",
             width=12,
         )
@@ -661,6 +703,49 @@ class CamMotionGUI:
         )
         casadi_method_combo.grid(row=15, column=5, sticky=tk.W, padx=(5, 0), pady=2)
         casadi_method_combo.set("legendre")
+
+        # Universal grid controls
+        ttk.Label(self.control_frame, text="Universal Points:").grid(
+            row=15, column=6, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        universal_points_entry = ttk.Spinbox(
+            self.control_frame,
+            from_=90,
+            to=4096,
+            increment=10,
+            textvariable=self.variables["universal_n_points"],
+            width=6,
+        )
+        universal_points_entry.grid(row=15, column=7, sticky=tk.W, padx=(5, 0), pady=2)
+
+        ttk.Label(self.control_frame, text="Mapper Method:").grid(
+            row=15, column=8, sticky=tk.W, pady=2, padx=(20, 0),
+        )
+        mapper_combo = ttk.Combobox(
+            self.control_frame,
+            textvariable=self.variables["mapper_method"],
+            values=["linear", "pchip", "barycentric", "projection"],
+            state="readonly",
+            width=12,
+        )
+        mapper_combo.grid(row=15, column=9, sticky=tk.W, padx=(5, 0), pady=2)
+        mapper_combo.set("linear")
+
+        # Diagnostics toggles
+        diag_frame = ttk.Frame(self.control_frame)
+        diag_frame.grid(row=16, column=0, columnspan=10, sticky=tk.W, pady=(4, 2))
+        diag_chk = ttk.Checkbutton(
+            diag_frame,
+            text="Grid Diagnostics",
+            variable=self.variables["enable_grid_diagnostics"],
+        )
+        diag_chk.pack(side=tk.LEFT, padx=(0, 10))
+        plots_chk = ttk.Checkbutton(
+            diag_frame,
+            text="Grid Plots",
+            variable=self.variables["enable_grid_plots"],
+        )
+        plots_chk.pack(side=tk.LEFT)
 
         # Thermal efficiency target
         ttk.Label(self.control_frame, text="Efficiency Target:").grid(
@@ -1199,9 +1284,108 @@ class CamMotionGUI:
             # Keep previous cache; log for debug only
             print(f"DEBUG: Unable to cache contact_type: {e}")
 
+    def _validate_environment_before_optimization(self) -> bool:
+        """Validate environment (CasADi/HSL) before optimization starts.
+        
+        Returns:
+            True if validation passes, False otherwise.
+        """
+        try:
+            # 1) Check CasADi import
+            try:
+                import casadi  # noqa: F401
+                casadi_ok = True
+            except ImportError as e:
+                casadi_ok = False
+                error_msg = (
+                    "CasADi module not found.\n\n"
+                    "Please ensure CasADi is installed or select the folder containing the 'casadi' package."
+                )
+                result = messagebox.askyesno(
+                    "CasADi Not Found",
+                    error_msg + "\n\nWould you like to select the CasADi folder?",
+                    icon="warning",
+                )
+                if result:
+                    pkg_dir = filedialog.askdirectory(title="Select folder containing 'casadi' package")
+                    if pkg_dir:
+                        if pkg_dir not in sys.path:
+                            sys.path.insert(0, pkg_dir)
+                        try:
+                            import importlib
+                            importlib.invalidate_caches()
+                            import casadi  # type: ignore  # noqa: F401
+                            casadi_ok = True
+                        except Exception:
+                            messagebox.showerror(
+                                "CasADi Import Failed",
+                                f"Failed to import CasADi from selected folder.\n\nError: {e}",
+                            )
+                            return False
+                else:
+                    return False
+
+            # 2) Check HSL library path
+            try:
+                from campro import constants as _c
+                hsl_path = getattr(_c, "HSLLIB_PATH", "")
+            except Exception:
+                hsl_path = ""
+
+            def _valid_hsl(p: str) -> bool:
+                return bool(p) and Path(p).exists()
+
+            if not _valid_hsl(hsl_path):
+                error_msg = (
+                    "HSL (libcoinhsl) library path not set or invalid.\n\n"
+                    "Please select the HSL library file (DLL/DYLIB/SO)."
+                )
+                result = messagebox.askyesno(
+                    "HSL Library Not Found",
+                    error_msg + "\n\nWould you like to select the HSL library file?",
+                    icon="warning",
+                )
+                if result:
+                    filetypes = [
+                        ("Windows DLL", "*.dll"),
+                        ("macOS dylib", "*.dylib"),
+                        ("Linux so", "*.so"),
+                        ("All files", "*.*"),
+                    ]
+                    sel = filedialog.askopenfilename(
+                        title="Select HSL library (libcoinhsl)", filetypes=filetypes
+                    )
+                    if sel:
+                        os.environ["HSLLIB_PATH"] = sel
+                        try:
+                            from campro import constants as _c2
+                            _c2.HSLLIB_PATH = sel  # override runtime constant
+                        except Exception:
+                            pass
+                        hsl_path = sel
+                    else:
+                        return False
+                else:
+                    return False
+
+            # Both checks passed
+            return True
+
+        except Exception as e:
+            messagebox.showerror(
+                "Validation Error",
+                f"Error during environment validation:\n\n{e}",
+            )
+            return False
+
     def _run_optimization(self):
         """Run the complete system optimization."""
         if not self._validate_inputs():
+            return
+
+        # Validate environment before optimization
+        if not self._validate_environment_before_optimization():
+            self.status_var.set("Optimization cancelled - environment validation failed")
             return
 
         # Disable optimize button during computation
@@ -1320,6 +1504,31 @@ class CamMotionGUI:
         settings.casadi_validation_tolerance = self.variables[
             "casadi_validation_tolerance"
         ].get()
+
+        # The Lobatto/Radau/Legendre dropdown controls the SHARED collocation method used
+        # across all modules (primary motion-law and MotionConstraints). This is a temporary
+        # global toggle for simplicity. In a future session we will support granular, per-stage
+        # method selection (e.g., primary=Radau, secondary=Lobatto) and per-stage degrees.
+        settings.collocation_method = self.variables["casadi_collocation_method"].get()
+
+        # Universal grid controls from GUI
+        settings.universal_n_points = int(self.variables["universal_n_points"].get())
+
+        # Mapper method selection from GUI (linear, pchip, barycentric, projection)
+        # Currently used inside invariance mappings and available for future stage wrappers.
+        settings.mapper_method = self.variables["mapper_method"].get()
+
+        # Diagnostics toggles from GUI
+        settings.enable_grid_diagnostics = bool(self.variables["enable_grid_diagnostics"].get())
+        settings.enable_grid_plots = bool(self.variables["enable_grid_plots"].get())
+
+        # Exposing optimization weights in the GUI:
+        # - To tune secondary tracking toward the golden profile, surface a numeric input bound to
+        #   a Tk variable (e.g., `tracking_weight_var = tk.DoubleVar(value=1.0)`) and assign here:
+        #   `settings.tracking_weight = tracking_weight_var.get()`
+        # - Similarly, the primary phase-1 flow supports weights like `dpdt_weight`, `jerk_weight`,
+        #   and `imep_weight` in `UnifiedOptimizationSettings`. These can be exposed with sliders
+        #   and assigned before calling `configure()` below, enabling quick experimentation from the GUI.
 
         # Configure CasADi optimizer settings
         settings.use_casadi = self.variables["use_casadi_optimizer"].get()

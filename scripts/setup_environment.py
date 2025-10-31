@@ -19,6 +19,10 @@ sys.path.insert(0, str(project_root))
 # Avoid import-time validation before env exists
 os.environ.setdefault("CAMPRO_SKIP_VALIDATION", "1")
 
+from campro.environment.platform_detector import (  # noqa: E402
+    get_local_conda_env_path,
+    is_local_conda_env_present,
+)
 from campro.environment.validator import validate_environment  # noqa: E402
 from campro.logging import get_logger  # noqa: E402
 
@@ -83,13 +87,18 @@ def check_mamba_available() -> bool:
         return False
 
 
-def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
+def create_conda_environment(
+    env_file: str,
+    use_mamba: bool = False,
+    use_local: bool = True,
+) -> bool:
     """
     Create conda environment from environment file.
 
     Args:
         env_file: Path to environment.yml file
         use_mamba: Whether to use mamba instead of conda
+        use_local: Whether to create environment locally (OS-specific) or globally
 
     Returns:
         True if successful, False otherwise
@@ -111,16 +120,54 @@ def create_conda_environment(env_file: str, use_mamba: bool = False) -> bool:
     package_manager = "mamba" if use_mamba else "conda"
 
     try:
-        # Check if environment already exists
-        env_name = "larrak"
-        result = run_command([package_manager, "env", "list"], check=False)
+        if use_local:
+            # Create local OS-specific conda environment
+            local_env_path = get_local_conda_env_path(project_root)
+            env_path_str = str(local_env_path)
 
-        if env_name in result.stdout:
-            log.info(f"Environment '{env_name}' already exists. Updating...")
-            cmd = [package_manager, "env", "update", "-f", env_file, "--name", env_name]
+            if is_local_conda_env_present(project_root):
+                log.info(
+                    f"Local environment already exists at '{env_path_str}'. Updating...",
+                )
+                cmd = [
+                    package_manager,
+                    "env",
+                    "update",
+                    "-f",
+                    env_file,
+                    "--prefix",
+                    env_path_str,
+                ]
+            else:
+                log.info(f"Creating new local environment at '{env_path_str}'...")
+                cmd = [
+                    package_manager,
+                    "env",
+                    "create",
+                    "-f",
+                    env_file,
+                    "--prefix",
+                    env_path_str,
+                ]
         else:
-            log.info(f"Creating new environment '{env_name}'...")
-            cmd = [package_manager, "env", "create", "-f", env_file]
+            # Fallback to global named environment (legacy behavior)
+            env_name = "larrak"
+            result = run_command([package_manager, "env", "list"], check=False)
+
+            if env_name in result.stdout:
+                log.info(f"Environment '{env_name}' already exists. Updating...")
+                cmd = [
+                    package_manager,
+                    "env",
+                    "update",
+                    "-f",
+                    env_file,
+                    "--name",
+                    env_name,
+                ]
+            else:
+                log.info(f"Creating new environment '{env_name}'...")
+                cmd = [package_manager, "env", "create", "-f", env_file]
 
         # Prefer libmamba solver for speed on conda
         if package_manager == "conda":
@@ -196,6 +243,11 @@ def main():
         help="Skip validation after setup",
     )
     parser.add_argument(
+        "--no-local",
+        action="store_true",
+        help="Create global named environment instead of local OS-specific environment",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose output",
@@ -236,14 +288,27 @@ def main():
         env_file = os.path.join(project_root, env_file)
 
     print(f"📦 Creating environment from {env_file}...")
-    success = create_conda_environment(env_file, use_mamba=(package_manager == "mamba"))
+    use_local = not args.no_local
+    if use_local:
+        local_env_path = get_local_conda_env_path(project_root)
+        print(f"📍 Using local environment path: {local_env_path}")
+    
+    success = create_conda_environment(
+        env_file,
+        use_mamba=(package_manager == "mamba"),
+        use_local=use_local,
+    )
 
     if not success:
         print("❌ Failed to create environment")
         # Retry with mamba if available and not already used
         if package_manager == "conda" and check_mamba_available():
             print("🔄 Retrying with mamba (faster solver)...")
-            if create_conda_environment(env_file, use_mamba=True):
+            if create_conda_environment(
+                env_file,
+                use_mamba=True,
+                use_local=use_local,
+            ):
                 success = True
         if not success:
             sys.exit(1)
@@ -262,7 +327,11 @@ def main():
     # Print next steps
     print("\nNext steps:")
     print("1. Activate the environment:")
-    print("   conda activate larrak")
+    if use_local:
+        local_env_path = get_local_conda_env_path(project_root)
+        print(f"   conda activate {local_env_path}")
+    else:
+        print("   conda activate larrak")
     print("\n2. Verify the installation:")
     print("   python scripts/check_environment.py")
     print("\n3. Run the GUI:")

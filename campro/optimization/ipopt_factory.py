@@ -48,8 +48,8 @@ def create_ipopt_solver(
     solver_to_use = linear_solver or DEFAULT_LINEAR_SOLVER
     opts["ipopt.linear_solver"] = solver_to_use
 
-    # Set HSL library path if using MA27/MA57
-    if solver_to_use in ["ma27", "ma57"]:
+    # Set HSL library path if using MA27/MA57 and a valid path is available
+    if solver_to_use in ["ma27", "ma57"] and HSLLIB_PATH:
         opts["ipopt.hsllib"] = HSLLIB_PATH
 
     # Default Ipopt file sink per run (unless caller provided one)

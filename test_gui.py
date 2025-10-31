@@ -40,14 +40,12 @@ def test_imports():
         return False
 
     try:
-        from CamPro_OptimalMotion import (  # noqa: F401
-            CollocationSettings,
-            solve_cam_motion_law,
-        )
+        from campro.optimization.collocation import CollocationSettings  # noqa: F401
+        from CamPro_OptimalMotion import solve_cam_motion_law  # noqa: F401
 
-        print("+ CamPro_OptimalMotion imported successfully")
+        print("+ CollocationSettings and solve_cam_motion_law imported successfully")
     except ImportError as e:
-        print(f"- CamPro_OptimalMotion import failed: {e}")
+        print(f"- import failed: {e}")
         return False
 
     try:

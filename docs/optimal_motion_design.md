@@ -126,7 +126,8 @@ solution = solve_minimum_energy_motion(
 ### Custom Objective
 
 ```python
-from CamPro_OptimalMotion import OptimalMotionSolver, MotionConstraints
+from CamPro_OptimalMotion import OptimalMotionSolver
+from campro.constraints.motion import MotionConstraints
 
 def custom_objective(t, x, v, a, u):
     return ca.integral(u**2 + 0.1*v**2)

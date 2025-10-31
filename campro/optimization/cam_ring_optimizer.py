@@ -23,6 +23,7 @@ from campro.physics.geometry.litvin import LitvinGearGeometry, LitvinSynthesis
 
 from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
 from .collocation import CollocationSettings
+from .se2 import angle_map
 
 log = get_logger(__name__)
 
@@ -206,7 +207,7 @@ class CamRingOptimizer(BaseOptimizer):
 
             log.info(f"Initial guess: {initial_guess}")
 
-            # Create RadialSlotMotion from primary motion law data
+        # Create RadialSlotMotion from primary motion law data (on universal grid)
             motion = self._create_radial_slot_motion(primary_data)
 
             # Build GeometrySearchConfig with gear parameter candidates
@@ -412,8 +413,8 @@ class CamRingOptimizer(BaseOptimizer):
             theta_rad, x_theta, kind="cubic", fill_value="extrapolate",
         )
 
-        # Planet angle: θ_p = 2·θ_r (standard Litvin planetary relation)
-        planet_angle_fn = lambda th: 2.0 * th
+        # Planet angle mapping centralized (default scale 2.0, no offset)
+        planet_angle_fn = lambda th: angle_map(th, scale=2.0, offset=0.0)
 
         return RadialSlotMotion(
             center_offset_fn=lambda th: float(center_offset_interp(th)),

@@ -128,6 +128,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local conda environments (OS-specific)
+conda_env_windows/
+conda_env_macos/
+conda_env_linux/
+conda_env_*/
+
 # Spyder project settings
 .spyderproject
 .spyproject

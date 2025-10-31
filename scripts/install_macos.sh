@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$PROJECT_DIR/environment.yml"
+LOCAL_ENV_PATH="$PROJECT_DIR/conda_env_macos"
 
 echo "[macOS] Larrak installer"
 
@@ -27,19 +28,19 @@ if [ "$PM" = "conda" ]; then
   conda config --set channel_priority strict || true
 fi
 
-# Create or update env
-if $PM env list | grep -q "^larrak\s"; then
-  echo "Updating existing environment 'larrak'..."
-  $PM env update -f "$ENV_FILE" --name larrak
+# Create or update local env
+if [ -d "$LOCAL_ENV_PATH" ]; then
+  echo "Updating existing local environment at '$LOCAL_ENV_PATH'..."
+  $PM env update -f "$ENV_FILE" --prefix "$LOCAL_ENV_PATH"
 else
-  echo "Creating environment 'larrak'..."
-  $PM env create -f "$ENV_FILE"
+  echo "Creating local environment at '$LOCAL_ENV_PATH'..."
+  $PM env create -f "$ENV_FILE" --prefix "$LOCAL_ENV_PATH"
 fi
 
 echo "Verifying IPOPT availability..."
 source "$HOME"/.bashrc 2>/dev/null || true
 source "$HOME"/.zshrc 2>/dev/null || true
-conda activate larrak 2>/dev/null || source activate larrak
+conda activate "$LOCAL_ENV_PATH" 2>/dev/null || source activate "$LOCAL_ENV_PATH"
 python - <<'PY'
 import casadi as ca
 try:
@@ -51,4 +52,4 @@ except Exception as e:
     raise SystemExit(1)
 PY
 
-echo "Done. Activate with: conda activate larrak"
+echo "Done. Activate with: conda activate $LOCAL_ENV_PATH"

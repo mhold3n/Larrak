@@ -19,6 +19,7 @@ from campro.constants import (
     DEFAULT_MAX_ITERATIONS,
 )
 from campro.logging import get_logger
+from campro.constraints.motion import MotionConstraints
 
 log = get_logger(__name__)
 
@@ -54,26 +55,7 @@ def _validate_environment():
 _validate_environment()
 
 
-@dataclass
-class MotionConstraints:
-    """Constraints for optimal motion law problems."""
-
-    # State constraints
-    position_bounds: tuple[float, float] | None = None
-    velocity_bounds: tuple[float, float] | None = None
-    acceleration_bounds: tuple[float, float] | None = None
-    jerk_bounds: tuple[float, float] | None = None
-
-    # Control constraints
-    control_bounds: tuple[float, float] | None = None
-
-    # Boundary conditions
-    initial_position: float | None = None
-    initial_velocity: float | None = None
-    initial_acceleration: float | None = None
-    final_position: float | None = None
-    final_velocity: float | None = None
-    final_acceleration: float | None = None
+    # NOTE: MotionConstraints is imported from campro.constraints.motion to avoid duplication.
 
 
 @dataclass

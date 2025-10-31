@@ -19,6 +19,7 @@ from campro.storage import OptimizationRegistry
 
 from .base import BaseOptimizer, OptimizationResult
 from .collocation import CollocationOptimizer, CollocationSettings
+from .grid import GridSpec
 
 log = get_logger(__name__)
 
@@ -60,6 +61,66 @@ class MotionOptimizer(BaseOptimizer):
         self.collocation_optimizer.configure(**kwargs)
         self._is_configured = True
 
+    # Mapping contract (universal grid exchange domain)
+    def inputs_from_universal(
+        self,
+        universal_theta: np.ndarray,
+        position: np.ndarray | None = None,
+        velocity: np.ndarray | None = None,
+        acceleration: np.ndarray | None = None,
+        grid_spec: GridSpec | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Map inputs from universal grid to the internal grid (default: passthrough).
+
+        Motion law typically generates, not consumes, states; this is a placeholder
+        to satisfy the stage contract and allow future non-uniform collocation.
+        """
+        # Future: if grid_spec.family != "uniform", prefer barycentric mapping here.
+        return {
+            "theta": universal_theta,
+            "position": position if position is not None else np.zeros_like(universal_theta),
+            "velocity": velocity if velocity is not None else np.zeros_like(universal_theta),
+            "acceleration": acceleration if acceleration is not None else np.zeros_like(universal_theta),
+        }
+
+    def outputs_to_universal(
+        self,
+        theta_internal: np.ndarray,
+        position: np.ndarray,
+        velocity: np.ndarray,
+        acceleration: np.ndarray,
+        universal_theta: np.ndarray,
+        grid_spec: GridSpec | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Map solver outputs to universal grid (default: passthrough when grids match)."""
+        if theta_internal.shape == universal_theta.shape and np.allclose(theta_internal, universal_theta):
+            return {
+                "theta": theta_internal,
+                "position": position,
+                "velocity": velocity,
+                "acceleration": acceleration,
+            }
+        # Fallback simple resample via numpy interp for now; advanced mappers chosen from grid_spec later
+        import numpy as _np
+
+        def _per_resample(th, vals, tgt):
+            two_pi = 2.0 * _np.pi
+            th = _np.mod(th, two_pi)
+            order = _np.argsort(th)
+            th = th[order]
+            vals = _np.asarray(vals)[order]
+            th_ext = _np.concatenate([th, th[:1] + two_pi])
+            vals_ext = _np.concatenate([vals, vals[:1]])
+            tgt = _np.mod(tgt, two_pi)
+            return _np.interp(tgt, th_ext, vals_ext)
+
+        return {
+            "theta": universal_theta,
+            "position": _per_resample(theta_internal, position, universal_theta),
+            "velocity": _per_resample(theta_internal, velocity, universal_theta),
+            "acceleration": _per_resample(theta_internal, acceleration, universal_theta),
+        }
+
     def optimize(
         self,
         objective: Callable[[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray], float],
@@ -81,8 +142,10 @@ class MotionOptimizer(BaseOptimizer):
         """
         self._validate_inputs(objective, constraints)
 
-        # Attach objective type to constraints if provided
-        if "objective_type" in kwargs:
+        # Do NOT stamp umbrella types like 'custom' onto constraints; this field is
+        # read by downstream motion-law paths expecting concrete MotionType values.
+        # Keep concrete types only; pass umbrella/custom via kwargs without mutation.
+        if "objective_type" in kwargs and kwargs["objective_type"] not in {"custom"}:
             constraints.objective_type = kwargs["objective_type"]
 
         # Delegate to collocation optimizer
@@ -275,6 +338,8 @@ class MotionOptimizer(BaseOptimizer):
         cam_constraints: CamMotionConstraints,
         motion_type: str = "minimum_jerk",
         cycle_time: float = 1.0,
+        *,
+        n_points: int | None = None,
     ) -> OptimizationResult:
         """
         Solve cam motion law problem.
@@ -317,8 +382,8 @@ class MotionOptimizer(BaseOptimizer):
 
             # Create and configure motion law optimizer
             motion_optimizer = MotionLawOptimizer()
-            # Enforce 360-point sampling over 0..2π for phase 1 finalization
-            motion_optimizer.n_points = 360
+            # Set sampling points over 0..2π (default to universal or 360)
+            motion_optimizer.n_points = int(n_points) if n_points is not None else 360
 
             # Solve motion law optimization
             result = motion_optimizer.solve_motion_law(

@@ -18,28 +18,94 @@ from typing import Any
 
 # Check if we're in the correct conda environment
 def check_environment():
-    """Check if we're running in the correct conda environment."""
+    """Check if we're running in the correct conda environment (local or global)."""
+    # Add project root to path for imports
+    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(project_root))
+    
+    # Try to import env manager - if it fails, we'll do basic checks
+    try:
+        from campro.environment.env_manager import (  # noqa: E402
+            ensure_local_env_activated,
+            get_active_conda_env_path,
+        )
+        from campro.environment.platform_detector import (  # noqa: E402
+            get_local_conda_env_path,
+            is_local_conda_env_present,
+        )
+        
+        # Check for local environment first
+        if is_local_conda_env_present(project_root):
+            local_env_path = get_local_conda_env_path(project_root)
+            active_env_path = get_active_conda_env_path(project_root)
+            
+            if active_env_path and str(active_env_path) == str(local_env_path):
+                print(f"✅ Running in local conda environment: {local_env_path}")
+                return
+            elif active_env_path:
+                print(
+                    f"⚠️  WARNING: Local environment exists at '{local_env_path}' "
+                    f"but active environment is '{active_env_path}'",
+                )
+                print(f"   Consider activating: conda activate {local_env_path}")
+                print()
+            else:
+                print(f"⚠️  WARNING: Local environment exists at '{local_env_path}' but is not active")
+                print(f"   Please activate: conda activate {local_env_path}")
+                print()
+        
+        # Check global environment as fallback
     conda_env = os.environ.get("CONDA_DEFAULT_ENV", "base")
-    if conda_env != "larrak":
+        if conda_env == "larrak":
+            print(f"✅ Running in global conda environment: {conda_env}")
+            return
+        
+        # Neither local nor global 'larrak' environment is active
+        if is_local_conda_env_present(project_root):
+            local_env_path = get_local_conda_env_path(project_root)
+            print(
+                f"⚠️  WARNING: Running in conda environment '{conda_env}' instead of local 'larrak'",
+            )
+            print(f"   Local environment available at: {local_env_path}")
+            print(f"   Please run: conda activate {local_env_path}")
+        else:
         print(
             f"⚠️  WARNING: Running in conda environment '{conda_env}' instead of 'larrak'",
         )
         print("   This may cause performance issues or optimization failures.")
         print("   Please run: conda activate larrak")
-        print("   Then run this script again.")
         print()
 
         # Ask user if they want to continue
         try:
             response = input("Continue anyway? (y/N): ").strip().lower()
             if response not in ["y", "yes"]:
-                print("Exiting. Please activate the 'larrak' environment first.")
+                print("Exiting. Please activate the correct environment first.")
+                sys.exit(1)
+        except KeyboardInterrupt:
+            print("\nExiting.")
+            sys.exit(1)
+    except ImportError:
+        # Fallback to simple check if imports fail
+        conda_env = os.environ.get("CONDA_DEFAULT_ENV", "base")
+        if conda_env != "larrak":
+            print(
+                f"⚠️  WARNING: Running in conda environment '{conda_env}' instead of 'larrak'",
+            )
+            print("   This may cause performance issues or optimization failures.")
+            print("   Please run: conda activate larrak")
+            print()
+            
+            try:
+                response = input("Continue anyway? (y/N): ").strip().lower()
+                if response not in ["y", "yes"]:
+                    print("Exiting. Please activate the 'larrak' environment first.")
                 sys.exit(1)
         except KeyboardInterrupt:
             print("\nExiting.")
             sys.exit(1)
     else:
-        print(f"✅ Running in correct conda environment: {conda_env}")
+            print(f"✅ Running in conda environment: {conda_env}")
 
 
 # Check environment before importing anything else
@@ -345,11 +411,11 @@ Examples:
         action="store_true",
         help="Disable thermal efficiency optimization",
     )
-    # Pressure invariance options
+    # Pressure invariance options (always-on; switch is deprecated)
     parser.add_argument(
         "--use-pressure-invariance",
         action="store_true",
-        help="Enable Phase-1 pressure-slope invariance objective",
+        help="DEPRECATED (no-op): invariance is always on; will error next minor",
     )
     parser.add_argument(
         "--fuel-sweep",
@@ -417,6 +483,19 @@ Examples:
         default=1.0,
         help:"Clearance volume [mm^3] for iMEP scaling",
     )
+    # Guardrail parameters for Stage B (TE refine)
+    parser.add_argument(
+        "--pressure-guard-eps",
+        type=float,
+        default=1e-3,
+        help="Guardrail epsilon for invariance loss in TE stage",
+    )
+    parser.add_argument(
+        "--pressure-guard-lambda",
+        type=float,
+        default=1e4,
+        help="Quadratic penalty lambda for guardrail in TE stage",
+    )
     parser.add_argument(
         "--no-analysis", action="store_true", help="Disable IPOPT analysis collection",
     )
@@ -450,27 +529,29 @@ Examples:
         verbose=not args.quiet,
     )
 
-    # Apply pressure invariance settings if enabled
+    # Apply invariance settings (always-on). If deprecated switch used, warn loudly.
     if args.use_pressure_invariance:
-        settings.use_pressure_invariance = True
-        # Parse sweeps
-        try:
-            settings.fuel_sweep = [float(x) for x in args.fuel_sweep.split(",") if x]
-        except Exception:
-            settings.fuel_sweep = [0.7, 1.0, 1.3]
-        try:
-            settings.load_sweep = [float(x) for x in args.load_sweep.split(",") if x]
-        except Exception:
-            settings.load_sweep = [50.0, 100.0, 150.0]
-        settings.dpdt_weight = float(args.dpdt_weight)
-        settings.jerk_weight = float(args.jerk_weight)
-        settings.imep_weight = float(args.imep_weight)
-        settings.ema_alpha = float(args.ema_alpha)
-        settings.outer_iterations = int(max(1, args.outer_iters))
-        settings.bounce_alpha = float(args.bounce_alpha)
-        settings.bounce_beta = float(args.bounce_beta)
-        settings.piston_area_mm2 = float(args.piston_area_mm2)
-        settings.clearance_volume_mm3 = float(args.clearance_volume_mm3)
+        print("WARNING: --use-pressure-invariance is deprecated and now a no-op; invariance is always on. This flag will become an error in the next minor release.")
+    # Parse sweeps
+    try:
+        settings.fuel_sweep = [float(x) for x in args.fuel_sweep.split(",") if x]
+    except Exception:
+        settings.fuel_sweep = [0.7, 1.0, 1.3]
+    try:
+        settings.load_sweep = [float(x) for x in args.load_sweep.split(",") if x]
+    except Exception:
+        settings.load_sweep = [50.0, 100.0, 150.0]
+    settings.dpdt_weight = float(args.dpdt_weight)
+    settings.jerk_weight = float(args.jerk_weight)
+    settings.imep_weight = float(args.imep_weight)
+    settings.ema_alpha = float(args.ema_alpha)
+    settings.outer_iterations = int(max(1, args.outer_iters))
+    settings.bounce_alpha = float(args.bounce_alpha)
+    settings.bounce_beta = float(args.bounce_beta)
+    settings.piston_area_mm2 = float(args.piston_area_mm2)
+    settings.clearance_volume_mm3 = float(args.clearance_volume_mm3)
+    settings.pressure_guard_epsilon = float(args.pressure_guard_eps)
+    settings.pressure_guard_lambda = float(args.pressure_guard_lambda)
 
     try:
         # Run optimization

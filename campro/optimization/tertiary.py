@@ -19,6 +19,7 @@ from campro.storage import OptimizationRegistry
 
 from .base import BaseOptimizer, OptimizationResult
 from .collocation import CollocationOptimizer, CollocationSettings
+from .grid import GridSpec
 
 log = get_logger(__name__)
 
@@ -83,6 +84,28 @@ class TertiaryOptimizer(BaseOptimizer):
         self.registry = registry or OptimizationRegistry()
         self.collocation_optimizer = CollocationOptimizer(settings)
         self._is_configured = True
+
+    # Mapping contract (universal grid exchange domain)
+    def inputs_from_universal(
+        self,
+        universal_theta: list[float] | None = None,
+        primary_data: dict | None = None,
+        secondary_data: dict | None = None,
+        grid_spec: GridSpec | None = None,
+    ) -> dict:
+        """Prepare inputs from universal grid (default: passthrough).
+
+        grid_spec provides hp metadata for internal solvers if needed later.
+        """
+        return {
+            "theta": universal_theta,
+            "primary": primary_data or {},
+            "secondary": secondary_data or {},
+        }
+
+    def outputs_to_universal(self, result: dict, grid_spec: GridSpec | None = None) -> dict:
+        """Return results (tertiary is largely parametric; passthrough)."""
+        return result
 
     def configure(self, **kwargs) -> None:
         """

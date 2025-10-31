@@ -22,9 +22,12 @@ casadi>=3.6.0
 # Numerical computing
 numpy>=1.24.0
 scipy>=1.10.0
+joblib>=1.0
+scikit-learn>=1.1.0
 
 # Visualization
 matplotlib>=3.7.0
+python-dateutil>=2.8.0  # Required by matplotlib
 
 # Development tools
 pytest>=7.4.0
