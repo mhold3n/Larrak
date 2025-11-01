@@ -1494,8 +1494,11 @@ class CamMotionGUI:
         # Enable Ipopt analysis for MA57 readiness grading
         settings.enable_ipopt_analysis = True
 
-        # Enable thermal efficiency to use Ipopt (required for analysis)
-        settings.use_thermal_efficiency = True
+        # Thermal efficiency: only enable if explicitly requested (not hardcoded)
+        # Default to False unless a GUI control exists and is checked
+        settings.use_thermal_efficiency = bool(
+            self.variables.get("use_thermal_efficiency", tk.BooleanVar(value=False)).get()
+        ) if "use_thermal_efficiency" in self.variables else False
 
         # Configure CasADi validation mode from GUI
         settings.enable_casadi_validation_mode = self.variables[

@@ -358,6 +358,13 @@ class MotionLawOptimizer(BaseOptimizer):
         up_idx = int(np.argmin(np.abs(theta - float(constraints.upstroke_angle)))) if n > 0 else 0
         opti.subject_to(x[up_idx] == float(constraints.stroke))
 
+        # Global stroke bound: position must never exceed stroke (hard constraint)
+        # Use tiny tolerance (0.01mm) to account for numerical precision while preventing significant overshoot
+        stroke_val = float(constraints.stroke)
+        stroke_tolerance = 0.01  # 0.01mm fixed tolerance for numerical errors
+        for k in range(n):
+            opti.subject_to(opti.bounded(0.0, x[k], stroke_val + stroke_tolerance))
+
         # Kinematics
         for k in range(n - 1):
             opti.subject_to(v[k + 1] == v[k] + a[k] * dtheta)
@@ -401,7 +408,11 @@ class MotionLawOptimizer(BaseOptimizer):
         opti.set_initial(j, j0)
 
         opti.solver("ipopt", {"ipopt.print_level": 0, "print_time": 0})
-        sol = opti.solve()
+        try:
+            sol = opti.solve()
+        except Exception as e:
+            log.error(f"Motion law solver failed: {e}")
+            raise RuntimeError(f"Motion law optimization failed: {e}") from e
 
         x_opt = np.array(sol.value(x)).reshape(-1)
         v_opt = np.array(sol.value(v)).reshape(-1)
@@ -458,6 +469,13 @@ class MotionLawOptimizer(BaseOptimizer):
         opti.subject_to(a[-1] == 0.0)
         up_idx = int(np.argmin(np.abs(theta - float(constraints.upstroke_angle)))) if n > 0 else 0
         opti.subject_to(x[up_idx] == float(constraints.stroke))
+
+        # Global stroke bound: position must never exceed stroke (hard constraint)
+        # Use tiny tolerance (0.01mm) to account for numerical precision while preventing significant overshoot
+        stroke_val = float(constraints.stroke)
+        stroke_tolerance = 0.01  # 0.01mm fixed tolerance for numerical errors
+        for k in range(n):
+            opti.subject_to(opti.bounded(0.0, x[k], stroke_val + stroke_tolerance))
 
         # Discrete kinematics in time domain
         for k in range(n - 1):
@@ -601,7 +619,11 @@ class MotionLawOptimizer(BaseOptimizer):
         opti.set_initial(j, j0)
 
         opti.solver("ipopt", {"ipopt.print_level": 0, "print_time": 0})
-        sol = opti.solve()
+        try:
+            sol = opti.solve()
+        except Exception as e:
+            log.error(f"Motion law solver failed: {e}")
+            raise RuntimeError(f"Motion law optimization failed: {e}") from e
 
         x_opt = np.array(sol.value(x)).reshape(-1)
         v_opt = np.array(sol.value(v)).reshape(-1)
@@ -678,6 +700,13 @@ class MotionLawOptimizer(BaseOptimizer):
         # Find closest grid index to upstroke end
         up_idx = int(np.argmin(np.abs(theta - upstroke_angle))) if n > 0 else 0
         opti.subject_to(x[up_idx] == float(constraints.stroke))
+
+        # Global stroke bound: position must never exceed stroke (hard constraint)
+        # Use tiny tolerance (0.01mm) to account for numerical precision while preventing significant overshoot
+        stroke_val = float(constraints.stroke)
+        stroke_tolerance = 0.01  # 0.01mm fixed tolerance for numerical errors
+        for k in range(n):
+            opti.subject_to(opti.bounded(0.0, x[k], stroke_val + stroke_tolerance))
 
         # Kinematics constraints via finite differences
         for k in range(n - 1):

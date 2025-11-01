@@ -17,7 +17,6 @@ import numpy as np
 from campro.diagnostics.feasibility import check_feasibility
 from campro.diagnostics.scaling import compute_scaling_vector
 from campro.logging import get_logger
-from campro.optimization.grid import GridMapper
 from campro.optimization.ma57_migration_analyzer import MA57MigrationAnalyzer
 from campro.optimization.parameter_tuning import DynamicParameterTuner
 from campro.optimization.solver_analysis import MA57ReadinessReport
@@ -569,6 +568,8 @@ class UnifiedOptimizationFramework:
 
             # Primary optimization (motion law)
             log.info("Starting primary optimization (motion law)")
+            import sys
+            print("DEBUG: About to start primary optimization", file=sys.stderr, flush=True)
 
             # Get warm-start initial guess if using CasADi optimizer
             initial_guess = None
@@ -583,8 +584,12 @@ class UnifiedOptimizationFramework:
                         "No suitable warm-start found, using default initial guess",
                     )
 
+            import sys
             primary_result = self._optimize_primary(initial_guess=initial_guess)
+            print(f"DEBUG: _optimize_primary returned (status={primary_result.status if hasattr(primary_result, 'status') else 'unknown'}, successful={primary_result.successful if hasattr(primary_result, 'successful') else 'unknown'})", file=sys.stderr, flush=True)
+            print("DEBUG: About to call _update_data_from_primary", file=sys.stderr, flush=True)
             self._update_data_from_primary(primary_result)
+            print("DEBUG: _update_data_from_primary completed", file=sys.stderr, flush=True)
 
             # Store solution for future warm-starts if using CasADi optimizer
             if (
@@ -604,6 +609,8 @@ class UnifiedOptimizationFramework:
                 )
 
             # Secondary optimization (cam-ring)
+            import sys
+            print("DEBUG: About to start secondary optimization", file=sys.stderr, flush=True)
             log.info("Starting secondary optimization (cam-ring)")
             # A4: Feasibility check for secondary bound ordering
             try:
@@ -618,8 +625,18 @@ class UnifiedOptimizationFramework:
                 # We only record ordering issues if any
             except Exception:
                 pass
-            secondary_result = self._optimize_secondary()
-            self._update_data_from_secondary(secondary_result)
+            import sys
+            print("DEBUG: About to call _optimize_secondary()", file=sys.stderr, flush=True)
+            try:
+                secondary_result = self._optimize_secondary()
+                print("DEBUG: _optimize_secondary() returned successfully", file=sys.stderr, flush=True)
+                self._update_data_from_secondary(secondary_result)
+                print("DEBUG: _update_data_from_secondary() completed", file=sys.stderr, flush=True)
+            except Exception as e:
+                import traceback
+                print(f"DEBUG: Exception in secondary optimization: {e}", file=sys.stderr, flush=True)
+                traceback.print_exc(file=sys.stderr)
+                raise
 
             # Tertiary optimization (sun gear)
             log.info("Starting tertiary optimization (sun gear)")
@@ -729,6 +746,8 @@ class UnifiedOptimizationFramework:
         Args:
             initial_guess: Optional initial guess for warm-start optimization
         """
+        import sys
+        print("DEBUG: Inside _optimize_primary", file=sys.stderr, flush=True)
         # Create cam motion constraints with user input parameters
         from campro.constraints.cam import CamMotionConstraints
 
@@ -788,12 +807,15 @@ class UnifiedOptimizationFramework:
             )
 
             # Seed s_ref from a nominal minimum-jerk solve
+            import sys
+            print(f"DEBUG: About to call solve_cam_motion_law (motion_type={motion_type}, n_points={int(self.settings.universal_n_points)})", file=sys.stderr, flush=True)
             base_result_seed = self.primary_optimizer.solve_cam_motion_law(
                 cam_constraints=cam_constraints,
                 motion_type=motion_type,
                 cycle_time=self.data.cycle_time,
                 n_points=int(self.settings.universal_n_points),
             )
+            print("DEBUG: solve_cam_motion_law completed", file=sys.stderr, flush=True)
             base_sol = base_result_seed.solution or {}
             theta_seed = base_sol.get("cam_angle")
             x_seed = base_sol.get("position")
@@ -816,7 +838,6 @@ class UnifiedOptimizationFramework:
             x_seed = x_seed_u
             # Derive velocity on U: prefer spectral derivative on uniform periodic U
             try:
-                from .grid import GridMapper
                 v_seed = GridMapper.fft_derivative(theta_seed, x_seed)
             except Exception:
                 v_seed = np.gradient(x_seed, theta_seed)
@@ -871,11 +892,14 @@ class UnifiedOptimizationFramework:
                 return wj__ * jerk_term + wp__ * loss_p - ww__ * imep_avg
 
             # Outer EMA loop
+            print(f"DEBUG: Starting EMA loop (outer_iterations={int(max(1, self.settings.outer_iterations))})", file=sys.stderr, flush=True)
             for _iter in range(int(max(1, self.settings.outer_iterations))):
+                print(f"DEBUG: EMA iteration {_iter + 1}/{int(max(1, self.settings.outer_iterations))}", file=sys.stderr, flush=True)
                 # Pass initial_guess only on first iteration for warm-start
                 kwargs = {}
                 if _iter == 0 and initial_guess is not None:
                     kwargs["initial_guess"] = initial_guess
+                print("DEBUG: About to call solve_custom_objective", file=sys.stderr, flush=True)
                 result_stage_a__ = self.primary_optimizer.solve_custom_objective(
                     objective_function=objective__,
                     constraints=cam_constraints,
@@ -884,6 +908,7 @@ class UnifiedOptimizationFramework:
                     n_points=int(self.settings.universal_n_points),
                     **kwargs,
                 )
+                print(f"DEBUG: solve_custom_objective completed (status={result_stage_a__.status if hasattr(result_stage_a__, 'status') else 'unknown'})", file=sys.stderr, flush=True)
                 sol__ = result_stage_a__.solution or {}
                 t_arr__ = sol__.get("time")
                 x_arr__ = sol__.get("position")
@@ -1017,16 +1042,24 @@ class UnifiedOptimizationFramework:
                         "satisfied": guard_ok__,
                     }
 
+                    print("DEBUG: Returning result_stage_b__ (invariance flow completed successfully)", file=sys.stderr, flush=True)
                     return result_stage_b__
 
                 except Exception as exc:
                     log.error(f"Stage B (TE refine) failed: {exc}")
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+                    print("DEBUG: Returning result_stage_a__ (Stage B failed)", file=sys.stderr, flush=True)
                     return result_stage_a__
             else:
+                print("DEBUG: Returning result_stage_a__ (Stage B not enabled)", file=sys.stderr, flush=True)
                 return result_stage_a__
 
         except Exception as exc:
             log.error(f"Always-on invariance flow failed; falling back: {exc}")
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            print("DEBUG: Always-on invariance flow exception caught, falling through", file=sys.stderr, flush=True)
             # Fall through to legacy branches below as last resort
 
         # If enabled, route primary optimization through thermal-efficiency adapter
@@ -1317,9 +1350,12 @@ class UnifiedOptimizationFramework:
 
     def _optimize_secondary(self) -> OptimizationResult:
         """Perform secondary optimization (cam-ring) with adaptive tuning."""
+        import sys
+        print("DEBUG: Inside _optimize_secondary", file=sys.stderr, flush=True)
         log.info("Starting secondary optimization...")
 
         # Check if primary data is available
+        print(f"DEBUG: Checking primary_theta (is None: {self.data.primary_theta is None})", file=sys.stderr, flush=True)
         if self.data.primary_theta is None:
             raise RuntimeError(
                 "Primary optimization must be completed before secondary optimization",
@@ -1370,10 +1406,13 @@ class UnifiedOptimizationFramework:
         )
 
         # Select optimal solver (currently always MA27)
+        print("DEBUG: About to call solver_selector.select_solver()", file=sys.stderr, flush=True)
         solver_type = self.solver_selector.select_solver(problem_chars, "secondary")
+        print(f"DEBUG: Solver selected: {solver_type.value}", file=sys.stderr, flush=True)
         log.info(f"Selected solver for secondary optimization: {solver_type.value}")
 
         # Tune parameters
+        print("DEBUG: About to call parameter_tuner.tune_parameters()", file=sys.stderr, flush=True)
         tuned_params = self.parameter_tuner.tune_parameters(
             "secondary",
             problem_chars,
@@ -1401,13 +1440,21 @@ class UnifiedOptimizationFramework:
 
         # Perform optimization
         log.info("Calling secondary optimizer...")
-        result = self.secondary_optimizer.optimize(
-            primary_data=primary_data,
-            initial_guess=initial_guess,
-            # Provide golden tracking context for any collocation-based steps inside secondary
-            golden_profile=self.data.golden_profile,
-            tracking_weight=float(getattr(self.settings, "tracking_weight", 1.0)),
-        )
+        print("DEBUG: About to call secondary_optimizer.optimize()", file=sys.stderr, flush=True)
+        try:
+            result = self.secondary_optimizer.optimize(
+                primary_data=primary_data,
+                initial_guess=initial_guess,
+                # Provide golden tracking context for any collocation-based steps inside secondary
+                golden_profile=self.data.golden_profile,
+                tracking_weight=float(getattr(self.settings, "tracking_weight", 1.0)),
+            )
+            print(f"DEBUG: secondary_optimizer.optimize() completed (status={result.status if hasattr(result, 'status') else 'unknown'})", file=sys.stderr, flush=True)
+        except Exception as e:
+            import traceback
+            print(f"DEBUG: Exception in secondary_optimizer.optimize(): {e}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            raise
         log.info(
             f"Secondary optimization completed: status={result.status}, success={result.is_successful()}",
         )
@@ -1627,7 +1674,6 @@ class UnifiedOptimizationFramework:
             th_t = sol_t.get("theta")
             if th_t is not None and self.data.universal_theta_rad is not None:
                 ug_th = self.data.universal_theta_rad
-                from .grid import GridMapper
                 for key in ("position", "velocity", "acceleration", "control"):
                     arr = sol_t.get(key)
                     if arr is not None:
@@ -1663,6 +1709,8 @@ class UnifiedOptimizationFramework:
 
     def _update_data_from_primary(self, result: OptimizationResult) -> None:
         """Update data structure from primary optimization results."""
+        import sys
+        print(f"DEBUG: _update_data_from_primary called (status={result.status}, solution_keys={list(result.solution.keys()) if result.solution else 'None'})", file=sys.stderr, flush=True)
         if result.status == OptimizationStatus.CONVERGED:
             solution = result.solution
 
@@ -1677,7 +1725,6 @@ class UnifiedOptimizationFramework:
                     vel = solution.get("velocity")
                     acc = solution.get("acceleration")
                     if pos is not None and vel is not None and acc is not None:
-                        from .grid import GridMapper
                         # States mapping (interpolation by selected method; projection not needed here)
                         if self.settings.mapper_method == "pchip":
                             pos_u = GridMapper.periodic_pchip_resample(cam_angle_rad, pos, ug_th)
@@ -1713,7 +1760,6 @@ class UnifiedOptimizationFramework:
                         # Grid diagnostics (optional)
                         try:
                             if getattr(self.settings, "enable_grid_diagnostics", False):
-                                from .grid import GridMapper
                                 P_u2g, P_g2u = GridMapper.operators(cam_angle_rad, ug_th, method=getattr(self.settings, "mapper_method", "linear"))
                                 integ_err = GridMapper.integral_conservation_error(ug_th, pos_u, cam_angle_rad, np.asarray(pos))
                                 harm_err = GridMapper.harmonic_probe_error(ug_th, P_u2g, P_g2u, k=5)
@@ -1832,7 +1878,6 @@ class UnifiedOptimizationFramework:
                         th = cam_prof.get("theta")
                         rprof = cam_prof.get("profile_radius")
                         if th is not None and rprof is not None:
-                            from .grid import GridMapper
                             if self.settings.mapper_method == "pchip":
                                 r_u = GridMapper.periodic_pchip_resample(th, rprof, ug_th)
                             elif self.settings.mapper_method == "barycentric":
@@ -1848,7 +1893,6 @@ class UnifiedOptimizationFramework:
                             }
                     # Transform any gradient/jacobian fields tied to theta into universal grid
                     try:
-                        from .grid import GridMapper
                         # If solution has theta-dependent gradients/jacobians, map them
                         th_int = None
                         if isinstance(cam_prof, dict):

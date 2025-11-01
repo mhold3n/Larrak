@@ -72,9 +72,13 @@ class AdaptiveSolverSelector:
         n_vars = problem_chars.n_variables
 
         # Check solver availability
+        import sys
+        print("DEBUG: About to call _get_available_solvers()", file=sys.stderr, flush=True)
         available_solvers = self._get_available_solvers()
+        print(f"DEBUG: _get_available_solvers() returned: {[s.value for s in available_solvers]}", file=sys.stderr, flush=True)
 
         # Selection logic based on problem size and characteristics
+        print(f"DEBUG: n_vars={n_vars}, selecting solver...", file=sys.stderr, flush=True)
         if n_vars < 5000:
             # Small to medium problems - prefer MA27
             if SolverType.MA27 in available_solvers:
@@ -101,6 +105,7 @@ class AdaptiveSolverSelector:
         else:
             chosen = self._fallback_solver(available_solvers)
 
+        print(f"DEBUG: Solver chosen: {chosen.value}", file=sys.stderr, flush=True)
         log.debug(
             "Selected solver for %s phase: %s (problem size: %d variables, available: %s)",
             phase,
@@ -109,6 +114,7 @@ class AdaptiveSolverSelector:
             [s.value for s in available_solvers],
         )
 
+        print("DEBUG: About to return from select_solver()", file=sys.stderr, flush=True)
         return chosen
 
     def _get_available_solvers(self) -> list[SolverType]:
@@ -153,6 +159,8 @@ class AdaptiveSolverSelector:
             # CasADi not available
             pass
 
+        import sys
+        print(f"DEBUG: _get_available_solvers() returning {len(available)} solvers: {[s.value for s in available]}", file=sys.stderr, flush=True)
         return available
 
     def _fallback_solver(self, available_solvers: list[SolverType]) -> SolverType:
