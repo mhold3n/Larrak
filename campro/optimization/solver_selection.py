@@ -1,6 +1,7 @@
 """Adaptive solver selection based on problem characteristics and analysis history."""
 from __future__ import annotations
 
+import platform
 from dataclasses import dataclass
 from enum import Enum
 
@@ -8,6 +9,9 @@ from campro.logging import get_logger
 from campro.optimization.solver_analysis import MA57ReadinessReport
 
 log = get_logger(__name__)
+
+# Detect macOS platform - MA97 has known crash bug on macOS
+IS_MACOS = platform.system().lower() == "darwin"
 
 
 class SolverType(Enum):
@@ -94,7 +98,8 @@ class AdaptiveSolverSelector:
             else:
                 chosen = self._fallback_solver(available_solvers)
         # Very large problems - prefer MA97 or MA77
-        elif SolverType.MA97 in available_solvers:
+        # CRITICAL: Skip MA97 on macOS due to known crash bug
+        elif not IS_MACOS and SolverType.MA97 in available_solvers:
             chosen = SolverType.MA97
         elif SolverType.MA77 in available_solvers:
             chosen = SolverType.MA77
@@ -126,6 +131,11 @@ class AdaptiveSolverSelector:
 
             # Test each solver
             for solver_type in SolverType:
+                # CRITICAL: Skip MA97 on macOS due to known segmentation fault bug
+                # MA97 destructor crashes on macOS during cleanup
+                if IS_MACOS and solver_type == SolverType.MA97:
+                    log.debug("Skipping MA97 on macOS due to known crash bug")
+                    continue
                 try:
                     # Create a simple test problem
                     x = ca.SX.sym("x")
@@ -145,11 +155,12 @@ class AdaptiveSolverSelector:
                         },
                     )
 
-                    # Test the solver
+                    # Test the solver - if we can create it and run it, it's available
+                    # Don't require success - just that the solver can execute
                     result = solver(x0=0, lbg=0, ubg=0)
-                    stats = solver.stats()
-                    if stats["success"]:
-                        available.append(solver_type)
+                    # If we get here without exception, the solver is available
+                    # The solver might not succeed on the test problem, but that's okay
+                    available.append(solver_type)
 
                 except Exception:
                     # Solver not available

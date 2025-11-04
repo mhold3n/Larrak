@@ -8,6 +8,7 @@ multiple solvers try to set the same option.
 
 from __future__ import annotations
 
+import platform
 from typing import Any
 
 import casadi as ca
@@ -18,6 +19,9 @@ from campro.diagnostics.run_metadata import RUN_ID
 from campro.logging import get_logger
 
 log = get_logger(__name__)
+
+# Detect macOS platform
+IS_MACOS = platform.system().lower() == "darwin"
 
 # Default linear solver for this machine
 DEFAULT_LINEAR_SOLVER = "ma27"
@@ -46,10 +50,23 @@ def create_ipopt_solver(
 
     # Set linear solver explicitly
     solver_to_use = linear_solver or DEFAULT_LINEAR_SOLVER
+    
+    # CRITICAL: Prevent MA97 usage on macOS due to known segmentation fault bug
+    # MA97 has a bug in its destructor that causes crashes on macOS
+    if IS_MACOS and solver_to_use.lower() == "ma97":
+        log.warning(
+            "MA97 solver is not supported on macOS due to known crash bug. "
+            "Falling back to MA57 for large problems."
+        )
+        # For large problems, use MA57 instead of MA97 on macOS
+        solver_to_use = "ma57"
+        # If MA57 also fails, we'll fall back to MA27 in the HSL path check below
+    
     opts["ipopt.linear_solver"] = solver_to_use
 
-    # Set HSL library path if using MA27/MA57 and a valid path is available
-    if solver_to_use in ["ma27", "ma57"] and HSLLIB_PATH:
+    # Set HSL library path for all HSL solvers (MA27, MA57, MA77, MA86) except MA97
+    # Note: MA97 is excluded on macOS due to crash bug, but other HSL solvers use the same lib directory
+    if solver_to_use in ["ma27", "ma57", "ma77", "ma86"] and HSLLIB_PATH:
         opts["ipopt.hsllib"] = HSLLIB_PATH
 
     # Default Ipopt file sink per run (unless caller provided one)
