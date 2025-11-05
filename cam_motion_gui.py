@@ -283,6 +283,14 @@ class CamMotionGUI:
             "upstroke_duration": tk.DoubleVar(value=60.0),
             "zero_accel_duration": tk.DoubleVar(value=0.0),
             "motion_type": tk.StringVar(value="minimum_jerk"),
+            # Combustion parameters
+            "combustion_afr": tk.DoubleVar(value=18.0),
+            "combustion_fuel_mass": tk.DoubleVar(value=5e-4),  # kg per event
+            "combustion_ignition_deg": tk.DoubleVar(value=-5.0),  # deg relative to TDC (negative = ATDC)
+            "combustion_ca50_target": tk.DoubleVar(value=5.0),  # deg ATDC
+            "combustion_ca50_weight": tk.DoubleVar(value=0.0),
+            "combustion_duration_target": tk.DoubleVar(value=20.0),  # CA90-CA10 duration
+            "combustion_duration_weight": tk.DoubleVar(value=0.0),
             # Cam-ring system parameters
             "base_radius": tk.DoubleVar(value=15.0),
             "connecting_rod_length": tk.DoubleVar(value=25.0),
@@ -376,386 +384,315 @@ class CamMotionGUI:
 
     def _create_control_panel(self):
         """Create the main control panel."""
-        self.control_frame = ttk.LabelFrame(
-            self.main_frame, text="System Parameters", padding="10",
-        )
+        self.control_frame = ttk.Frame(self.main_frame, padding="10")
+        for col in range(3):
+            self.control_frame.grid_columnconfigure(col, weight=1)
 
-        # Row 1: Core motion law parameters
-        ttk.Label(self.control_frame, text="Stroke (mm):").grid(
-            row=0, column=0, sticky=tk.W, pady=2,
-        )
-        self.stroke_entry = ttk.Entry(
-            self.control_frame, textvariable=self.variables["stroke"], width=8,
-        )
-        self.stroke_entry.grid(row=0, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        def add_field(frame: ttk.Frame, label_text: str, widget: tk.Widget, row: int, col: int) -> None:
+            col_base = col * 2
+            ttk.Label(frame, text=label_text).grid(
+                row=row, column=col_base, sticky=tk.W, pady=2, padx=(0, 4),
+            )
+            widget.grid(row=row, column=col_base + 1, sticky="ew", pady=2, padx=(0, 8))
+            frame.grid_columnconfigure(col_base + 1, weight=1)
 
-        ttk.Label(self.control_frame, text="Upstroke Duration (%):").grid(
-            row=0, column=2, sticky=tk.W, pady=2, padx=(20, 0),
-        )
-        self.upstroke_entry = ttk.Entry(
-            self.control_frame,
-            textvariable=self.variables["upstroke_duration"],
-            width=8,
-        )
-        self.upstroke_entry.grid(row=0, column=3, sticky=tk.W, padx=(5, 0), pady=2)
+        def add_range(frame: ttk.Frame, label_text: str, var_min: tk.Variable, var_max: tk.Variable, row: int, col: int) -> None:
+            col_base = col * 2
+            ttk.Label(frame, text=label_text).grid(
+                row=row, column=col_base, sticky=tk.W, pady=2, padx=(0, 4),
+            )
+            container = ttk.Frame(frame)
+            container.grid(row=row, column=col_base + 1, sticky="w", pady=2, padx=(0, 8))
+            ttk.Entry(container, textvariable=var_min, width=6).pack(side=tk.LEFT)
+            ttk.Label(container, text=" to ").pack(side=tk.LEFT, padx=2)
+            ttk.Entry(container, textvariable=var_max, width=6).pack(side=tk.LEFT)
+            frame.grid_columnconfigure(col_base + 1, weight=1)
 
-        ttk.Label(self.control_frame, text="Zero Accel Duration (%):").grid(
-            row=0, column=4, sticky=tk.W, pady=2, padx=(20, 0),
-        )
-        self.zero_accel_entry = ttk.Entry(
-            self.control_frame,
-            textvariable=self.variables["zero_accel_duration"],
-            width=8,
-        )
-        self.zero_accel_entry.grid(row=0, column=5, sticky=tk.W, padx=(5, 0), pady=2)
+        # --- System parameters -------------------------------------------------
+        system_frame = ttk.LabelFrame(self.control_frame, text="System Parameters")
+        system_frame.grid(row=0, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+        for c in range(8):
+            system_frame.grid_columnconfigure(c, weight=1)
 
-        # Row 2: Additional motion law parameters
-        ttk.Label(self.control_frame, text="Cycle Time (s):").grid(
-            row=1, column=0, sticky=tk.W, pady=2,
-        )
-        self.cycle_time_entry = ttk.Entry(
-            self.control_frame, textvariable=self.variables["cycle_time"], width=8,
-        )
-        self.cycle_time_entry.grid(row=1, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        self.stroke_entry = ttk.Entry(system_frame, textvariable=self.variables["stroke"], width=8)
+        add_field(system_frame, "Stroke (mm):", self.stroke_entry, 0, 0)
 
-        ttk.Label(self.control_frame, text="Motion Type:").grid(
-            row=1, column=2, sticky=tk.W, pady=2, padx=(20, 0),
-        )
+        self.cycle_time_entry = ttk.Entry(system_frame, textvariable=self.variables["cycle_time"], width=8)
+        add_field(system_frame, "Cycle Time (s):", self.cycle_time_entry, 0, 1)
+
+        self.upstroke_entry = ttk.Entry(system_frame, textvariable=self.variables["upstroke_duration"], width=8)
+        add_field(system_frame, "Upstroke Duration (%):", self.upstroke_entry, 0, 2)
+
+        self.zero_accel_entry = ttk.Entry(system_frame, textvariable=self.variables["zero_accel_duration"], width=8)
+        add_field(system_frame, "Zero Accel Duration (%):", self.zero_accel_entry, 0, 3)
+
         self.motion_type_combo = ttk.Combobox(
-            self.control_frame,
+            system_frame,
             textvariable=self.variables["motion_type"],
             values=["minimum_jerk", "minimum_energy", "minimum_time", "pcurve_te"],
             state="readonly",
             width=12,
         )
-        self.motion_type_combo.grid(row=1, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-        self.motion_type_combo.set("minimum_jerk")  # Set default value
+        self.motion_type_combo.set("minimum_jerk")
+        add_field(system_frame, "Motion Type:", self.motion_type_combo, 1, 0)
 
-        # Row 3: Cam-ring parameters
-        ttk.Label(self.control_frame, text="Cam Base Radius (mm):").grid(
-            row=2, column=0, sticky=tk.W, pady=2,
-        )
-        self.base_radius_entry = ttk.Entry(
-            self.control_frame, textvariable=self.variables["base_radius"], width=8,
-        )
-        self.base_radius_entry.grid(row=2, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        self.base_radius_entry = ttk.Entry(system_frame, textvariable=self.variables["base_radius"], width=8)
+        add_field(system_frame, "Cam Base Radius (mm):", self.base_radius_entry, 1, 1)
 
-        ttk.Label(self.control_frame, text="Rod Length (mm):").grid(
-            row=2, column=2, sticky=tk.W, pady=2, padx=(20, 0),
-        )
-        self.rod_length_entry = ttk.Entry(
-            self.control_frame,
-            textvariable=self.variables["connecting_rod_length"],
-            width=8,
-        )
-        self.rod_length_entry.grid(row=2, column=3, sticky=tk.W, padx=(5, 0), pady=2)
+        self.rod_length_entry = ttk.Entry(system_frame, textvariable=self.variables["connecting_rod_length"], width=8)
+        add_field(system_frame, "Rod Length (mm):", self.rod_length_entry, 1, 2)
 
-        ttk.Label(self.control_frame, text="Contact Type:").grid(
-            row=2, column=4, sticky=tk.W, pady=2, padx=(20, 0),
-        )
         self.contact_type_combo = ttk.Combobox(
-            self.control_frame,
+            system_frame,
             textvariable=self.variables["contact_type"],
             values=["external", "internal"],
             state="readonly",
             width=12,
         )
-        self.contact_type_combo.grid(row=2, column=5, sticky=tk.W, padx=(5, 0), pady=2)
-        self.contact_type_combo.set("external")  # Set default value
+        self.contact_type_combo.set("external")
+        add_field(system_frame, "Contact Type:", self.contact_type_combo, 1, 3)
 
-        # Row 4: Sun gear parameters
-        ttk.Label(self.control_frame, text="Sun Gear Radius (mm):").grid(
-            row=3, column=0, sticky=tk.W, pady=2,
-        )
-        self.sun_gear_entry = ttk.Entry(
-            self.control_frame, textvariable=self.variables["sun_gear_radius"], width=8,
-        )
-        self.sun_gear_entry.grid(row=3, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        self.sun_gear_entry = ttk.Entry(system_frame, textvariable=self.variables["sun_gear_radius"], width=8)
+        add_field(system_frame, "Sun Gear Radius (mm):", self.sun_gear_entry, 2, 0)
 
-        ttk.Label(self.control_frame, text="Ring Gear Radius (mm):").grid(
-            row=3, column=2, sticky=tk.W, pady=2, padx=(20, 0),
-        )
-        self.ring_gear_entry = ttk.Entry(
-            self.control_frame, textvariable=self.variables["ring_gear_radius"], width=8,
-        )
-        self.ring_gear_entry.grid(row=3, column=3, sticky=tk.W, padx=(5, 0), pady=2)
+        self.ring_gear_entry = ttk.Entry(system_frame, textvariable=self.variables["ring_gear_radius"], width=8)
+        add_field(system_frame, "Ring Gear Radius (mm):", self.ring_gear_entry, 2, 1)
 
-        ttk.Label(self.control_frame, text="Gear Ratio:").grid(
-            row=3, column=4, sticky=tk.W, pady=2, padx=(20, 0),
-        )
-        self.gear_ratio_entry = ttk.Entry(
-            self.control_frame, textvariable=self.variables["gear_ratio"], width=8,
-        )
-        self.gear_ratio_entry.grid(row=3, column=5, sticky=tk.W, padx=(5, 0), pady=2)
+        self.gear_ratio_entry = ttk.Entry(system_frame, textvariable=self.variables["gear_ratio"], width=8)
+        add_field(system_frame, "Gear Ratio:", self.gear_ratio_entry, 2, 2)
 
-        # Row 5: Control buttons
+        self.afr_entry = ttk.Entry(system_frame, textvariable=self.variables["combustion_afr"], width=8)
+        add_field(system_frame, "AFR:", self.afr_entry, 2, 3)
+
+        self.fuel_mass_entry = ttk.Entry(system_frame, textvariable=self.variables["combustion_fuel_mass"], width=8)
+        add_field(system_frame, "Fuel Mass (kg):", self.fuel_mass_entry, 3, 0)
+
+        self.ignition_entry = ttk.Entry(system_frame, textvariable=self.variables["combustion_ignition_deg"], width=8)
+        add_field(system_frame, "Ignition (deg rel TDC):", self.ignition_entry, 3, 1)
+
+        # --- Combustion targets -----------------------------------------------
+        combustion_frame = ttk.LabelFrame(self.control_frame, text="Combustion Targets")
+        combustion_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
+        for c in range(4):
+            combustion_frame.grid_columnconfigure(c * 2 + 1, weight=1)
+
+        add_field(
+            combustion_frame,
+            "CA50 Target (deg ATDC):",
+            ttk.Entry(combustion_frame, textvariable=self.variables["combustion_ca50_target"], width=8),
+            0,
+            0,
+        )
+        add_field(
+            combustion_frame,
+            "Weight:",
+            ttk.Entry(combustion_frame, textvariable=self.variables["combustion_ca50_weight"], width=8),
+            0,
+            1,
+        )
+        add_field(
+            combustion_frame,
+            "CA90-CA10 Target (deg):",
+            ttk.Entry(combustion_frame, textvariable=self.variables["combustion_duration_target"], width=8),
+            1,
+            0,
+        )
+        add_field(
+            combustion_frame,
+            "Weight:",
+            ttk.Entry(combustion_frame, textvariable=self.variables["combustion_duration_weight"], width=8),
+            1,
+            1,
+        )
+
+        # --- Action buttons ----------------------------------------------------
+        button_frame = ttk.Frame(self.control_frame)
+        button_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(5, 5))
+        button_frame.grid_columnconfigure(3, weight=1)
+
         self.optimize_button = ttk.Button(
-            self.control_frame,
+            button_frame,
             text="🚀 Optimize System",
             command=self._run_optimization,
             style="Accent.TButton",
         )
-        self.optimize_button.grid(row=4, column=0, columnspan=2, sticky=tk.W, pady=10)
+        self.optimize_button.pack(side=tk.LEFT, padx=(0, 12))
 
         self.reset_button = ttk.Button(
-            self.control_frame,
+            button_frame,
             text="Reset Parameters",
             command=self._reset_parameters,
         )
-        self.reset_button.grid(
-            row=4, column=2, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0),
-        )
+        self.reset_button.pack(side=tk.LEFT, padx=(0, 12))
 
         self.save_button = ttk.Button(
-            self.control_frame,
+            button_frame,
             text="Save Results",
             command=self._save_results,
         )
-        self.save_button.grid(
-            row=4, column=4, columnspan=2, sticky=tk.W, pady=10, padx=(20, 0),
-        )
+        self.save_button.pack(side=tk.LEFT, padx=(0, 12))
 
-        # Diagnose button: quick access to Ipopt/solver diagnostics
         self.diagnose_button = ttk.Button(
-            self.control_frame,
+            button_frame,
             text="Diagnose NLP",
             command=self._diagnose_nlp,
         )
-        self.diagnose_button.grid(row=4, column=6, sticky=tk.W, pady=10, padx=(20, 0))
+        self.diagnose_button.pack(side=tk.LEFT)
 
-        # Row 5: Tertiary optimization header
-        ttk.Separator(self.control_frame, orient="horizontal").grid(
-            row=5, column=0, columnspan=6, sticky="ew", pady=5,
-        )
-        ttk.Label(
-            self.control_frame,
-            text="Crank Center Optimization (Run 3)",
-            font=("TkDefaultFont", 10, "bold"),
-        ).grid(row=6, column=0, columnspan=6, sticky=tk.W, pady=2)
+        # --- Crank center optimization ----------------------------------------
+        crank_frame = ttk.LabelFrame(self.control_frame, text="Crank Center Optimization (Run 3)")
+        crank_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
+        for c in range(4):
+            crank_frame.grid_columnconfigure(c * 2 + 1, weight=1)
 
-        # Row 6: Crank center position bounds
-        ttk.Label(self.control_frame, text="Crank X Range (mm):").grid(
-            row=7, column=0, sticky=tk.W, pady=2,
+        add_range(
+            crank_frame,
+            "Crank X Range (mm):",
+            self.variables["crank_center_x_min"],
+            self.variables["crank_center_x_max"],
+            0,
+            0,
         )
-        crank_x_frame = ttk.Frame(self.control_frame)
-        crank_x_frame.grid(row=7, column=1, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Entry(
-            crank_x_frame, textvariable=self.variables["crank_center_x_min"], width=5,
-        ).pack(side=tk.LEFT)
-        ttk.Label(crank_x_frame, text=" to ").pack(side=tk.LEFT)
-        ttk.Entry(
-            crank_x_frame, textvariable=self.variables["crank_center_x_max"], width=5,
-        ).pack(side=tk.LEFT)
-
-        ttk.Label(self.control_frame, text="Crank Y Range (mm):").grid(
-            row=7, column=2, sticky=tk.W, pady=2, padx=(20, 0),
+        add_range(
+            crank_frame,
+            "Crank Y Range (mm):",
+            self.variables["crank_center_y_min"],
+            self.variables["crank_center_y_max"],
+            0,
+            1,
         )
-        crank_y_frame = ttk.Frame(self.control_frame)
-        crank_y_frame.grid(row=7, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Entry(
-            crank_y_frame, textvariable=self.variables["crank_center_y_min"], width=5,
-        ).pack(side=tk.LEFT)
-        ttk.Label(crank_y_frame, text=" to ").pack(side=tk.LEFT)
-        ttk.Entry(
-            crank_y_frame, textvariable=self.variables["crank_center_y_max"], width=5,
-        ).pack(side=tk.LEFT)
-
-        # Row 7: Crank radius bounds
-        ttk.Label(self.control_frame, text="Crank Radius Range (mm):").grid(
-            row=8, column=0, sticky=tk.W, pady=2,
-        )
-        crank_r_frame = ttk.Frame(self.control_frame)
-        crank_r_frame.grid(row=8, column=1, sticky=tk.W, padx=(5, 0), pady=2)
-        ttk.Entry(
-            crank_r_frame, textvariable=self.variables["crank_radius_min"], width=5,
-        ).pack(side=tk.LEFT)
-        ttk.Label(crank_r_frame, text=" to ").pack(side=tk.LEFT)
-        ttk.Entry(
-            crank_r_frame, textvariable=self.variables["crank_radius_max"], width=5,
-        ).pack(side=tk.LEFT)
-
-        # Row 8: Optimization objectives (checkboxes)
-        ttk.Label(self.control_frame, text="Objectives:").grid(
-            row=9, column=0, sticky=tk.W, pady=2,
-        )
-        objectives_frame = ttk.Frame(self.control_frame)
-        objectives_frame.grid(
-            row=9, column=1, columnspan=5, sticky=tk.W, padx=(5, 0), pady=2,
+        add_range(
+            crank_frame,
+            "Crank Radius Range (mm):",
+            self.variables["crank_radius_min"],
+            self.variables["crank_radius_max"],
+            1,
+            0,
         )
 
-        ttk.Checkbutton(
-            objectives_frame,
-            text="Max Torque",
-            variable=self.variables["maximize_torque"],
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(
-            objectives_frame,
-            text="Min Side Load",
-            variable=self.variables["minimize_side_loading"],
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(
-            objectives_frame,
-            text="Min Compression Side Load",
-            variable=self.variables["minimize_compression_side_load"],
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Checkbutton(
-            objectives_frame,
-            text="Min Combustion Side Load",
-            variable=self.variables["minimize_combustion_side_load"],
-        ).pack(side=tk.LEFT, padx=5)
+        objectives_frame = ttk.Frame(crank_frame)
+        objectives_frame.grid(row=2, column=0, columnspan=4, sticky="w", pady=(4, 0))
+        for text, var in [
+            ("Max Torque", "maximize_torque"),
+            ("Min Side Load", "minimize_side_loading"),
+            ("Min Compression Side Load", "minimize_compression_side_load"),
+            ("Min Combustion Side Load", "minimize_combustion_side_load"),
+        ]:
+            ttk.Checkbutton(objectives_frame, text=text, variable=self.variables[var]).pack(side=tk.LEFT, padx=6)
 
-        # Row 9: CasADi validation mode controls
-        ttk.Label(self.control_frame, text="CasADi Validation:").grid(
-            row=10, column=0, sticky=tk.W, pady=2,
-        )
-        validation_frame = ttk.Frame(self.control_frame)
-        validation_frame.grid(
-            row=10, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2,
-        )
-        ttk.Checkbutton(
-            validation_frame,
+        # --- Solver diagnostics -------------------------------------------------
+        solver_frame = ttk.LabelFrame(self.control_frame, text="Solver Diagnostics")
+        solver_frame.grid(row=4, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
+        solver_frame.grid_columnconfigure(2, weight=1)
+
+        validation_cb = ttk.Checkbutton(
+            solver_frame,
             text="Enable Validation Mode",
             variable=self.variables["enable_casadi_validation_mode"],
-        ).pack(side=tk.LEFT, padx=5)
-        ttk.Label(validation_frame, text="Tolerance:").pack(side=tk.LEFT, padx=(10, 5))
+        )
+        validation_cb.grid(row=0, column=0, sticky=tk.W, pady=2, padx=(0, 8))
+
+        ttk.Label(solver_frame, text="Tolerance:").grid(row=0, column=1, sticky=tk.W, pady=2, padx=(0, 4))
         ttk.Entry(
-            validation_frame,
+            solver_frame,
             textvariable=self.variables["casadi_validation_tolerance"],
             width=8,
-        ).pack(side=tk.LEFT, padx=5)
+        ).grid(row=0, column=2, sticky=tk.W, pady=2)
 
-        # Row 10: ORDER2 (CasADi) toggle
-        ttk.Label(self.control_frame, text="ORDER2 (CasADi):").grid(
-            row=11, column=0, sticky=tk.W, pady=2,
-        )
-        order2_frame = ttk.Frame(self.control_frame)
-        order2_frame.grid(
-            row=11, column=1, columnspan=3, sticky=tk.W, padx=(5, 0), pady=2,
-        )
         ttk.Checkbutton(
-            order2_frame,
+            solver_frame,
             text="Enable ORDER2 (micro)",
             variable=self.variables["enable_order2_micro"],
-        ).pack(side=tk.LEFT, padx=5)
+        ).grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
 
-        # Row 11: CasADi Optimization Options
-        ttk.Separator(self.control_frame, orient="horizontal").grid(
-            row=12, column=0, columnspan=6, sticky="ew", pady=5,
-        )
-        ttk.Label(
-            self.control_frame,
-            text="CasADi Optimization Options",
-            font=("TkDefaultFont", 10, "bold"),
-        ).grid(row=13, column=0, columnspan=6, sticky=tk.W, pady=2)
+        # --- CasADi options -----------------------------------------------------
+        casadi_frame = ttk.LabelFrame(self.control_frame, text="CasADi Optimization Options")
+        casadi_frame.grid(row=5, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
+        for c in range(8):
+            casadi_frame.grid_columnconfigure(c, weight=1)
 
-        # CasADi optimizer toggle
-        ttk.Label(self.control_frame, text="CasADi Optimizer:").grid(
-            row=14, column=0, sticky=tk.W, pady=2,
-        )
-        casadi_frame = ttk.Frame(self.control_frame)
-        casadi_frame.grid(
-            row=14, column=1, columnspan=5, sticky=tk.W, padx=(5, 0), pady=2,
-        )
+        toggle_row = ttk.Frame(casadi_frame)
+        toggle_row.grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 4))
         ttk.Checkbutton(
-            casadi_frame,
+            toggle_row,
             text="Use CasADi Optimizer",
             variable=self.variables["use_casadi_optimizer"],
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Checkbutton(
-            casadi_frame,
+            toggle_row,
             text="Enable Warm-start",
             variable=self.variables["enable_warmstart"],
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT, padx=(0, 10))
         ttk.Checkbutton(
-            casadi_frame,
+            toggle_row,
             text="Thermal Efficiency",
             variable=self.variables["enable_thermal_efficiency"],
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT)
 
-        # CasADi parameters
-        ttk.Label(self.control_frame, text="Segments:").grid(
-            row=15, column=0, sticky=tk.W, pady=2,
+        add_field(
+            casadi_frame,
+            "Segments:",
+            ttk.Entry(casadi_frame, textvariable=self.variables["casadi_n_segments"], width=8),
+            1,
+            0,
         )
-        ttk.Entry(
-            self.control_frame,
-            textvariable=self.variables["casadi_n_segments"],
-            width=8,
-        ).grid(row=15, column=1, sticky=tk.W, padx=(5, 0), pady=2)
-
-        ttk.Label(self.control_frame, text="Poly Order:").grid(
-            row=15, column=2, sticky=tk.W, pady=2, padx=(20, 0),
-        )
-        ttk.Entry(
-            self.control_frame,
-            textvariable=self.variables["casadi_poly_order"],
-            width=8,
-        ).grid(row=15, column=3, sticky=tk.W, padx=(5, 0), pady=2)
-
-        ttk.Label(self.control_frame, text="Method:").grid(
-            row=15, column=4, sticky=tk.W, pady=2, padx=(20, 0),
+        add_field(
+            casadi_frame,
+            "Poly Order:",
+            ttk.Entry(casadi_frame, textvariable=self.variables["casadi_poly_order"], width=8),
+            1,
+            1,
         )
         casadi_method_combo = ttk.Combobox(
-            self.control_frame,
+            casadi_frame,
             textvariable=self.variables["casadi_collocation_method"],
             values=["legendre", "radau"],
             state="readonly",
             width=10,
         )
-        casadi_method_combo.grid(row=15, column=5, sticky=tk.W, padx=(5, 0), pady=2)
         casadi_method_combo.set("legendre")
+        add_field(casadi_frame, "Method:", casadi_method_combo, 1, 2)
 
-        # Universal grid controls
-        ttk.Label(self.control_frame, text="Universal Points:").grid(
-            row=15, column=6, sticky=tk.W, pady=2, padx=(20, 0),
-        )
         universal_points_entry = ttk.Spinbox(
-            self.control_frame,
+            casadi_frame,
             from_=90,
             to=4096,
             increment=10,
             textvariable=self.variables["universal_n_points"],
             width=6,
         )
-        universal_points_entry.grid(row=15, column=7, sticky=tk.W, padx=(5, 0), pady=2)
+        add_field(casadi_frame, "Universal Points:", universal_points_entry, 1, 3)
 
-        ttk.Label(self.control_frame, text="Mapper Method:").grid(
-            row=15, column=8, sticky=tk.W, pady=2, padx=(20, 0),
-        )
         mapper_combo = ttk.Combobox(
-            self.control_frame,
+            casadi_frame,
             textvariable=self.variables["mapper_method"],
             values=["linear", "pchip", "barycentric", "projection"],
             state="readonly",
             width=12,
         )
-        mapper_combo.grid(row=15, column=9, sticky=tk.W, padx=(5, 0), pady=2)
         mapper_combo.set("linear")
+        add_field(casadi_frame, "Mapper Method:", mapper_combo, 2, 0)
 
-        # Diagnostics toggles
-        diag_frame = ttk.Frame(self.control_frame)
-        diag_frame.grid(row=16, column=0, columnspan=10, sticky=tk.W, pady=(4, 2))
-        diag_chk = ttk.Checkbutton(
+        add_field(
+            casadi_frame,
+            "Efficiency Target:",
+            ttk.Entry(casadi_frame, textvariable=self.variables["thermal_efficiency_target"], width=8),
+            2,
+            1,
+        )
+
+        diag_frame = ttk.Frame(casadi_frame)
+        diag_frame.grid(row=2, column=4, columnspan=4, sticky="w", pady=2, padx=(0, 8))
+        ttk.Checkbutton(
             diag_frame,
             text="Grid Diagnostics",
             variable=self.variables["enable_grid_diagnostics"],
-        )
-        diag_chk.pack(side=tk.LEFT, padx=(0, 10))
-        plots_chk = ttk.Checkbutton(
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Checkbutton(
             diag_frame,
             text="Grid Plots",
             variable=self.variables["enable_grid_plots"],
-        )
-        plots_chk.pack(side=tk.LEFT)
-
-        # Thermal efficiency target
-        ttk.Label(self.control_frame, text="Efficiency Target:").grid(
-            row=16, column=0, sticky=tk.W, pady=2,
-        )
-        ttk.Entry(
-            self.control_frame,
-            textvariable=self.variables["thermal_efficiency_target"],
-            width=8,
-        ).grid(row=16, column=1, sticky=tk.W, padx=(5, 0), pady=2)
+        ).pack(side=tk.LEFT)
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
@@ -1399,13 +1336,23 @@ class CamMotionGUI:
 
     def _optimization_thread(self):
         """Thread function for system optimization."""
+        import sys
+        from campro.utils.progress_logger import ProgressLogger
+
+        gui_logger = ProgressLogger("GUI", flush_immediately=True)
+        gui_logger.start_phase()
+
         try:
-            print("DEBUG: Starting system optimization thread...")
+            gui_logger.step(1, None, "Initializing optimization framework")
+            sys.stderr.flush()
+            sys.stdout.flush()
 
             # Configure unified framework
             self._configure_unified_framework()
+            gui_logger.step_complete("Framework configuration")
 
             # Prepare input data
+            gui_logger.step(2, None, "Preparing input parameters")
             input_data = {
                 "stroke": self.variables["stroke"].get(),
                 "cycle_time": self.variables["cycle_time"].get(),
@@ -1414,16 +1361,47 @@ class CamMotionGUI:
                     "zero_accel_duration"
                 ].get(),
                 "motion_type": self.variables["motion_type"].get(),
+                "afr": self.variables["combustion_afr"].get(),
+                "fuel_mass": self.variables["combustion_fuel_mass"].get(),
+                "ignition_deg": self.variables["combustion_ignition_deg"].get(),
+                "ca50_target_deg": self.variables["combustion_ca50_target"].get(),
+                "ca50_weight": self.variables["combustion_ca50_weight"].get(),
+                "ca_duration_target_deg": self.variables["combustion_duration_target"].get(),
+                "ca_duration_weight": self.variables["combustion_duration_weight"].get(),
             }
 
-            print(f"DEBUG: System optimization input data: {input_data}")
+            gui_logger.info(
+                "Input parameters: stroke=%.2f mm, cycle_time=%.3f s, motion_type=%s, AFR=%.2f, ignition_deg=%.2f"
+                % (
+                    input_data["stroke"],
+                    input_data["cycle_time"],
+                    input_data["motion_type"],
+                    input_data["afr"],
+                    input_data["ignition_deg"],
+                ),
+            )
+            gui_logger.step_complete("Input preparation")
+            sys.stderr.flush()
+            sys.stdout.flush()
+
+            # Update GUI status
+            self.root.after(0, lambda: self.status_var.set("Starting cascaded optimization..."))
 
             # Perform cascaded optimization
-            print("DEBUG: Starting cascaded optimization...")
+            gui_logger.step(3, None, "Running cascaded optimization")
+            sys.stderr.flush()
+            sys.stdout.flush()
             result_data = self.unified_framework.optimize_cascaded(input_data)
-            print("DEBUG: Cascaded optimization completed successfully!")
+            gui_logger.step_complete("Cascaded optimization")
+            gui_logger.info("Cascaded optimization completed successfully!")
+            sys.stderr.flush()
+            sys.stdout.flush()
+
+            # Update GUI status
+            self.root.after(0, lambda: self.status_var.set("Optimization completed! Processing results..."))
 
             # Store the result and convert to SolveReport for diagnostics
+            gui_logger.step(4, None, "Processing results and diagnostics")
             self.unified_result = result_data
             try:
                 from campro.api.adapters import unified_data_to_solve_report
@@ -1441,11 +1419,13 @@ class CamMotionGUI:
                     pass
                 # Update diagnostics tab on main thread
                 self.root.after(0, self._update_diagnostics_tab, self.solve_report)
+                gui_logger.step_complete("Diagnostics processing")
             except Exception as _e:
                 # Keep GUI responsive even if adapter fails
-                print(f"DEBUG: SolveReport adapter failed: {_e}")
+                gui_logger.warning(f"SolveReport adapter failed: {_e}")
 
             # Update plots on main thread
+            gui_logger.step(5, None, "Updating plots and UI")
             self.root.after(0, self._update_all_plots, result_data)
 
             # Update frames label if we have frame count
@@ -1456,20 +1436,29 @@ class CamMotionGUI:
                         text=f"Frames: {self._total_frames} (collocation points)",
                     ),
                 )
+            gui_logger.step_complete("UI updates")
+            sys.stderr.flush()
+            sys.stdout.flush()
 
-            # Re-enable optimize button
+            # Re-enable optimize button and update status
             self.root.after(0, self._enable_optimize_button)
+            self.root.after(0, lambda: self.status_var.set("Optimization completed successfully!"))
+
+            gui_logger.complete_phase(success=True)
 
         except Exception as e:
-            print(f"DEBUG: Error in optimization thread: {e}")
+            gui_logger.error(f"Optimization thread error: {e}")
             import traceback
 
             traceback.print_exc()
+            sys.stderr.flush()
+            sys.stdout.flush()
             error_message = str(e)
             self.root.after(0, self._enable_optimize_button)
             self.root.after(
                 0, lambda: self.status_var.set(f"Optimization failed: {error_message}"),
             )
+            gui_logger.complete_phase(success=False)
 
     def _enable_optimize_button(self):
         """Re-enable the optimize button."""
@@ -1625,22 +1614,72 @@ class CamMotionGUI:
         try:
             print("DEBUG: Updating all plots with result data")
             print(f"DEBUG: Result data type: {type(result_data)}")
-            print(f"DEBUG: Result data attributes: {dir(result_data)}")
+            
+            # Check what data is actually available
+            print("DEBUG: Checking primary data availability:")
+            print(f"  - primary_theta: {result_data.primary_theta is not None} ({len(result_data.primary_theta) if result_data.primary_theta is not None else 0} points)")
+            print(f"  - primary_position: {result_data.primary_position is not None} ({len(result_data.primary_position) if result_data.primary_position is not None else 0} points)")
+            print(f"  - primary_velocity: {result_data.primary_velocity is not None}")
+            print(f"  - primary_acceleration: {result_data.primary_acceleration is not None}")
+            print(f"  - primary_jerk: {result_data.primary_jerk is not None}")
+            
+            print("DEBUG: Checking secondary data availability:")
+            print(f"  - secondary_cam_curves: {result_data.secondary_cam_curves is not None}")
+            if result_data.secondary_cam_curves is not None:
+                print(f"    Keys: {list(result_data.secondary_cam_curves.keys())}")
+            print(f"  - secondary_psi: {result_data.secondary_psi is not None} ({len(result_data.secondary_psi) if result_data.secondary_psi is not None else 0} points)")
+            print(f"  - secondary_R_psi: {result_data.secondary_R_psi is not None} ({len(result_data.secondary_R_psi) if result_data.secondary_R_psi is not None else 0} points)")
+            print(f"  - secondary_base_radius: {result_data.secondary_base_radius}")
 
             # Update Motion Law tab
-            self._update_motion_law_plot(result_data)
+            print("DEBUG: Updating motion law plot...")
+            try:
+                self._update_motion_law_plot(result_data)
+                print("DEBUG: Motion law plot updated successfully")
+            except Exception as e:
+                print(f"DEBUG: Error updating motion law plot: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Update Cam/Ring Motion tab
-            self._update_motion_plot(result_data)
+            print("DEBUG: Updating cam/ring motion plot...")
+            try:
+                self._update_motion_plot(result_data)
+                print("DEBUG: Cam/ring motion plot updated successfully")
+            except Exception as e:
+                print(f"DEBUG: Error updating cam/ring motion plot: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Update 2D Profiles tab
-            self._update_profiles_plot(result_data)
+            print("DEBUG: Updating profiles plot...")
+            try:
+                self._update_profiles_plot(result_data)
+                print("DEBUG: Profiles plot updated successfully")
+            except Exception as e:
+                print(f"DEBUG: Error updating profiles plot: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Update Animation tab
-            self._update_animation_plot(result_data)
+            print("DEBUG: Updating animation plot...")
+            try:
+                self._update_animation_plot(result_data)
+                print("DEBUG: Animation plot updated successfully")
+            except Exception as e:
+                print(f"DEBUG: Error updating animation plot: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Update Crank Center Optimization tab
-            self._update_tertiary_plot(result_data)
+            print("DEBUG: Updating tertiary plot...")
+            try:
+                self._update_tertiary_plot(result_data)
+                print("DEBUG: Tertiary plot updated successfully")
+            except Exception as e:
+                print(f"DEBUG: Error updating tertiary plot: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Update status
             self.status_var.set(
@@ -1703,7 +1742,10 @@ class CamMotionGUI:
         if (
             result_data.primary_theta is not None
             and result_data.primary_position is not None
+            and len(result_data.primary_theta) > 0
+            and len(result_data.primary_position) > 0
         ):
+            print(f"DEBUG: Motion law plot: plotting {len(result_data.primary_theta)} points")
             # Create subplots for position, velocity, acceleration, and jerk
             ax1 = self.motion_law_fig.add_subplot(411)
             ax2 = self.motion_law_fig.add_subplot(412)
@@ -1797,6 +1839,13 @@ class CamMotionGUI:
                 "Linear Follower Motion Law", fontsize=14, fontweight="bold",
             )
         else:
+            print("DEBUG: Motion law plot: No data available")
+            print(f"  primary_theta: {result_data.primary_theta is not None}")
+            print(f"  primary_position: {result_data.primary_position is not None}")
+            if result_data.primary_theta is not None:
+                print(f"  primary_theta length: {len(result_data.primary_theta)}")
+            if result_data.primary_position is not None:
+                print(f"  primary_position length: {len(result_data.primary_position)}")
             ax = self.motion_law_fig.add_subplot(111)
             ax.text(
                 0.5,
@@ -1878,7 +1927,11 @@ class CamMotionGUI:
         if (
             result_data.secondary_cam_curves is not None
             and result_data.secondary_psi is not None
+            and result_data.secondary_R_psi is not None
+            and len(result_data.secondary_psi) > 0
+            and len(result_data.secondary_R_psi) > 0
         ):
+            print(f"DEBUG: Profiles plot: plotting {len(result_data.secondary_psi)} ring points")
             # Create subplots for cam profile and ring profile
             ax1 = self.profiles_fig.add_subplot(121, projection="polar")
             ax2 = self.profiles_fig.add_subplot(122, projection="polar")
@@ -1890,6 +1943,7 @@ class CamMotionGUI:
             ):
                 cam_theta_rad = np.radians(result_data.secondary_cam_curves["theta"])
                 cam_radius = result_data.secondary_cam_curves["profile_radius"]
+                print(f"DEBUG: Profiles plot: plotting {len(cam_theta_rad)} cam points")
                 ax1.plot(
                     cam_theta_rad,
                     cam_radius,
@@ -1900,8 +1954,14 @@ class CamMotionGUI:
                 ax1.set_title("Cam Profile (Polar)", pad=20)
                 ax1.grid(True)
                 ax1.set_ylim(0, max(cam_radius) * 1.1)  # Set appropriate radial limits
+            else:
+                print(f"DEBUG: Profiles plot: Cam profile data missing")
+                print(f"  Keys in secondary_cam_curves: {list(result_data.secondary_cam_curves.keys()) if result_data.secondary_cam_curves else 'None'}")
+                ax1.text(0.5, 0.5, "Cam profile data not available", ha="center", va="center", transform=ax1.transAxes)
+                ax1.set_title("Cam Profile (Polar)", pad=20)
 
             # Plot ring profile (polar)
+            print(f"DEBUG: Profiles plot: Ring profile - psi len={len(result_data.secondary_psi)}, R_psi len={len(result_data.secondary_R_psi)}")
             ax2.plot(
                 result_data.secondary_psi,
                 result_data.secondary_R_psi,
@@ -1919,6 +1979,16 @@ class CamMotionGUI:
                 "Cam and Ring 2D Profiles", fontsize=14, fontweight="bold",
             )
         else:
+            print("DEBUG: Profiles plot: No data available")
+            print(f"  secondary_cam_curves: {result_data.secondary_cam_curves is not None}")
+            print(f"  secondary_psi: {result_data.secondary_psi is not None}")
+            print(f"  secondary_R_psi: {result_data.secondary_R_psi is not None}")
+            if result_data.secondary_cam_curves is not None:
+                print(f"  secondary_cam_curves keys: {list(result_data.secondary_cam_curves.keys())}")
+            if result_data.secondary_psi is not None:
+                print(f"  secondary_psi length: {len(result_data.secondary_psi)}")
+            if result_data.secondary_R_psi is not None:
+                print(f"  secondary_R_psi length: {len(result_data.secondary_R_psi)}")
             ax = self.profiles_fig.add_subplot(111)
             ax.text(
                 0.5,
@@ -2519,6 +2589,7 @@ Side-Loading:
                     "tertiary_side_load_penalty": self.unified_result.tertiary_side_load_penalty,
                     "tertiary_max_torque": self.unified_result.tertiary_max_torque,
                     "tertiary_power_output": self.unified_result.tertiary_power_output,
+                    "primary_ca_markers": self.unified_result.primary_ca_markers,
                 }
 
                 with open(filename, "w") as f:
@@ -2542,6 +2613,13 @@ Side-Loading:
         self.variables["sun_gear_radius"].set(15.0)
         self.variables["ring_gear_radius"].set(45.0)
         self.variables["gear_ratio"].set(3.0)
+        self.variables["combustion_afr"].set(18.0)
+        self.variables["combustion_fuel_mass"].set(5e-4)
+        self.variables["combustion_ignition_deg"].set(-5.0)
+        self.variables["combustion_ca50_target"].set(5.0)
+        self.variables["combustion_ca50_weight"].set(0.0)
+        self.variables["combustion_duration_target"].set(20.0)
+        self.variables["combustion_duration_weight"].set(0.0)
         self.variables["optimization_method"].set("legendre_collocation")
         self.variables["animation_speed"].set(1.0)
 
