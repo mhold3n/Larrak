@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import concurrent.futures
+import threading
 from dataclasses import dataclass
+from math import pi
 from typing import Any
 
 import numpy as np
@@ -40,6 +43,114 @@ def _order0_objective(cfg: PlanetSynthesisConfig) -> float:
     return m.slip_integral - 0.1 * m.contact_length + penalty
 
 
+def _objective_ca10_to_ca100(
+    gear_config: PlanetSynthesisConfig,
+    section_theta_range: tuple[float, float],
+    motion_slice: dict[str, np.ndarray],
+) -> float:
+    """Objective for CA10-CA100 section: Maximize MA planet onto ring (power stroke torque).
+    
+    Parameters
+    ----------
+    gear_config : PlanetSynthesisConfig
+        Gear configuration to evaluate
+    section_theta_range : tuple[float, float]
+        (theta_start, theta_end) for this section [deg]
+    motion_slice : dict[str, np.ndarray]
+        Motion law data for this section (theta, position, velocity, etc.)
+    
+    Returns
+    -------
+    float
+        Objective value (negative for maximization - lower is better)
+    """
+    # Evaluate full objective for this gear config
+    full_obj = _order0_objective(gear_config)
+    
+    # For power stroke, we want to maximize mechanical advantage
+    # Mechanical advantage is related to torque output
+    # Lower slip_integral means better contact, which improves MA
+    # We want to maximize this, so we negate (lower objective = better)
+    
+    # Get metrics for this section
+    m = evaluate_order0_metrics(gear_config)
+    
+    # For power stroke: maximize planet-to-ring torque
+    # This means minimize slip (better contact) and maximize contact length
+    # Objective: minimize slip, maximize contact (negative for maximization)
+    power_obj = m.slip_integral - 0.5 * m.contact_length
+    
+    penalty = 0.0
+    if not m.feasible:
+        penalty += 1e3
+    penalty += 1e2 * m.closure_residual + 50.0 * m.phi_edge_fraction
+    
+    return power_obj + penalty
+
+
+def _objective_bdc_to_tdc(
+    gear_config: PlanetSynthesisConfig,
+    section_theta_range: tuple[float, float],
+    motion_slice: dict[str, np.ndarray],
+) -> float:
+    """Objective for BDC-TDC section: Maximize ring MA on planet (easy upstroke movement).
+    
+    Parameters
+    ----------
+    gear_config : PlanetSynthesisConfig
+        Gear configuration to evaluate
+    section_theta_range : tuple[float, float]
+        (theta_start, theta_end) for this section [deg]
+    motion_slice : dict[str, np.ndarray]
+        Motion law data for this section (theta, position, velocity, etc.)
+    
+    Returns
+    -------
+    float
+        Objective value (negative for maximization - lower is better)
+    """
+    # Evaluate metrics
+    m = evaluate_order0_metrics(gear_config)
+    
+    # For upstroke: maximize ring-to-planet mechanical advantage
+    # This means we want easy movement (low resistance)
+    # Lower slip means easier motion (ring helps planet move)
+    # Objective: minimize resistance, maximize ease of motion
+    upstroke_obj = m.slip_integral + 0.3 * m.contact_length  # Positive contact helps
+    
+    penalty = 0.0
+    if not m.feasible:
+        penalty += 1e3
+    penalty += 1e2 * m.closure_residual + 50.0 * m.phi_edge_fraction
+    
+    return upstroke_obj + penalty
+
+
+def _objective_transition_sections(
+    gear_config: PlanetSynthesisConfig,
+    section_theta_range: tuple[float, float],
+    motion_slice: dict[str, np.ndarray],
+) -> float:
+    """Objective for transition sections: Balanced objectives.
+    
+    Parameters
+    ----------
+    gear_config : PlanetSynthesisConfig
+        Gear configuration to evaluate
+    section_theta_range : tuple[float, float]
+        (theta_start, theta_end) for this section [deg]
+    motion_slice : dict[str, np.ndarray]
+        Motion law data for this section (theta, position, velocity, etc.)
+    
+    Returns
+    -------
+    float
+        Objective value (negative for maximization - lower is better)
+    """
+    # Use standard objective with balanced weighting
+    return _order0_objective(gear_config)
+
+
 def optimize_geometry(
     config: GeometrySearchConfig, order: int = OptimizationOrder.ORDER0_EVALUATE,
 ) -> OptimResult:
@@ -60,73 +171,22 @@ def optimize_geometry(
         return OptimResult(best_config=cfg, objective_value=obj, feasible=True)
 
     if order == OptimizationOrder.ORDER1_GEOMETRY:
-        # Coarse grid + local refinement (Powell-like coordinate search)
-        best_cfg: PlanetSynthesisConfig | None = None
-        best_obj: float | None = None
-        pa_lo, pa_hi = config.pressure_angle_deg_bounds
-        af_lo, af_hi = config.addendum_factor_bounds
-
-        def obj_for(pa: float, af: float, zr: int, zp: int) -> float:
-            cand = PlanetSynthesisConfig(
-                ring_teeth=zr,
-                planet_teeth=zp,
-                pressure_angle_deg=pa,
-                addendum_factor=af,
-                base_center_radius=config.base_center_radius,
-                samples_per_rev=config.samples_per_rev,
-                motion=config.motion,
+        # Check if section-based optimization is available
+        if config.section_boundaries is not None:
+            # Use piecewise section-based optimization with multi-threading
+            return _optimize_piecewise_sections(config)
+        else:
+            # Fallback to original grid search
+            from campro.utils.progress_logger import ProgressLogger
+            fallback_logger = ProgressLogger("ORDER1", flush_immediately=True)
+            fallback_logger.warning(
+                "⚠ FALLBACK MODE: Section-based optimization not available. "
+                "Using sequential grid search instead of piecewise multi-threaded optimization."
             )
-            return _order0_objective(cand)
-
-        for zr in config.ring_teeth_candidates:
-            for zp in config.planet_teeth_candidates:
-                pa = 0.5 * (pa_lo + pa_hi)
-                af = 0.5 * (af_lo + af_hi)
-                step_pa = max(0.25, (pa_hi - pa_lo) / 8.0)
-                step_af = max(0.02, (af_hi - af_lo) / 8.0)
-                best_local = obj_for(pa, af, zr, zp)
-                improved = True
-                iters = 0
-                while improved and iters < 20:
-                    improved = False
-                    iters += 1
-                    # coordinate search in pa
-                    for delta in (-step_pa, step_pa):
-                        pa_try = min(pa_hi, max(pa_lo, pa + delta))
-                        val = obj_for(pa_try, af, zr, zp)
-                        if val < best_local:
-                            best_local = val
-                            pa = pa_try
-                            improved = True
-                    # coordinate search in af
-                    for delta in (-step_af, step_af):
-                        af_try = min(af_hi, max(af_lo, af + delta))
-                        val = obj_for(pa, af_try, zr, zp)
-                        if val < best_local:
-                            best_local = val
-                            af = af_try
-                            improved = True
-                    # decrease steps
-                    step_pa *= 0.5
-                    step_af *= 0.5
-
-                if best_obj is None or best_local < best_obj:
-                    best_obj = best_local
-                    best_cfg = PlanetSynthesisConfig(
-                        ring_teeth=zr,
-                        planet_teeth=zp,
-                        pressure_angle_deg=pa,
-                        addendum_factor=af,
-                        base_center_radius=config.base_center_radius,
-                        samples_per_rev=config.samples_per_rev,
-                        motion=config.motion,
-                    )
-
-        return OptimResult(
-            best_config=best_cfg,
-            objective_value=best_obj,
-            feasible=best_cfg is not None,
-        )
+            fallback_logger.info(
+                "Reason: Section boundaries not provided (combustion model may be unavailable or failed)."
+            )
+            return _optimize_grid_search(config)
 
     if order == OptimizationOrder.ORDER2_MICRO:
         # Ipopt-based NLP optimization of the contact parameter sequence phi(θ)
@@ -136,6 +196,549 @@ def optimize_geometry(
     return OptimResult(best_config=None, objective_value=None, feasible=False)
 
 
+def _optimize_grid_search(config: GeometrySearchConfig) -> OptimResult:
+    """Original grid search implementation (fallback when section analysis unavailable)."""
+    import time
+    from campro.utils.progress_logger import ProgressLogger
+    
+    order1_logger = ProgressLogger("ORDER1", flush_immediately=True)
+    order1_logger.info("=" * 70)
+    order1_logger.warning(
+        "⚠ FALLBACK MODE ACTIVE: Using sequential grid search (slower than piecewise optimization)"
+    )
+    order1_logger.info(
+        "This method evaluates all gear combinations sequentially without multi-threading."
+    )
+    order1_logger.info(
+        "To enable faster piecewise optimization, ensure combustion model is available."
+    )
+    order1_logger.info("=" * 70)
+    
+    best_cfg: PlanetSynthesisConfig | None = None
+    best_obj: float | None = None
+    pa_lo, pa_hi = config.pressure_angle_deg_bounds
+    af_lo, af_hi = config.addendum_factor_bounds
+
+    def obj_for(pa: float, af: float, zr: int, zp: int) -> float:
+        cand = PlanetSynthesisConfig(
+            ring_teeth=zr,
+            planet_teeth=zp,
+            pressure_angle_deg=pa,
+            addendum_factor=af,
+            base_center_radius=config.base_center_radius,
+            samples_per_rev=config.samples_per_rev,
+            motion=config.motion,
+        )
+        return _order0_objective(cand)
+
+    total_combinations = len(config.ring_teeth_candidates) * len(config.planet_teeth_candidates)
+    combination_count = 0
+    order1_logger.info(f"Searching {total_combinations} gear combinations "
+                      f"({len(config.ring_teeth_candidates)} ring teeth × {len(config.planet_teeth_candidates)} planet teeth)")
+
+    for idx_zr, zr in enumerate(config.ring_teeth_candidates):
+        for idx_zp, zp in enumerate(config.planet_teeth_candidates):
+            combination_count += 1
+            combo_start = time.time()
+            order1_logger.info(
+                f"Evaluating combination {combination_count}/{total_combinations}: "
+                f"ring_teeth={zr}, planet_teeth={zp}"
+            )
+            
+            pa = 0.5 * (pa_lo + pa_hi)
+            af = 0.5 * (af_lo + af_hi)
+            step_pa = max(0.25, (pa_hi - pa_lo) / 8.0)
+            step_af = max(0.02, (af_hi - af_lo) / 8.0)
+            best_local = obj_for(pa, af, zr, zp)
+            improved = True
+            iters = 0
+            
+            while improved and iters < 20:
+                improved = False
+                iters += 1
+                # coordinate search in pa
+                for delta in (-step_pa, step_pa):
+                    pa_try = min(pa_hi, max(pa_lo, pa + delta))
+                    val = obj_for(pa_try, af, zr, zp)
+                    if val < best_local:
+                        best_local = val
+                        pa = pa_try
+                        improved = True
+                # coordinate search in af
+                for delta in (-step_af, step_af):
+                    af_try = min(af_hi, max(af_lo, af + delta))
+                    val = obj_for(pa, af_try, zr, zp)
+                    if val < best_local:
+                        best_local = val
+                        af = af_try
+                        improved = True
+                # decrease steps
+                step_pa *= 0.5
+                step_af *= 0.5
+
+            combo_elapsed = time.time() - combo_start
+            if best_obj is None or best_local < best_obj:
+                best_obj = best_local
+                best_cfg = PlanetSynthesisConfig(
+                    ring_teeth=zr,
+                    planet_teeth=zp,
+                    pressure_angle_deg=pa,
+                    addendum_factor=af,
+                    base_center_radius=config.base_center_radius,
+                    samples_per_rev=config.samples_per_rev,
+                    motion=config.motion,
+                )
+                order1_logger.info(
+                    f"  ✓ New best: obj={best_local:.6f}, "
+                    f"pa={pa:.2f}°, af={af:.3f} ({combo_elapsed:.3f}s)"
+                )
+            else:
+                order1_logger.info(
+                    f"  - Current: obj={best_local:.6f} (best={best_obj:.6f}) ({combo_elapsed:.3f}s)"
+                )
+
+    return OptimResult(
+        best_config=best_cfg,
+        objective_value=best_obj,
+        feasible=best_cfg is not None,
+    )
+
+
+def _optimize_piecewise_sections(config: GeometrySearchConfig) -> OptimResult:
+    """Piecewise section-based optimization with multi-threading and cumulative 2:1 constraint.
+    
+    Optimizes gear teeth for each of 6 sections (CA10-CA50, CA50-CA90, CA90-CA100,
+    CA100-BDC, BDC-TDC, TDC-CA10) in parallel, then integrates results with
+    cumulative 2:1 constraint validation.
+    """
+    import time
+    from campro.litvin.section_analysis import get_section_boundaries
+    from campro.utils.progress_logger import ProgressLogger
+    
+    piecewise_logger = ProgressLogger("PIECEWISE", flush_immediately=True)
+    piecewise_logger.step(1, 5, "Initializing piecewise section optimization")
+    
+    section_boundaries = config.section_boundaries
+    if section_boundaries is None:
+        piecewise_logger.error("Section boundaries not available")
+        return OptimResult(best_config=None, objective_value=None, feasible=False)
+    
+    # Extract theta array from section boundaries
+    # The section boundaries were computed from primary_data which has theta in degrees
+    # We need to create a theta array matching the motion law grid
+    n_samples = config.samples_per_rev
+    theta_full = np.linspace(0, 360, n_samples, endpoint=False)  # Degrees
+    
+    # Get section indices for this theta array
+    section_indices = get_section_boundaries(
+        theta_full,
+        np.zeros(n_samples),  # Placeholder position - not used for indices
+        section_boundaries,
+    )
+    
+    piecewise_logger.info(f"Optimizing {len(section_boundaries.sections)} sections")
+    for name, (start, end) in section_boundaries.sections.items():
+        piecewise_logger.info(f"  Section {name}: {start:.2f}° to {end:.2f}°")
+    
+    piecewise_logger.step_complete("Initialization", 0.0)
+    
+    # Step 2: Optimize each section in parallel
+    piecewise_logger.step(2, 5, "Optimizing sections in parallel")
+    section_results = _optimize_sections_parallel(
+        config, section_boundaries, section_indices, piecewise_logger
+    )
+    
+    # Step 3: Validate cumulative 2:1 constraint
+    piecewise_logger.step(3, 5, "Validating cumulative 2:1 constraint")
+    constraint_valid, constraint_error = _validate_cumulative_ratio(
+        section_results, section_boundaries, piecewise_logger
+    )
+    
+    if not constraint_valid:
+        piecewise_logger.warning(
+            f"Cumulative constraint violated: error={constraint_error:.6f} rad "
+            f"(expected 4π = {4*pi:.6f} rad)"
+        )
+    
+    # Step 4: Integrate section ratios into integer gear pair
+    piecewise_logger.step(4, 5, "Integrating section ratios into integer gear pair")
+    final_ring_teeth, final_planet_teeth = _integrate_section_ratios(
+        config, section_results, section_boundaries, constraint_error, piecewise_logger
+    )
+    
+    # Step 5: Create final configuration
+    piecewise_logger.step(5, 5, "Creating final gear configuration")
+    pa_lo, pa_hi = config.pressure_angle_deg_bounds
+    af_lo, af_hi = config.addendum_factor_bounds
+    
+    # Use average pressure angle and addendum factor
+    final_pa = 0.5 * (pa_lo + pa_hi)
+    final_af = 0.5 * (af_lo + af_hi)
+    
+    final_config = PlanetSynthesisConfig(
+        ring_teeth=final_ring_teeth,
+        planet_teeth=final_planet_teeth,
+        pressure_angle_deg=final_pa,
+        addendum_factor=final_af,
+        base_center_radius=config.base_center_radius,
+        samples_per_rev=config.samples_per_rev,
+        motion=config.motion,
+    )
+    
+    # Evaluate final objective
+    final_obj = _order0_objective(final_config)
+    
+    piecewise_logger.info(
+        f"Final gear pair: ring={final_ring_teeth}, planet={final_planet_teeth}, "
+        f"ratio={final_ring_teeth/final_planet_teeth:.3f}, obj={final_obj:.6f}"
+    )
+    piecewise_logger.step_complete("Final configuration", 0.0)
+    
+    return OptimResult(
+        best_config=final_config,
+        objective_value=final_obj,
+        feasible=constraint_valid and final_obj is not None,
+    )
+
+
+def _optimize_sections_parallel(
+    config: GeometrySearchConfig,
+    section_boundaries: Any,  # SectionBoundaries
+    section_indices: dict[str, tuple[int, int]],
+    logger: Any,  # ProgressLogger
+) -> dict[str, dict[str, Any]]:
+    """Optimize gear teeth for each section in parallel.
+    
+    Returns
+    -------
+    dict[str, dict[str, Any]]
+        Section name -> {ratio: float, ring_teeth: int, planet_teeth: int, objective: float}
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    section_results: dict[str, dict[str, Any]] = {}
+    results_lock = threading.Lock()
+    
+    pa_lo, pa_hi = config.pressure_angle_deg_bounds
+    af_lo, af_hi = config.addendum_factor_bounds
+    
+    def optimize_section(section_name: str, theta_range: tuple[float, float]) -> dict[str, Any]:
+        """Optimize a single section."""
+        section_start = time.time()
+        
+        # Select objective based on section
+        if "CA10" in section_name or "CA50" in section_name or "CA90" in section_name or "CA100" in section_name:
+            objective_func = _objective_ca10_to_ca100
+        elif "BDC" in section_name and "TDC" in section_name:
+            objective_func = _objective_bdc_to_tdc
+        else:
+            objective_func = _objective_transition_sections
+        
+        # Motion slice for this section (theta range for logging)
+        motion_slice = {
+            "theta": np.array([theta_range[0], theta_range[1]]),
+            "theta_start": theta_range[0],
+            "theta_end": theta_range[1],
+        }
+        
+        best_ratio = None
+        best_obj = float("inf")
+        best_zr = None
+        best_zp = None
+        best_pa = 0.5 * (pa_lo + pa_hi)
+        best_af = 0.5 * (af_lo + af_hi)
+        
+        # Search over gear combinations
+        for zr in config.ring_teeth_candidates:
+            for zp in config.planet_teeth_candidates:
+                # Local refinement for pa and af
+                pa = 0.5 * (pa_lo + pa_hi)
+                af = 0.5 * (af_lo + af_hi)
+                step_pa = max(0.25, (pa_hi - pa_lo) / 8.0)
+                step_af = max(0.02, (af_hi - af_lo) / 8.0)
+                best_local = float("inf")
+                improved = True
+                iters = 0
+                
+                while improved and iters < 10:  # Fewer iterations per section
+                    improved = False
+                    iters += 1
+                    for delta_pa in (-step_pa, step_pa):
+                        pa_try = min(pa_hi, max(pa_lo, pa + delta_pa))
+                        gear_cfg = PlanetSynthesisConfig(
+                            ring_teeth=zr,
+                            planet_teeth=zp,
+                            pressure_angle_deg=pa_try,
+                            addendum_factor=af,
+                            base_center_radius=config.base_center_radius,
+                            samples_per_rev=config.samples_per_rev,
+                            motion=config.motion,
+                        )
+                        val = objective_func(gear_cfg, theta_range, motion_slice)
+                        if val < best_local:
+                            best_local = val
+                            pa = pa_try
+                            improved = True
+                    for delta_af in (-step_af, step_af):
+                        af_try = min(af_hi, max(af_lo, af + delta_af))
+                        gear_cfg = PlanetSynthesisConfig(
+                            ring_teeth=zr,
+                            planet_teeth=zp,
+                            pressure_angle_deg=pa,
+                            addendum_factor=af_try,
+                            base_center_radius=config.base_center_radius,
+                            samples_per_rev=config.samples_per_rev,
+                            motion=config.motion,
+                        )
+                        val = objective_func(gear_cfg, theta_range, motion_slice)
+                        if val < best_local:
+                            best_local = val
+                            af = af_try
+                            improved = True
+                    step_pa *= 0.5
+                    step_af *= 0.5
+                
+                if best_local < best_obj:
+                    best_obj = best_local
+                    best_ratio = zr / zp
+                    best_zr = zr
+                    best_zp = zp
+        
+        section_elapsed = time.time() - section_start
+        
+        with results_lock:
+            logger.info(
+                f"Section {section_name}: best ratio={best_ratio:.3f} "
+                f"(ring={best_zr}, planet={best_zp}), obj={best_obj:.6f} ({section_elapsed:.3f}s)"
+            )
+        
+        return {
+            "ratio": best_ratio,
+            "ring_teeth": best_zr,
+            "planet_teeth": best_zp,
+            "objective": best_obj,
+        }
+    
+    # Run sections in parallel
+    n_threads = config.n_threads
+    logger.info(f"Using {n_threads} threads for parallel section optimization")
+    
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
+        futures = {
+            executor.submit(optimize_section, name, theta_range): name
+            for name, theta_range in section_boundaries.sections.items()
+        }
+        
+        for future in as_completed(futures):
+            section_name = futures[future]
+            try:
+                result = future.result()
+                section_results[section_name] = result
+            except Exception as e:
+                logger.warning(f"Section {section_name} optimization failed: {e}")
+                # Use default fallback
+                section_results[section_name] = {
+                    "ratio": 2.0,  # Default 2:1 ratio
+                    "ring_teeth": 40,
+                    "planet_teeth": 20,
+                    "objective": float("inf"),
+                }
+    
+    logger.step_complete("Parallel section optimization", 0.0)
+    return section_results
+
+
+def _validate_cumulative_ratio(
+    section_results: dict[str, dict[str, Any]],
+    section_boundaries: Any,  # SectionBoundaries
+    logger: Any,  # ProgressLogger
+) -> tuple[bool, float]:
+    """Validate that cumulative planet rotation equals 2 full rotations (4π).
+    
+    Returns
+    -------
+    tuple[bool, float]
+        (is_valid, error_magnitude)
+    """
+    from campro.utils.progress_logger import ProgressLogger
+    
+    constraint_logger = ProgressLogger("CONSTRAINT", flush_immediately=True)
+    constraint_logger.step(1, 3, "Computing section rotations")
+    
+    total_planet_rotation = 0.0  # radians
+    section_rotations = {}
+    
+    for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
+        # Convert degrees to radians
+        delta_theta_ring = np.deg2rad(abs(theta_end - theta_start))
+        
+        # Handle wrap-around for TDC-CA10
+        if section_name == "TDC-CA10" and theta_start > theta_end:
+            # Wrap around: from TDC to 360°, then from 0° to CA10
+            delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end)
+        
+        # Get ratio for this section
+        section_ratio = section_results.get(section_name, {}).get("ratio", 2.0)
+        
+        # Calculate planet rotation for this section
+        delta_theta_planet = delta_theta_ring * section_ratio
+        total_planet_rotation += delta_theta_planet
+        
+        section_rotations[section_name] = {
+            "ring_rotation_rad": delta_theta_ring,
+            "planet_rotation_rad": delta_theta_planet,
+            "ratio": section_ratio,
+        }
+        
+        constraint_logger.info(
+            f"Section {section_name}: ring={np.rad2deg(delta_theta_ring):.2f}°, "
+            f"planet={np.rad2deg(delta_theta_planet):.2f}°, ratio={section_ratio:.3f}"
+        )
+    
+    constraint_logger.step_complete("Section rotations computed", 0.0)
+    
+    # Validate constraint
+    constraint_logger.step(2, 3, "Validating cumulative constraint")
+    expected_rotation = 4.0 * pi  # 2 full rotations
+    error = abs(total_planet_rotation - expected_rotation)
+    tolerance = 0.01  # 0.01 rad ≈ 0.57°
+    is_valid = error < tolerance
+    
+    constraint_logger.info(
+        f"Total planet rotation: {total_planet_rotation:.6f} rad ({np.rad2deg(total_planet_rotation):.2f}°)"
+    )
+    constraint_logger.info(
+        f"Expected: {expected_rotation:.6f} rad (720°), error: {error:.6f} rad ({np.rad2deg(error):.2f}°)"
+    )
+    
+    if is_valid:
+        constraint_logger.step_complete("Constraint validation passed", 0.0)
+    else:
+        constraint_logger.warning(f"Constraint validation failed: error={error:.6f} rad > tolerance={tolerance:.6f} rad")
+        constraint_logger.step_complete("Constraint validation failed", 0.0)
+    
+    return is_valid, error
+
+
+def _integrate_section_ratios(
+    config: GeometrySearchConfig,
+    section_results: dict[str, dict[str, Any]],
+    section_boundaries: Any,  # SectionBoundaries
+    constraint_error: float,
+    logger: Any,  # ProgressLogger
+) -> tuple[int, int]:
+    """Integrate section ratios into integer gear pair satisfying cumulative constraint.
+    
+    Returns
+    -------
+    tuple[int, int]
+        (ring_teeth, planet_teeth)
+    """
+    from campro.utils.progress_logger import ProgressLogger
+    
+    integration_logger = ProgressLogger("INTEGRATION", flush_immediately=True)
+    integration_logger.step(1, 4, "Computing weighted section ratios")
+    
+    # Compute weights based on section duration
+    section_weights = {}
+    total_duration = 0.0
+    
+    for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
+        if section_name == "TDC-CA10" and theta_start > theta_end:
+            duration = (360.0 - theta_start) + theta_end
+        else:
+            duration = abs(theta_end - theta_start)
+        section_weights[section_name] = duration
+        total_duration += duration
+    
+    # Normalize weights
+    for section_name in section_weights:
+        section_weights[section_name] /= total_duration
+    
+    # Compute weighted average ratio
+    weighted_ratio = 0.0
+    for section_name, weight in section_weights.items():
+        section_ratio = section_results.get(section_name, {}).get("ratio", 2.0)
+        weighted_ratio += weight * section_ratio
+        integration_logger.info(
+            f"Section {section_name}: ratio={section_ratio:.3f}, weight={weight:.3f}"
+        )
+    
+    integration_logger.info(f"Weighted average ratio: {weighted_ratio:.3f}")
+    integration_logger.step_complete("Weighted ratios computed", 0.0)
+    
+    # Find integer gear pair that best satisfies constraint
+    integration_logger.step(2, 4, "Finding optimal integer gear pair")
+    
+    # Search candidate integer pairs
+    best_error = float("inf")
+    best_ring = None
+    best_planet = None
+    
+    # Search around weighted ratio
+    target_ratio = weighted_ratio
+    search_range = 0.5  # ±50% around target
+    
+    for zr in config.ring_teeth_candidates:
+        for zp in config.planet_teeth_candidates:
+            ratio = zr / zp
+            if abs(ratio - target_ratio) / target_ratio > search_range:
+                continue
+            
+            # Check if this pair satisfies cumulative constraint
+            # Recompute total rotation with this integer pair
+            total_rot = 0.0
+            for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
+                delta_theta_ring = np.deg2rad(abs(theta_end - theta_start))
+                if section_name == "TDC-CA10" and theta_start > theta_end:
+                    delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end)
+                total_rot += delta_theta_ring * ratio
+            
+            error = abs(total_rot - 4.0 * pi)
+            
+            if error < best_error:
+                best_error = error
+                best_ring = zr
+                best_planet = zp
+    
+    if best_ring is None:
+        # Fallback: use closest to weighted ratio
+        integration_logger.warning("No integer pair found satisfying constraint, using closest to weighted ratio")
+        for zr in config.ring_teeth_candidates:
+            for zp in config.planet_teeth_candidates:
+                ratio = zr / zp
+                error = abs(ratio - target_ratio)
+                if error < best_error:
+                    best_error = error
+                    best_ring = zr
+                    best_planet = zp
+    
+    integration_logger.info(
+        f"Optimal integer pair: ring={best_ring}, planet={best_planet}, "
+        f"ratio={best_ring/best_planet:.3f}, constraint_error={best_error:.6f} rad"
+    )
+    integration_logger.step_complete("Integer pair found", 0.0)
+    
+    # Validate final constraint
+    integration_logger.step(3, 4, "Validating final integer pair constraint")
+    total_rot = 0.0
+    for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
+        delta_theta_ring = np.deg2rad(abs(theta_end - theta_start))
+        if section_name == "TDC-CA10" and theta_start > theta_end:
+            delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end)
+        total_rot += delta_theta_ring * (best_ring / best_planet)
+    
+    final_error = abs(total_rot - 4.0 * pi)
+    integration_logger.info(
+        f"Final constraint check: total_rotation={total_rot:.6f} rad ({np.rad2deg(total_rot):.2f}°), "
+        f"error={final_error:.6f} rad ({np.rad2deg(final_error):.2f}°)"
+    )
+    integration_logger.step_complete("Final validation", 0.0)
+    
+    return best_ring, best_planet
+
+
 def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     """
     Ipopt-based NLP optimization of the contact parameter sequence phi(θ).
@@ -143,17 +746,30 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     This replaces the simple smoothing approach with a proper constrained optimization
     that handles smoothness, contact constraints, and periodicity.
     """
+    import sys
+    import time
+    from campro.utils.progress_logger import ProgressLogger
+    
+    order2_logger = ProgressLogger("ORDER2", flush_immediately=True)
+    order2_logger.step(1, 5, "Initializing CasADi and problem setup")
+    setup_start = time.time()
+    
     try:
         import casadi as ca
     except ImportError:
         log.error("CasADi not available for ORDER2_MICRO Ipopt optimization")
+        order2_logger.error("CasADi not available")
         return OptimResult(best_config=None, objective_value=None, feasible=False)
 
     # Set up problem dimensions
     n = max(64, config.samples_per_rev)
+    order2_logger.info(f"Problem size: {n} collocation points")
     grid = make_uniform_grid(n)
+    order2_logger.step_complete("Problem setup", time.time() - setup_start)
 
     # Construct flank/kinematics once
+    order2_logger.step(2, 5, "Constructing gear geometry and kinematics")
+    geom_start = time.time()
     module = (
         config.base_center_radius
         * 2.0
@@ -163,6 +779,8 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     zp = config.planet_teeth_candidates[0]
     pa = sum(config.pressure_angle_deg_bounds) / 2.0
     af = sum(config.addendum_factor_bounds) / 2.0
+    order2_logger.info(f"Gear config: ring={zr}, planet={zp}, pa={pa:.2f}°, af={af:.3f}")
+    
     cand = PlanetSynthesisConfig(
         ring_teeth=zr,
         planet_teeth=zp,
@@ -177,14 +795,20 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     )
     flank = sample_internal_flank(params, n=256)
     kin = PlanetKinematics(R0=config.base_center_radius, motion=config.motion)
+    order2_logger.step_complete("Geometry construction", time.time() - geom_start)
 
     # Initialize phi by Newton per node (same as before)
+    order2_logger.step(3, 5, f"Initializing phi values for {n} points (Newton solve)")
+    phi_init_start = time.time()
     phi_vals: list[float] = []
     seed = flank.phi[len(flank.phi) // 2]
-    for theta in grid.theta:
+    for i, theta in enumerate(grid.theta):
         phi = _newton_solve_phi(flank, kin, theta, seed) or seed
         phi_vals.append(phi)
         seed = phi
+        if (i + 1) % max(1, n // 10) == 0:  # Progress every 10%
+            order2_logger.info(f"  Initialized {i+1}/{n} points ({100*(i+1)//n}%)")
+    order2_logger.step_complete("Phi initialization", time.time() - phi_init_start)
 
     # Convert to numpy array for CasADi
     phi_init = np.array(phi_vals)
@@ -234,6 +858,8 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     nlp_scaled = build_scaled_nlp(nlp, s_phi, kind="SX")
 
     # Create Ipopt options
+    order2_logger.step(4, 5, "Setting up Ipopt solver and NLP problem")
+    nlp_setup_start = time.time()
     solver_options = IPOPTOptions(
         max_iter=1000,
         tol=1e-6,
@@ -244,13 +870,18 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
 
     # Set up Ipopt solver wrapper
     solver = IPOPTSolver(solver_options)
+    order2_logger.step_complete("NLP setup", time.time() - nlp_setup_start)
+    order2_logger.info(f"  Solver: {solver_options.linear_solver}, max_iter={solver_options.max_iter}, tol={solver_options.tol}")
 
     # Solve the NLP
+    order2_logger.step(5, 5, "Running Ipopt optimization (this may take a while...)")
+    solve_start = time.time()
     try:
         # Scale x0/lbx/ubx into z-domain: z = s*phi
         x0_z = scale_value(np.asarray(phi_init), s_phi)
         lbz, ubz = scale_bounds((np.full(n, phi_min), np.full(n, phi_max)), s_phi)
 
+        order2_logger.info("  Starting Ipopt solve...")
         result = solver.solve(
             nlp=nlp_scaled,
             x0=x0_z,
@@ -259,18 +890,30 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
             lbg=np.array([0.0]),  # periodicity constraint: remains 0 after scaling
             ubg=np.array([0.0]),
         )
+        solve_elapsed = time.time() - solve_start
+        order2_logger.info(f"  Ipopt solve completed: success={result.success}, "
+                          f"iterations={result.iterations if hasattr(result, 'iterations') else 'unknown'}, "
+                          f"time={solve_elapsed:.3f}s")
 
         if result.success:
+            order2_logger.step_complete("Ipopt optimization", solve_elapsed)
             # Extract optimized phi values
+            order2_logger.info("Validating solution with physics model...")
+            validation_start = time.time()
             phi_opt = result.x_opt
 
             # Validate with full physics
             physics_obj_val = objective_with_physics(phi_opt)
+            order2_logger.info(f"  Physics objective: {physics_obj_val:.6f}")
             log.info(f"Physics objective validation: {physics_obj_val:.6f}")
 
             # Check if physics-based objective is acceptable
             if physics_obj_val > 1e3:  # Infeasible
+                order2_logger.warning("Solution failed physics feasibility check")
                 log.warning("Optimized solution failed physics feasibility check")
+            else:
+                order2_logger.info("  Physics validation passed")
+            order2_logger.step_complete("Physics validation", time.time() - validation_start)
 
             # Evaluate final metrics
             m = evaluate_order0_metrics_given_phi(cand, phi_opt.tolist())
@@ -302,11 +945,15 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
                 feasible=m.feasible,
                 ipopt_analysis=analysis,
             )
+        order2_logger.warning(f"Ipopt optimization failed: {result.message}")
+        order2_logger.info("Falling back to simple smoothing...")
         log.warning(f"ORDER2_MICRO Ipopt optimization failed: {result.message}")
         # Fall back to simple smoothing
         return _order2_fallback_smoothing(config, phi_init, cand)
 
     except Exception as e:
+        order2_logger.error(f"Ipopt optimization error: {e}")
+        order2_logger.info("Falling back to simple smoothing...")
         log.error(f"ORDER2_MICRO Ipopt optimization error: {e}")
         # Fall back to simple smoothing
         return _order2_fallback_smoothing(config, phi_init, cand)

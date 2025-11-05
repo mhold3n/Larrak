@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,10 +31,12 @@ class IPOPTOptions:
     linear_solver_options: dict[str, Any] = None
 
     # Barrier parameter options
-    mu_strategy: str = "adaptive"  # "monotone", "adaptive"
-    mu_init: float = 0.1
-    mu_max: float = 1e5
+    mu_strategy: str = "monotone"  # "monotone", "adaptive" - monotone provides better control
+    mu_init: float = 1e-2  # Reduced from 0.1 for better initial convergence
+    mu_max: float = 1e3  # Reduced from 1e5 to prevent getting stuck at maximum
     mu_min: float = 1e-11
+    mu_linear_decrease_factor: float = 0.2  # Factor for linear decrease in monotone mode
+    barrier_tol_factor: float = 10.0  # Factor for barrier complementarity tolerance
 
     # Line search options
     line_search_method: str = "filter"  # "filter", "cg-penalty", "cg-penalty-equality"
@@ -44,7 +47,7 @@ class IPOPTOptions:
     constr_viol_tol: float = 1e-4
 
     # Output options
-    print_level: int = 5  # 0=silent, 5=normal, 12=verbose
+    print_level: int = 5  # 0=silent, 5=normal (iteration summary), 8+ includes detailed constraint residuals
     print_frequency_iter: int = 1
     print_frequency_time: float = 5.0
     output_file: str | None = None
@@ -59,6 +62,12 @@ class IPOPTOptions:
     hessian_approximation: str = "limited-memory"  # "exact", "limited-memory"
     limited_memory_max_history: int = 6
     limited_memory_update_type: str = "bfgs"  # "bfgs", "sr1", "bfgs-powell"
+    
+    # Restoration phase options (for finding feasible initial point)
+    bound_relax_factor: float = 0.0  # 0.0 = no relaxation, >0 = relax bounds to find feasible point
+    expect_infeasible_problem: str = "no"  # "no" = disabled (scaling should make problems more feasible)
+    soft_resto_pderror_reduction_factor: float = 0.9999  # Restoration phase tolerance
+    required_infeasibility_reduction: float = 0.9  # Required reduction in infeasibility for restoration
 
     def __post_init__(self):
         if self.linear_solver_options is None:
@@ -172,10 +181,45 @@ class IPOPTSolver:
             return self._fallback_solve(nlp, x0, lbx, ubx, lbg, ubg, p)
 
         start_time = time.time()
+        solver_create_start = time.time()
 
         try:
             # Create IPOPT solver
             solver = self._create_solver(nlp)
+            solver_create_elapsed = time.time() - solver_create_start
+            print(
+                f"[IPOPT] Solver created in {solver_create_elapsed:.3f}s",
+                file=sys.stderr,
+                flush=True,
+            )
+            log.info(
+                "[IPOPT] Solver created in %.3fs",
+                solver_create_elapsed,
+            )
+
+            # Get problem dimensions
+            if isinstance(nlp, dict):
+                n_vars = nlp["x"].size1()
+                n_constraints = nlp["g"].size1()
+            else:
+                n_vars = nlp.size1_in(0)
+                n_constraints = nlp.size1_out(0)
+
+            print(
+                f"[IPOPT] Beginning solve: max_iter={self.options.max_iter}, tol={self.options.tol:.2e}, "
+                f"print_level={self.options.print_level}, n_vars={n_vars}, n_constraints={n_constraints}",
+                file=sys.stderr,
+                flush=True,
+            )
+            log.info(
+                "[IPOPT] Beginning solve: max_iter=%d, tol=%.2e, print_level=%d, "
+                "n_vars=%d, n_constraints=%d",
+                self.options.max_iter,
+                self.options.tol,
+                self.options.print_level,
+                n_vars,
+                n_constraints,
+            )
 
             # Set initial guess and bounds
             if x0 is None:
@@ -207,12 +251,90 @@ class IPOPTSolver:
                         else (int(np.asarray(ubg).size) if ubg is not None else 0)
                     )
                     warm_kwargs = load_warmstart(n_x, n_g)
+                    if warm_kwargs:
+                        log.info("[IPOPT] Using warm start from previous solution")
             except Exception:
                 warm_kwargs = {}
 
+            # Log initial guess characteristics
+            if x0 is not None and len(x0) > 0:
+                print(
+                    f"[IPOPT] Initial guess: range=[{x0.min():.3e}, {x0.max():.3e}], "
+                    f"mean={x0.mean():.3e}, std={x0.std():.3e}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                log.info(
+                    "[IPOPT] Initial guess: range=[%.3e, %.3e], mean=%.3e, "
+                    "std=%.3e",
+                    x0.min(),
+                    x0.max(),
+                    x0.mean(),
+                    x0.std(),
+                )
+
             # Solve
-            result = solver(
-                x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs,
+            print(
+                "[IPOPT] Calling IPOPT solver...",
+                file=sys.stderr,
+                flush=True,
+            )
+            print(
+                f"[IPOPT] Note: Solving large problem (n_vars={n_vars}, n_constraints={n_constraints}). "
+                f"This may take several minutes. IPOPT is running now (print_level={self.options.print_level}).",
+                file=sys.stderr,
+                flush=True,
+            )
+            print(
+                f"[IPOPT] IPOPT output will appear below. If no progress is visible, "
+                f"consider increasing print_level (current={self.options.print_level}) for more verbose output.",
+                file=sys.stderr,
+                flush=True,
+            )
+            log.info("[IPOPT] Calling IPOPT solver...")
+            solve_call_start = time.time()
+            # Flush all buffers before blocking call
+            sys.stderr.flush()
+            sys.stdout.flush()
+            try:
+                result = solver(
+                    x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs,
+                )
+                solve_call_elapsed = time.time() - solve_call_start
+                # Flush after return
+                sys.stderr.flush()
+                sys.stdout.flush()
+                print(
+                    f"[IPOPT] Solver call returned after {solve_call_elapsed:.3f}s",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            except Exception as solve_exc:
+                solve_call_elapsed = time.time() - solve_call_start
+                sys.stderr.flush()
+                sys.stdout.flush()
+                print(
+                    f"[IPOPT] ERROR: Solver call raised exception after {solve_call_elapsed:.3f}s: {solve_exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                raise
+
+            iter_count = int(result.get("iter_count", 0))
+            status_flag = int(result.get("return_status", -1))
+            elapsed = time.time() - start_time
+            print(
+                f"[IPOPT] Completed solve in {elapsed:.3f}s (solver call: {solve_call_elapsed:.3f}s): "
+                f"iter={iter_count}, status={status_flag}",
+                file=sys.stderr,
+                flush=True,
+            )
+            log.info(
+                "[IPOPT] Completed solve in %.3fs (solver call: %.3fs): iter=%d, status=%d",
+                elapsed,
+                solve_call_elapsed,
+                iter_count,
+                status_flag,
             )
 
             # Extract solution
@@ -235,6 +357,25 @@ class IPOPTSolver:
             dual_inf = stats.get("dual_inf", 0.0)
             complementarity = stats.get("complementarity", 0.0)
             constraint_violation = stats.get("constraint_violation", 0.0)
+            
+            # Log detailed convergence information
+            log.info(
+                "[IPOPT] Solve statistics: success=%s, iterations=%d, cpu_time=%.3fs, "
+                "primal_inf=%.2e, dual_inf=%.2e, complementarity=%.2e, "
+                "constraint_violation=%.2e",
+                success,
+                iterations,
+                cpu_time,
+                primal_inf,
+                dual_inf,
+                complementarity,
+                constraint_violation,
+            )
+            log.info(
+                "[IPOPT] Problem size: n_vars=%d, n_constraints=%d",
+                n_vars,
+                n_constraints,
+            )
 
             # Compute KKT error
             kkt_error = self._compute_kkt_error(nlp, x_opt, lambda_opt, p)
@@ -277,8 +418,14 @@ class IPOPTSolver:
             return out
 
         except Exception as e:
-            log.error(f"IPOPT solve failed: {e!s}")
-            return self._create_error_result(str(e), time.time() - start_time)
+            elapsed = time.time() - start_time
+            print(
+                f"[IPOPT] ERROR: IPOPT solve failed after {elapsed:.3f}s: {e!s}",
+                file=sys.stderr,
+                flush=True,
+            )
+            log.error(f"IPOPT solve failed: {e!s}", exc_info=True)
+            return self._create_error_result(str(e), elapsed)
 
     def _create_solver(self, nlp: Any) -> Any:
         """Create IPOPT solver with options."""
@@ -312,6 +459,10 @@ class IPOPTSolver:
         opts["ipopt.mu_init"] = self.options.mu_init
         opts["ipopt.mu_max"] = self.options.mu_max
         opts["ipopt.mu_min"] = self.options.mu_min
+        if hasattr(self.options, "mu_linear_decrease_factor"):
+            opts["ipopt.mu_linear_decrease_factor"] = self.options.mu_linear_decrease_factor
+        if hasattr(self.options, "barrier_tol_factor"):
+            opts["ipopt.barrier_tol_factor"] = self.options.barrier_tol_factor
 
         # Line search
         opts["ipopt.line_search_method"] = self.options.line_search_method
@@ -358,6 +509,17 @@ class IPOPTSolver:
         opts["ipopt.limited_memory_update_type"] = (
             self.options.limited_memory_update_type
         )
+        
+        # Restoration phase options (help find feasible initial point)
+        opts["ipopt.bound_relax_factor"] = self.options.bound_relax_factor
+        opts["ipopt.expect_infeasible_problem"] = self.options.expect_infeasible_problem
+        opts["ipopt.soft_resto_pderror_reduction_factor"] = (
+            self.options.soft_resto_pderror_reduction_factor
+        )
+        if hasattr(self.options, "required_infeasibility_reduction"):
+            opts["ipopt.required_infeasibility_reduction"] = (
+                self.options.required_infeasibility_reduction
+            )
 
         # Add linear solver options if provided
         for key, value in self.options.linear_solver_options.items():
@@ -558,10 +720,15 @@ def get_default_ipopt_options() -> IPOPTOptions:
     options.tol = 1e-6
     options.acceptable_tol = 1e-4
     # Linear solver is configured via ipopt.opt
-    options.mu_strategy = "adaptive"
+    options.mu_strategy = "monotone"  # Use monotone for better barrier parameter control
+    options.mu_init = 1e-2  # Start with smaller barrier parameter
+    options.mu_max = 1e3  # Reduced maximum to prevent getting stuck
     options.line_search_method = "filter"
-    options.print_level = 3  # Reduced output
+    options.print_level = 5  # Normal output: iteration summary without detailed constraint residuals
     options.hessian_approximation = "limited-memory"
+    # Disable restoration phase (scaling should make problems more feasible)
+    options.expect_infeasible_problem = "no"
+    options.bound_relax_factor = 0.0  # No relaxation needed with proper scaling
 
     return options
 
@@ -576,8 +743,13 @@ def get_robust_ipopt_options() -> IPOPTOptions:
     options.acceptable_tol = 1e-3
     # Linear solver is configured via ipopt.opt
     options.mu_strategy = "monotone"
+    options.mu_init = 1e-2  # Start with smaller barrier parameter
+    options.mu_max = 1e3  # Reduced maximum to prevent getting stuck
     options.line_search_method = "cg-penalty"
-    options.print_level = 5
+    options.print_level = 5  # Normal output: iteration summary without detailed constraint residuals
     options.hessian_approximation = "exact"
+    # Disable restoration phase (scaling should make problems more feasible)
+    options.expect_infeasible_problem = "no"
+    options.bound_relax_factor = 0.0  # No relaxation needed with proper scaling
 
     return options

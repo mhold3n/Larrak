@@ -15,6 +15,10 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from campro.freepiston.core.chem import (
+    CombustionParameters,
+    create_combustion_parameters,
+)
 from campro.litvin.config import GeometrySearchConfig
 from campro.litvin.motion import RadialSlotMotion
 from campro.litvin.optimization import OptimizationOrder, optimize_geometry
@@ -61,6 +65,12 @@ class CamRingOptimizationConstraints:
     # Optimization constraints
     max_iterations: int = 100
     tolerance: float = 1e-6
+
+    # Combustion model parameters for section-based optimization
+    combustion_params: CombustionParameters | None = None
+
+    # Multi-threading
+    n_threads: int = field(default_factory=lambda: os.cpu_count() or 4)
 
 
 @dataclass
@@ -201,6 +211,54 @@ class CamRingOptimizer(BaseOptimizer):
                     "Primary data must contain cam_angle and position arrays",
                 )
 
+            ca_markers = primary_data.get("ca_markers")
+
+            # Initialize combustion parameters for legacy fallback only
+            if ca_markers is None and self.constraints.combustion_params is None:
+                from campro.utils.progress_logger import ProgressLogger
+
+                comb_logger = ProgressLogger("COMBUSTION", flush_immediately=True)
+                comb_logger.info("Initializing default combustion parameters (gasoline)")
+                self.constraints.combustion_params = create_combustion_parameters("gasoline")
+                comb_logger.info(
+                    f"Combustion params: start={self.constraints.combustion_params.theta_start:.2f}°, "
+                    f"duration={self.constraints.combustion_params.theta_duration:.2f}°"
+                )
+
+            # Identify combustion sections for piecewise optimization
+            from campro.litvin.section_analysis import identify_combustion_sections
+            from campro.utils.progress_logger import ProgressLogger
+            
+            section_logger = ProgressLogger("COMBUSTION", flush_immediately=True)
+            section_logger.step(1, 2, "Identifying combustion sections from motion law")
+            
+            # Prepare primary data dict for section analysis
+            primary_data_for_sections = {
+                "theta": theta,  # Already in degrees
+                "position": x_theta,
+            }
+            if ca_markers:
+                primary_data_for_sections["ca_markers"] = ca_markers
+            
+            try:
+                section_boundaries = identify_combustion_sections(
+                    primary_data_for_sections,
+                    self.constraints.combustion_params,
+                )
+                section_logger.step_complete("Section identification", 0.0)
+                section_analysis_available = True
+                section_logger.info(
+                    f"Identified {len(section_boundaries.sections)} sections for piecewise optimization"
+                )
+            except Exception as e:
+                import traceback
+                section_logger.warning(
+                    f"Section analysis failed: {e}. Falling back to grid search."
+                )
+                section_logger.warning(f"Traceback: {traceback.format_exc()}")
+                section_boundaries = None
+                section_analysis_available = False
+
             # Set up initial guess
             if initial_guess is None:
                 initial_guess = self._get_default_initial_guess(primary_data)
@@ -225,27 +283,54 @@ class CamRingOptimizer(BaseOptimizer):
                 base_center_radius=initial_guess["base_radius"],
                 samples_per_rev=self.constraints.samples_per_rev,
                 motion=motion,
+                section_boundaries=section_boundaries if section_analysis_available else None,
+                n_threads=self.constraints.n_threads,
             )
 
             # Perform multi-order optimization (0→1→2→3)
-            log.info("Starting ORDER0_EVALUATE...")
+            from campro.utils.progress_logger import ProgressLogger
+            order_logger = ProgressLogger("CAM-RING", flush_immediately=True)
+
+            order_logger.step(1, 3, "ORDER0_EVALUATE: Initial geometry evaluation")
+            order0_start = time.time()
             order0_result = optimize_geometry(
                 geometry_config, OptimizationOrder.ORDER0_EVALUATE,
             )
+            order0_elapsed = time.time() - order0_start
+            order_logger.info(f"ORDER0 completed: feasible={order0_result.feasible}, time={order0_elapsed:.3f}s")
+            order_logger.step_complete("ORDER0_EVALUATE", order0_elapsed)
 
-            log.info("Starting ORDER1_GEOMETRY...")
+            order_logger.step(2, 3, "ORDER1_GEOMETRY: Basic geometry optimization")
+            order_logger.info("Starting multi-parameter grid search with local refinement...")
+            order1_start = time.time()
             order1_result = optimize_geometry(
                 geometry_config, OptimizationOrder.ORDER1_GEOMETRY,
             )
+            order1_elapsed = time.time() - order1_start
+            obj_str = f"{order1_result.objective_value:.6f}" if order1_result.objective_value is not None else "N/A"
+            order_logger.info(f"ORDER1 completed: feasible={order1_result.feasible}, "
+                            f"objective={obj_str}, "
+                            f"time={order1_elapsed:.3f}s")
+            order_logger.step_complete("ORDER1_GEOMETRY", order1_elapsed)
 
             if self.enable_order2_micro:
-                log.info("Starting ORDER2_MICRO (CasADi + Ipopt, scaled)")
+                order_logger.step(3, 3, "ORDER2_MICRO: Advanced optimization (CasADi + Ipopt)")
+                order_logger.info("Starting CasADi-based NLP optimization with Ipopt...")
+                order2_start = time.time()
                 try:
                     order2_result = optimize_geometry(
                         geometry_config, OptimizationOrder.ORDER2_MICRO,
                     )
+                    order2_elapsed = time.time() - order2_start
+                    obj_str = f"{order2_result.objective_value:.6f}" if order2_result.objective_value is not None else "N/A"
+                    order_logger.info(f"ORDER2 completed: feasible={order2_result.feasible}, "
+                                    f"objective={obj_str}, "
+                                    f"time={order2_elapsed:.3f}s")
+                    order_logger.step_complete("ORDER2_MICRO", order2_elapsed)
                 except Exception as e:
-                    log.warning(f"ORDER2_MICRO failed: {e}; falling back to ORDER1/0")
+                    order2_elapsed = time.time() - order2_start
+                    order_logger.warning(f"ORDER2_MICRO failed: {e}; falling back to ORDER1/0")
+                    order_logger.step_complete("ORDER2_MICRO (failed)", order2_elapsed)
                     order2_result = type(
                         "MockResult",
                         (),
@@ -257,7 +342,8 @@ class CamRingOptimizer(BaseOptimizer):
                         },
                     )()
             else:
-                log.info(
+                order_logger.step(3, 3, "ORDER2_MICRO: Disabled (set enable_order2_micro=True to enable)")
+                order_logger.info(
                     "ORDER2_MICRO disabled (set enable_order2_micro=True or CAMPRO_ENABLE_ORDER2_MICRO=1 to enable)",
                 )
                 order2_result = type(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from .motion import RadialSlotMotion
 
@@ -26,6 +27,8 @@ class GeometrySearchConfig:
     base_center_radius: float
     samples_per_rev: int
     motion: RadialSlotMotion
+    section_boundaries: Any | None = None  # SectionBoundaries from section_analysis
+    n_threads: int = 4
 
 
 class OptimizationOrder:

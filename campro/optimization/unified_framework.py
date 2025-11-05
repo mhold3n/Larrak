@@ -7,6 +7,7 @@ shared solution methods, libraries, and data structures.
 """
 from __future__ import annotations
 
+import sys
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -24,6 +25,7 @@ from campro.optimization.solver_selection import (
     AdaptiveSolverSelector,
     ProblemCharacteristics,
 )
+from campro.utils.progress_logger import ProgressLogger
 
 from .base import OptimizationResult, OptimizationStatus
 from .cam_ring_optimizer import (
@@ -88,6 +90,9 @@ class UnifiedOptimizationSettings:
     collocation_tolerance: float = 1e-6
     # Universal grid size (GUI-controlled). Used to unify sampling across stages.
     universal_n_points: int = 360
+    # Primary phase discretization parameters (for experimentation and debugging)
+    primary_min_segments: int = 10  # Minimum number of collocation segments K
+    primary_refinement_factor: int = 4  # K ≈ n_points / refinement_factor
     # Mapper method (linear, pchip, barycentric, projection)
     mapper_method: str = "linear"
     # Grid diagnostics and plots
@@ -258,6 +263,15 @@ class UnifiedOptimizationData:
     upstroke_duration_percent: float = 60.0
     zero_accel_duration_percent: float = 0.0
     motion_type: str = "minimum_jerk"
+    # Combustion parameters (not wired yet - will be used in next phase)
+    afr: float = 18.0
+    ignition_timing: float = 0.005
+    ignition_deg: float = -5.0
+    fuel_mass: float = 5e-4
+    ca50_target_deg: float = 0.0
+    ca50_weight: float = 0.0
+    ca_duration_target_deg: float = 0.0
+    ca_duration_weight: float = 0.0
 
     # Primary results
     primary_theta: np.ndarray | None = None
@@ -268,6 +282,7 @@ class UnifiedOptimizationData:
     primary_load_profile: np.ndarray | None = None
     primary_constant_load_value: float | None = None
     primary_constant_temperature_K: float | None = None
+    primary_ca_markers: dict[str, float] | None = None
 
     # Secondary results
     secondary_base_radius: float | None = None
@@ -359,15 +374,16 @@ class UnifiedOptimizationFramework:
         )
 
         # Initialize primary optimizer (motion law)
-        # Use CasADi optimizer if enabled, otherwise fall back to MotionOptimizer
-        if hasattr(self.settings, "use_casadi") and self.settings.use_casadi:
-            from campro.optimization.casadi_unified_flow import CasADiUnifiedFlow
+        # Use free-piston IPOPT flow with integrated combustion model
+        from campro.optimization.freepiston_phase1_adapter import FreePistonPhase1Adapter
 
-            self.primary_optimizer = CasADiUnifiedFlow()
-        else:
-            self.primary_optimizer = MotionOptimizer(
-                settings=collocation_settings,
-            )
+        self.primary_optimizer = FreePistonPhase1Adapter()
+        # Configure with discretization parameters from settings
+        self.primary_optimizer.configure(
+            min_segments=self.settings.primary_min_segments,
+            refinement_factor=self.settings.primary_refinement_factor,
+            disable_combustion=False,  # Can be enabled via settings.diagnostics if needed
+        )
 
         # Initialize secondary optimizer (cam-ring)
         self.secondary_optimizer = CamRingOptimizer(
@@ -525,17 +541,23 @@ class UnifiedOptimizationFramework:
         if not self._is_configured:
             raise RuntimeError("Framework must be configured before optimization")
 
-        log.info(
-            f"Starting cascaded optimization with {self.settings.method.value} method",
-        )
+        # Create main progress logger
+        main_logger = ProgressLogger("CASCADED", flush_immediately=True)
+        main_logger.start_phase(total_steps=3)
+        main_logger.info(f"Optimization method: {self.settings.method.value}")
+        main_logger.info(f"Universal grid points: {self.settings.universal_n_points}")
 
         start_time = time.time()
 
         try:
-            # Update data with input
+            # Step 1: Initialize and validate inputs
+            main_logger.step(1, 3, "Initializing and validating inputs")
+            init_start = time.time()
             self._update_data_from_input(input_data)
+            main_logger.step_complete("Input initialization", time.time() - init_start)
 
             # A4: Phase-0 feasibility check for primary constraints
+            feas_start = time.time()
             try:
                 from campro.diagnostics.feasibility import check_feasibility_nlp
 
@@ -558,43 +580,54 @@ class UnifiedOptimizationFramework:
                     "recommendations": feas.recommendations,
                 }
                 if not feas.feasible:
-                    log.warning(
-                        "Primary feasibility (NLP) failed (max_violation=%.3e): %s",
-                        feas.max_violation,
-                        ", ".join(feas.recommendations) if feas.recommendations else "",
+                    main_logger.warning(
+                        f"Primary feasibility check failed (max_violation={feas.max_violation:.3e}): "
+                        f"{', '.join(feas.recommendations) if feas.recommendations else 'No recommendations'}"
                     )
+                else:
+                    main_logger.info("Primary feasibility check passed")
+                main_logger.step_complete("Feasibility check", time.time() - feas_start)
             except Exception as _e:
                 log.debug(f"Feasibility NLP pre-check skipped due to error: {_e}")
+                main_logger.step_complete("Feasibility check (skipped)", time.time() - feas_start)
 
-            # Primary optimization (motion law)
-            log.info("Starting primary optimization (motion law)")
-            import sys
-            print("DEBUG: About to start primary optimization", file=sys.stderr, flush=True)
+            # Phase 1: Primary optimization (motion law)
+            main_logger.separator()
+            main_logger.step(1, 3, "Phase 1/3: Primary Optimization (Motion Law)")
+            primary_start = time.time()
 
             # Get warm-start initial guess if using CasADi optimizer
             initial_guess = None
             if hasattr(self.primary_optimizer, "warmstart_mgr"):
+                warmstart_start = time.time()
                 initial_guess = self.primary_optimizer.warmstart_mgr.get_initial_guess(
                     input_data,
                 )
                 if initial_guess:
-                    log.info("Using warm-start initial guess for primary optimization")
+                    main_logger.info("Using warm-start initial guess for primary optimization")
                 else:
-                    log.info(
-                        "No suitable warm-start found, using default initial guess",
-                    )
+                    main_logger.info("No suitable warm-start found, using default initial guess")
+                main_logger.step_complete("Warm-start initialization", time.time() - warmstart_start)
 
-            import sys
             primary_result = self._optimize_primary(initial_guess=initial_guess)
-            print(f"DEBUG: _optimize_primary returned (status={primary_result.status if hasattr(primary_result, 'status') else 'unknown'}, successful={primary_result.successful if hasattr(primary_result, 'successful') else 'unknown'})", file=sys.stderr, flush=True)
-            print("DEBUG: About to call _update_data_from_primary", file=sys.stderr, flush=True)
+            
+            # Check success status using the method
+            is_successful = primary_result.is_successful() if hasattr(primary_result, 'is_successful') else False
+            status_str = str(primary_result.status) if hasattr(primary_result, 'status') else 'unknown'
+            
+            main_logger.info(
+                f"Primary optimization completed: status={status_str}, "
+                f"successful={is_successful}"
+            )
+
+            update_start = time.time()
             self._update_data_from_primary(primary_result)
-            print("DEBUG: _update_data_from_primary completed", file=sys.stderr, flush=True)
+            main_logger.step_complete("Data update from primary", time.time() - update_start)
 
             # Store solution for future warm-starts if using CasADi optimizer
             if (
                 hasattr(self.primary_optimizer, "warmstart_mgr")
-                and primary_result.successful
+                and is_successful
                 and hasattr(primary_result, "variables")
             ):
                 self.primary_optimizer.warmstart_mgr.store_solution(
@@ -607,11 +640,22 @@ class UnifiedOptimizationFramework:
                         "timestamp": time.time(),
                     },
                 )
+                main_logger.info("Solution stored for future warm-starts")
 
-            # Secondary optimization (cam-ring)
-            import sys
-            print("DEBUG: About to start secondary optimization", file=sys.stderr, flush=True)
-            log.info("Starting secondary optimization (cam-ring)")
+            # Clear completion summary for Phase 1
+            phase1_elapsed = time.time() - primary_start
+            main_logger.step_complete("Phase 1: Primary Optimization", phase1_elapsed)
+            main_logger.info(
+                f"✓ Phase 1 COMPLETE: Primary optimization finished successfully "
+                f"(status={status_str}, time={phase1_elapsed:.3f}s)"
+            )
+
+            # Phase 2: Secondary optimization (cam-ring)
+            main_logger.separator()
+            main_logger.info("Moving to Phase 2: Secondary Optimization (Cam-Ring)")
+            main_logger.step(2, 3, "Phase 2/3: Secondary Optimization (Cam-Ring)")
+            secondary_start = time.time()
+
             # A4: Feasibility check for secondary bound ordering
             try:
                 sec_pairs = {
@@ -625,21 +669,67 @@ class UnifiedOptimizationFramework:
                 # We only record ordering issues if any
             except Exception:
                 pass
-            import sys
-            print("DEBUG: About to call _optimize_secondary()", file=sys.stderr, flush=True)
+
             try:
                 secondary_result = self._optimize_secondary()
-                print("DEBUG: _optimize_secondary() returned successfully", file=sys.stderr, flush=True)
-                self._update_data_from_secondary(secondary_result)
-                print("DEBUG: _update_data_from_secondary() completed", file=sys.stderr, flush=True)
+                
+                # Check if secondary optimization succeeded before updating data
+                secondary_success = secondary_result.is_successful() if hasattr(secondary_result, 'is_successful') else False
+                if not secondary_success:
+                    main_logger.warning(
+                        f"Secondary optimization failed (status={secondary_result.status if hasattr(secondary_result, 'status') else 'unknown'}). "
+                        "Attempting partial data update, but tertiary optimization will be skipped."
+                    )
+                    # Still update data if it has partial results, but mark as failed
+                    update_start = time.time()
+                    try:
+                        self._update_data_from_secondary(secondary_result)
+                        main_logger.step_complete("Data update from secondary (partial)", time.time() - update_start)
+                    except Exception as update_error:
+                        main_logger.warning(f"Data update from secondary failed: {update_error}")
+                else:
+                    update_start = time.time()
+                    self._update_data_from_secondary(secondary_result)
+                    main_logger.step_complete("Data update from secondary", time.time() - update_start)
             except Exception as e:
                 import traceback
-                print(f"DEBUG: Exception in secondary optimization: {e}", file=sys.stderr, flush=True)
-                traceback.print_exc(file=sys.stderr)
+                main_logger.error(f"Secondary optimization failed with exception: {e}")
+                traceback.print_exc()
                 raise
 
-            # Tertiary optimization (sun gear)
-            log.info("Starting tertiary optimization (sun gear)")
+            # Clear completion summary for Phase 2
+            phase2_elapsed = time.time() - secondary_start
+            main_logger.step_complete("Phase 2: Secondary Optimization", phase2_elapsed)
+            # Re-check success status for final summary (may have been updated during data update)
+            secondary_success = secondary_result.is_successful() if hasattr(secondary_result, 'is_successful') else False
+            secondary_status_str = str(secondary_result.status) if hasattr(secondary_result, 'status') else 'unknown'
+            
+            if secondary_success:
+                main_logger.info(
+                    f"✓ Phase 2 COMPLETE: Secondary optimization finished successfully "
+                    f"(status={secondary_status_str}, time={phase2_elapsed:.3f}s)"
+                )
+            else:
+                main_logger.warning(
+                    f"✗ Phase 2 FAILED: Secondary optimization did not converge "
+                    f"(status={secondary_status_str}, time={phase2_elapsed:.3f}s)"
+                )
+
+            # Phase 3: Tertiary optimization (sun gear) - only if secondary succeeded
+            if not secondary_success:
+                main_logger.warning(
+                    "Skipping Phase 3 (Tertiary Optimization) because Phase 2 (Secondary) failed. "
+                    "Tertiary optimization requires successful secondary optimization."
+                )
+                raise RuntimeError(
+                    "Secondary optimization must be completed successfully before tertiary optimization"
+                )
+
+            main_logger.separator()
+            main_logger.info("Moving to Phase 3: Tertiary Optimization (Sun Gear)")
+            main_logger.step(3, 3, "Phase 3/3: Tertiary Optimization (Sun Gear)")
+            tertiary_start = time.time()
+
             # A4: Feasibility check for tertiary bounds
             try:
                 tert_pairs = {
@@ -668,18 +758,33 @@ class UnifiedOptimizationFramework:
                     )
             except Exception:
                 pass
+
             tertiary_result = self._optimize_tertiary()
+            update_start = time.time()
             self._update_data_from_tertiary(tertiary_result)
+            main_logger.step_complete("Data update from tertiary", time.time() - update_start)
+            
+            # Clear completion summary for Phase 3
+            phase3_elapsed = time.time() - tertiary_start
+            main_logger.step_complete("Phase 3: Tertiary Optimization", phase3_elapsed)
+            tertiary_success = tertiary_result.is_successful() if hasattr(tertiary_result, 'is_successful') else True
+            tertiary_status_str = str(tertiary_result.status) if hasattr(tertiary_result, 'status') else 'unknown'
+            main_logger.info(
+                f"✓ Phase 3 COMPLETE: Tertiary optimization finished "
+                f"(status={tertiary_status_str}, time={phase3_elapsed:.3f}s)"
+            )
 
             # Finalize results
             self.data.total_solve_time = time.time() - start_time
             self.data.optimization_method = self.settings.method
 
-            log.info(
-                f"Cascaded optimization completed in {self.data.total_solve_time:.3f} seconds",
-            )
+            main_logger.separator()
+            main_logger.complete_phase(success=True)
+            main_logger.info(f"Total optimization time: {self.data.total_solve_time:.3f}s")
 
         except Exception as e:
+            main_logger.error(f"Cascaded optimization failed: {e}")
+            main_logger.complete_phase(success=False)
             log.error(f"Cascaded optimization failed: {e}")
             raise
 
@@ -724,6 +829,34 @@ class UnifiedOptimizationFramework:
             "zero_accel_duration_percent", 0.0,
         )
         self.data.motion_type = input_data.get("motion_type", "minimum_jerk")
+        self.data.afr = max(1e-3, float(input_data.get("afr", self.data.afr)))
+        self.data.fuel_mass = max(
+            1e-9,
+            float(input_data.get("fuel_mass", self.data.fuel_mass)),
+        )
+        self.data.ca50_target_deg = float(
+            input_data.get("ca50_target_deg", self.data.ca50_target_deg),
+        )
+        self.data.ca50_weight = max(
+            0.0,
+            float(input_data.get("ca50_weight", self.data.ca50_weight)),
+        )
+        self.data.ca_duration_target_deg = float(
+            input_data.get("ca_duration_target_deg", self.data.ca_duration_target_deg),
+        )
+        self.data.ca_duration_weight = max(
+            0.0,
+            float(input_data.get("ca_duration_weight", self.data.ca_duration_weight)),
+        )
+
+        ignition_deg = input_data.get("ignition_deg")
+        if ignition_deg is not None:
+            ignition_deg = float(ignition_deg)
+            self.data.ignition_deg = ignition_deg
+            self.data.ignition_timing = self._convert_ignition_deg_to_time(
+                ignition_deg,
+                self.data.cycle_time,
+            )
         # Optional overrides for constant load and temperature from UI/input
         if "constant_load_value" in input_data:
             try:
@@ -740,14 +873,27 @@ class UnifiedOptimizationFramework:
             except Exception:
                 pass
 
+    @staticmethod
+    def _convert_ignition_deg_to_time(ignition_deg: float, cycle_time: float) -> float:
+        """Convert ignition timing in crank degrees relative to TDC to absolute time."""
+        if cycle_time <= 0.0:
+            return 0.0
+        if ignition_deg >= 0.0:
+            theta_deg = (360.0 - ignition_deg) % 360.0
+        else:
+            theta_deg = (-ignition_deg) % 360.0
+        return cycle_time * (theta_deg / 360.0)
+
     def _optimize_primary(self, initial_guess: dict[str, Any] | None = None) -> OptimizationResult:
         """Perform primary optimization (motion law).
         
         Args:
             initial_guess: Optional initial guess for warm-start optimization
         """
-        import sys
-        print("DEBUG: Inside _optimize_primary", file=sys.stderr, flush=True)
+        # Create progress logger for primary optimization
+        primary_logger = ProgressLogger("PRIMARY", flush_immediately=True)
+        primary_logger.start_phase()
+
         # Create cam motion constraints with user input parameters
         from campro.constraints.cam import CamMotionConstraints
 
@@ -756,6 +902,8 @@ class UnifiedOptimizationFramework:
         max_acceleration = self.constraints.max_acceleration or 1000.0
         max_jerk = self.constraints.max_jerk or 10000.0
 
+        primary_logger.step(1, None, "Creating motion constraints")
+        constraint_start = time.time()
         # Create cam motion constraints with user input parameters
         cam_constraints = CamMotionConstraints(
             stroke=self.data.stroke,
@@ -765,8 +913,12 @@ class UnifiedOptimizationFramework:
             max_acceleration=max_acceleration,
             max_jerk=max_jerk,
         )
+        primary_logger.step_complete("Motion constraints creation", time.time() - constraint_start)
+        primary_logger.info(f"Motion type: {self.data.motion_type}")
+        primary_logger.info(f"Constraints: stroke={self.data.stroke}mm, max_vel={max_velocity}, max_accel={max_acceleration}, max_jerk={max_jerk}")
 
         # A3: Compute and record primary scaling vector for diagnostics
+        scaling_start = time.time()
         try:
             bounds_for_scaling = {
                 "position": (0.0, float(self.data.stroke)),
@@ -776,8 +928,9 @@ class UnifiedOptimizationFramework:
             }
             scales = compute_scaling_vector(bounds_for_scaling)
             self.data.convergence_info["scaling_primary"] = scales
+            primary_logger.step_complete("Scaling vector computation", time.time() - scaling_start)
         except Exception:
-            pass
+            primary_logger.step_complete("Scaling vector computation (skipped)", time.time() - scaling_start)
 
         # Get motion type from data
         motion_type = self.data.motion_type
@@ -807,15 +960,33 @@ class UnifiedOptimizationFramework:
             )
 
             # Seed s_ref from a nominal minimum-jerk solve
-            import sys
-            print(f"DEBUG: About to call solve_cam_motion_law (motion_type={motion_type}, n_points={int(self.settings.universal_n_points)})", file=sys.stderr, flush=True)
+            primary_logger.step(2, None, f"Solving base motion law (type={motion_type}, n_points={int(self.settings.universal_n_points)})")
+            seed_start = time.time()
+            
+            # Log optimizer details and problem size estimates
+            optimizer_name = self.primary_optimizer.__class__.__name__
+            primary_logger.info(f"Using {optimizer_name} optimizer")
+            primary_logger.info(
+                f"Problem size estimates: n_points={int(self.settings.universal_n_points)}, "
+                f"cycle_time={self.data.cycle_time:.3f}s, stroke={self.data.stroke:.2f}mm"
+            )
+            primary_logger.info("Starting base motion law solve...")
+            
             base_result_seed = self.primary_optimizer.solve_cam_motion_law(
                 cam_constraints=cam_constraints,
                 motion_type=motion_type,
                 cycle_time=self.data.cycle_time,
                 n_points=int(self.settings.universal_n_points),
+                afr=getattr(self.data, "afr", None),
+                ignition_timing=getattr(self.data, "ignition_timing", None),
             )
-            print("DEBUG: solve_cam_motion_law completed", file=sys.stderr, flush=True)
+            
+            seed_elapsed = time.time() - seed_start
+            primary_logger.step_complete("Base motion law solve", seed_elapsed)
+            primary_logger.info(
+                f"Base solve completed in {seed_elapsed:.3f}s: "
+                f"status={base_result_seed.status if hasattr(base_result_seed, 'status') else 'unknown'}"
+            )
             base_sol = base_result_seed.solution or {}
             theta_seed = base_sol.get("cam_angle")
             x_seed = base_sol.get("position")
@@ -891,24 +1062,50 @@ class UnifiedOptimizationFramework:
                 jerk_term = float(np.trapz(u ** 2, t))
                 return wj__ * jerk_term + wp__ * loss_p - ww__ * imep_avg
 
+            # Detect free-piston adapter and optimize EMA loop
+            from campro.optimization.freepiston_phase1_adapter import FreePistonPhase1Adapter
+            is_free_piston_adapter = isinstance(self.primary_optimizer, FreePistonPhase1Adapter)
+            
             # Outer EMA loop
-            print(f"DEBUG: Starting EMA loop (outer_iterations={int(max(1, self.settings.outer_iterations))})", file=sys.stderr, flush=True)
-            for _iter in range(int(max(1, self.settings.outer_iterations))):
-                print(f"DEBUG: EMA iteration {_iter + 1}/{int(max(1, self.settings.outer_iterations))}", file=sys.stderr, flush=True)
+            outer_iterations = int(max(1, self.settings.outer_iterations))
+            # Collapse outer_iterations to 1 for free-piston adapter (custom objective is ignored)
+            if is_free_piston_adapter:
+                outer_iterations = 1
+                primary_logger.info(
+                    "Free-piston adapter detected: collapsing outer_iterations to 1 "
+                    "(custom objective ignored, using base seed solve)"
+                )
+            primary_logger.step(3, None, f"Starting EMA loop ({outer_iterations} iterations)")
+            ema_start = time.time()
+            for _iter in range(outer_iterations):
+                iter_start = time.time()
+                primary_logger.info(f"EMA iteration {_iter + 1}/{outer_iterations}")
                 # Pass initial_guess only on first iteration for warm-start
                 kwargs = {}
                 if _iter == 0 and initial_guess is not None:
                     kwargs["initial_guess"] = initial_guess
-                print("DEBUG: About to call solve_custom_objective", file=sys.stderr, flush=True)
-                result_stage_a__ = self.primary_optimizer.solve_custom_objective(
-                    objective_function=objective__,
-                    constraints=cam_constraints,
-                    distance=self.data.stroke,
-                    time_horizon=self.data.cycle_time,
-                    n_points=int(self.settings.universal_n_points),
-                    **kwargs,
-                )
-                print(f"DEBUG: solve_custom_objective completed (status={result_stage_a__.status if hasattr(result_stage_a__, 'status') else 'unknown'})", file=sys.stderr, flush=True)
+                    primary_logger.info("Using warm-start initial guess for this iteration")
+                
+                # For free-piston adapter, reuse base seed solve instead of calling solve_custom_objective
+                # (custom objective is ignored, so the extra solve is redundant)
+                if is_free_piston_adapter:
+                    primary_logger.info(
+                        "Free-piston adapter: reusing base_result_seed (skipping redundant solve_custom_objective)"
+                    )
+                    result_stage_a__ = base_result_seed
+                else:
+                    primary_logger.info("Calling solve_custom_objective...")
+                    result_stage_a__ = self.primary_optimizer.solve_custom_objective(
+                        objective_function=objective__,
+                        constraints=cam_constraints,
+                        distance=self.data.stroke,
+                        time_horizon=self.data.cycle_time,
+                        n_points=int(self.settings.universal_n_points),
+                        **kwargs,
+                    )
+                iter_elapsed = time.time() - iter_start
+                status_str = result_stage_a__.status if hasattr(result_stage_a__, 'status') else 'unknown'
+                primary_logger.info(f"EMA iteration {_iter + 1} completed (status={status_str}, time={iter_elapsed:.3f}s)")
                 sol__ = result_stage_a__.solution or {}
                 t_arr__ = sol__.get("time")
                 x_arr__ = sol__.get("position")
@@ -937,6 +1134,7 @@ class UnifiedOptimizationFramework:
                     s_mix__ = (1.0 - alpha__) * s_ref__ + alpha__ * s_best__
                     s_ref__ = (s_mix__ - np.mean(s_mix__))
                     s_ref__ = s_ref__ / (np.sqrt(np.sum(s_ref__ * s_ref__)) + 1e-12)
+            primary_logger.step_complete("EMA loop", time.time() - ema_start)
 
             # Stage A diagnostics (compute entirely on universal grid)
             diag_loss__ = 0.0
@@ -1042,24 +1240,30 @@ class UnifiedOptimizationFramework:
                         "satisfied": guard_ok__,
                     }
 
-                    print("DEBUG: Returning result_stage_b__ (invariance flow completed successfully)", file=sys.stderr, flush=True)
+                    primary_logger.step(4, None, "Stage B: Thermal efficiency refinement")
+                    primary_logger.info("Stage B completed successfully")
+                    primary_logger.complete_phase(success=True)
                     return result_stage_b__
 
                 except Exception as exc:
+                    primary_logger.warning(f"Stage B (TE refine) failed: {exc}")
                     log.error(f"Stage B (TE refine) failed: {exc}")
                     import traceback
                     traceback.print_exc(file=sys.stderr)
-                    print("DEBUG: Returning result_stage_a__ (Stage B failed)", file=sys.stderr, flush=True)
+                    primary_logger.info("Returning Stage A result")
+                    primary_logger.complete_phase(success=True)
                     return result_stage_a__
             else:
-                print("DEBUG: Returning result_stage_a__ (Stage B not enabled)", file=sys.stderr, flush=True)
+                primary_logger.step(4, None, "Stage B: Thermal efficiency refinement (disabled)")
+                primary_logger.complete_phase(success=True)
                 return result_stage_a__
 
         except Exception as exc:
+            primary_logger.error(f"Always-on invariance flow failed; falling back: {exc}")
             log.error(f"Always-on invariance flow failed; falling back: {exc}")
             import traceback
             traceback.print_exc(file=sys.stderr)
-            print("DEBUG: Always-on invariance flow exception caught, falling through", file=sys.stderr, flush=True)
+            primary_logger.complete_phase(success=False)
             # Fall through to legacy branches below as last resort
 
         # If enabled, route primary optimization through thermal-efficiency adapter
@@ -1209,6 +1413,8 @@ class UnifiedOptimizationFramework:
                     cam_constraints=cam_constraints,
                     motion_type=motion_type,
                     cycle_time=self.data.cycle_time,
+                    afr=getattr(self.data, "afr", None),
+                    ignition_timing=getattr(self.data, "ignition_timing", None),
                 )
                 base_sol = base_result.solution or {}
                 # Fall back to data if solution missing
@@ -1332,6 +1538,13 @@ class UnifiedOptimizationFramework:
                 cam_constraints=cam_constraints,
                 motion_type=motion_type,
                 cycle_time=self.data.cycle_time,
+                afr=getattr(self.data, "afr", None),
+                ignition_timing=getattr(self.data, "ignition_timing", None),
+                fuel_mass=getattr(self.data, "fuel_mass", None),
+                ca50_target_deg=getattr(self.data, "ca50_target_deg", None),
+                ca50_weight=getattr(self.data, "ca50_weight", None),
+                duration_target_deg=getattr(self.data, "ca_duration_target_deg", None),
+                duration_weight=getattr(self.data, "ca_duration_weight", None),
             )
 
             # The result is already an OptimizationResult from MotionOptimizer
@@ -1350,18 +1563,22 @@ class UnifiedOptimizationFramework:
 
     def _optimize_secondary(self) -> OptimizationResult:
         """Perform secondary optimization (cam-ring) with adaptive tuning."""
-        import sys
-        print("DEBUG: Inside _optimize_secondary", file=sys.stderr, flush=True)
-        log.info("Starting secondary optimization...")
+        # Create progress logger for secondary optimization
+        secondary_logger = ProgressLogger("SECONDARY", flush_immediately=True)
+        secondary_logger.start_phase()
 
         # Check if primary data is available
-        print(f"DEBUG: Checking primary_theta (is None: {self.data.primary_theta is None})", file=sys.stderr, flush=True)
+        secondary_logger.step(1, None, "Validating primary data availability")
         if self.data.primary_theta is None:
+            secondary_logger.error("Primary optimization must be completed before secondary optimization")
             raise RuntimeError(
                 "Primary optimization must be completed before secondary optimization",
             )
+        secondary_logger.info(f"Primary data validated: {len(self.data.primary_theta)} points")
 
         # Prepare primary data
+        prep_start = time.time()
+        secondary_logger.step(2, None, "Preparing primary data for secondary optimization")
         primary_data = {
             # Ensure secondary consumes the universal grid-aligned motion law
             # If primary outputs are not on the universal grid, map them here.
@@ -1372,9 +1589,12 @@ class UnifiedOptimizationFramework:
             "time": np.linspace(0, self.data.cycle_time, len(self.data.primary_theta))
             if self.data.primary_theta is not None
             else np.array([]),
+            "ca_markers": self.data.primary_ca_markers,
         }
+        secondary_logger.step_complete("Primary data preparation", time.time() - prep_start)
 
         # Build golden radial profile for downstream collocation tracking
+        golden_start = time.time()
         try:
             if (
                 self.data.primary_position is not None
@@ -1390,10 +1610,14 @@ class UnifiedOptimizationFramework:
                     "velocity": np.asarray(self.data.primary_velocity, dtype=float),
                     "acceleration": np.asarray(self.data.primary_acceleration, dtype=float),
                 }
+                secondary_logger.step_complete("Golden profile construction", time.time() - golden_start)
         except Exception as _e:
             log.debug(f"Golden profile construction skipped: {_e}")
+            secondary_logger.step_complete("Golden profile construction (skipped)", time.time() - golden_start)
 
         # Analyze problem characteristics
+        problem_start = time.time()
+        secondary_logger.step(3, None, "Analyzing problem characteristics")
         problem_chars = ProblemCharacteristics(
             n_variables=len(self.data.primary_theta)
             if self.data.primary_theta is not None
@@ -1404,30 +1628,38 @@ class UnifiedOptimizationFramework:
             linear_solver_ratio=0.3,  # Estimate
             has_convergence_issues=False,
         )
+        secondary_logger.info(f"Problem size: {problem_chars.n_variables} variables, {problem_chars.n_constraints} constraints")
+        secondary_logger.step_complete("Problem analysis", time.time() - problem_start)
 
-        # Select optimal solver (currently always MA27)
-        print("DEBUG: About to call solver_selector.select_solver()", file=sys.stderr, flush=True)
+        # Select optimal solver
+        solver_start = time.time()
+        secondary_logger.step(4, None, "Selecting optimal linear solver")
         solver_type = self.solver_selector.select_solver(problem_chars, "secondary")
-        print(f"DEBUG: Solver selected: {solver_type.value}", file=sys.stderr, flush=True)
-        log.info(f"Selected solver for secondary optimization: {solver_type.value}")
+        secondary_logger.info(f"Solver selected: {solver_type.value}")
+        secondary_logger.step_complete("Solver selection", time.time() - solver_start)
 
         # Tune parameters
-        print("DEBUG: About to call parameter_tuner.tune_parameters()", file=sys.stderr, flush=True)
+        tuning_start = time.time()
+        secondary_logger.step(5, None, "Tuning optimization parameters")
         tuned_params = self.parameter_tuner.tune_parameters(
             "secondary",
             problem_chars,
             self.solver_selector.analysis_history.get("secondary"),
         )
-        log.info(
-            f"Tuned parameters: max_iter={tuned_params.max_iter}, tol={tuned_params.tol}",
-        )
+        secondary_logger.info(f"Tuned parameters: max_iter={tuned_params.max_iter}, tol={tuned_params.tol:.2e}")
+        secondary_logger.step_complete("Parameter tuning", time.time() - tuning_start)
 
         # Set initial guess based on stroke and GUI target (phase 2: cam + ring only)
+        guess_start = time.time()
+        secondary_logger.step(6, None, "Setting initial guess")
         initial_guess = {
             "base_radius": self.data.stroke,
         }
+        secondary_logger.info(f"Initial guess: base_radius={initial_guess['base_radius']}mm")
+        secondary_logger.step_complete("Initial guess setup", time.time() - guess_start)
 
         # A3: Compute and record simple scaling stats for secondary design variables
+        scaling_start = time.time()
         try:
             bmin, bmax = (
                 float(self.constraints.base_radius_min),
@@ -1435,12 +1667,13 @@ class UnifiedOptimizationFramework:
             )
             sec_scales = compute_scaling_vector({"base_radius": (bmin, bmax)})
             self.data.convergence_info["scaling_secondary"] = sec_scales
+            secondary_logger.step_complete("Scaling vector computation", time.time() - scaling_start)
         except Exception:
-            pass
+            secondary_logger.step_complete("Scaling vector computation (skipped)", time.time() - scaling_start)
 
         # Perform optimization
-        log.info("Calling secondary optimizer...")
-        print("DEBUG: About to call secondary_optimizer.optimize()", file=sys.stderr, flush=True)
+        opt_start = time.time()
+        secondary_logger.step(7, None, "Running secondary optimization (cam-ring)")
         try:
             result = self.secondary_optimizer.optimize(
                 primary_data=primary_data,
@@ -1449,17 +1682,22 @@ class UnifiedOptimizationFramework:
                 golden_profile=self.data.golden_profile,
                 tracking_weight=float(getattr(self.settings, "tracking_weight", 1.0)),
             )
-            print(f"DEBUG: secondary_optimizer.optimize() completed (status={result.status if hasattr(result, 'status') else 'unknown'})", file=sys.stderr, flush=True)
+            opt_elapsed = time.time() - opt_start
+            status_str = result.status if hasattr(result, 'status') else 'unknown'
+            success_str = result.is_successful() if hasattr(result, 'is_successful') else 'unknown'
+            secondary_logger.info(f"Optimization completed: status={status_str}, success={success_str}, time={opt_elapsed:.3f}s")
+            secondary_logger.step_complete("Secondary optimization", time.time() - opt_start)
         except Exception as e:
             import traceback
-            print(f"DEBUG: Exception in secondary_optimizer.optimize(): {e}", file=sys.stderr, flush=True)
-            traceback.print_exc(file=sys.stderr)
+            secondary_logger.error(f"Secondary optimization failed: {e}")
+            traceback.print_exc()
             raise
         log.info(
             f"Secondary optimization completed: status={result.status}, success={result.is_successful()}",
         )
 
         # Extract and store secondary analysis from cam ring optimizer
+        secondary_logger.complete_phase(success=result.is_successful() if hasattr(result, 'is_successful') else True)
         # The cam ring optimizer uses litvin optimization which now provides analysis
         if hasattr(result, "metadata") and "ipopt_analysis" in result.metadata:
             self.data.secondary_ipopt_analysis = result.metadata["ipopt_analysis"]
@@ -1709,8 +1947,6 @@ class UnifiedOptimizationFramework:
 
     def _update_data_from_primary(self, result: OptimizationResult) -> None:
         """Update data structure from primary optimization results."""
-        import sys
-        print(f"DEBUG: _update_data_from_primary called (status={result.status}, solution_keys={list(result.solution.keys()) if result.solution else 'None'})", file=sys.stderr, flush=True)
         if result.status == OptimizationStatus.CONVERGED:
             solution = result.solution
 
@@ -1819,12 +2055,20 @@ class UnifiedOptimizationFramework:
                 self.data.primary_constant_temperature_K = None
 
             # Store convergence info
-            self.data.convergence_info["primary"] = {
+            primary_meta = {
                 "status": result.status.value,
                 "objective_value": result.objective_value,
                 "iterations": result.iterations,
                 "solve_time": result.solve_time,
             }
+
+            if result.metadata:
+                ca_markers = result.metadata.get("ca_markers")
+                if ca_markers:
+                    self.data.primary_ca_markers = ca_markers
+                    primary_meta["ca_markers"] = ca_markers
+
+            self.data.convergence_info["primary"] = primary_meta
 
     def _update_data_from_secondary(self, result: OptimizationResult) -> None:
         """Update data structure from secondary optimization results."""
@@ -1863,11 +2107,41 @@ class UnifiedOptimizationFramework:
 
             self.data.secondary_base_radius = base_radius
 
-            # Extract other data
-            self.data.secondary_cam_curves = solution.get("cam_curves")
-            self.data.secondary_psi = solution.get("psi")
-            self.data.secondary_R_psi = solution.get("R_psi")
+            # Extract other data - handle nested structure from cam_ring_optimizer
+            # The cam_ring_optimizer returns:
+            # - "cam_profile": {"theta": ..., "profile_radius": ...}
+            # - "ring_profile": {"psi": ..., "R_psi": ...}
+            # But we also support top-level keys for backward compatibility
+            cam_profile = solution.get("cam_profile")
+            if cam_profile is not None:
+                # Extract from nested structure
+                self.data.secondary_cam_curves = {
+                    "theta": cam_profile.get("theta"),
+                    "profile_radius": cam_profile.get("profile_radius"),
+                }
+            else:
+                # Fallback to top-level "cam_curves" (for backward compatibility)
+                self.data.secondary_cam_curves = solution.get("cam_curves")
+            
+            ring_profile = solution.get("ring_profile")
+            if ring_profile is not None:
+                # Extract from nested structure
+                self.data.secondary_psi = ring_profile.get("psi")
+                self.data.secondary_R_psi = ring_profile.get("R_psi")
+            else:
+                # Fallback to top-level keys (for backward compatibility)
+                self.data.secondary_psi = solution.get("psi")
+                self.data.secondary_R_psi = solution.get("R_psi")
+            
             self.data.secondary_gear_geometry = solution.get("gear_geometry")
+            
+            # Log what was extracted for debugging
+            log.debug(f"Extracted secondary data:")
+            log.debug(f"  - secondary_cam_curves: {self.data.secondary_cam_curves is not None}")
+            if self.data.secondary_cam_curves is not None:
+                log.debug(f"    Keys: {list(self.data.secondary_cam_curves.keys())}")
+            log.debug(f"  - secondary_psi: {self.data.secondary_psi is not None} ({len(self.data.secondary_psi) if self.data.secondary_psi is not None else 0} points)")
+            log.debug(f"  - secondary_R_psi: {self.data.secondary_R_psi is not None} ({len(self.data.secondary_R_psi) if self.data.secondary_R_psi is not None else 0} points)")
 
             # Map any grid-dependent cam profile data to the universal grid for consistency
             try:

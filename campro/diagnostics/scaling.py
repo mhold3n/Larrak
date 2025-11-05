@@ -157,19 +157,25 @@ def unscale_expr(expr: Any, scale: ArrayLike) -> Any:
 
 def build_scaled_nlp(
     nlp: dict[str, Any], scale: ArrayLike, *, kind: str | None = None,
+    constraint_scale: ArrayLike | None = None,
+    objective_scale: float | None = None,
 ) -> dict[str, Any]:
     """Build a scaled CasADi NLP from an unscaled one.
 
     Given an unscaled NLP dict {'x': x, 'f': f, 'g': g}, constructs a new
     decision variable z so that x = z / s, and returns a new NLP dict
-    {'x': z, 'f': f(z/s), 'g': g(z/s)}. Bounds and initial guesses must be
+    {'x': z, 'f': scale_f * f(z/s), 'g': scale_g * g(z/s)}. Bounds and initial guesses must be
     scaled separately by the caller (lbz = s*lbx, ubz = s*ubx, z0 = s*x0).
 
     Parameters
     ----------
     nlp: The original NLP dict using physical variables.
-    scale: Scalar or array-like scale factor s.
+    scale: Scalar or array-like scale factor s for variables.
     kind: Optional override for symbol type ('SX' or 'MX'); inferred from x.
+    constraint_scale: Optional scalar or array-like scale factor for constraints.
+                     If provided, constraints are scaled as g_scaled = constraint_scale * g(z/s).
+    objective_scale: Optional scalar scale factor for objective.
+                     If provided, objective is scaled as f_scaled = objective_scale * f(z/s).
     """
     ca = _import_casadi()
     if "x" not in nlp or "f" not in nlp:
@@ -193,8 +199,20 @@ def build_scaled_nlp(
     z, x_expr = make_scaled_symbol("z", shape, scale, kind=sym_kind)
 
     # Substitute x -> (z/s) in f and g
-    f_scaled = ca.substitute(f, x, x_expr)
-    g_scaled = ca.substitute(g, x, x_expr) if g is not None else g
+    f_substituted = ca.substitute(f, x, x_expr)
+    g_substituted = ca.substitute(g, x, x_expr) if g is not None else g
+    
+    # Apply objective scaling if provided
+    if objective_scale is not None:
+        f_scaled = scale_expr(f_substituted, objective_scale)
+    else:
+        f_scaled = f_substituted
+    
+    # Apply constraint scaling if provided
+    if constraint_scale is not None and g is not None:
+        g_scaled = scale_expr(g_substituted, constraint_scale)
+    else:
+        g_scaled = g_substituted
 
     return {"x": z, "f": f_scaled, "g": g_scaled}
 
