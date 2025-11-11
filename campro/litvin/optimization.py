@@ -18,11 +18,14 @@ from .kinematics import PlanetKinematics
 from .metrics import evaluate_order0_metrics, evaluate_order0_metrics_given_phi
 from .opt.collocation import make_uniform_grid
 from .planetary_synthesis import _newton_solve_phi
+from campro.physics.geometry.curvature import CurvatureComponent
 
 log = get_logger(__name__)
 
 # Explicit exports for consumers expecting named attributes
 __all__ = ["OptimizationOrder", "optimize_geometry", "OptimResult"]
+
+_CURVATURE_COMPONENT = CurvatureComponent(parameters={})
 
 
 @dataclass(frozen=True)
@@ -43,10 +46,38 @@ def _order0_objective(cfg: PlanetSynthesisConfig) -> float:
     return m.slip_integral - 0.1 * m.contact_length + penalty
 
 
+def _litvin_feasibility_surrogate(
+    theta_rad: np.ndarray,
+    r_profile: np.ndarray,
+) -> float:
+    """Cheap proxy for Litvin feasibility using local curvature diagnostics."""
+    if np.any(~np.isfinite(r_profile)):
+        return 5e5
+    if np.any(r_profile <= 0):
+        return 5e5 + 1e4 * float(np.sum(r_profile <= 0))
+    try:
+        result = _CURVATURE_COMPONENT.compute({"theta": theta_rad, "r_theta": r_profile})
+        if not result.is_successful:
+            return 5e5
+        kappa = result.outputs["kappa"]
+        rho = result.outputs["rho"]
+    except Exception as exc:
+        log.debug(f"Curvature surrogate failed: {exc}")
+        return 5e5
+    if np.any(~np.isfinite(kappa)) or np.any(~np.isfinite(rho)):
+        return 5e5
+    curvature_energy = float(np.mean(np.minimum(np.abs(kappa), 1.0)))
+    rho_variation = float(np.var(rho))
+    return 1e2 * curvature_energy + 1e-2 * rho_variation
+
+
 def _objective_ca10_to_ca100(
     gear_config: PlanetSynthesisConfig,
     section_theta_range: tuple[float, float],
     motion_slice: dict[str, np.ndarray],
+    rho_target: np.ndarray | None = None,
+    universal_theta_deg: np.ndarray | None = None,
+    position: np.ndarray | None = None,
 ) -> float:
     """Objective for CA10-CA100 section: Maximize MA planet onto ring (power stroke torque).
     
@@ -58,12 +89,24 @@ def _objective_ca10_to_ca100(
         (theta_start, theta_end) for this section [deg]
     motion_slice : dict[str, np.ndarray]
         Motion law data for this section (theta, position, velocity, etc.)
+    rho_target : np.ndarray | None
+        Target ratio profile ρ_target(θ) for synchronized ring radius optimization
+    universal_theta_deg : np.ndarray | None
+        Universal theta grid in degrees
+    position : np.ndarray | None
+        Position array for synthesizing cam profile
     
     Returns
     -------
     float
         Objective value (negative for maximization - lower is better)
     """
+    # If rho_target is provided, use synchronized ring radius penalty
+    if rho_target is not None and universal_theta_deg is not None and position is not None:
+        return _compute_ring_radius_penalty(
+            gear_config, rho_target, universal_theta_deg, position
+        )
+    
     # Evaluate full objective for this gear config
     full_obj = _order0_objective(gear_config)
     
@@ -92,6 +135,9 @@ def _objective_bdc_to_tdc(
     gear_config: PlanetSynthesisConfig,
     section_theta_range: tuple[float, float],
     motion_slice: dict[str, np.ndarray],
+    rho_target: np.ndarray | None = None,
+    universal_theta_deg: np.ndarray | None = None,
+    position: np.ndarray | None = None,
 ) -> float:
     """Objective for BDC-TDC section: Maximize ring MA on planet (easy upstroke movement).
     
@@ -103,12 +149,24 @@ def _objective_bdc_to_tdc(
         (theta_start, theta_end) for this section [deg]
     motion_slice : dict[str, np.ndarray]
         Motion law data for this section (theta, position, velocity, etc.)
+    rho_target : np.ndarray | None
+        Target ratio profile ρ_target(θ) for synchronized ring radius optimization
+    universal_theta_deg : np.ndarray | None
+        Universal theta grid in degrees
+    position : np.ndarray | None
+        Position array for synthesizing cam profile
     
     Returns
     -------
     float
         Objective value (negative for maximization - lower is better)
     """
+    # If rho_target is provided, use synchronized ring radius penalty
+    if rho_target is not None and universal_theta_deg is not None and position is not None:
+        return _compute_ring_radius_penalty(
+            gear_config, rho_target, universal_theta_deg, position
+        )
+    
     # Evaluate metrics
     m = evaluate_order0_metrics(gear_config)
     
@@ -130,6 +188,9 @@ def _objective_transition_sections(
     gear_config: PlanetSynthesisConfig,
     section_theta_range: tuple[float, float],
     motion_slice: dict[str, np.ndarray],
+    rho_target: np.ndarray | None = None,
+    universal_theta_deg: np.ndarray | None = None,
+    position: np.ndarray | None = None,
 ) -> float:
     """Objective for transition sections: Balanced objectives.
     
@@ -141,14 +202,125 @@ def _objective_transition_sections(
         (theta_start, theta_end) for this section [deg]
     motion_slice : dict[str, np.ndarray]
         Motion law data for this section (theta, position, velocity, etc.)
+    rho_target : np.ndarray | None
+        Target ratio profile ρ_target(θ) for synchronized ring radius optimization
+    universal_theta_deg : np.ndarray | None
+        Universal theta grid in degrees
+    position : np.ndarray | None
+        Position array for synthesizing cam profile
     
     Returns
     -------
     float
         Objective value (negative for maximization - lower is better)
     """
+    # If rho_target is provided, use synchronized ring radius penalty
+    if rho_target is not None and universal_theta_deg is not None and position is not None:
+        return _compute_ring_radius_penalty(
+            gear_config, rho_target, universal_theta_deg, position
+        )
+    
     # Use standard objective with balanced weighting
     return _order0_objective(gear_config)
+
+
+def _compute_ring_radius_penalty(
+    gear_config: PlanetSynthesisConfig,
+    rho_target: np.ndarray | None,
+    universal_theta_deg: np.ndarray | None,
+    position: np.ndarray | None,
+) -> float:
+    """Compute penalty for ring radius deviation from target ratio profile.
+    
+    Weighting hierarchy:
+    1. Feasibility (highest weight): integer teeth, closure, edge fraction
+    2. Efficiency (medium weight): slip_integral, contact_length from Litvin metrics
+    3. Ratio deviation (lowest weight): difference from ρ_target
+    
+    Parameters
+    ----------
+    gear_config : PlanetSynthesisConfig
+        Gear configuration to evaluate
+    rho_target : np.ndarray | None
+        Target ratio profile ρ_target(θ) on universal theta grid
+    universal_theta_deg : np.ndarray | None
+        Universal theta grid in degrees
+    position : np.ndarray | None
+        Position array for synthesizing cam profile
+    
+    Returns
+    -------
+    float
+        Weighted penalty (higher is worse)
+    """
+    # If no target ratio profile, return standard objective
+    if rho_target is None or universal_theta_deg is None or position is None:
+        return _order0_objective(gear_config)
+    
+    # Synthesize cam profile to get R_planet(θ) = litvin_result.R_psi
+    base_radius = float(gear_config.base_center_radius)
+    theta_rad = np.deg2rad(universal_theta_deg)
+    kin = PlanetKinematics(R0=base_radius, motion=gear_config.motion)
+    r_profile = np.asarray([kin.center_distance(float(th)) for th in theta_rad], dtype=float)
+    legacy_profile = base_radius + position
+    max_diff = float(np.max(np.abs(r_profile - legacy_profile)))
+    if max_diff > 1e-6:
+        max_idx = int(np.argmax(np.abs(r_profile - legacy_profile)))
+        log.debug(
+            "Polar pitch vs legacy displacement mismatch during penalty evaluation: "
+            f"Δ={max_diff:.6f} mm at θ[{max_idx}]={universal_theta_deg[max_idx]:.2f}°",
+        )
+    
+    R_planet_theta = r_profile
+    
+    # Compute R_ring(θ) = ρ_target(θ) * R_planet(θ)
+    R_ring_theta = rho_target * R_planet_theta
+    
+    feasibility_penalty = _litvin_feasibility_surrogate(theta_rad, r_profile)
+    if np.any(R_ring_theta <= 0):
+        return 1e6
+    ring_clearance = 2.0 * R_planet_theta
+    below_clearance = np.sum(R_ring_theta < ring_clearance)
+    if below_clearance:
+        feasibility_penalty += 1e4 * (below_clearance / len(R_ring_theta))
+    teeth_ratio = gear_config.ring_teeth / gear_config.planet_teeth
+    ideal_ratio = float(np.mean(rho_target))
+    ratio_deviation = abs(teeth_ratio - ideal_ratio)
+    teeth_penalty = 1e2 * ratio_deviation
+    
+    # Evaluate efficiency metrics using Litvin equations (weight 2)
+    m = evaluate_order0_metrics(gear_config)
+    
+    # Efficiency penalty: slip_integral and contact_length
+    # Lower slip and higher contact are better
+    efficiency_penalty = m.slip_integral - 0.1 * m.contact_length
+    
+    # Add feasibility penalties to efficiency
+    if not m.feasible:
+        efficiency_penalty += 1e3
+    efficiency_penalty += 1e2 * m.closure_residual + 50.0 * m.phi_edge_fraction
+    
+    # Ratio deviation penalty (weight 3, lowest)
+    # Compute mean squared deviation from target ratio
+    # The actual ratio achieved is R_ring / R_planet
+    actual_ratio = R_ring_theta / np.maximum(R_planet_theta, 1e-9)
+    ratio_deviation_penalty = np.mean((actual_ratio - rho_target) ** 2)
+    
+    # Scale to be comparable with other penalties
+    ratio_deviation_penalty = 1.0 * ratio_deviation_penalty
+    
+    # Weighted combination: feasibility > efficiency > ratio
+    # Weight 1 (highest): feasibility_penalty + teeth_penalty
+    # Weight 2 (medium): efficiency_penalty
+    # Weight 3 (lowest): ratio_deviation_penalty
+    
+    total_penalty = (
+        10.0 * (feasibility_penalty + teeth_penalty) +  # Weight 1: highest
+        1.0 * efficiency_penalty +  # Weight 2: medium
+        0.1 * ratio_deviation_penalty  # Weight 3: lowest
+    )
+    
+    return total_penalty
 
 
 def optimize_geometry(
@@ -172,10 +344,11 @@ def optimize_geometry(
 
     if order == OptimizationOrder.ORDER1_GEOMETRY:
         if config.section_boundaries is None:
-            raise ValueError(
-                "ORDER1_GEOMETRY requires section_boundaries from the combustion model. "
-                "Provide section boundaries or disable ORDER1_GEOMETRY.",
+            log.warning(
+                "ORDER1_GEOMETRY requested without section boundaries; "
+                "falling back to ORDER0 evaluation.",
             )
+            return optimize_geometry(config, OptimizationOrder.ORDER0_EVALUATE)
         return _optimize_piecewise_sections(config)
 
     if order == OptimizationOrder.ORDER2_MICRO:
@@ -208,6 +381,7 @@ def _evaluate_gear_combination_batch(
     samples_per_rev: int,
     theta_deg: np.ndarray,
     position: np.ndarray,
+    rho_target: np.ndarray | None = None,
 ) -> list[dict[str, Any]]:
     """Evaluate a batch of gear combinations for a section with local refinement.
     
@@ -303,7 +477,12 @@ def _evaluate_gear_combination_batch(
                     samples_per_rev=samples_per_rev,
                     motion=motion,
                 )
-                val = objective_func(gear_cfg, work_item.theta_range, motion_slice)
+                val = objective_func(
+                    gear_cfg, work_item.theta_range, motion_slice,
+                    rho_target=rho_target,
+                    universal_theta_deg=theta_deg,
+                    position=position,
+                )
                 if val < best_local:
                     best_local = val
                     pa = pa_try
@@ -319,7 +498,12 @@ def _evaluate_gear_combination_batch(
                     samples_per_rev=samples_per_rev,
                     motion=motion,
                 )
-                val = objective_func(gear_cfg, work_item.theta_range, motion_slice)
+                val = objective_func(
+                    gear_cfg, work_item.theta_range, motion_slice,
+                    rho_target=rho_target,
+                    universal_theta_deg=theta_deg,
+                    position=position,
+                )
                 if val < best_local:
                     best_local = val
                     af = af_try
@@ -534,6 +718,7 @@ def _optimize_sections_parallel(
             samples_per_rev=config.samples_per_rev,
             theta_deg=config.theta_deg if config.theta_deg is not None else np.array([]),
             position=config.position if config.position is not None else np.array([]),
+            rho_target=config.rho_target,
         )
     else:
         # Create a partial function with the fixed parameters for multiprocessing compatibility
@@ -548,6 +733,7 @@ def _optimize_sections_parallel(
             samples_per_rev=config.samples_per_rev,
             theta_deg=config.theta_deg,
             position=config.position,
+            rho_target=config.rho_target,
         )
     
     # Use exactly 12 threads for even distribution
@@ -751,13 +937,16 @@ def _validate_cumulative_ratio(
     section_rotations = {}
     
     for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
-        # Convert degrees to radians
-        delta_theta_ring = np.deg2rad(abs(theta_end - theta_start))
+        # Handle 0° as 360° for wraparound calculations (cycle is 1-360°)
+        theta_end_normalized = 360.0 if theta_end == 0.0 else theta_end
         
-        # Handle wrap-around for TDC-CA10
-        if section_name == "TDC-CA10" and theta_start > theta_end:
-            # Wrap around: from TDC to 360°, then from 0° to CA10
-            delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end)
+        # Handle wrap-around for any section that crosses 360°/1° boundary
+        if theta_start > theta_end_normalized:
+            # Wrap around: from start to 360°, then from 1° to end
+            delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end_normalized)
+        else:
+            # Normal forward section
+            delta_theta_ring = np.deg2rad(theta_end_normalized - theta_start)
         
         # Get ratio for this section
         section_ratio = section_results.get(section_name, {}).get("ratio", 2.0)
@@ -826,10 +1015,14 @@ def _integrate_section_ratios(
     total_duration = 0.0
     
     for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
-        if section_name == "TDC-CA10" and theta_start > theta_end:
-            duration = (360.0 - theta_start) + theta_end
+        # Handle 0° as 360° for wraparound calculations (cycle is 1-360°)
+        theta_end_normalized = 360.0 if theta_end == 0.0 else theta_end
+        
+        # Handle wrap-around for any section that crosses 360°/1° boundary
+        if theta_start > theta_end_normalized:
+            duration = (360.0 - theta_start) + theta_end_normalized
         else:
-            duration = abs(theta_end - theta_start)
+            duration = theta_end_normalized - theta_start
         section_weights[section_name] = duration
         total_duration += duration
     
@@ -871,9 +1064,14 @@ def _integrate_section_ratios(
             # Recompute total rotation with this integer pair
             total_rot = 0.0
             for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
-                delta_theta_ring = np.deg2rad(abs(theta_end - theta_start))
-                if section_name == "TDC-CA10" and theta_start > theta_end:
-                    delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end)
+                # Handle 0° as 360° for wraparound calculations (cycle is 1-360°)
+                theta_end_normalized = 360.0 if theta_end == 0.0 else theta_end
+                
+                # Handle wrap-around for any section that crosses 360°/1° boundary
+                if theta_start > theta_end_normalized:
+                    delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end_normalized)
+                else:
+                    delta_theta_ring = np.deg2rad(theta_end_normalized - theta_start)
                 total_rot += delta_theta_ring * ratio
             
             error = abs(total_rot - 4.0 * pi)
@@ -905,9 +1103,14 @@ def _integrate_section_ratios(
     integration_logger.step(3, 4, "Validating final integer pair constraint")
     total_rot = 0.0
     for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
-        delta_theta_ring = np.deg2rad(abs(theta_end - theta_start))
-        if section_name == "TDC-CA10" and theta_start > theta_end:
-            delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end)
+        # Handle 0° as 360° for wraparound calculations (cycle is 1-360°)
+        theta_end_normalized = 360.0 if theta_end == 0.0 else theta_end
+        
+        # Handle wrap-around for any section that crosses 360°/1° boundary
+        if theta_start > theta_end_normalized:
+            delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end_normalized)
+        else:
+            delta_theta_ring = np.deg2rad(theta_end_normalized - theta_start)
         total_rot += delta_theta_ring * (best_ring / best_planet)
     
     final_error = abs(total_rot - 4.0 * pi)
@@ -1136,4 +1339,3 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         order2_logger.error(failure_msg)
         log.error(failure_msg)
         raise RuntimeError(failure_msg) from e
-

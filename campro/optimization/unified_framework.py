@@ -297,6 +297,10 @@ class UnifiedOptimizationData:
     primary_constant_load_value: float | None = None
     primary_constant_temperature_K: float | None = None
     primary_ca_markers: dict[str, float] | None = None
+    primary_position_units: str | None = None
+    primary_velocity_units: str | None = None
+    primary_acceleration_units: str | None = None
+    primary_jerk_units: str | None = None
     primary_pressure_invariance: dict[str, Any] | None = None
 
     # Secondary results
@@ -306,6 +310,7 @@ class UnifiedOptimizationData:
     secondary_psi: np.ndarray | None = None
     secondary_R_psi: np.ndarray | None = None
     secondary_gear_geometry: dict[str, Any] | None = None
+    secondary_ring_profile: dict[str, Any] | None = None  # Synchronized ring profile on universal theta grid
 
     # Tertiary results (crank center optimization)
     tertiary_crank_center_x: float | None = None
@@ -1034,7 +1039,8 @@ class UnifiedOptimizationFramework:
             x_seed = base_sol.get("position")
             # Map seed to universal grid for consistent downstream comparisons
             if theta_seed is None or x_seed is None:
-                theta_seed = np.linspace(0.0, 2 * np.pi, int(self.settings.universal_n_points), endpoint=False)
+                # Use 1-360° range to match UniversalGrid (avoids wraparound issues)
+                theta_seed = np.linspace(np.pi / 180.0, 2 * np.pi, int(self.settings.universal_n_points), endpoint=True)
                 x_seed = np.zeros_like(theta_seed)
             ug_theta = self.data.universal_theta_rad if self.data.universal_theta_rad is not None else theta_seed
             # Mapper selection (states: interpolation by default)
@@ -2120,7 +2126,7 @@ class UnifiedOptimizationFramework:
                 # Fall back to data if solution missing
                 theta_seed = base_sol.get(
                     "cam_angle",
-                    np.linspace(0.0, 2 * np.pi, 360),
+                    np.linspace(np.pi / 180.0, 2 * np.pi, 360, endpoint=True),  # 1-360° range
                 )
                 x_seed = base_sol.get("position", np.zeros_like(theta_seed))
                 v_seed = np.gradient(x_seed, theta_seed)
@@ -2463,6 +2469,9 @@ class UnifiedOptimizationFramework:
             )
         secondary_logger.info(f"Primary data validated: {len(self.data.primary_theta)} points")
 
+        # Ensure motion-law units are compatible with Phase-2 (millimetres)
+        self._ensure_primary_motion_mm(secondary_logger)
+
         # Prepare primary data
         prep_start = time.time()
         secondary_logger.step(2, None, "Preparing primary data for secondary optimization")
@@ -2473,6 +2482,10 @@ class UnifiedOptimizationFramework:
             "position": self.data.primary_position,
             "velocity": self.data.primary_velocity,
             "acceleration": self.data.primary_acceleration,
+            "theta_deg": self.data.primary_theta,
+            "theta_rad": np.deg2rad(self.data.primary_theta)
+            if self.data.primary_theta is not None
+            else None,
             "time": np.linspace(0, self.data.cycle_time, len(self.data.primary_theta))
             if self.data.primary_theta is not None
             else np.array([]),
@@ -2618,6 +2631,68 @@ class UnifiedOptimizationFramework:
             self.data.secondary_ipopt_analysis = None
 
         return result
+
+    def _ensure_primary_motion_mm(self, phase_logger: "ProgressLogger | None" = None) -> None:
+        """
+        Ensure the primary motion-law data is expressed in millimetres for Phase-2.
+
+        Converts from metres when necessary and records the conversion. Raises if units
+        are missing or unsupported.
+        """
+        units = (self.data.primary_position_units or "").strip().lower()
+        if not units:
+            raise RuntimeError(
+                "Primary motion units not recorded; cannot continue Phase-2 without explicit units.",
+            )
+
+        def _log(message: str) -> None:
+            if phase_logger is not None:
+                phase_logger.info(message)
+            else:
+                log.info(message)
+
+        millimetre_aliases = {"mm", "millimetre", "millimeter"}
+        metre_aliases = {"m", "meter", "metre", "meters", "metres"}
+
+        def _to_array(value: np.ndarray | list | tuple | None) -> np.ndarray | None:
+            if value is None:
+                return None
+            return np.asarray(value, dtype=float)
+
+        if units in millimetre_aliases:
+            self.data.primary_position = _to_array(self.data.primary_position)
+            self.data.primary_velocity = _to_array(self.data.primary_velocity)
+            self.data.primary_acceleration = _to_array(self.data.primary_acceleration)
+            self.data.primary_jerk = _to_array(self.data.primary_jerk)
+            return
+
+        if units not in metre_aliases:
+            raise ValueError(
+                f"Unsupported primary motion units '{self.data.primary_position_units}'. "
+                "Phase-2 expects millimetres.",
+            )
+
+        factor = 1_000.0
+        self.data.primary_position = _to_array(self.data.primary_position)
+        self.data.primary_velocity = _to_array(self.data.primary_velocity)
+        self.data.primary_acceleration = _to_array(self.data.primary_acceleration)
+        self.data.primary_jerk = _to_array(self.data.primary_jerk)
+
+        if self.data.primary_position is not None:
+            self.data.primary_position *= factor
+        if self.data.primary_velocity is not None:
+            self.data.primary_velocity *= factor
+        if self.data.primary_acceleration is not None:
+            self.data.primary_acceleration *= factor
+        if self.data.primary_jerk is not None:
+            self.data.primary_jerk *= factor
+
+        self.data.primary_position_units = "mm"
+        self.data.primary_velocity_units = "mm/deg"
+        self.data.primary_acceleration_units = "mm/deg^2"
+        self.data.primary_jerk_units = "mm/deg^3"
+
+        _log("Converted primary motion law from metres to millimetres for Phase-2 ingestion.")
 
     def get_phase2_animation_inputs(self) -> dict[str, Any]:
         """Return minimal deterministic inputs for Phase-2 animation.
@@ -3238,25 +3313,35 @@ class UnifiedOptimizationFramework:
                     "Time-based fallback is not supported in per-degree-only contract."
                 )
 
-            # Store motion law data (in per-degree units: m, m/deg, m/deg², m/deg³)
+            # Store motion law data (per-degree units in millimetres)
             # Phase 3: Tag units in metadata so downstream stages know what they're consuming
-            self.data.primary_position = solution.get("position")  # m
-            self.data.primary_velocity = solution.get("velocity")  # m/deg (per-degree units)
-            self.data.primary_acceleration = solution.get("acceleration")  # m/deg² (per-degree units)
+            self.data.primary_position = solution.get("position")
+            self.data.primary_velocity = solution.get("velocity")
+            self.data.primary_acceleration = solution.get("acceleration")
 
             # Handle jerk data (may be in 'control' or 'jerk' field)
             jerk_data = solution.get("jerk")
             if jerk_data is None:
                 jerk_data = solution.get("control")
-            self.data.primary_jerk = jerk_data  # m/deg³ (per-degree units)
+            self.data.primary_jerk = jerk_data
             
             # Phase 3: Store unit metadata for downstream consumers
             if result.metadata is None:
                 result.metadata = {}
-            result.metadata["primary_velocity_units"] = "m/deg"
-            result.metadata["primary_acceleration_units"] = "m/deg²"
-            result.metadata["primary_jerk_units"] = "m/deg³"
-            result.metadata["primary_position_units"] = "m"
+            position_units = result.metadata.get("position_units", "mm")
+            velocity_units = result.metadata.get("velocity_units", "mm/deg")
+            acceleration_units = result.metadata.get("acceleration_units", "mm/deg^2")
+            jerk_units = result.metadata.get("jerk_units", "mm/deg^3")
+
+            self.data.primary_position_units = position_units
+            self.data.primary_velocity_units = velocity_units
+            self.data.primary_acceleration_units = acceleration_units
+            self.data.primary_jerk_units = jerk_units
+
+            result.metadata["primary_velocity_units"] = velocity_units
+            result.metadata["primary_acceleration_units"] = acceleration_units
+            result.metadata["primary_jerk_units"] = jerk_units
+            result.metadata["primary_position_units"] = position_units
             if "duration_angle_deg" in result.metadata:
                 result.metadata["duration_angle_deg"] = result.metadata["duration_angle_deg"]
 
@@ -3384,8 +3469,62 @@ class UnifiedOptimizationFramework:
             ring_profile = solution.get("ring_profile")
             if ring_profile is not None:
                 # Extract from nested structure
-                self.data.secondary_psi = ring_profile.get("psi")
-                self.data.secondary_R_psi = ring_profile.get("R_psi")
+                psi = ring_profile.get("psi")
+                self.data.secondary_psi = psi
+                
+                # Store full synchronized ring profile on universal theta grid
+                # This contains: theta, psi, R_planet, R_ring all aligned to the same theta domain
+                theta = ring_profile.get("theta")
+                R_planet = ring_profile.get("R_planet")
+                R_ring = ring_profile.get("R_ring")
+                R_psi = ring_profile.get("R_psi")  # For backward compatibility
+                
+                if theta is not None:
+                    # Store complete synchronized ring profile
+                    self.data.secondary_ring_profile = {
+                        "theta": theta,  # Universal theta grid (degrees)
+                        "psi": psi,  # Ring angle (radians)
+                        "R_planet": R_planet if R_planet is not None else R_psi,  # Planet pitch radius
+                        "R_ring": R_ring,  # Synchronized ring radius R_ring(θ) = ρ_target(θ) * R_planet(θ)
+                    }
+                    log.debug(
+                        f"Stored synchronized ring profile on universal theta grid "
+                        f"(len={len(theta)} points)"
+                    )
+                else:
+                    log.warning("Ring profile missing theta grid; storing partial profile")
+                    self.data.secondary_ring_profile = {
+                        "psi": psi,
+                        "R_planet": R_planet if R_planet is not None else R_psi,
+                        "R_ring": R_ring,
+                    }
+                
+                # Maintain backward compatibility: keep the Litvin planet trajectory in
+                # secondary_R_psi when available, since legacy consumers expect that signal.
+                if R_psi is not None:
+                    self.data.secondary_R_psi = R_psi
+                    log.debug("Stored Litvin R_psi (planet trajectory) for backward compatibility")
+                elif (
+                    R_ring is not None
+                    and theta is not None
+                    and psi is not None
+                ):
+                    # If R_psi is unavailable (unexpected), fall back to the synchronized ring
+                    # profile resampled onto the ψ grid so legacy code still receives data.
+                    from campro.optimization.grid import GridMapper
+
+                    R_ring_on_psi = GridMapper.periodic_linear_resample(
+                        from_theta=np.deg2rad(theta),
+                        from_values=R_ring,
+                        to_theta=psi,
+                    )
+                    self.data.secondary_R_psi = R_ring_on_psi
+                    log.debug(
+                        "Resampled R_ring from θ grid to ψ grid because R_psi was unavailable "
+                        f"(θ len={len(theta)}, ψ len={len(psi)})"
+                    )
+                else:
+                    log.warning("No R_psi or R_ring data available for legacy secondary_R_psi field")
             else:
                 raise ValueError(
                     "Secondary optimization result must include ring_profile. "

@@ -61,6 +61,42 @@ def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  #
         else ("Infeasible" if status_str == "infeasible" else "Failed")
     )
 
+    # Build extended payloads if available
+    motion_payload: dict[str, Any] = {}
+    pressure_payload: dict[str, Any] = {}
+    thermo_payload: dict[str, Any] = {}
+    try:
+        sol = getattr(result, "solution", {}) or {}
+        meta = getattr(result, "metadata", {}) or {}
+        # Motion: prefer combustion-time series; include back-compat fields if present
+        for key in (
+            "time_s",
+            "theta_rad",
+            "theta_deg",
+            "position_mm",
+            "velocity_mm_per_s",
+            "acceleration_mm_per_s2",
+            "cam_angle",
+            "position",
+            "velocity",
+            "acceleration",
+        ):
+            if key in sol:
+                motion_payload[key] = sol[key]
+        # Pressure mappings if provided in metadata
+        pressure_meta = meta.get("pressure")
+        if isinstance(pressure_meta, dict):
+            pressure_payload = pressure_meta
+        # Thermo scalars if present
+        pi_meta = (meta.get("pressure_invariance") or {}) if isinstance(meta, dict) else {}
+        if isinstance(pi_meta, dict):
+            # Common scalars to expose
+            for k in ("imep_avg", "loss_p_mean", "pressure_ratio_target_mean"):
+                if k in pi_meta:
+                    thermo_payload[k] = pi_meta[k]
+    except Exception:
+        pass
+
     report = SolveReport(
         run_id=RUN_ID,
         status=public_status,
@@ -73,6 +109,9 @@ def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  #
         scaling_stats={},
         residuals=residuals,
         artifacts=artifacts,
+        motion=motion_payload,
+        pressure=pressure_payload,
+        thermo=thermo_payload,
     )
 
     # Persist metadata

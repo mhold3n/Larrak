@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, cast
 
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.freepiston.gas import build_gas_model
@@ -12,9 +12,9 @@ from campro.physics.combustion import CombustionModel
 log = get_logger(__name__)
 
 
-def _import_casadi():
+def _import_casadi() -> Any:
     try:
-        import casadi as ca  # type: ignore
+        import casadi as ca
     except Exception as exc:  # pragma: no cover
         raise RuntimeError("CasADi is required for NLP building") from exc
     return ca
@@ -115,7 +115,7 @@ def enhanced_piston_dae_constraints(
     gap_min = geometry.get("gap_min", 0.0008)
     gap_current = xR_c - xL_c
     penalty_stiffness_raw = geometry.get("penalty_stiffness", 1e6)
-    
+
     # Cap penalty stiffness to keep scaled forces O(1)
     # Typical force scale ~1e4 N, typical position scale ~1e-1 m
     # So penalty_stiffness should be ~1e5 N/m to give forces ~1e4 N
@@ -520,6 +520,31 @@ def _build_1d_collocation_nlp(
         )
         omega_deg_per_s_dm = ca.DM(omega_deg_per_s_const)
 
+    # Define ignition time variable if using combustion model
+    if use_combustion_model:
+        ignition_bounds = combustion_cfg.get(
+            "ignition_bounds_s",
+            (0.0, max(combustion_cycle_time or 1.0, 1e-6)),
+        )
+        ignition_initial = float(
+            combustion_cfg.get(
+                "ignition_initial_s",
+                0.1 * max(combustion_cycle_time or 1.0, 1e-6),
+            ),
+        )
+        t_ign = ca.SX.sym("t_ign")
+        # Add t_ign to variables
+        w_ign = [t_ign]
+        w0_ign = [ignition_initial]
+        lbw_ign = [float(ignition_bounds[0])]
+        ubw_ign = [float(ignition_bounds[1])]
+    else:
+        t_ign = None
+        w_ign = []
+        w0_ign = []
+        lbw_ign = []
+        ubw_ign = []
+
     # Variables, initial guesses, and bounds
     w = []
     w0 = []
@@ -528,6 +553,12 @@ def _build_1d_collocation_nlp(
     g = []
     lbg = []
     ubg = []
+
+    # Add ignition variable if using combustion model
+    w += w_ign
+    w0 += w0_ign
+    lbw += lbw_ign
+    ubw += ubw_ign
 
     # Initial states
     xL0 = ca.SX.sym("xL0")
@@ -593,6 +624,13 @@ def _build_1d_collocation_nlp(
     Q_in_accum = 0.0
     scav_penalty_accum = 0.0
     smooth_penalty_accum = 0.0
+
+    # Define dt_real for combustion model timing
+    if use_combustion_model:
+        dt_real = (combustion_cycle_time or 1.0) / max(K, 1)
+        combustion_samples.append((0.0, ca.DM(0.0)))
+    else:
+        dt_real = None
 
     # Scavenging and timing accumulator initial states
     yF0 = ca.SX.sym("yF0")
@@ -1049,7 +1087,7 @@ def _build_1d_collocation_nlp(
     return nlp, meta
 
 
-def _hllc_flux_symbolic(U_L: List[Any], U_R: List[Any], ca: Any) -> List[Any]:
+def _hllc_flux_symbolic(U_L: list[Any], U_R: list[Any], ca: Any) -> list[Any]:
     """Symbolic HLLC flux calculation for CasADi."""
     # Simplified HLLC implementation for symbolic computation
     # In practice, this would be more sophisticated
@@ -1108,7 +1146,7 @@ def _calculate_1d_source_terms(
     Q_comb: Any,
     Ain: Any,
     Aex: Any,
-) -> List[Any]:
+) -> list[Any]:
     """Calculate 1D source terms for gas dynamics equations."""
     ca = _import_casadi()
 
@@ -1165,7 +1203,7 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     omega_deg_per_s_const = None
     omega_deg_per_s_dm = None
     combustion_samples: list[tuple[float, Any]] = []
-    
+
     if use_combustion_model:
         required_keys = [
             "fuel_type",
@@ -1220,7 +1258,7 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     ubg = []
 
     # Track variable groups for metadata
-    var_groups = {
+    var_groups: dict[str, list[int]] = {
         "positions": [],
         "velocities": [],
         "densities": [],
@@ -2013,4 +2051,12 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     }
     if combustion_meta is not None:
         meta["combustion_model"] = combustion_meta
+        try:
+            # Expose simple cycle markers for downstream consumers
+            cycle_time = float(combustion_cfg.get("cycle_time_s", 1.0))
+            # Use cast to avoid mypy inference issues with dict literal
+            cycle_markers = cast(dict[str, Any], {"t0": 0.0, "T": cycle_time})
+            meta["cycle"] = cycle_markers
+        except Exception:
+            pass
     return nlp, meta

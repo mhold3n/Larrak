@@ -2343,19 +2343,43 @@ class CamMotionGUI:
                 ax1.set_title("Cam Profile (Polar)", pad=20)
 
             # Plot ring profile (polar)
-            print(f"DEBUG: Profiles plot: Ring profile - psi len={len(result_data.secondary_psi)}, R_psi len={len(result_data.secondary_R_psi)}")
-            ax2.plot(
-                result_data.secondary_psi,
-                result_data.secondary_R_psi,
-                "purple",
-                linewidth=2,
-                label="Ring Profile",
-            )
-            ax2.set_title("Ring Profile (Polar)", pad=20)
-            ax2.grid(True)
-            ax2.set_ylim(
-                0, max(result_data.secondary_R_psi) * 1.1,
-            )  # Set appropriate radial limits
+            # Prefer synchronized ring profile on universal theta grid if available
+            if (
+                hasattr(result_data, "secondary_ring_profile")
+                and result_data.secondary_ring_profile is not None
+                and "theta" in result_data.secondary_ring_profile
+                and "R_ring" in result_data.secondary_ring_profile
+            ):
+                # Use synchronized ring profile on universal theta grid
+                ring_theta_deg = result_data.secondary_ring_profile["theta"]
+                ring_theta_rad = np.radians(ring_theta_deg)
+                R_ring = result_data.secondary_ring_profile["R_ring"]
+                print(f"DEBUG: Profiles plot: Using synchronized ring profile - theta len={len(ring_theta_deg)}, R_ring len={len(R_ring)}")
+                ax2.plot(
+                    ring_theta_rad,
+                    R_ring,
+                    "purple",
+                    linewidth=2,
+                    label="Ring Profile (Synchronized)",
+                )
+                ax2.set_title("Ring Profile (Polar, θ-aligned)", pad=20)
+                ax2.grid(True)
+                ax2.set_ylim(0, max(R_ring) * 1.1)
+            else:
+                # Fallback to legacy psi-based plotting for backward compatibility
+                print(f"DEBUG: Profiles plot: Ring profile - using legacy psi-based plot, psi len={len(result_data.secondary_psi)}, R_ring len={len(result_data.secondary_R_psi)}")
+                ax2.plot(
+                    result_data.secondary_psi,
+                    result_data.secondary_R_psi,
+                    "purple",
+                    linewidth=2,
+                    label="Ring Profile (Legacy)",
+                )
+                ax2.set_title("Ring Profile (Polar)", pad=20)
+                ax2.grid(True)
+                ax2.set_ylim(
+                    0, max(result_data.secondary_R_psi) * 1.1,
+                )  # Set appropriate radial limits
 
             self.profiles_fig.suptitle(
                 "Cam and Ring 2D Profiles", fontsize=14, fontweight="bold",
@@ -3055,7 +3079,11 @@ Side-Loading:
                 if "iterations" in p1_analysis.stats:
                     print(f"  Iterations: {p1_analysis.stats['iterations']}")
                 if "solve_time" in p1_analysis.stats:
-                    print(f"  Solve Time: {p1_analysis.stats['solve_time']:.3f}s")
+                    # Handle None values before formatting
+                    solve_time = p1_analysis.stats['solve_time']
+                    if solve_time is None:
+                        solve_time = 0.0
+                    print(f"  Solve Time: {solve_time:.3f}s")
             else:
                 print("  Analysis: Not available (thermal efficiency adapter)")
 
@@ -3069,7 +3097,11 @@ Side-Loading:
                 if "iterations" in p2_analysis.stats:
                     print(f"  Iterations: {p2_analysis.stats['iterations']}")
                 if "solve_time" in p2_analysis.stats:
-                    print(f"  Solve Time: {p2_analysis.stats['solve_time']:.3f}s")
+                    # Handle None values before formatting
+                    solve_time = p2_analysis.stats['solve_time']
+                    if solve_time is None:
+                        solve_time = 0.0
+                    print(f"  Solve Time: {solve_time:.3f}s")
             else:
                 print("  Analysis: Not available")
 
@@ -3083,7 +3115,11 @@ Side-Loading:
                 if "iterations" in p3_analysis.stats:
                     print(f"  Iterations: {p3_analysis.stats['iterations']}")
                 if "solve_time" in p3_analysis.stats:
-                    print(f"  Solve Time: {p3_analysis.stats['solve_time']:.3f}s")
+                    # Handle None values before formatting
+                    solve_time = p3_analysis.stats['solve_time']
+                    if solve_time is None:
+                        solve_time = 0.0
+                    print(f"  Solve Time: {solve_time:.3f}s")
             else:
                 print("  Analysis: Not available")
 

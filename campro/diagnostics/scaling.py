@@ -120,7 +120,8 @@ def make_scaled_symbol(
     # Broadcast scale to match shape
     if np.isscalar(scale):
         s = float(scale)
-        s_expr = ca.DM.full(n, m, s)
+        # Create DM matrix filled with scalar value
+        s_expr = ca.DM(np.full((n, m), s))
     else:
         arr = np.asarray(scale, dtype=float)
         if arr.shape == (n, m):

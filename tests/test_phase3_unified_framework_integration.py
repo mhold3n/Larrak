@@ -193,6 +193,10 @@ class TestUnifiedFrameworkIntegration:
         self.framework.data.primary_acceleration = -10.0 * np.sin(
             self.framework.data.primary_theta,
         )
+        self.framework.data.primary_position_units = "mm"
+        self.framework.data.primary_velocity_units = "mm/deg"
+        self.framework.data.primary_acceleration_units = "mm/deg^2"
+        self.framework.data.primary_jerk_units = "mm/deg^3"
         self.framework.data.primary_load_profile = 1000.0 * np.ones_like(
             self.framework.data.primary_theta,
         )

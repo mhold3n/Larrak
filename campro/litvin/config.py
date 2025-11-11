@@ -37,6 +37,8 @@ class GeometrySearchConfig:
     theta_rad: np.ndarray | None = field(default=None, compare=False)
     # Position array for recreating motion object in worker processes (avoids pickling lambda functions)
     position: np.ndarray | None = field(default=None, compare=False)
+    # Target ratio profile ρ_target(θ) for synchronized ring radius optimization
+    rho_target: np.ndarray | None = field(default=None, compare=False)
 
 
 class OptimizationOrder:

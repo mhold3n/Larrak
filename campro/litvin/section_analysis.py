@@ -265,22 +265,19 @@ def identify_combustion_sections(
     ]
 
     for name, start, end in section_list:
-        if start > end:
-            # Handle wrap-around (TDC-CA10 might wrap)
-            if name == "TDC-CA10":
-                # Normalize: TDC to end of cycle, then 0 to CA10
-                span = (360.0 - start) + end
-                comb_logger.info(
-                    f"Section {name} wraps around: {start:.2f}° to 360° then 0° to {end:.2f}° ({span:.2f}° span)"
-                )
-            else:
-                span = end - start  # Will be negative, but we'll show it
-                comb_logger.warning(
-                    f"Section {name} has reversed order: {start:.2f}° to {end:.2f}° ({span:.2f}° span)"
-                )
+        # Handle 0° as 360° for wraparound calculations (cycle is 1-360°)
+        end_normalized = 360.0 if end == 0.0 else end
+        
+        if start > end_normalized:
+            # Handle wrap-around: any section that crosses 360°/1° boundary
+            # Normalize: start to end of cycle (360°), then 1° to end
+            span = (360.0 - start) + end_normalized
+            comb_logger.info(
+                f"Section {name} wraps around: {start:.2f}° to 360° then 1° to {end_normalized:.2f}° ({span:.2f}° span)"
+            )
         else:
-            span = end - start
-            comb_logger.info(f"Section {name}: {start:.2f}° to {end:.2f}° ({span:.2f}° span)")
+            span = end_normalized - start
+            comb_logger.info(f"Section {name}: {start:.2f}° to {end_normalized:.2f}° ({span:.2f}° span)")
 
     comb_logger.step_complete("Section boundaries", 0.0)
 
@@ -322,12 +319,10 @@ def get_section_boundaries(
         idx_start = np.argmin(np.abs(theta - theta_start))
         idx_end = np.argmin(np.abs(theta - theta_end))
 
-        # Handle wrap-around for TDC-CA10
-        if name == "TDC-CA10" and theta_start > theta_end:
-            # Split into two segments: TDC to end, and start to CA10
-            idx_start = np.argmin(np.abs(theta - theta_start))
-            idx_end = np.argmin(np.abs(theta - theta_end))
-            # For now, use the indices as-is (will need special handling in optimization)
+        # Handle wrap-around for any section that crosses 0°/360° boundary
+        if theta_start > theta_end:
+            # For wraparound sections, indices are still valid
+            # The optimization code will handle the wraparound logic
             indices[name] = (idx_start, idx_end)
         else:
             indices[name] = (idx_start, idx_end)

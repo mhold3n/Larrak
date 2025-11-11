@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 class _MotionProblem(Protocol):
@@ -29,12 +30,12 @@ class _MotionProblem(Protocol):
     max_jerk: float | None  # Per-degree units: mm/deg³ (or m/deg³ in SI), optional
 
 
-def _smoothstep(t: np.ndarray) -> np.ndarray:
+def _smoothstep(t: NDArray[np.float64]) -> NDArray[np.float64]:
     """Standard 5th-order smoothstep (0≤t≤1)."""
     return 10 * t**3 - 15 * t**4 + 6 * t**5
 
 
-def _smoothstep_derivatives(t: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _smoothstep_derivatives(t: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Return first/second/third derivatives of smoothstep."""
     first = 30 * t**2 - 60 * t**3 + 30 * t**4
     second = 60 * t - 180 * t**2 + 120 * t**3
@@ -55,7 +56,7 @@ class InitialGuessBuilder:
         """Keep builder aligned with solver discretization."""
         self.n_segments = max(4, int(n_segments))
 
-    def build_seed(self, problem: _MotionProblem) -> dict[str, np.ndarray]:
+    def build_seed(self, problem: _MotionProblem) -> dict[str, NDArray[np.float64]]:
         """
         Generate a deterministic S-curve seed that respects boundary conditions.
 
@@ -151,10 +152,10 @@ class InitialGuessBuilder:
     def polish_seed(
         self,
         problem: _MotionProblem,
-        guess: dict[str, np.ndarray],
+        guess: dict[str, NDArray[np.float64]],
         *,
         smoothing_passes: int = 2,
-    ) -> dict[str, np.ndarray]:
+    ) -> dict[str, NDArray[np.float64]]:
         """
         Smooth and clip the deterministic seed to satisfy basic constraints.
 
@@ -251,7 +252,7 @@ class InitialGuessBuilder:
         }
 
     @staticmethod
-    def _moving_average(data: np.ndarray, window: int) -> np.ndarray:
+    def _moving_average(data: NDArray[np.float64], window: int) -> NDArray[np.float64]:
         """Simple centered moving average keeping array length constant."""
         if window <= 1:
             return data

@@ -325,9 +325,13 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                 pressure_meta = result.metadata.get("pressure_invariance")
                 ca_markers = result.metadata.get("ca_markers") or {}
                 with reporter.section("Optimization diagnostics", level="INFO"):
+                    # Handle None values before formatting
+                    cpu_time = optimization_meta.get('cpu_time')
+                    if cpu_time is None:
+                        cpu_time = 0.0
                     reporter.info(
                         f"Solver status={optimization_meta.get('status')} success={optimization_meta.get('success')} "
-                        f"iterations={optimization_meta.get('iterations')} cpu_time={optimization_meta.get('cpu_time', 0.0):.3f}s"
+                        f"iterations={optimization_meta.get('iterations')} cpu_time={cpu_time:.3f}s"
                     )
                     if iteration_summary:
                         objective_info = iteration_summary.get("objective", {})
@@ -573,53 +577,149 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                 solution={},
             )
 
-        # Extract motion profile from collocation solution
-        # The free-piston NLP has states: xL, xR, vL, vR at each collocation point
-        # We need to extract these and map to cam angle and position arrays
-        grid_meta = solution.meta.get("grid", {})
+        # Extract motion profile from collocation solution (combustion-driven time)
+        grid_obj = solution.meta.get("grid", {})
         meta_nlp = solution.meta.get("meta", {})
+        variable_groups = (meta_nlp.get("variable_groups") or {}) if isinstance(meta_nlp, dict) else {}
 
         # Get collocation grid info
-        K = meta_nlp.get("K", 20)
-        C = meta_nlp.get("C", 1)
+        K = int(meta_nlp.get("K", 20)) if isinstance(meta_nlp, dict) else 20
+        C = int(meta_nlp.get("C", 1)) if isinstance(meta_nlp, dict) else 1
 
-        # Extract position and velocity from solution
-        # Variable structure: [xL0, xR0, vL0, vR0, ... (for each collocation point)]
-        # For now, create a simplified motion profile
-        # TODO: Extract actual collocation states properly in next phase
+        # Feature flag to allow fallback (default: use free-piston motion)
+        use_freepiston_motion = os.environ.get("PHASE1_USE_FREEPISTON_MOTION", "1").lower() not in _FALSEY
+
         try:
-            # Create a basic motion profile based on constraints
-            # This is a placeholder - full extraction will be done in next phase
-            cam_angle = np.linspace(0.0, 2 * np.pi, n_points, endpoint=False)
-            
-            # Simple sinusoidal motion profile as placeholder
-            # Position goes from 0 to stroke over upstroke portion
-            upstroke_frac = cam_constraints.upstroke_duration_percent / 100.0
-            position = np.zeros(n_points)
-            
-            for i, theta in enumerate(cam_angle):
-                theta_deg = np.degrees(theta)
-                if theta_deg < 180 * upstroke_frac:
-                    # Upstroke: position increases
-                    progress = theta_deg / (180 * upstroke_frac)
-                    position[i] = cam_constraints.stroke * (1 - np.cos(np.pi * progress)) / 2.0
+            if use_freepiston_motion and isinstance(variable_groups, dict) and len(variable_groups) > 0:
+                x_opt_vec = np.asarray(x_opt, dtype=float).flatten()
+
+                # Build combustion-driven time grid
+                comb_meta = (meta_nlp.get("combustion_model") or {}) if isinstance(meta_nlp, dict) else {}
+                omega_deg_per_s = float(comb_meta.get("omega_deg_per_s", 360.0 / max(float(self._last_cycle_time or cycle_time), 1e-9)))
+                T_cycle = 360.0 / max(omega_deg_per_s, 1e-9)  # seconds
+                # Collocation nodes from grid (best-effort)
+                try:
+                    nodes = getattr(grid_obj, "nodes", None)
+                    if nodes is None:
+                        # Fallback: uniform within element
+                        nodes = np.linspace(1.0 / (C + 1), 1.0, C, endpoint=True)
+                    else:
+                        nodes = np.asarray(nodes, dtype=float)
+                except Exception:
+                    nodes = np.linspace(1.0 / (C + 1), 1.0, C, endpoint=True)
+                dt_elem = T_cycle / max(K, 1)
+
+                # Variable groups give indices into x; positions come in pairs [xL, xR], velocities [vL, vR]
+                pos_idx: list[int] = list(variable_groups.get("positions", []))
+                vel_idx: list[int] = list(variable_groups.get("velocities", []))
+                den_idx: list[int] = list(variable_groups.get("densities", []))
+                tmp_idx: list[int] = list(variable_groups.get("temperatures", []))
+
+                # Expect sizes: 2 (initial) + K*C*2 for positions/velocities
+                def _extract_pairs(idx_list: list[int]) -> tuple[np.ndarray, np.ndarray]:
+                    vals = x_opt_vec[idx_list] if idx_list else np.array([])
+                    if vals.size < 2:
+                        return np.array([]), np.array([])
+                    # reshape as pairs
+                    reshaped = vals.reshape(-1, 2)
+                    return reshaped[:, 0], reshaped[:, 1]
+
+                xL_all, xR_all = _extract_pairs(pos_idx)
+                vL_all, vR_all = _extract_pairs(vel_idx)
+
+                # Split initial and collocation samples
+                has_initial = xL_all.size >= (1 + K * C + 0)  # initial + K*C
+                if has_initial:
+                    xL0, xR0 = xL_all[0], xR_all[0]
+                    vL0, vR0 = vL_all[0], vR_all[0] if vL_all.size > 0 else (0.0, 0.0)
+                    xL_colloc = xL_all[1:]
+                    xR_colloc = xR_all[1:]
+                    vL_colloc = vL_all[1:] if vL_all.size > 1 else np.zeros_like(xL_colloc)
+                    vR_colloc = vR_all[1:] if vR_all.size > 1 else np.zeros_like(xR_colloc)
                 else:
-                    # Downstroke: position decreases
-                    progress = (theta_deg - 180 * upstroke_frac) / (180 * (1 - upstroke_frac))
-                    position[i] = cam_constraints.stroke * (1 + np.cos(np.pi * progress)) / 2.0
+                    # Best-effort: treat first as initial if present
+                    xL0 = xL_all[0] if xL_all.size > 0 else 0.0
+                    xR0 = xR_all[0] if xR_all.size > 0 else 0.0
+                    vL0 = vL_all[0] if vL_all.size > 0 else 0.0
+                    vR0 = vR_all[0] if vR_all.size > 0 else 0.0
+                    xL_colloc = xL_all
+                    xR_colloc = xR_all
+                    vL_colloc = vL_all
+                    vR_colloc = vR_all
 
-            # Compute velocity and acceleration from position
-            dt = cycle_time / n_points
-            velocity = np.gradient(position, dt)
-            acceleration = np.gradient(velocity, dt)
+                # Assemble time grid aligned with initial + collocation sequence
+                t_list: list[float] = [0.0]
+                for k in range(K):
+                    for c in range(C):
+                        t_list.append((k + float(nodes[c])) * dt_elem)
+                t = np.asarray(t_list, dtype=float)[: 1 + K * C]
 
-            # Store in solution dict
-            solution_dict = {
-                "cam_angle": cam_angle,
-                "position": position,
-                "velocity": velocity,
-                "acceleration": acceleration,
-            }
+                # Assemble follower motion (average of opposed pistons), convert to mm
+                x_follow_m = np.concatenate([[0.5 * (xL0 + xR0)], 0.5 * (xL_colloc + xR_colloc)])
+                v_follow_mps = np.concatenate([[0.5 * (vL0 + vR0)], 0.5 * (vL_colloc + vR_colloc)])
+                # Ensure strictly increasing time for gradient stability
+                t_eps = np.maximum(np.gradient(t), 1e-9)
+                a_follow_mps2 = np.gradient(v_follow_mps, t, edge_order=2) if t.size >= 3 else np.zeros_like(v_follow_mps)
+
+                position_mm = x_follow_m * 1000.0
+                velocity_mm_per_s = v_follow_mps * 1000.0
+                acceleration_mm_per_s2 = a_follow_mps2 * 1000.0
+
+                # Cylinder pressure from densities and temperatures at collocation (ideal gas)
+                R_gas = 287.0
+                # Initial + collocation for rho,T if available; else length-match to time with zeros
+                rho_vals = x_opt_vec[den_idx] if den_idx else np.array([])
+                T_vals = x_opt_vec[tmp_idx] if tmp_idx else np.array([])
+                # Expect 1 + K*C values each
+                if rho_vals.size >= 1 and T_vals.size >= 1:
+                    rho_series = np.asarray(rho_vals, dtype=float)[: 1 + K * C]
+                    T_series = np.asarray(T_vals, dtype=float)[: 1 + K * C]
+                    pressure_pa = rho_series * R_gas * T_series
+                else:
+                    pressure_pa = np.zeros_like(t)
+
+                # Pseudo crank-angle from combustion-driven time
+                theta_rad = 2.0 * np.pi * (t / max(T_cycle, 1e-9))
+                theta_deg = np.degrees(theta_rad)
+
+                # Build mappings for pressure
+                p_vs_t = {"t_s": t.tolist(), "p_pa": pressure_pa.tolist()}
+                p_vs_x = {"x_mm": position_mm.tolist(), "p_pa": pressure_pa.tolist()}
+                p_vs_theta = {"theta_deg": theta_deg.tolist(), "p_pa": pressure_pa.tolist()}
+
+                # Backward-compatibility: provide uniform-theta resample for GUI
+                theta_uniform = np.linspace(0.0, 2.0 * np.pi, n_points, endpoint=False)
+                # Wrap theta for interpolation monotonicity
+                theta_src = (theta_rad % (2.0 * np.pi))
+                order = np.argsort(theta_src)
+                theta_src_sorted = theta_src[order]
+                pos_sorted = position_mm[order]
+                vel_sorted = velocity_mm_per_s[order]
+                acc_sorted = acceleration_mm_per_s2[order]
+                # Interpolate periodic signals
+                def periodic_interp(src, y, dst):
+                    src_ext = np.concatenate([src, src + 2.0 * np.pi])
+                    y_ext = np.concatenate([y, y])
+                    return np.interp(dst, src_ext, y_ext)
+                position_u = periodic_interp(theta_src_sorted, pos_sorted, theta_uniform)
+                velocity_u = periodic_interp(theta_src_sorted, vel_sorted, theta_uniform)
+                acceleration_u = periodic_interp(theta_src_sorted, acc_sorted, theta_uniform)
+
+                solution_dict = {
+                    # Authoritative combustion-driven time series
+                    "time_s": t,
+                    "theta_rad": theta_rad,
+                    "theta_deg": theta_deg,
+                    "position_mm": position_mm,
+                    "velocity_mm_per_s": velocity_mm_per_s,
+                    "acceleration_mm_per_s2": acceleration_mm_per_s2,
+                    "pressure_pa": pressure_pa,
+                    # Back-compat fields expected by downstream code (uniform theta grid)
+                    "cam_angle": theta_uniform,
+                    "position": position_u,
+                    "velocity": velocity_u,
+                    "acceleration": acceleration_u,
+                }
 
             # Extract CA markers from combustion model if available
             combustion_meta = meta_nlp.get("combustion_model", {})
@@ -666,7 +766,10 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                     alpha_fuel_to_base=float(self._bounce_alpha),
                     beta_base=float(self._bounce_beta),
                 )
-                v_mm_per_theta = np.gradient(position, cam_angle)
+                # Derive v vs theta on the uniform grid we exposed
+                cam_angle = solution_dict["cam_angle"]
+                position_u = solution_dict["position"]
+                v_mm_per_theta = np.gradient(position_u, cam_angle)
                 cycle_time_ref = float(self._last_cycle_time or cycle_time)
                 combustion_inputs = None
                 afr_last = self._last_combustion_inputs.get("afr")
@@ -730,7 +833,7 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                         
                         eval_out_case = adapter.evaluate(
                             cam_angle,
-                            position,
+                            position_u,
                             v_mm_per_theta,
                             float(fm),
                             float(c),
@@ -865,6 +968,11 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                 "free_piston_optimization": True,
                 "combustion_model": "integrated",
                 "ca_markers": ca_markers,
+                "pressure": {
+                    "vs_time": p_vs_t,
+                    "vs_position": p_vs_x,
+                    "vs_theta": p_vs_theta,
+                },
                 "grid_info": {
                     "K": K,
                     "C": C,

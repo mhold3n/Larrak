@@ -41,6 +41,42 @@ class LitvinSynthesis:
     def __init__(self) -> None:
         self._curvature = CurvatureComponent(parameters={})
 
+    @staticmethod
+    def _sanitize_R_psi(
+        *,
+        theta: np.ndarray,
+        r_profile: np.ndarray,
+        R_psi: np.ndarray,
+    ) -> tuple[np.ndarray, bool]:
+        """
+        Ensure synthesized radii stay aligned with the supplied polar profile.
+
+        Returns the (possibly adjusted) radius array and a flag indicating whether
+        a fallback was applied.
+        """
+        expected = np.asarray(r_profile, dtype=float)
+        actual = np.array(R_psi, copy=True, dtype=float)
+        if expected.shape != actual.shape:
+            return actual, False
+        
+        magnitude = np.maximum(np.abs(expected), 1e-6)
+        discrepancy = np.abs(actual - expected)
+        discrepancy = np.where(np.isfinite(discrepancy), discrepancy, magnitude)
+        max_disc = float(np.max(discrepancy)) if discrepancy.size else 0.0
+        # Allow deviations up to 5% of the peak magnitude (min 0.5 mm) before clamping.
+        tolerance = float(max(0.5, 0.05 * float(np.max(magnitude))))
+        if max_disc > tolerance:
+            idx = int(np.argmax(discrepancy))
+            theta_deg = float(np.degrees(theta[int(np.clip(idx, 0, len(theta) - 1))])) if len(theta) else 0.0
+            log.warning(
+                "Litvin R_psi deviates from polar pitch by %.6f mm at θ=%.2f°. "
+                "Clamping to supplied polar radius for this solve.",
+                max_disc,
+                theta_deg,
+            )
+            return expected.copy(), True
+        return actual, False
+
     def synthesize_from_cam_profile(
         self,
         *,
@@ -162,11 +198,13 @@ class LitvinSynthesis:
             assume_sorted=True,
         )
         R_psi = np.maximum(R_interp(psi), min_radius)
+        R_psi, clamped = self._sanitize_R_psi(theta=theta, r_profile=r_profile, R_psi=R_psi)
 
         # Metadata
         metadata = {
             "method": "litvin",
             "normalized_ratio": float(target_ratio),
+            "fallback_clamped": bool(clamped),
         }
 
         return LitvinSynthesisResult(
@@ -207,13 +245,28 @@ class LitvinGearGeometry:
         psi: np.ndarray,
         R_psi: np.ndarray,
         target_average_radius: float,
+        R_ring_profile: np.ndarray | None = None,
         module: float = 1.0,
         min_teeth: int = 8,
         max_pressure_angle_deg: float = 35.0,
     ) -> LitvinGearGeometry:
-        # Base circle selection: approximate from average curvature and target radius
+        # Interpret R_psi as the planet radial slot trajectory. The ring profile can be
+        # supplied explicitly; otherwise fall back to the GUI target average radius.
         r_cam_avg = float(np.mean(r_profile))
-        r_ring_avg = float(np.mean(R_psi))
+        if R_ring_profile is not None:
+            ring_radii = np.asarray(R_ring_profile, dtype=float)
+            if ring_radii.shape != R_psi.shape:
+                raise ValueError("R_ring_profile must match the shape of R_psi/psi")
+        else:
+            ring_radii = np.full_like(
+                R_psi,
+                float(target_average_radius),
+                dtype=float,
+            )
+        ring_radii = np.maximum(ring_radii, 1e-6)
+        r_ring_avg = float(np.mean(ring_radii))
+        if not np.isfinite(r_ring_avg) or r_ring_avg <= 0.0:
+            r_ring_avg = float(max(target_average_radius, 1e-6))
 
         # Choose base circles below pitch to avoid undercut; scale by cos(phi)
         # Start with nominal 20° pressure angle assumption
@@ -243,21 +296,21 @@ class LitvinGearGeometry:
         # Pressure angle estimation along path: tan(phi) ~ (R(psi) - base_ring) / base_ring slope proxy
         # Use geometry relation: cos(phi) = base/pitch; approximate phi from local pitch radii
         with np.errstate(invalid="ignore", divide="ignore"):
-            cos_phi_local = np.clip(base_ring / np.maximum(R_psi, 1e-9), 0.0, 1.0)
+            cos_phi_local = np.clip(base_ring / np.maximum(ring_radii, 1e-9), 0.0, 1.0)
             phi_local = np.arccos(cos_phi_local)
 
         # Path of contact: integrate along angle span where phi within bounds
         phi_bound = np.radians(max_pressure_angle_deg)
         valid = np.isfinite(phi_local) & (phi_local <= phi_bound)
         # Approximate path length on ring pitch: s ≈ ∫ R(ψ) dψ over valid region
-        s_path = float(np.trapz(R_psi[valid], psi[valid])) if np.any(valid) else 0.0
+        s_path = float(np.trapz(ring_radii[valid], psi[valid])) if np.any(valid) else 0.0
 
         # Contact ratio: approximate as path length over circular pitch (p = 2πr / z)
         circular_pitch = (2.0 * np.pi * r_ring_avg) / max(z_ring, 1)
         contact_ratio = s_path / max(circular_pitch, 1e-9)
 
         # Interference check: flag if local phi exceeds bound or base above local pitch
-        interference = bool(np.any(~valid) or (base_ring > np.min(R_psi)))
+        interference = bool(np.any(~valid) or (base_ring > np.min(ring_radii)))
 
         # Generate simple manufacturing-ready flank curves
         # Approximate addendum/dedendum radii and fillet as arcs

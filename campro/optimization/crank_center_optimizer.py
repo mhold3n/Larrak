@@ -1137,7 +1137,14 @@ class CrankCenterOptimizer(BaseOptimizer):
         unified_fn = create_unified_physics()
 
         # Prepare inputs for CasADi evaluation
-        theta_vec = motion_law_data["crank_angle"]
+        # Defensive check for crank_angle key with fallback to theta
+        theta_vec = motion_law_data.get("crank_angle")
+        if theta_vec is None:
+            theta_vec = motion_law_data.get("theta")
+            if theta_vec is None:
+                raise ValueError(
+                    "motion_law_data must contain either 'crank_angle' or 'theta' key for CasADi validation"
+                )
         pressure_vec = load_profile
 
         # Convert to CasADi format (assuming fixed size for now)

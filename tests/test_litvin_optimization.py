@@ -8,10 +8,12 @@ from campro.litvin.config import (
     OptimizationOrder,
     PlanetSynthesisConfig,
 )
+from campro.litvin.kinematics import PlanetKinematics
 from campro.litvin.metrics import evaluate_order0_metrics
 from campro.litvin.motion import RadialSlotMotion
 from campro.litvin.optimization import OptimResult, optimize_geometry
 from campro.litvin.planetary_synthesis import synthesize_planet_from_motion
+from campro.physics.geometry.litvin import LitvinSynthesis
 
 
 def zero_motion(theta: float) -> float:
@@ -155,6 +157,28 @@ def test_evaluate_order0_metrics():
     assert isinstance(metrics.phi_edge_fraction, float)
     assert isinstance(metrics.samples, int)
     assert isinstance(metrics.feasible, bool)
+
+
+def test_litvin_polar_pitch_alignment():
+    """The Litvin output should match the sampled polar pitch curve within tolerance."""
+    motion = RadialSlotMotion(
+        center_offset_fn=lambda th: 2.0 * np.sin(th),
+        planet_angle_fn=identity_double,
+    )
+    base_radius = 30.0
+    theta_rad = np.linspace(0.0, 2.0 * np.pi, 360, endpoint=False)
+    kin = PlanetKinematics(R0=base_radius, motion=motion)
+    polar_radius = np.asarray([kin.center_distance(float(t)) for t in theta_rad])
+
+    litvin = LitvinSynthesis()
+    result = litvin.synthesize_from_cam_profile(
+        theta=theta_rad,
+        r_profile=polar_radius,
+        target_ratio=1.0,
+    )
+
+    max_error = float(np.max(np.abs(result.R_psi - polar_radius)))
+    assert max_error < 1e-6
 
 
 def test_cam_ring_optimizer_integration():

@@ -144,20 +144,14 @@ def create_optimization_settings(
 ) -> UnifiedOptimizationSettings:
     """Create optimization settings matching GUI configuration."""
 
-    # Map method string to enum
+    # Map method string to enum (non-collocation modes were removed; they were legacy no-ops)
     method_map = {
         "legendre_collocation": OptimizationMethod.LEGENDRE_COLLOCATION,
         "radau_collocation": OptimizationMethod.RADAU_COLLOCATION,
         "hermite_collocation": OptimizationMethod.HERMITE_COLLOCATION,
-        "slsqp": OptimizationMethod.SLSQP,
-        "l_bfgs_b": OptimizationMethod.L_BFGS_B,
-        "tnc": OptimizationMethod.TNC,
-        "cobyla": OptimizationMethod.COBYLA,
     }
 
-    optimization_method = method_map.get(
-        method, OptimizationMethod.LEGENDRE_COLLOCATION,
-    )
+    optimization_method = method_map.get(method, OptimizationMethod.LEGENDRE_COLLOCATION)
 
     settings = UnifiedOptimizationSettings(
         use_thermal_efficiency=use_thermal_efficiency,
@@ -239,8 +233,15 @@ def run_optimization(
         pi_meta = md.get("pressure_invariance") if isinstance(md, dict) else None
         if pi_meta:
             print("Phase 1 (Pressure Invariance):")
-            print(f"  - Loss_p_mean: {pi_meta.get('loss_p_mean', 0.0):.3e}")
-            print(f"  - iMEP_avg: {pi_meta.get('imep_avg', 0.0):.2f} kPa")
+            # Handle None values before formatting
+            loss_p_mean = pi_meta.get('loss_p_mean')
+            if loss_p_mean is None:
+                loss_p_mean = 0.0
+            imep_avg = pi_meta.get('imep_avg')
+            if imep_avg is None:
+                imep_avg = 0.0
+            print(f"  - Loss_p_mean: {loss_p_mean:.3e}")
+            print(f"  - iMEP_avg: {imep_avg:.2f} kPa")
             print(f"  - Fuel sweep: {pi_meta.get('fuel_sweep')}")
             print(f"  - Load sweep: {pi_meta.get('load_sweep')}")
             print()
@@ -252,7 +253,11 @@ def run_optimization(
                 print(f"  - {phase.title()} Phase:")
                 print(f"    Status: {info.get('status', 'Unknown')}")
                 print(f"    Iterations: {info.get('iterations', 'Unknown')}")
-                print(f"    Solve Time: {info.get('solve_time', 0):.3f}s")
+                # Handle None values before formatting
+                solve_time = info.get('solve_time')
+                if solve_time is None:
+                    solve_time = 0.0
+                print(f"    Solve Time: {solve_time:.3f}s")
             print()
 
         # Show IPOPT analysis status
@@ -287,7 +292,11 @@ def show_detailed_analysis(result: Any):
         if "iterations" in p1_analysis.stats:
             print(f"  Iterations: {p1_analysis.stats['iterations']}")
         if "solve_time" in p1_analysis.stats:
-            print(f"  Solve Time: {p1_analysis.stats['solve_time']:.3f}s")
+            # Handle None values before formatting
+            solve_time = p1_analysis.stats['solve_time']
+            if solve_time is None:
+                solve_time = 0.0
+            print(f"  Solve Time: {solve_time:.3f}s")
     else:
         print("  Analysis: Not available (thermal efficiency adapter)")
 
@@ -301,7 +310,11 @@ def show_detailed_analysis(result: Any):
         if "iterations" in p2_analysis.stats:
             print(f"  Iterations: {p2_analysis.stats['iterations']}")
         if "solve_time" in p2_analysis.stats:
-            print(f"  Solve Time: {p2_analysis.stats['solve_time']:.3f}s")
+            # Handle None values before formatting
+            solve_time = p2_analysis.stats['solve_time']
+            if solve_time is None:
+                solve_time = 0.0
+            print(f"  Solve Time: {solve_time:.3f}s")
     else:
         print("  Analysis: Not available")
 
@@ -315,7 +328,11 @@ def show_detailed_analysis(result: Any):
         if "iterations" in p3_analysis.stats:
             print(f"  Iterations: {p3_analysis.stats['iterations']}")
         if "solve_time" in p3_analysis.stats:
-            print(f"  Solve Time: {p3_analysis.stats['solve_time']:.3f}s")
+            # Handle None values before formatting
+            solve_time = p3_analysis.stats['solve_time']
+            if solve_time is None:
+                solve_time = 0.0
+            print(f"  Solve Time: {solve_time:.3f}s")
     else:
         print("  Analysis: Not available")
 
@@ -399,10 +416,6 @@ Examples:
             "legendre_collocation",
             "radau_collocation",
             "hermite_collocation",
-            "slsqp",
-            "l_bfgs_b",
-            "tnc",
-            "cobyla",
         ],
         help="Optimization method (default: legendre_collocation)",
     )
@@ -410,12 +423,6 @@ Examples:
         "--no-thermal-efficiency",
         action="store_true",
         help="Disable thermal efficiency optimization",
-    )
-    # Pressure invariance options (always-on; switch is deprecated)
-    parser.add_argument(
-        "--use-pressure-invariance",
-        action="store_true",
-        help="DEPRECATED (no-op): invariance is always on; will error next minor",
     )
     parser.add_argument(
         "--fuel-sweep",
@@ -529,9 +536,6 @@ Examples:
         verbose=not args.quiet,
     )
 
-    # Apply invariance settings (always-on). If deprecated switch used, warn loudly.
-    if args.use_pressure_invariance:
-        print("WARNING: --use-pressure-invariance is deprecated and now a no-op; invariance is always on. This flag will become an error in the next minor release.")
     # Parse sweeps
     try:
         settings.fuel_sweep = [float(x) for x in args.fuel_sweep.split(",") if x]

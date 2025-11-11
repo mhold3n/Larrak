@@ -30,19 +30,50 @@ _MA57_SUPPORT_CACHE: Dict[str, bool] = {}
 
 
 def _supports_ma57(hsl_path: str) -> bool:
-    """Return True if the provided HSL library exposes MA57 symbols."""
+    """Return True if the provided HSL library exposes MA57 symbols and works at runtime.
+    
+    Performs both symbol existence check and runtime verification by attempting
+    to create and use an Ipopt solver with MA57.
+    """
     cached = _MA57_SUPPORT_CACHE.get(hsl_path)
     if cached is not None:
         return cached
     try:
         import ctypes
 
+        # First check: symbol existence
         lib = ctypes.CDLL(hsl_path)
         for symbol in ("ma57ad_", "ma57cd_", "ma57id_"):
             getattr(lib, symbol)
-        _MA57_SUPPORT_CACHE[hsl_path] = True
-        return True
-    except (OSError, AttributeError):
+        
+        # Second check: runtime verification via CasADi/Ipopt
+        try:
+            import casadi as ca
+            x = ca.SX.sym("x")
+            nlp = {"x": x, "f": x * x}
+            # Try to create solver with MA57
+            solver = ca.nlpsol(
+                "_ma57_runtime_test",
+                "ipopt",
+                nlp,
+                {
+                    "ipopt.linear_solver": "ma57",
+                    "ipopt.hsllib": hsl_path,
+                    "ipopt.print_level": 0,
+                    "ipopt.sb": "yes",
+                },
+            )
+            # Try to solve a simple problem
+            result = solver(x0=0.0, lbx=-10.0, ubx=10.0)
+            # If we get here without exception, MA57 works
+            _MA57_SUPPORT_CACHE[hsl_path] = True
+            return True
+        except Exception as runtime_exc:
+            log.debug(f"MA57 runtime verification failed for {hsl_path}: {runtime_exc}")
+            _MA57_SUPPORT_CACHE[hsl_path] = False
+            return False
+    except (OSError, AttributeError) as symbol_exc:
+        log.debug(f"MA57 symbol check failed for {hsl_path}: {symbol_exc}")
         _MA57_SUPPORT_CACHE[hsl_path] = False
         return False
 
