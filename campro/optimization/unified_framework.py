@@ -18,6 +18,10 @@ import numpy as np
 from campro.diagnostics.feasibility import check_feasibility
 from campro.diagnostics.scaling import compute_scaling_vector
 from campro.logging import get_logger
+from campro.optimization.casadi_unified_flow import (
+    CasADiOptimizationSettings,
+    CasADiUnifiedFlow,
+)
 from campro.optimization.ma57_migration_analyzer import MA57MigrationAnalyzer
 from campro.optimization.parameter_tuning import DynamicParameterTuner
 from campro.optimization.solver_analysis import MA57ReadinessReport
@@ -46,28 +50,16 @@ log = get_logger(__name__)
 
 
 class OptimizationMethod(Enum):
-    """Available optimization methods for all optimization layers."""
+    """Available optimization methods for all optimization layers.
 
-    # Collocation methods
+    All optimization phases (1, 2, 3) use CasADi/IPOPT solution methods.
+    Only collocation methods are supported.
+    """
+
+    # Collocation methods (used by CasADi/IPOPT)
     LEGENDRE_COLLOCATION = "legendre_collocation"
     RADAU_COLLOCATION = "radau_collocation"
     HERMITE_COLLOCATION = "hermite_collocation"
-
-    # Direct optimization methods
-    SLSQP = "slsqp"
-    L_BFGS_B = "l_bfgs_b"
-    TNC = "tnc"
-    COBYLA = "cobyla"
-
-    # Global optimization methods
-    DIFFERENTIAL_EVOLUTION = "differential_evolution"
-    BASIN_HOPPING = "basin_hopping"
-    DUAL_ANNEALING = "dual_annealing"
-
-    # Advanced methods
-    LAGRANGIAN = "lagrangian"
-    PENALTY_METHOD = "penalty_method"
-    AUGMENTED_LAGRANGIAN = "augmented_lagrangian"
 
 
 class OptimizationLayer(Enum):
@@ -88,14 +80,30 @@ class UnifiedOptimizationSettings:
     # Collocation settings (when using collocation methods)
     collocation_degree: int = 3
     collocation_tolerance: float = 1e-6
-    # Universal grid size (GUI-controlled). Used to unify sampling across stages.
+    # Legacy/Universal-grid controls (predate CasADi ladder system):
+    # Universal grid size (GUI-controlled). Used for downstream comparisons and invariant checks.
+    # NOTE: This does NOT influence the CasADi ladder's segment counts. The ladder uses
+    # casadi_coarse_segments and casadi_resolution_ladder for its adaptive refinement.
     universal_n_points: int = 360
+    # CasADi primary optimization toggle/settings
+    use_casadi: bool = False
+    casadi_poly_order: int = 3
+    casadi_collocation_method: str = "legendre"
+    casadi_coarse_segments: tuple[int, ...] = (40, 80, 160)
+    casadi_resolution_ladder: tuple[int, ...] | None = None
+    casadi_target_angle_deg: float = 0.1
+    casadi_max_segments: int = 4096
+    casadi_retry_failed_level: bool = True
     # Primary phase discretization parameters (for experimentation and debugging)
     primary_min_segments: int = 10  # Minimum number of collocation segments K
     primary_refinement_factor: int = 4  # K ≈ n_points / refinement_factor
-    # Mapper method (linear, pchip, barycentric, projection)
+    # Legacy/Universal-grid controls (predate CasADi ladder system):
+    # Mapper method controls how solutions are resampled onto the universal grid for
+    # invariant checks. This mapping existed long before the CasADi flow.
+    # Options: linear, pchip, barycentric, projection
     mapper_method: str = "linear"
-    # Grid diagnostics and plots
+    # Grid diagnostics and plots: optional instrumentation that runs after mapping
+    # regardless of which optimizer produced the solution. Helpful when validating the new ladder.
     enable_grid_diagnostics: bool = False
     enable_grid_plots: bool = False
     # GridSpec metadata for stages
@@ -106,24 +114,12 @@ class UnifiedOptimizationSettings:
     # allow granular per-stage method selection (primary/secondary/tertiary) and per-stage degrees.
     collocation_method: str = "legendre"
 
-    # Direct optimization settings
+    # General optimization settings (used by constraint objects)
     max_iterations: int = 100
     tolerance: float = 1e-6
-    step_size: float = 1e-4
-
-    # Global optimization settings
-    population_size: int = 50
-    max_generations: int = 1000
-    mutation_rate: float = 0.7
-    crossover_rate: float = 0.3
-
-    # Lagrangian settings
-    lagrangian_tolerance: float = 1e-8
-    penalty_weight: float = 1.0
-    augmented_lagrangian_iterations: int = 10
 
     # General settings
-    parallel_processing: bool = False
+    parallel_processing: bool = True
     verbose: bool = True
     save_intermediate_results: bool = True
 
@@ -161,6 +157,11 @@ class UnifiedOptimizationSettings:
     # TE guardrail (Stage B) parameters
     pressure_guard_epsilon: float = 1e-3
     pressure_guard_lambda: float = 1e4
+
+    # PR template parameters (geometry-informed pressure ratio template)
+    pr_template_expansion_efficiency: float = 0.85  # Target expansion efficiency (0-1)
+    pr_template_peak_scale: float = 1.5  # Peak PR scaling factor relative to baseline
+    pr_template_use_template: bool = True  # Use explicit template instead of seed-derived PR
 
     # Secondary collocation tracking weight (golden profile influence). The GUI can expose this as a
     # user-tunable numeric field to adjust how strongly secondary tracks the golden motion profile.
@@ -255,11 +256,22 @@ class UnifiedOptimizationTargets:
 
 @dataclass
 class UnifiedOptimizationData:
-    """Unified data structure for all optimization layers."""
+    """Unified data structure for all optimization layers.
+    
+    Motion-law inputs are per-degree or unitless:
+    - stroke: in mm (or m)
+    - duration_angle_deg: required, in degrees
+    - upstroke_duration_percent: percentage of cycle
+    - Optional actuator limits: in mm/degⁿ (velocity, acceleration, jerk)
+    - engine_speed_rpm: optional, used to derive cycle_time
+    - cycle_time: derived from engine_speed_rpm and duration_angle_deg, not primary input
+    """
 
     # Input data
     stroke: float = 20.0
-    cycle_time: float = 1.0
+    cycle_time: float = 1.0  # Cycle time in seconds (derived from engine_speed_rpm and duration_angle_deg)
+    engine_speed_rpm: float | None = None  # Engine speed in RPM (optional, used to derive cycle_time)
+    duration_angle_deg: float = 360.0  # Required: motion law duration in degrees
     upstroke_duration_percent: float = 60.0
     zero_accel_duration_percent: float = 0.0
     motion_type: str = "minimum_jerk"
@@ -272,6 +284,8 @@ class UnifiedOptimizationData:
     ca50_weight: float = 0.0
     ca_duration_target_deg: float = 0.0
     ca_duration_weight: float = 0.0
+    injector_delay_s: float | None = None  # Injector delay [s]
+    injector_delay_deg: float | None = None  # Injector delay [deg]
 
     # Primary results
     primary_theta: np.ndarray | None = None
@@ -283,6 +297,7 @@ class UnifiedOptimizationData:
     primary_constant_load_value: float | None = None
     primary_constant_temperature_K: float | None = None
     primary_ca_markers: dict[str, float] | None = None
+    primary_pressure_invariance: dict[str, Any] | None = None
 
     # Secondary results
     secondary_base_radius: float | None = None
@@ -596,18 +611,8 @@ class UnifiedOptimizationFramework:
             main_logger.step(1, 3, "Phase 1/3: Primary Optimization (Motion Law)")
             primary_start = time.time()
 
-            # Get warm-start initial guess if using CasADi optimizer
+            # CasADi unified flow now handles its own deterministic seed/polish
             initial_guess = None
-            if hasattr(self.primary_optimizer, "warmstart_mgr"):
-                warmstart_start = time.time()
-                initial_guess = self.primary_optimizer.warmstart_mgr.get_initial_guess(
-                    input_data,
-                )
-                if initial_guess:
-                    main_logger.info("Using warm-start initial guess for primary optimization")
-                else:
-                    main_logger.info("No suitable warm-start found, using default initial guess")
-                main_logger.step_complete("Warm-start initialization", time.time() - warmstart_start)
 
             primary_result = self._optimize_primary(initial_guess=initial_guess)
             
@@ -623,24 +628,6 @@ class UnifiedOptimizationFramework:
             update_start = time.time()
             self._update_data_from_primary(primary_result)
             main_logger.step_complete("Data update from primary", time.time() - update_start)
-
-            # Store solution for future warm-starts if using CasADi optimizer
-            if (
-                hasattr(self.primary_optimizer, "warmstart_mgr")
-                and is_successful
-                and hasattr(primary_result, "variables")
-            ):
-                self.primary_optimizer.warmstart_mgr.store_solution(
-                    input_data,
-                    primary_result.variables,
-                    {
-                        "solve_time": primary_result.solve_time,
-                        "objective_value": primary_result.objective_value,
-                        "n_segments": getattr(self.primary_optimizer, "n_segments", 50),
-                        "timestamp": time.time(),
-                    },
-                )
-                main_logger.info("Solution stored for future warm-starts")
 
             # Clear completion summary for Phase 1
             phase1_elapsed = time.time() - primary_start
@@ -822,6 +809,32 @@ class UnifiedOptimizationFramework:
         """Update data structure from input parameters."""
         self.data.stroke = input_data.get("stroke", 20.0)
         self.data.cycle_time = input_data.get("cycle_time", 1.0)
+        self.data.duration_angle_deg = input_data.get(
+            "duration_angle_deg",
+            getattr(self.data, "duration_angle_deg", 360.0),
+        )
+        
+        # Phase 6: Compute implied RPM from cycle_time and duration_angle_deg if engine_speed_rpm not provided
+        if self.data.engine_speed_rpm is None or self.data.engine_speed_rpm <= 0:
+            if self.data.cycle_time > 0 and self.data.duration_angle_deg > 0:
+                # rpm = 60 * duration_angle_deg / (360 * cycle_time)
+                implied_rpm = 60.0 * self.data.duration_angle_deg / (360.0 * self.data.cycle_time)
+                self.data.engine_speed_rpm = implied_rpm
+                log.info(
+                    f"Computed implied engine speed: {implied_rpm:.1f} RPM "
+                    f"(from cycle_time={self.data.cycle_time:.3f} s, "
+                    f"duration_angle_deg={self.data.duration_angle_deg:.1f} deg)"
+                )
+        else:
+            # Phase 6: If engine_speed_rpm is provided, derive cycle_time from it
+            if self.data.duration_angle_deg > 0:
+                derived_cycle_time = (self.data.duration_angle_deg / 360.0) * (60.0 / self.data.engine_speed_rpm)
+                self.data.cycle_time = derived_cycle_time
+                log.info(
+                    f"Derived cycle_time from engine_speed_rpm: {derived_cycle_time:.6f} s "
+                    f"(from rpm={self.data.engine_speed_rpm:.1f}, "
+                    f"duration_angle_deg={self.data.duration_angle_deg:.1f} deg)"
+                )
         self.data.upstroke_duration_percent = input_data.get(
             "upstroke_duration_percent", 60.0,
         )
@@ -857,6 +870,13 @@ class UnifiedOptimizationFramework:
                 ignition_deg,
                 self.data.cycle_time,
             )
+        # Injector delay
+        injector_delay_deg = input_data.get("injector_delay_deg")
+        if injector_delay_deg is not None:
+            self.data.injector_delay_deg = float(injector_delay_deg)
+            # Also convert to seconds for consistency
+            omega_avg = 360.0 / max(self.data.cycle_time, 1e-9)
+            self.data.injector_delay_s = float(injector_delay_deg) / omega_avg
         # Optional overrides for constant load and temperature from UI/input
         if "constant_load_value" in input_data:
             try:
@@ -898,9 +918,10 @@ class UnifiedOptimizationFramework:
         from campro.constraints.cam import CamMotionConstraints
 
         # Get constraint values from unified constraints
-        max_velocity = self.constraints.max_velocity or 100.0
-        max_acceleration = self.constraints.max_acceleration or 1000.0
-        max_jerk = self.constraints.max_jerk or 10000.0
+        # Pass None if not provided (unbounded) - don't use defaults
+        max_velocity = self.constraints.max_velocity
+        max_acceleration = self.constraints.max_acceleration
+        max_jerk = self.constraints.max_jerk
 
         primary_logger.step(1, None, "Creating motion constraints")
         constraint_start = time.time()
@@ -934,6 +955,22 @@ class UnifiedOptimizationFramework:
 
         # Get motion type from data
         motion_type = self.data.motion_type
+
+        # Optional CasADi Phase 1 flow
+        if getattr(self.settings, "use_casadi", False):
+            casadi_result = self._run_casadi_primary(
+                cam_constraints=cam_constraints,
+                max_velocity=max_velocity,
+                max_acceleration=max_acceleration,
+                max_jerk=max_jerk,
+                primary_logger=primary_logger,
+            )
+            if casadi_result is not None:
+                return casadi_result
+
+            primary_logger.warning(
+                "CasADi primary flow failed or returned no result; falling back to FreePiston adapter",
+            )
 
         # Always-on Stage A: pressure-invariance robust objective, with optional Stage B TE refine
         try:
@@ -979,6 +1016,11 @@ class UnifiedOptimizationFramework:
                 n_points=int(self.settings.universal_n_points),
                 afr=getattr(self.data, "afr", None),
                 ignition_timing=getattr(self.data, "ignition_timing", None),
+                fuel_mass=getattr(self.data, "fuel_mass", None),
+                ca50_target_deg=getattr(self.data, "ca50_target_deg", None),
+                ca50_weight=getattr(self.data, "ca50_weight", None),
+                duration_target_deg=getattr(self.data, "ca_duration_target_deg", None),
+                duration_weight=getattr(self.data, "ca_duration_weight", None),
             )
             
             seed_elapsed = time.time() - seed_start
@@ -1015,52 +1057,558 @@ class UnifiedOptimizationFramework:
             # Nominal fuel=1.0, mid load
             mid_idx__ = max(0, (len(self.settings.load_sweep) - 1) // 2)
             c_mid__ = float(self.settings.load_sweep[mid_idx__])
-            out0__ = adapter.evaluate(
-                theta_seed, x_seed, v_seed, 1.0, c_mid__, geom, thermo,
+
+            base_afr__ = getattr(self.data, "afr", None)
+            base_fuel_mass__ = getattr(self.data, "fuel_mass", None)
+            ignition_time_s__ = getattr(self.data, "ignition_timing", None)
+            ignition_theta_deg__ = getattr(self.data, "ignition_deg", None)
+            base_temp__ = getattr(self.settings, "constant_temperature_K", None)
+            if base_temp__ is None:
+                base_temp__ = getattr(self.data, "primary_constant_temperature_K", None)
+            if base_temp__ is None:
+                base_temp__ = 900.0
+
+            def build_combustion_inputs(
+                fuel_scale: float | None,
+                *,
+                fuel_mass_override: float | None = None,
+                ignition_deg_override: float | None = None,
+                afr_override: float | None = None,
+                air_mass_override: float | None = None,
+                injector_delay_deg_override: float | None = None,
+                injector_delay_s_override: float | None = None,
+            ) -> dict[str, float] | None:
+                if base_afr__ is None and fuel_mass_override is None:
+                    return None
+                fuel_mass_val: float | None = None
+                reference_mass = fuel_mass_override if fuel_mass_override is not None else base_fuel_mass__
+                if reference_mass is None:
+                    fallback_mass = getattr(self.data, "fuel_mass", None)
+                    if fallback_mass is not None:
+                        reference_mass = fallback_mass
+                if reference_mass is not None:
+                    fuel_mass_val = float(reference_mass)
+                    if fuel_scale is not None:
+                        fuel_mass_val = max(fuel_mass_val * float(fuel_scale), 1e-9)
+                # Use override AFR if provided, otherwise compute from air_mass_override if available
+                afr_val = afr_override
+                if afr_val is None:
+                    if air_mass_override is not None and fuel_mass_val is not None and fuel_mass_val > 0.0:
+                        # Compute AFR from air and fuel masses
+                        afr_val = float(air_mass_override) / float(fuel_mass_val)
+                    else:
+                        afr_val = float(base_afr__ if base_afr__ is not None else self.data.afr)
+                
+                payload: dict[str, float] = {
+                    "afr": float(afr_val),
+                    "cycle_time_s": float(self.data.cycle_time),
+                    "initial_temperature_K": float(base_temp__),
+                    "initial_pressure_Pa": float(thermo.p_atm_kpa) * 1e3,
+                }
+                if fuel_mass_val is not None:
+                    payload["fuel_mass"] = fuel_mass_val
+                if ignition_time_s__ is not None:
+                    payload["ignition_time_s"] = float(ignition_time_s__)
+                ignition_deg_val = ignition_deg_override if ignition_deg_override is not None else ignition_theta_deg__
+                if ignition_deg_val is not None:
+                    payload["ignition_theta_deg"] = float(ignition_deg_val)
+                # Add injector delay if provided
+                if injector_delay_s_override is not None:
+                    payload["injector_delay_s"] = float(injector_delay_s_override)
+                elif injector_delay_deg_override is not None:
+                    payload["injector_delay_deg"] = float(injector_delay_deg_override)
+                else:
+                    if hasattr(self.data, "injector_delay_s") and self.data.injector_delay_s is not None:
+                        payload["injector_delay_s"] = float(self.data.injector_delay_s)
+                    if hasattr(self.data, "injector_delay_deg") and self.data.injector_delay_deg is not None:
+                        payload["injector_delay_deg"] = float(self.data.injector_delay_deg)
+                return payload
+
+            area_m2__ = float(geom.area_mm2) * 1e-6
+            try:
+                constant_load__ = float(getattr(self.settings, "constant_load_value", 0.0))
+            except Exception:
+                constant_load__ = 0.0
+            stroke_m__ = max(float(self.data.stroke) / 1000.0, 1e-6)
+            workload_target_j__ = getattr(self.settings, "workload_target", None)
+            if workload_target_j__ is None:
+                workload_target_j__ = constant_load__ * stroke_m__
+            else:
+                workload_target_j__ = float(workload_target_j__)
+
+            p_load_kpa__ = 0.0
+            if workload_target_j__ and area_m2__ > 0.0:
+                p_load_pa = workload_target_j__ / max(area_m2__ * stroke_m__, 1e-12)
+                p_load_kpa__ = p_load_pa / 1000.0
+            p_cc_kpa__ = float(getattr(self.settings, "crankcase_pressure_kpa", 0.0))
+            p_env_kpa__ = float(thermo.p_atm_kpa)
+
+            current_fuel_mass__ = base_fuel_mass__
+            current_ignition_deg__ = ignition_theta_deg__
+            current_afr__ = base_afr__
+            # Initialize air mass from AFR and fuel mass
+            current_air_mass__ = None
+            if current_fuel_mass__ is not None and current_afr__ is not None:
+                current_air_mass__ = float(current_fuel_mass__) * float(current_afr__)
+            # Get fuel type for stoichiometric AFR (default: diesel)
+            fuel_type_default = getattr(self.settings, "fuel_type", "diesel")
+            stoich_afr = 14.5 if fuel_type_default.lower() == "diesel" else 14.7
+            tune_iters__ = int(max(0, getattr(self.settings, "combustion_tune_iterations", 3)))
+            work_tol__ = float(getattr(self.settings, "workload_tolerance_j", 5.0))
+            ca50_target__ = getattr(self.data, "ca50_target_deg", None)
+            ca50_tol__ = float(getattr(self.settings, "ca50_tolerance_deg", 1.0))
+            ca10_target__ = getattr(self.data, "ca10_target_deg", None)
+            ca10_tol__ = float(getattr(self.settings, "ca10_tolerance_deg", 2.0))
+            ca90_target__ = getattr(self.data, "ca90_target_deg", None)
+            ca90_tol__ = float(getattr(self.settings, "ca90_tolerance_deg", 2.0))
+            work_gain__ = float(getattr(self.settings, "combustion_tune_fuel_gain", 0.3))
+            ca_gain__ = float(getattr(self.settings, "combustion_tune_ignition_gain", 0.2))
+            afr_gain__ = float(getattr(self.settings, "combustion_tune_afr_gain", 0.15))
+            air_gain__ = float(getattr(self.settings, "combustion_tune_air_gain", 0.3))
+            injector_delay_gain__ = float(getattr(self.settings, "combustion_tune_injector_delay_gain", 0.1))
+            omega_avg = 360.0 / max(self.data.cycle_time, 1e-9)
+            current_injector_delay_deg__ = getattr(self.data, "injector_delay_deg", None)
+            if current_injector_delay_deg__ is None and hasattr(self.data, "injector_delay_s") and self.data.injector_delay_s is not None:
+                current_injector_delay_deg__ = float(self.data.injector_delay_s) * omega_avg
+
+            for _tune in range(tune_iters__):
+                injector_delay_s_override__ = None
+                if current_injector_delay_deg__ is not None:
+                    injector_delay_s_override__ = float(current_injector_delay_deg__) / omega_avg
+                comb_inputs_tune__ = build_combustion_inputs(
+                    1.0,
+                    fuel_mass_override=current_fuel_mass__,
+                    ignition_deg_override=current_ignition_deg__,
+                    afr_override=current_afr__,
+                    air_mass_override=current_air_mass__,
+                    injector_delay_deg_override=current_injector_delay_deg__,
+                    injector_delay_s_override=injector_delay_s_override__,
+                )
+                if comb_inputs_tune__ is None:
+                    break
+                out_tune__ = adapter.evaluate(
+                    theta_seed,
+                    x_seed,
+                    v_seed,
+                    1.0,
+                    c_mid__,
+                    geom,
+                    thermo,
+                    combustion=comb_inputs_tune__,
+                    cycle_time_s=self.data.cycle_time,
+                )
+                cycle_work_tune__ = float(out_tune__.get("cycle_work_j", 0.0))
+                work_error__ = cycle_work_tune__ - float(workload_target_j__ or 0.0)
+                ca50_error__ = 0.0
+                ca10_error__ = 0.0
+                ca90_error__ = 0.0
+                ca_markers_tune__ = out_tune__.get("ca_markers") or {}
+                if ca50_target__ is not None and ca_markers_tune__.get("CA50") is not None:
+                    ca50_error__ = float(ca_markers_tune__["CA50"]) - float(ca50_target__)
+                if ca10_target__ is not None and ca_markers_tune__.get("CA10") is not None:
+                    ca10_error__ = float(ca_markers_tune__["CA10"]) - float(ca10_target__)
+                if ca90_target__ is not None and ca_markers_tune__.get("CA90") is not None:
+                    ca90_error__ = float(ca_markers_tune__["CA90"]) - float(ca90_target__)
+                # Check convergence: all targets must be satisfied
+                converged = abs(work_error__) <= work_tol__
+                if ca50_target__ is not None:
+                    converged = converged and abs(ca50_error__) <= ca50_tol__
+                if ca10_target__ is not None:
+                    converged = converged and abs(ca10_error__) <= ca10_tol__
+                if ca90_target__ is not None:
+                    converged = converged and abs(ca90_error__) <= ca90_tol__
+                if converged:
+                    break
+                
+                # Co-tune fuel, air, AFR, and ignition based on work and CA50 errors
+                denom_work__ = max(abs(float(workload_target_j__ or 0.0)), 1.0)
+                
+                # Strategy: If work is too low and CA50 is acceptable, increase both air and fuel proportionally
+                # If work is too low and fuel is at minimum, enrich mixture (decrease AFR)
+                # If CA50 is too early, retard ignition; if too late, advance ignition
+                
+                if abs(ca50_error__) <= ca50_tol__ or ca50_target__ is None:
+                    # CA50 is acceptable, focus on work error
+                    if work_error__ > 0.0:
+                        # Work too high: reduce fuel and air proportionally (maintain AFR)
+                        adjust_factor__ = 1.0 - work_gain__ * (work_error__ / denom_work__)
+                        adjust_factor__ = float(np.clip(adjust_factor__, 0.5, 1.5))
+                        if current_fuel_mass__ is not None:
+                            current_fuel_mass__ = max(current_fuel_mass__ * adjust_factor__, 1e-9)
+                        if current_air_mass__ is not None:
+                            current_air_mass__ = max(current_air_mass__ * adjust_factor__, 1e-9)
+                    elif work_error__ < 0.0:
+                        # Work too low: increase both air and fuel proportionally (maintain AFR)
+                        adjust_factor__ = 1.0 + air_gain__ * (abs(work_error__) / denom_work__)
+                        adjust_factor__ = float(np.clip(adjust_factor__, 1.0, 1.5))
+                        if current_fuel_mass__ is not None:
+                            current_fuel_mass__ = max(current_fuel_mass__ * adjust_factor__, 1e-9)
+                        if current_air_mass__ is not None:
+                            current_air_mass__ = max(current_air_mass__ * adjust_factor__, 1e-9)
+                        # If fuel is already at a safe minimum and work is still low, enrich mixture
+                        if current_fuel_mass__ is not None and current_fuel_mass__ <= 1e-6 and current_afr__ is not None:
+                            # Decrease AFR (enrich) to extract more work
+                            afr_adjust = 1.0 - afr_gain__ * (abs(work_error__) / denom_work__)
+                            afr_adjust = float(np.clip(afr_adjust, 0.8, 1.0))
+                            current_afr__ = max(current_afr__ * afr_adjust, stoich_afr * 0.7)  # Don't go too rich
+                            # Recompute air mass to maintain fuel mass
+                            if current_air_mass__ is not None and current_fuel_mass__ is not None:
+                                current_air_mass__ = float(current_fuel_mass__) * float(current_afr__)
+                else:
+                    # CA50/CA10/CA90 errors are significant, adjust ignition timing and injector delay
+                    # Primary adjustment: ignition timing affects CA50
+                    if ca50_error__ > 0.0:
+                        # CA50 too late: advance ignition (more negative degrees)
+                        current_ignition_deg__ = float(current_ignition_deg__ or ignition_theta_deg__ or -5.0) - ca_gain__ * ca50_error__
+                    elif ca50_error__ < 0.0:
+                        # CA50 too early: retard ignition (less negative/more positive degrees)
+                        current_ignition_deg__ = float(current_ignition_deg__ or ignition_theta_deg__ or -5.0) - ca_gain__ * ca50_error__
+                    
+                    # Secondary adjustment: injector delay affects CA10/CA90 spread
+                    # If CA10 is too early or CA90 is too late, adjust injector delay
+                    if ca10_target__ is not None and abs(ca10_error__) > ca10_tol__:
+                        if ca10_error__ > 0.0:
+                            # CA10 too late: inject earlier (positive delay)
+                            if current_injector_delay_deg__ is None:
+                                current_injector_delay_deg__ = 0.0
+                            current_injector_delay_deg__ += injector_delay_gain__ * ca10_error__
+                        elif ca10_error__ < 0.0:
+                            # CA10 too early: inject later (negative delay)
+                            if current_injector_delay_deg__ is None:
+                                current_injector_delay_deg__ = 0.0
+                            current_injector_delay_deg__ += injector_delay_gain__ * ca10_error__
+                    
+                    if ca90_target__ is not None and abs(ca90_error__) > ca90_tol__:
+                        # CA90 too late: inject earlier; CA90 too early: inject later
+                        if current_injector_delay_deg__ is None:
+                            current_injector_delay_deg__ = 0.0
+                        current_injector_delay_deg__ += injector_delay_gain__ * ca90_error__ * 0.5  # Half weight for CA90
+                    
+                    # Also adjust fuel/air if work error is significant
+                    if abs(work_error__) > work_tol__:
+                        if work_error__ > 0.0:
+                            adjust_factor__ = 1.0 - work_gain__ * (work_error__ / denom_work__)
+                            adjust_factor__ = float(np.clip(adjust_factor__, 0.5, 1.5))
+                            if current_fuel_mass__ is not None:
+                                current_fuel_mass__ = max(current_fuel_mass__ * adjust_factor__, 1e-9)
+                            if current_air_mass__ is not None:
+                                current_air_mass__ = max(current_air_mass__ * adjust_factor__, 1e-9)
+                        elif work_error__ < 0.0:
+                            adjust_factor__ = 1.0 + air_gain__ * (abs(work_error__) / denom_work__)
+                            adjust_factor__ = float(np.clip(adjust_factor__, 1.0, 1.5))
+                            if current_fuel_mass__ is not None:
+                                current_fuel_mass__ = max(current_fuel_mass__ * adjust_factor__, 1e-9)
+                            if current_air_mass__ is not None:
+                                current_air_mass__ = max(current_air_mass__ * adjust_factor__, 1e-9)
+
+            if current_fuel_mass__ is not None:
+                base_fuel_mass__ = current_fuel_mass__
+                try:
+                    self.data.fuel_mass = float(current_fuel_mass__)
+                except Exception:
+                    pass
+            if current_afr__ is not None:
+                base_afr__ = current_afr__
+                try:
+                    self.data.afr = float(current_afr__)
+                except Exception:
+                    pass
+            if current_air_mass__ is not None:
+                try:
+                    if not hasattr(self.data, 'air_mass'):
+                        self.data.air_mass = None
+                    self.data.air_mass = float(current_air_mass__)
+                except Exception:
+                    pass
+            if current_ignition_deg__ is not None:
+                ignition_theta_deg__ = float(current_ignition_deg__)
+                try:
+                    self.data.ignition_deg = float(ignition_theta_deg__)
+                    self.data.ignition_timing = float(self.data.cycle_time) * (float(ignition_theta_deg__) / 360.0)
+                except Exception:
+                    pass
+            if current_injector_delay_deg__ is not None:
+                try:
+                    self.data.injector_delay_deg = float(current_injector_delay_deg__)
+                    # Also update injector_delay_s for consistency
+                    omega_avg = 360.0 / max(self.data.cycle_time, 1e-9)
+                    self.data.injector_delay_s = float(current_injector_delay_deg__) / omega_avg
+                except Exception:
+                    pass
+
+            combustion_mid__ = build_combustion_inputs(
+                1.0,
+                fuel_mass_override=current_fuel_mass__,
+                ignition_deg_override=ignition_theta_deg__,
+                afr_override=current_afr__,
+                air_mass_override=current_air_mass__,
+                injector_delay_deg_override=current_injector_delay_deg__,
+                injector_delay_s_override=(
+                    float(current_injector_delay_deg__) / omega_avg if current_injector_delay_deg__ is not None else None
+                ),
             )
-            s_ref__ = out0__["slope"].astype(float)
+            out0__ = adapter.evaluate(
+                theta_seed,
+                x_seed,
+                v_seed,
+                1.0,
+                c_mid__,
+                geom,
+                thermo,
+                combustion=combustion_mid__,
+                cycle_time_s=self.data.cycle_time,
+            )
+
+            # Compute workload-aligned p_load for reference case
+            cycle_work_seed__ = float(out0__.get("cycle_work_j", 0.0))
+            p_load_kpa_ref__ = p_load_kpa__
+            if cycle_work_seed__ > 0.0 and area_m2__ > 0.0:
+                # Use actual cycle work to compute reference load pressure
+                p_load_pa_ref = cycle_work_seed__ / max(area_m2__ * stroke_m__, 1e-12)
+                p_load_kpa_ref__ = p_load_pa_ref / 1000.0
+            elif workload_target_j__ and area_m2__ > 0.0:
+                # Fallback to workload target if cycle work not available
+                p_load_pa_ref = workload_target_j__ / max(area_m2__ * stroke_m__, 1e-12)
+                p_load_kpa_ref__ = p_load_pa_ref / 1000.0
+            
+            # Compute PR reference: use geometry-informed template or seed-derived
+            use_template = getattr(self.settings, "pr_template_use_template", True)
+            
+            if use_template:
+                # Compute geometry-informed PR template
+                from campro.physics.pr_template import compute_pr_template
+                
+                # Calculate compression ratio from geometry
+                stroke_volume_mm3 = float(geom.area_mm2) * float(self.data.stroke)
+                clearance_volume_mm3 = float(geom.Vc_mm3)
+                v_max_mm3 = clearance_volume_mm3 + stroke_volume_mm3
+                v_min_mm3 = clearance_volume_mm3
+                compression_ratio = v_max_mm3 / max(v_min_mm3, 1e-9)
+                
+                # Compute bore from area
+                bore_mm = np.sqrt(float(geom.area_mm2) * 4.0 / np.pi)
+                
+                # Get template parameters from settings
+                expansion_efficiency_target = float(
+                    getattr(self.settings, "pr_template_expansion_efficiency", 0.85)
+                )
+                pr_peak_scale = float(getattr(self.settings, "pr_template_peak_scale", 1.5))
+                
+                # Generate PR template
+                pi_ref__ = compute_pr_template(
+                    theta=theta_seed,
+                    stroke_mm=float(self.data.stroke),
+                    bore_mm=bore_mm,
+                    clearance_volume_mm3=clearance_volume_mm3,
+                    compression_ratio=compression_ratio,
+                    p_load_kpa=p_load_kpa_ref__,
+                    p_cc_kpa=p_cc_kpa__,
+                    p_env_kpa=p_env_kpa__,
+                    expansion_efficiency_target=expansion_efficiency_target,
+                    pr_peak_scale=pr_peak_scale,
+                )
+                
+                # Store seed evaluation data for diagnostics/comparison
+                p_cyl_seed_raw__ = out0__.get("p_cyl")
+                if p_cyl_seed_raw__ is None:
+                    p_cyl_seed_raw__ = out0__.get("p_comb")
+                p_cyl_seed__ = np.asarray(p_cyl_seed_raw__, dtype=float)
+                p_bounce_seed__ = np.asarray(out0__.get("p_bounce"), dtype=float)
+            else:
+                # Fallback to seed-derived PR (legacy behavior)
+                p_cyl_seed_raw__ = out0__.get("p_cyl")
+                if p_cyl_seed_raw__ is None:
+                    p_cyl_seed_raw__ = out0__.get("p_comb")
+                p_cyl_seed__ = np.asarray(p_cyl_seed_raw__, dtype=float)
+                p_bounce_seed__ = np.asarray(out0__.get("p_bounce"), dtype=float)
+                denom_ref__ = p_load_kpa_ref__ + p_cc_kpa__ + p_env_kpa__ + p_bounce_seed__
+                pi_ref__ = p_cyl_seed__ / np.maximum(denom_ref__, 1e-6)
+            last_ca_markers__: dict[str, float] | None = out0__.get("ca_markers") or None
 
             fuel_sweep__ = [float(x) for x in (self.settings.fuel_sweep or [1.0])]
             load_sweep__ = [float(x) for x in (self.settings.load_sweep or [0.0])]
             wj__ = float(self.settings.jerk_weight)
             wp__ = float(self.settings.dpdt_weight)
             ww__ = float(self.settings.imep_weight)
+            wwk__ = float(getattr(self.settings, "workload_weight", 0.1))
 
-            def _loss_p__(theta: np.ndarray, x: np.ndarray) -> tuple[float, float]:
+            def _pressure_ratio(out: dict[str, Any], workload_override: float | None = None) -> np.ndarray:
+                """Compute pressure ratio with workload-aligned denominator.
+                
+                If workload_override is provided, compute p_load_kpa from it.
+                Otherwise, use the cycle_work_j from out to compute effective workload.
+                """
+                p_cyl_val = out.get("p_cyl")
+                if p_cyl_val is None:
+                    p_cyl_val = out.get("p_comb")
+                p_cyl_arr = np.asarray(p_cyl_val, dtype=float)
+                p_bounce_arr = np.asarray(out.get("p_bounce"), dtype=float)
+                
+                # Compute workload-aligned p_load_kpa for this case
+                p_load_kpa_case = p_load_kpa__
+                if workload_override is not None and workload_override > 0.0 and area_m2__ > 0.0:
+                    # Use provided workload override
+                    p_load_pa_case = workload_override / max(area_m2__ * stroke_m__, 1e-12)
+                    p_load_kpa_case = p_load_pa_case / 1000.0
+                else:
+                    # Compute from cycle work if available
+                    cycle_work_case = float(out.get("cycle_work_j", 0.0))
+                    if cycle_work_case > 0.0 and area_m2__ > 0.0:
+                        p_load_pa_case = cycle_work_case / max(area_m2__ * stroke_m__, 1e-12)
+                        p_load_kpa_case = p_load_pa_case / 1000.0
+                    elif workload_target_j__ and area_m2__ > 0.0:
+                        # Fallback to scaling workload_target by fuel multiplier if available
+                        fuel_mult = float(out.get("fuel_multiplier", 1.0))
+                        if fuel_mult > 0.0:
+                            effective_work = workload_target_j__ * fuel_mult
+                            p_load_pa_case = effective_work / max(area_m2__ * stroke_m__, 1e-12)
+                            p_load_kpa_case = p_load_pa_case / 1000.0
+                
+                denom_arr = p_load_kpa_case + p_cc_kpa__ + p_env_kpa__ + p_bounce_arr
+                return p_cyl_arr / np.maximum(denom_arr, 1e-6)
+
+            def _loss_p__(theta: np.ndarray, x: np.ndarray) -> tuple[float, float, dict[str, Any], dict[str, Any]]:
+                theta = np.asarray(theta, dtype=float)
+                x = np.asarray(x, dtype=float)
+                v_theta = np.gradient(x, theta)
                 loss = 0.0
                 imeps: list[float] = []
+                ratio_traces: list[np.ndarray] = []
+                ratio_cases: list[dict[str, float]] = []
+                work_cases: list[dict[str, float]] = []
+                base_work_j: float | None = None
                 for fm in fuel_sweep__:
                     for c in load_sweep__:
-                        # Resample input x to adapter grid if needed (use theta as given)
-                        out = adapter.evaluate(theta, x, np.gradient(x, theta), fm, c, geom, thermo)
-                        s = np.asarray(out["slope"], dtype=float)
-                        # Align slope to universal reference grid for comparisons
+                        combustion_payload = build_combustion_inputs(fm)
+                        out = adapter.evaluate(
+                            theta,
+                            x,
+                            v_theta,
+                            fm,
+                            c,
+                            geom,
+                            thermo,
+                            combustion=combustion_payload,
+                            cycle_time_s=self.data.cycle_time,
+                        )
+                        # Compute effective workload for this case (from cycle work or scaled target)
+                        cycle_work_case = float(out.get("cycle_work_j", 0.0))
+                        workload_override = None
+                        if cycle_work_case > 0.0:
+                            workload_override = cycle_work_case
+                        elif workload_target_j__:
+                            # Scale by fuel multiplier as proxy
+                            workload_override = workload_target_j__ * float(fm)
+                        pi = _pressure_ratio(out, workload_override=workload_override)
                         theta_u = theta_seed
-                        # Prefer conservative projection for slope/integral-based guardrails if requested
                         if self.settings.mapper_method == "projection":
                             w_src = GridMapper.trapz_weights(theta)
-                            s_u = GridMapper.l2_project(theta, s, theta_u, weights_from=w_src)
+                            pi_u = GridMapper.l2_project(theta, pi, theta_u, weights_from=w_src)
                         elif self.settings.mapper_method == "pchip":
-                            s_u = GridMapper.periodic_pchip_resample(theta, s, theta_u)
+                            pi_u = GridMapper.periodic_pchip_resample(theta, pi, theta_u)
                         elif self.settings.mapper_method == "barycentric":
-                            s_u = GridMapper.barycentric_resample(theta, s, theta_u)
+                            pi_u = GridMapper.barycentric_resample(theta, pi, theta_u)
                         else:
-                            s_u = GridMapper.periodic_linear_resample(theta, s, theta_u)
-                        s_al = SimpleCycleAdapter.phase_align(s_u, s_ref__)
+                            pi_u = GridMapper.periodic_linear_resample(theta, pi, theta_u)
+                        pi_al = SimpleCycleAdapter.phase_align(pi_u, pi_ref__)
                         w_u = GridMapper.trapz_weights(theta_u)
-                        loss += float(np.sum((s_al - s_ref__) ** 2 * w_u))
+                        loss += float(np.sum((pi_al - pi_ref__) ** 2 * w_u))
                         imeps.append(float(out["imep"]))
+                        ratio_traces.append(pi_al.astype(float))
+                        ca_markers_case = out.get("ca_markers") or {}
+                        # Capture gain table entry if adapter supports it
+                        applied_delta_p_base = adapter.alpha * float(fm) + adapter.beta
+                        if hasattr(adapter, '_update_gain_table') and combustion_payload is not None:
+                            afr = combustion_payload.get("afr")
+                            fuel_mass = combustion_payload.get("fuel_mass") or combustion_payload.get("fuel_mass_kg")
+                            if afr is not None and fuel_mass is not None:
+                                stoich_afr = 14.5  # Default for diesel
+                                phi = stoich_afr / float(afr)
+                                # Use current alpha/beta from adapter (may be scheduled)
+                                alpha_current, beta_current = adapter._get_scheduled_base_pressure(phi, float(fuel_mass))
+                                adapter._update_gain_table(phi, float(fuel_mass), alpha_current, beta_current)
+                                applied_delta_p_base = alpha_current * float(fm) + beta_current
+                        
+                        ratio_case = {
+                            "fuel_multiplier": float(fm),
+                            "load": float(c),
+                            "pi_mean": float(np.mean(pi_al)),
+                            "pi_peak": float(np.max(pi_al)),
+                            "pi_min": float(np.min(pi_al)),
+                            "applied_delta_p_base_kpa": float(applied_delta_p_base),
+                        }
+                        # Add CA markers if available
+                        if ca_markers_case:
+                            for key, value in ca_markers_case.items():
+                                if value is not None:
+                                    ratio_case[f"ca_{key.lower()}"] = float(value)
+                        ratio_cases.append(ratio_case)
+                        
+                        cycle_work_j = float(out.get("cycle_work_j", 0.0))
+                        work_case = {
+                            "fuel_multiplier": float(fm),
+                            "load": float(c),
+                            "cycle_work_j": cycle_work_j,
+                            "work_error_j": cycle_work_j - float(workload_target_j__ or 0.0),
+                        }
+                        # Add CA markers to work cases if available
+                        if ca_markers_case:
+                            for key, value in ca_markers_case.items():
+                                if value is not None:
+                                    work_case[f"ca_{key.lower()}"] = float(value)
+                        work_cases.append(work_case)
+                        if base_work_j is None and abs(float(fm) - 1.0) < 1e-6 and float(c) == float(c_mid__):
+                            base_work_j = cycle_work_j
                 K = max(1, len(fuel_sweep__) * len(load_sweep__))
-                return loss / K, (float(np.mean(imeps)) if imeps else 0.0)
+                if ratio_traces:
+                    merged_pi = np.concatenate(ratio_traces)
+                    ratio_stats = {
+                        "pi_mean": float(np.mean(merged_pi)),
+                        "pi_peak": float(np.max(merged_pi)),
+                        "pi_min": float(np.min(merged_pi)),
+                        "pi_std": float(np.std(merged_pi)),
+                        "pi_ref_mean": float(np.mean(pi_ref__)),
+                        "pi_ref_peak": float(np.max(pi_ref__)),
+                        "pi_ref_min": float(np.min(pi_ref__)),
+                        "pi_ref_std": float(np.std(pi_ref__)),
+                        "cases": ratio_cases,
+                    }
+                else:
+                    ratio_stats = {
+                        "pi_mean": 0.0,
+                        "pi_peak": 0.0,
+                        "pi_min": 0.0,
+                        "pi_std": 0.0,
+                        "pi_ref_mean": float(np.mean(pi_ref__)),
+                        "pi_ref_peak": float(np.max(pi_ref__)),
+                        "pi_ref_min": float(np.min(pi_ref__)),
+                        "pi_ref_std": float(np.std(pi_ref__)),
+                        "cases": ratio_cases,
+                    }
+                imep_avg = float(np.mean(imeps)) if imeps else 0.0
+                if work_cases:
+                    mean_work = float(np.mean([wc["cycle_work_j"] for wc in work_cases]))
+                else:
+                    mean_work = 0.0
+                work_stats = {
+                    "target_work_j": float(workload_target_j__ or 0.0),
+                    "cycle_work_mean_j": mean_work,
+                    "cycle_work_error_j": mean_work - float(workload_target_j__ or 0.0),
+                    "base_cycle_work_j": base_work_j,
+                    "cases": work_cases,
+                }
+                return loss / K, imep_avg, ratio_stats, work_stats
 
             def objective__(t: np.ndarray, x: np.ndarray, v: np.ndarray, a: np.ndarray, u: np.ndarray) -> float:
                 T = float(self.data.cycle_time)
                 theta = (2.0 * np.pi) * (np.asarray(t, dtype=float) / max(T, 1e-9))
                 theta[0] = 0.0
                 theta[-1] = 2.0 * np.pi
-                loss_p, imep_avg = _loss_p__(theta, x)
+                loss_p, imep_avg, _, work_stats = _loss_p__(theta, x)
                 jerk_term = float(np.trapz(u ** 2, t))
-                return wj__ * jerk_term + wp__ * loss_p - ww__ * imep_avg
+                work_error = float(work_stats.get("cycle_work_error_j", 0.0))
+                work_penalty = wwk__ * (work_error ** 2)
+                return wj__ * jerk_term + wp__ * loss_p - ww__ * imep_avg + work_penalty
 
             # Detect free-piston adapter and optimize EMA loop
             from campro.optimization.freepiston_phase1_adapter import FreePistonPhase1Adapter
@@ -1128,17 +1676,47 @@ class UnifiedOptimizationFramework:
                         v_arr__ = GridMapper.fft_derivative(ug_theta, x_u__)
                     except Exception:
                         v_arr__ = np.gradient(x_u__, ug_theta)
-                    out_nom__ = adapter.evaluate(ug_theta, x_u__, v_arr__, 1.0, c_mid__, geom, thermo)
-                    s_best__ = np.asarray(out_nom__["slope"], dtype=float)
+                    out_nom__ = adapter.evaluate(
+                        ug_theta,
+                        x_u__,
+                        v_arr__,
+                        1.0,
+                        c_mid__,
+                        geom,
+                        thermo,
+                        combustion=build_combustion_inputs(1.0),
+                        cycle_time_s=self.data.cycle_time,
+                    )
+                    # Use cycle work from evaluation for workload-aligned pressure ratio
+                    cycle_work_nom__ = float(out_nom__.get("cycle_work_j", 0.0))
+                    workload_override_nom__ = cycle_work_nom__ if cycle_work_nom__ > 0.0 else None
+                    pi_best__ = _pressure_ratio(out_nom__, workload_override=workload_override_nom__)
                     alpha__ = float(self.settings.ema_alpha)
-                    s_mix__ = (1.0 - alpha__) * s_ref__ + alpha__ * s_best__
-                    s_ref__ = (s_mix__ - np.mean(s_mix__))
-                    s_ref__ = s_ref__ / (np.sqrt(np.sum(s_ref__ * s_ref__)) + 1e-12)
+                    pi_ref__ = (1.0 - alpha__) * pi_ref__ + alpha__ * pi_best__
+                    if out_nom__.get("ca_markers"):
+                        last_ca_markers__ = out_nom__["ca_markers"]
             primary_logger.step_complete("EMA loop", time.time() - ema_start)
 
             # Stage A diagnostics (compute entirely on universal grid)
             diag_loss__ = 0.0
-            diag_imeps__: list[float] = []
+            diag_imep__ = 0.0
+            diag_ratio_stats__: dict[str, Any] = {
+                "pi_mean": 0.0,
+                "pi_peak": 0.0,
+                "pi_min": 0.0,
+                "pi_std": 0.0,
+                "pi_ref_mean": float(np.mean(pi_ref__)),
+                "pi_ref_peak": float(np.max(pi_ref__)),
+                "pi_ref_min": float(np.min(pi_ref__)),
+                "pi_ref_std": float(np.std(pi_ref__)),
+                "cases": [],
+            }
+            diag_work_stats__: dict[str, Any] = {
+                "target_work_j": float(workload_target_j__ or 0.0),
+                "cycle_work_mean_j": 0.0,
+                "cycle_work_error_j": -float(workload_target_j__ or 0.0),
+                "cases": [],
+            }
             if th__ is not None and x_arr__ is not None:
                 # Map state to universal grid
                 ug_th = self.data.universal_theta_rad if self.data.universal_theta_rad is not None else th__
@@ -1148,26 +1726,46 @@ class UnifiedOptimizationFramework:
                     x_u_diag__ = GridMapper.barycentric_resample(th__, x_arr__, ug_th)
                 else:
                     x_u_diag__ = GridMapper.periodic_linear_resample(th__, x_arr__, ug_th)
-                try:
-                    v_u_diag__ = GridMapper.fft_derivative(ug_th, x_u_diag__)
-                except Exception:
-                    v_u_diag__ = np.gradient(x_u_diag__, ug_th)
-                w_u_diag__ = GridMapper.trapz_weights(ug_th)
-                for fm in fuel_sweep__:
-                    for c in load_sweep__:
-                        out = adapter.evaluate(ug_th, x_u_diag__, v_u_diag__, fm, c, geom, thermo)
-                        s_u = np.asarray(out["slope"], dtype=float)
-                        s_al = SimpleCycleAdapter.phase_align(s_u, s_ref__)
-                        diag_loss__ += float(np.sum((s_al - s_ref__) ** 2 * w_u_diag__))
-                        diag_imeps__.append(float(out["imep"]))
-                K = max(1, len(fuel_sweep__) * len(load_sweep__))
-                diag_loss__ /= K
-            result_stage_a__.metadata["pressure_invariance"] = {
+                diag_loss__, diag_imep__, diag_ratio_stats__, diag_work_stats__ = _loss_p__(ug_th, x_u_diag__)
+            pressure_meta__ = {
                 "loss_p_mean": diag_loss__,
-                "imep_avg": float(np.mean(diag_imeps__)) if diag_imeps__ else 0.0,
+                "imep_avg": diag_imep__,
                 "fuel_sweep": fuel_sweep__,
                 "load_sweep": load_sweep__,
+                "pressure_ratio": diag_ratio_stats__,
+                "pressure_ratio_target_mean": float(np.mean(pi_ref__)),
+                "pi_reference": pi_ref__.tolist(),
+                "theta_deg": np.degrees(theta_seed).tolist(),
+                "denominator_base": {
+                    "p_load_kpa": p_load_kpa_ref__,  # Use workload-aligned reference
+                    "p_env_kpa": p_env_kpa__,
+                    "p_cc_kpa": p_cc_kpa__,
+                },
+                "workload": diag_work_stats__,
+                "work_target_j": float(workload_target_j__ or 0.0),
             }
+            result_stage_a__.metadata["pressure_invariance"] = pressure_meta__
+            if last_ca_markers__:
+                result_stage_a__.metadata["ca_markers"] = last_ca_markers__
+            try:
+                pi_summary__ = pressure_meta__["pressure_ratio"]
+                primary_logger.info(
+                    "Pressure invariance: pi_mean=%.4f, pi_peak=%.4f, imep_avg=%.2f kPa",
+                    float(pi_summary__.get("pi_mean", 0.0)),
+                    float(pi_summary__.get("pi_peak", 0.0)),
+                    float(diag_imep__),
+                )
+            except Exception:
+                pass
+
+            target_pi_mean__ = pressure_meta__["pressure_ratio"].get("pi_mean")
+            target_ca50__ = getattr(self.data, "ca50_target_deg", None)
+            ca50_weight__ = float(
+                getattr(self.data, "ca50_weight", 0.0)
+                or getattr(self.settings, "ca50_weight", 0.0)
+            )
+            pressure_ratio_weight__ = float(getattr(self.settings, "pressure_ratio_weight", 1.0))
+            workload_weight__ = float(getattr(self.settings, "workload_weight", 0.1))
 
             # Stage B: if TE enabled, refine with guardrail; else return Stage A
             if getattr(self.settings, "use_thermal_efficiency", False):
@@ -1185,11 +1783,54 @@ class UnifiedOptimizationFramework:
                         theta = (2.0 * np.pi) * (np.asarray(t, dtype=float) / max(T, 1e-9))
                         theta[0] = 0.0
                         theta[-1] = 2.0 * np.pi
-                        loss_p_val__, _ = _loss_p__(theta, x)
+                        loss_p_val__, _, ratio_stats_te__, work_stats_te__ = _loss_p__(theta, x)
                         viol__ = max(0.0, loss_p_val__ - eps__)
                         penalty__ = lam__ * (viol__ ** 2)
                         jerk_term__ = float(np.trapz(u ** 2, t)) * 1e-6
-                        return -te_score__ + penalty__ + jerk_term__
+                        v_theta__ = np.gradient(x, theta)
+                        eval_out__ = adapter.evaluate(
+                            theta,
+                            x,
+                            v_theta__,
+                            1.0,
+                            c_mid__,
+                            geom,
+                            thermo,
+                            combustion=build_combustion_inputs(1.0),
+                            cycle_time_s=self.data.cycle_time,
+                        )
+                        # Use cycle work from evaluation for workload-aligned pressure ratio
+                        cycle_work_eval_te__ = float(eval_out__.get("cycle_work_j", 0.0))
+                        workload_override_te__ = cycle_work_eval_te__ if cycle_work_eval_te__ > 0.0 else None
+                        pi_eval__ = _pressure_ratio(eval_out__, workload_override=workload_override_te__)
+                        ratio_penalty__ = pressure_ratio_weight__ * float(np.mean((pi_eval__ - pi_ref__) ** 2))
+                        ratio_target__ = (
+                            float(target_pi_mean__)
+                            if target_pi_mean__ is not None
+                            else float(np.mean(pi_ref__))
+                        )
+                        ratio_mean_penalty__ = workload_weight__ * (float(np.mean(pi_eval__)) - ratio_target__) ** 2
+                        ca_penalty__ = 0.0
+                        if target_ca50__ is not None and ca50_weight__ > 0.0:
+                            ca_markers_eval__ = eval_out__.get("ca_markers") or {}
+                            ca50_val__ = ca_markers_eval__.get("CA50")
+                            if ca50_val__ is not None:
+                                ca_penalty__ = ca50_weight__ * ((float(ca50_val__) - float(target_ca50__)) ** 2)
+                        cycle_work_eval__ = float(eval_out__.get("cycle_work_j", 0.0))
+                        work_error_eval__ = cycle_work_eval__ - float(workload_target_j__ or 0.0)
+                        work_alignment_penalty__ = workload_weight__ * (work_error_eval__ ** 2)
+                        work_error_trace__ = float(work_stats_te__.get("cycle_work_error_j", work_error_eval__))
+                        work_trace_penalty__ = workload_weight__ * (work_error_trace__ ** 2)
+                        return (
+                            -te_score__
+                            + penalty__
+                            + jerk_term__
+                            + ratio_penalty__
+                            + ratio_mean_penalty__
+                            + ca_penalty__
+                            + work_alignment_penalty__
+                            + work_trace_penalty__
+                        )
 
                     # Stage B can use Stage A result as initial guess
                     kwargs_b = {}
@@ -1210,6 +1851,11 @@ class UnifiedOptimizationFramework:
                     x_b__ = sol_b__.get("position")
                     guard_ok__ = None
                     loss_p_b__ = None
+                    ratio_stats_b__ = None
+                    stage_b_ratio_summary__ = None
+                    stage_b_ca_markers__ = None
+                    work_stats_b__ = None
+                    stage_b_work_summary__ = None
                     if t_b__ is not None and x_b__ is not None:
                         # Map Stage B result to universal grid for consistent guardrail checks
                         T = float(self.data.cycle_time)
@@ -1227,8 +1873,47 @@ class UnifiedOptimizationFramework:
                             x_b_u__ = GridMapper.l2_project(th_tmp__, x_b__, ug_theta, weights_from=w_src)
                         else:
                             x_b_u__ = GridMapper.periodic_linear_resample(th_tmp__, x_b__, ug_theta)
-                        loss_p_b__, _ = _loss_p__(ug_theta, x_b_u__)
+                        loss_p_b__, _, ratio_stats_b__, work_stats_b__ = _loss_p__(ug_theta, x_b_u__)
                         guard_ok__ = bool(loss_p_b__ <= eps__)
+                        try:
+                            v_b_u__ = GridMapper.fft_derivative(ug_theta, x_b_u__)
+                        except Exception:
+                            v_b_u__ = np.gradient(x_b_u__, ug_theta)
+                        eval_stage_b__ = adapter.evaluate(
+                            ug_theta,
+                            x_b_u__,
+                            v_b_u__,
+                            1.0,
+                            c_mid__,
+                            geom,
+                            thermo,
+                            combustion=build_combustion_inputs(1.0),
+                            cycle_time_s=self.data.cycle_time,
+                        )
+                        # Use cycle work from evaluation for workload-aligned pressure ratio
+                        cycle_work_stage_b__ = float(eval_stage_b__.get("cycle_work_j", 0.0))
+                        workload_override_stage_b__ = cycle_work_stage_b__ if cycle_work_stage_b__ > 0.0 else None
+                        pi_stage_b__ = _pressure_ratio(eval_stage_b__, workload_override=workload_override_stage_b__)
+                        cycle_work_eval__ = float(eval_stage_b__.get("cycle_work_j", 0.0))
+                        work_error_eval__ = cycle_work_eval__ - float(workload_target_j__ or 0.0)
+                        stage_b_work_summary__ = {
+                            "cycle_work_j": cycle_work_eval__,
+                            "work_error_j": work_error_eval__,
+                        }
+                        stage_b_ratio_summary__ = {
+                            "pi_mean": float(np.mean(pi_stage_b__)),
+                            "pi_peak": float(np.max(pi_stage_b__)),
+                            "pi_min": float(np.min(pi_stage_b__)),
+                            "pi_std": float(np.std(pi_stage_b__)),
+                        }
+                        ca_markers_stage_b__ = eval_stage_b__.get("ca_markers")
+                        if ca_markers_stage_b__:
+                            stage_b_ca_markers__ = ca_markers_stage_b__
+                    else:
+                        ratio_stats_b__ = {}
+                        work_stats_b__ = {}
+                        stage_b_work_summary__ = {}
+                        stage_b_work_summary__ = {}
 
                     result_stage_b__.metadata["pressure_invariance_stage_a"] = result_stage_a__.metadata.get(
                         "pressure_invariance", {}
@@ -1238,7 +1923,17 @@ class UnifiedOptimizationFramework:
                         "lambda": lam__,
                         "loss_p": loss_p_b__,
                         "satisfied": guard_ok__,
+                        "pressure_ratio": ratio_stats_b__,
+                        "stage_b_base_ratio": stage_b_ratio_summary__,
+                        "stage_b_work": stage_b_work_summary__,
+                        "pressure_ratio_target_mean": (
+                            float(target_pi_mean__) if target_pi_mean__ is not None else float(np.mean(pi_ref__))
+                        ),
+                        "work_target_j": float(workload_target_j__ or 0.0),
+                        "workload": work_stats_b__,
                     }
+                    if stage_b_ca_markers__:
+                        result_stage_b__.metadata["ca_markers"] = stage_b_ca_markers__
 
                     primary_logger.step(4, None, "Stage B: Thermal efficiency refinement")
                     primary_logger.info("Stage B completed successfully")
@@ -1259,12 +1954,12 @@ class UnifiedOptimizationFramework:
                 return result_stage_a__
 
         except Exception as exc:
-            primary_logger.error(f"Always-on invariance flow failed; falling back: {exc}")
-            log.error(f"Always-on invariance flow failed; falling back: {exc}")
+            primary_logger.error(f"Always-on invariance flow failed; aborting: {exc}")
+            log.error(f"Always-on invariance flow failed; aborting: {exc}")
             import traceback
             traceback.print_exc(file=sys.stderr)
             primary_logger.complete_phase(success=False)
-            # Fall through to legacy branches below as last resort
+            raise
 
         # If enabled, route primary optimization through thermal-efficiency adapter
         if getattr(self.settings, "use_thermal_efficiency", False):
@@ -1415,6 +2110,11 @@ class UnifiedOptimizationFramework:
                     cycle_time=self.data.cycle_time,
                     afr=getattr(self.data, "afr", None),
                     ignition_timing=getattr(self.data, "ignition_timing", None),
+                    fuel_mass=getattr(self.data, "fuel_mass", None),
+                    ca50_target_deg=getattr(self.data, "ca50_target_deg", None),
+                    ca50_weight=getattr(self.data, "ca50_weight", None),
+                    duration_target_deg=getattr(self.data, "ca_duration_target_deg", None),
+                    duration_weight=getattr(self.data, "ca_duration_weight", None),
                 )
                 base_sol = base_result.solution or {}
                 # Fall back to data if solution missing
@@ -1427,10 +2127,79 @@ class UnifiedOptimizationFramework:
                 # Nominal fuel=1.0, mid load
                 mid_idx = max(0, (len(self.settings.load_sweep) - 1) // 2)
                 c_mid = float(self.settings.load_sweep[mid_idx])
+
+                base_afr = getattr(self.data, "afr", None)
+                base_fuel_mass = getattr(self.data, "fuel_mass", None)
+                ignition_time_s = getattr(self.data, "ignition_timing", None)
+                ignition_theta_deg = getattr(self.data, "ignition_deg", None)
+                base_temp = getattr(self.settings, "constant_temperature_K", None)
+                if base_temp is None:
+                    base_temp = getattr(self.data, "primary_constant_temperature_K", None)
+                if base_temp is None:
+                    base_temp = 900.0
+
+                def build_combustion_inputs_local(fuel_scale: float | None) -> dict[str, float] | None:
+                    if base_afr is None or base_fuel_mass is None:
+                        return None
+                    fuel_mass_val = float(base_fuel_mass)
+                    if fuel_scale is not None:
+                        fuel_mass_val = max(fuel_mass_val * float(fuel_scale), 1e-9)
+                    payload: dict[str, float] = {
+                        "afr": float(base_afr),
+                        "fuel_mass": fuel_mass_val,
+                        "cycle_time_s": float(self.data.cycle_time),
+                        "initial_temperature_K": float(base_temp),
+                        "initial_pressure_Pa": float(thermo.p_atm_kpa) * 1e3,
+                    }
+                    if ignition_time_s is not None:
+                        payload["ignition_time_s"] = float(ignition_time_s)
+                    if ignition_theta_deg is not None:
+                        payload["ignition_theta_deg"] = float(ignition_theta_deg)
+                    # Add injector delay if provided
+                    if hasattr(self.data, "injector_delay_s") and self.data.injector_delay_s is not None:
+                        payload["injector_delay_s"] = float(self.data.injector_delay_s)
+                    if hasattr(self.data, "injector_delay_deg") and self.data.injector_delay_deg is not None:
+                        payload["injector_delay_deg"] = float(self.data.injector_delay_deg)
+                    return payload
+
+                area_m2 = float(geom.area_mm2) * 1e-6
+                try:
+                    constant_load = float(getattr(self.settings, "constant_load_value", 0.0))
+                except Exception:
+                    constant_load = 0.0
+                stroke_m = max(float(self.data.stroke) / 1000.0, 1e-6)
+                workload_target_j = getattr(self.settings, "workload_target", None)
+                if workload_target_j is None:
+                    workload_target_j = constant_load * stroke_m
+                else:
+                    workload_target_j = float(workload_target_j)
+                p_load_kpa = 0.0
+                if workload_target_j and area_m2 > 0.0:
+                    p_load_pa = workload_target_j / max(area_m2 * stroke_m, 1e-12)
+                    p_load_kpa = p_load_pa / 1000.0
+                p_cc_kpa = float(getattr(self.settings, "crankcase_pressure_kpa", 0.0))
+                p_env_kpa = float(thermo.p_atm_kpa)
+
+                combustion_mid = build_combustion_inputs_local(1.0)
                 out0 = adapter.evaluate(
-                    theta_seed, x_seed, v_seed, 1.0, c_mid, geom, thermo,
+                    theta_seed,
+                    x_seed,
+                    v_seed,
+                    1.0,
+                    c_mid,
+                    geom,
+                    thermo,
+                    combustion=combustion_mid,
+                    cycle_time_s=self.data.cycle_time,
                 )
-                s_ref = out0["slope"].astype(float)
+                p_cyl_seed = out0.get("p_cyl")
+                if p_cyl_seed is None:
+                    p_cyl_seed = out0.get("p_comb")
+                p_cyl_seed = np.asarray(p_cyl_seed, dtype=float)
+                p_bounce_seed = np.asarray(out0.get("p_bounce"), dtype=float)
+                denom_ref = p_load_kpa + p_env_kpa + p_bounce_seed
+                pi_ref = p_cyl_seed / np.maximum(denom_ref, 1e-6)
+                last_ca_markers_local: dict[str, float] | None = out0.get("ca_markers") or None
 
                 # Build objective closure
                 fuel_sweep = [float(x) for x in (self.settings.fuel_sweep or [1.0])]
@@ -1438,38 +2207,128 @@ class UnifiedOptimizationFramework:
                 wj = float(self.settings.jerk_weight)
                 wp = float(self.settings.dpdt_weight)
                 ww = float(self.settings.imep_weight)
+                wwk_local = float(getattr(self.settings, "workload_weight", 0.1))
+
+                def _pressure_ratio_local(out: dict[str, Any]) -> np.ndarray:
+                    p_cyl_val = out.get("p_cyl")
+                    if p_cyl_val is None:
+                        p_cyl_val = out.get("p_comb")
+                    p_cyl_arr = np.asarray(p_cyl_val, dtype=float)
+                    p_bounce_arr = np.asarray(out.get("p_bounce"), dtype=float)
+                    denom_arr = p_load_kpa + p_cc_kpa + p_env_kpa + p_bounce_arr
+                    return p_cyl_arr / np.maximum(denom_arr, 1e-6)
+
+                def _loss_p_local(theta: np.ndarray, x: np.ndarray) -> tuple[float, float, dict[str, Any], dict[str, Any]]:
+                    theta = np.asarray(theta, dtype=float)
+                    x = np.asarray(x, dtype=float)
+                    v_theta = np.gradient(x, theta)
+                    loss_val = 0.0
+                    imeps_local: list[float] = []
+                    ratio_traces_local: list[np.ndarray] = []
+                    ratio_case_local: list[dict[str, float]] = []
+                    work_cases_local: list[dict[str, float]] = []
+                    for fm in fuel_sweep:
+                        for c in load_sweep:
+                            out = adapter.evaluate(
+                                theta,
+                                x,
+                                v_theta,
+                                fm,
+                                c,
+                                geom,
+                                thermo,
+                                combustion=build_combustion_inputs_local(fm),
+                                cycle_time_s=self.data.cycle_time,
+                            )
+                            pi_val = _pressure_ratio_local(out)
+                            if self.settings.mapper_method == "projection":
+                                w_src = GridMapper.trapz_weights(theta)
+                                pi_u = GridMapper.l2_project(theta, pi_val, theta_seed, weights_from=w_src)
+                            elif self.settings.mapper_method == "pchip":
+                                pi_u = GridMapper.periodic_pchip_resample(theta, pi_val, theta_seed)
+                            elif self.settings.mapper_method == "barycentric":
+                                pi_u = GridMapper.barycentric_resample(theta, pi_val, theta_seed)
+                            else:
+                                pi_u = GridMapper.periodic_linear_resample(theta, pi_val, theta_seed)
+                            pi_aligned = SimpleCycleAdapter.phase_align(pi_u, pi_ref)
+                            w_u = GridMapper.trapz_weights(theta_seed)
+                            loss_val += float(np.sum((pi_aligned - pi_ref) ** 2 * w_u))
+                            imeps_local.append(float(out["imep"]))
+                            ratio_traces_local.append(pi_aligned.astype(float))
+                            ratio_case_local.append(
+                                {
+                                    "fuel_multiplier": float(fm),
+                                    "load": float(c),
+                                    "pi_mean": float(np.mean(pi_aligned)),
+                                    "pi_peak": float(np.max(pi_aligned)),
+                                    "pi_min": float(np.min(pi_aligned)),
+                                }
+                            )
+                            cycle_work_local = float(out.get("cycle_work_j", 0.0))
+                            work_cases_local.append(
+                                {
+                                    "fuel_multiplier": float(fm),
+                                    "load": float(c),
+                                    "cycle_work_j": cycle_work_local,
+                                    "work_error_j": cycle_work_local - float(workload_target_j or 0.0),
+                                }
+                            )
+                    K_local = max(1, len(fuel_sweep) * len(load_sweep))
+                    if ratio_traces_local:
+                        merged_local = np.concatenate(ratio_traces_local)
+                        ratio_stats_local = {
+                            "pi_mean": float(np.mean(merged_local)),
+                            "pi_peak": float(np.max(merged_local)),
+                            "pi_min": float(np.min(merged_local)),
+                            "pi_std": float(np.std(merged_local)),
+                            "pi_ref_mean": float(np.mean(pi_ref)),
+                            "pi_ref_peak": float(np.max(pi_ref)),
+                            "pi_ref_min": float(np.min(pi_ref)),
+                            "pi_ref_std": float(np.std(pi_ref)),
+                            "cases": ratio_case_local,
+                        }
+                    else:
+                        ratio_stats_local = {
+                            "pi_mean": 0.0,
+                            "pi_peak": 0.0,
+                            "pi_min": 0.0,
+                            "pi_std": 0.0,
+                            "pi_ref_mean": float(np.mean(pi_ref)),
+                            "pi_ref_peak": float(np.max(pi_ref)),
+                            "pi_ref_min": float(np.min(pi_ref)),
+                            "pi_ref_std": float(np.std(pi_ref)),
+                            "cases": ratio_case_local,
+                        }
+                    imep_avg_local = float(np.mean(imeps_local)) if imeps_local else 0.0
+                    if work_cases_local:
+                        work_mean_local = float(np.mean([wc["cycle_work_j"] for wc in work_cases_local]))
+                    else:
+                        work_mean_local = 0.0
+                    work_stats_local = {
+                        "target_work_j": float(workload_target_j or 0.0),
+                        "cycle_work_mean_j": work_mean_local,
+                        "cycle_work_error_j": work_mean_local - float(workload_target_j or 0.0),
+                        "cases": work_cases_local,
+                    }
+                    return loss_val / K_local, imep_avg_local, ratio_stats_local, work_stats_local
 
                 def objective(t: np.ndarray, x: np.ndarray, v: np.ndarray, a: np.ndarray, u: np.ndarray) -> float:
                     # Map time → phase angle θ ∈ [0, 2π]
                     T = float(self.data.cycle_time)
                     theta = (2.0 * np.pi) * (np.asarray(t, dtype=float) / max(T, 1e-9))
-                    # Ensure periodic domain alignment
                     theta[0] = 0.0
                     theta[-1] = 2.0 * np.pi
-
-                    loss_p = 0.0
-                    imeps = []
-                    for fm in fuel_sweep:
-                        for c in load_sweep:
-                            out = adapter.evaluate(theta, x, np.gradient(x, theta), fm, c, geom, thermo)
-                            s = np.asarray(out["slope"], dtype=float)
-                            s_al = SimpleCycleAdapter.phase_align(s, s_ref)
-                            dth = np.gradient(theta)
-                            loss_p += float(np.sum((s_al - s_ref) ** 2 * dth))
-                            imeps.append(float(out["imep"]))
-                    K = max(1, len(fuel_sweep) * len(load_sweep))
-                    loss_p /= K
-                    imep_avg = float(np.mean(imeps)) if imeps else 0.0
+                    loss_p_val, imep_avg_val, _, work_stats_local = _loss_p_local(theta, x)
                     jerk_term = float(np.trapz(u ** 2, t))
-                    return wj * jerk_term + wp * loss_p - ww * imep_avg
+                    work_error_local = float(work_stats_local.get("cycle_work_error_j", 0.0))
+                    work_penalty_local = wwk_local * (work_error_local ** 2)
+                    return wj * jerk_term + wp * loss_p_val - ww * imep_avg_val + work_penalty_local
 
                 # Outer EMA loop
                 for _iter in range(int(max(1, self.settings.outer_iterations))):
-                    # Pass initial_guess only on first iteration for warm-start
                     kwargs = {}
                     if _iter == 0 and initial_guess is not None:
                         kwargs["initial_guess"] = initial_guess
-                    # Solve with custom objective
                     result = self.primary_optimizer.solve_custom_objective(
                         objective_function=objective,
                         constraints=cam_constraints,
@@ -1478,7 +2337,6 @@ class UnifiedOptimizationFramework:
                         n_points=int(self.settings.universal_n_points),
                         **kwargs,
                     )
-                    # Update s_ref from solution at nominal (fuel=1.0, load=c_mid)
                     sol = result.solution or {}
                     t_arr = sol.get("time")
                     x_arr = sol.get("position")
@@ -1487,35 +2345,64 @@ class UnifiedOptimizationFramework:
                         th = (2.0 * np.pi) * (t_arr / max(float(self.data.cycle_time), 1e-9))
                     if th is not None and x_arr is not None:
                         v_arr = np.gradient(x_arr, th)
-                        out_nom = adapter.evaluate(th, x_arr, v_arr, 1.0, c_mid, geom, thermo)
-                        s_best = np.asarray(out_nom["slope"], dtype=float)
-                        # EMA update and renormalize
+                        out_nom = adapter.evaluate(
+                            th,
+                            x_arr,
+                            v_arr,
+                            1.0,
+                            c_mid,
+                            geom,
+                            thermo,
+                            combustion=build_combustion_inputs_local(1.0),
+                            cycle_time_s=self.data.cycle_time,
+                        )
+                        pi_best = _pressure_ratio_local(out_nom)
                         alpha = float(self.settings.ema_alpha)
-                        s_mix = (1.0 - alpha) * s_ref + alpha * s_best
-                        s_ref = (s_mix - np.mean(s_mix))
-                        s_ref = s_ref / (np.sqrt(np.sum(s_ref * s_ref)) + 1e-12)
+                        pi_ref = (1.0 - alpha) * pi_ref + alpha * pi_best
+                        if out_nom.get("ca_markers"):
+                            last_ca_markers_local = out_nom["ca_markers"]
 
                 # Compute diagnostics on final solution
                 diag_loss = 0.0
-                diag_imeps: list[float] = []
+                diag_imep = 0.0
+                diag_ratio_stats = {
+                    "pi_mean": 0.0,
+                    "pi_peak": 0.0,
+                    "pi_min": 0.0,
+                    "pi_std": 0.0,
+                    "pi_ref_mean": float(np.mean(pi_ref)),
+                    "pi_ref_peak": float(np.max(pi_ref)),
+                    "pi_ref_min": float(np.min(pi_ref)),
+                    "pi_ref_std": float(np.std(pi_ref)),
+                    "cases": [],
+                }
+                diag_work_stats = {
+                    "target_work_j": float(workload_target_j or 0.0),
+                    "cycle_work_mean_j": 0.0,
+                    "cycle_work_error_j": -float(workload_target_j or 0.0),
+                    "cases": [],
+                }
                 if th is not None and x_arr is not None:
-                    v_arr = np.gradient(x_arr, th)
-                    for fm in fuel_sweep:
-                        for c in load_sweep:
-                            out = adapter.evaluate(th, x_arr, v_arr, fm, c, geom, thermo)
-                            s = np.asarray(out["slope"], dtype=float)
-                            s_al = SimpleCycleAdapter.phase_align(s, s_ref)
-                            dth = np.gradient(th)
-                            diag_loss += float(np.sum((s_al - s_ref) ** 2 * dth))
-                            diag_imeps.append(float(out["imep"]))
-                    K = max(1, len(fuel_sweep) * len(load_sweep))
-                    diag_loss /= K
+                    diag_loss, diag_imep, diag_ratio_stats, diag_work_stats = _loss_p_local(th, x_arr)
                 result.metadata["pressure_invariance"] = {
                     "loss_p_mean": diag_loss,
-                    "imep_avg": float(np.mean(diag_imeps)) if diag_imeps else 0.0,
+                    "imep_avg": diag_imep,
                     "fuel_sweep": fuel_sweep,
                     "load_sweep": load_sweep,
+                    "pressure_ratio": diag_ratio_stats,
+                    "pressure_ratio_target_mean": float(np.mean(pi_ref)),
+                    "pi_reference": pi_ref.tolist(),
+                    "theta_deg": np.degrees(theta_seed).tolist(),
+                    "denominator_base": {
+                        "p_load_kpa": p_load_kpa,
+                        "p_env_kpa": p_env_kpa,
+                        "p_cc_kpa": p_cc_kpa,
+                    },
+                    "workload": diag_work_stats,
+                    "work_target_j": float(workload_target_j or 0.0),
                 }
+                if last_ca_markers_local:
+                    result.metadata["ca_markers"] = last_ca_markers_local
 
                 # Return last result
                 return result
@@ -1781,6 +2668,7 @@ class UnifiedOptimizationFramework:
 
         primary_data = {
             "theta": self.data.primary_theta,
+            "crank_angle": self.data.primary_theta,
             "displacement": self.data.primary_position,
             "velocity": self.data.primary_velocity,
             "acceleration": self.data.primary_acceleration,
@@ -1945,6 +2833,295 @@ class UnifiedOptimizationFramework:
 
         return result
 
+    def _run_casadi_primary(
+        self,
+        *,
+        cam_constraints: "CamMotionConstraints",
+        max_velocity: float | None,
+        max_acceleration: float | None,
+        max_jerk: float | None,
+        primary_logger: ProgressLogger,
+    ) -> OptimizationResult | None:
+        """Execute the CasADi Phase 1 flow when enabled."""
+        try:
+            primary_logger.step(2, None, "Running CasADi Phase 1 optimization")
+            casadi_settings = self._create_casadi_settings()
+            casadi_flow = CasADiUnifiedFlow(casadi_settings)
+
+            casadi_constraints = self._build_casadi_primary_constraints(
+                cam_constraints=cam_constraints,
+                max_velocity=max_velocity,
+                max_acceleration=max_acceleration,
+                max_jerk=max_jerk,
+            )
+            casadi_targets = self._build_casadi_primary_targets()
+
+            result = casadi_flow.optimize_phase1(casadi_constraints, casadi_targets)
+            if result.successful:
+                self._annotate_casadi_solution(
+                    result,
+                    cycle_time=casadi_constraints["cycle_time"],
+                    duration_angle_deg=casadi_constraints.get(
+                        "duration_angle_deg",
+                        getattr(self.data, "duration_angle_deg", 360.0),
+                    ),
+                )
+                result.metadata.setdefault("solver", "CasADiUnifiedFlow")
+                result.metadata["source"] = "casadi_phase1"
+                segments = result.metadata.get("finest_success_segments")
+                if segments:
+                    primary_logger.info(
+                        f"CasADi optimization succeeded (segments={segments})",
+                    )
+                else:
+                    primary_logger.info("CasADi optimization succeeded")
+                primary_logger.complete_phase(success=True)
+                return result
+
+            primary_logger.warning(
+                f"CasADi optimization failed: {result.error_message or result.status}",
+            )
+            return None
+
+        except Exception as exc:  # pragma: no cover - safety fallback
+            primary_logger.error(f"CasADi primary flow raised an exception: {exc}")
+            log.error("CasADi primary flow failed", exc_info=True)
+            return None
+
+    def _build_casadi_primary_constraints(
+        self,
+        *,
+        cam_constraints: "CamMotionConstraints",
+        max_velocity: float | None,
+        max_acceleration: float | None,
+        max_jerk: float | None,
+    ) -> dict[str, Any]:
+        """
+        Convert GUI constraint units to SI per-degree units for CasADi flow.
+        
+        Inputs are expected in per-degree units (mm/deg, mm/deg², mm/deg³) or None (unbounded).
+        Outputs are converted to SI per-degree units (m/deg, m/deg², m/deg³) or None.
+        
+        Parameters
+        ----------
+        cam_constraints : CamMotionConstraints
+            Cam motion constraints
+        max_velocity : float | None
+            Maximum velocity constraint in mm/deg, or None for unbounded
+        max_acceleration : float | None
+            Maximum acceleration constraint in mm/deg², or None for unbounded
+        max_jerk : float | None
+            Maximum jerk constraint in mm/deg³, or None for unbounded
+            
+        Returns
+        -------
+        dict[str, Any]
+            Constraints dictionary with all values in SI units:
+            - stroke: m
+            - max_velocity: m/deg
+            - max_acceleration: m/deg²
+            - max_jerk: m/deg³
+            
+        Raises
+        ------
+        ValueError
+            If duration_angle_deg is missing or invalid.
+        """
+        mm_to_m = 1e-3
+        cycle_time = max(1e-6, float(self.data.cycle_time))
+        stroke_m = max(1e-6, float(cam_constraints.stroke) * mm_to_m)
+
+        # Require duration_angle_deg - no fallback
+        duration_angle_deg = getattr(self.data, "duration_angle_deg", None)
+        if duration_angle_deg is None:
+                raise ValueError(
+                    "duration_angle_deg is required for Phase 1 per-degree optimization. "
+                "It must be set in data.duration_angle_deg. "
+                "No fallback is allowed to prevent unit mixing."
+                )
+        duration_angle_deg = float(duration_angle_deg)
+        if duration_angle_deg <= 0:
+            raise ValueError(
+                f"duration_angle_deg must be positive, got {duration_angle_deg}. "
+                "Phase 1 optimization requires angle-based units, not time-based."
+                )
+
+        def _to_si_per_deg(value: float | None) -> float | None:
+            """Convert per-degree constraint from mm to m (SI), or return None if value is None."""
+            if value is None:
+                return None
+            return max(1e-6, float(value) * mm_to_m)
+
+        # Compression ratio limits based on clearance geometry
+        # CR = V_max / V_min = (stroke + clearance) / clearance
+        # Default clearance: 2mm (0.002m) for typical engines
+        default_clearance_m = 0.002
+        max_cr_from_geometry = (stroke_m + default_clearance_m) / default_clearance_m
+        min_cr_default = max(10.0, max_cr_from_geometry * 0.3)  # At least 30% of max, minimum 10
+        max_cr_default = min(100.0, max_cr_from_geometry * 1.2)  # Up to 120% of max, cap at 100
+
+        compression_limits = getattr(
+            self.settings,
+            "casadi_compression_ratio_limits",
+            (min_cr_default, max_cr_default),
+        )
+
+        constraints_dict = {
+            "stroke": stroke_m,
+            "cycle_time": cycle_time,
+            "duration_angle_deg": duration_angle_deg,
+            "upstroke_percent": float(cam_constraints.upstroke_duration_percent),
+            # Convert per-degree constraints from mm to m (SI), or None if unbounded
+            "max_velocity": _to_si_per_deg(max_velocity),  # mm/deg → m/deg, or None
+            "max_acceleration": _to_si_per_deg(max_acceleration),  # mm/deg² → m/deg², or None
+            "max_jerk": _to_si_per_deg(max_jerk),  # mm/deg³ → m/deg³, or None
+            "compression_ratio_limits": tuple(compression_limits),
+        }
+        
+        # Pass universal grid info to CasADi flow for grid alignment
+        if hasattr(self.settings, "universal_n_points") and self.settings.universal_n_points is not None:
+            constraints_dict["universal_n_points"] = int(self.settings.universal_n_points)
+        if self.data.universal_theta_rad is not None:
+            constraints_dict["universal_theta_rad"] = self.data.universal_theta_rad
+        
+        return constraints_dict
+
+    def _build_casadi_primary_targets(self) -> dict[str, Any]:
+        """Create target dictionary for CasADi Phase 1 optimizer."""
+        enable_te = bool(
+            getattr(self.settings, "enable_thermal_efficiency", False)
+            or getattr(self.settings, "use_thermal_efficiency", False),
+        )
+        thermal_weight = 0.1 if enable_te else 0.0
+
+        return {
+            "minimize_jerk": True,
+            "maximize_thermal_efficiency": enable_te,
+            "weights": {
+                "jerk": max(1e-6, float(getattr(self.settings, "jerk_weight", 1.0))),
+                "thermal_efficiency": thermal_weight,
+                "smoothness": 0.01,
+            },
+        }
+
+    def _create_casadi_settings(self) -> CasADiOptimizationSettings:
+        """Map unified settings into CasADi optimization settings."""
+        coarse_segments = getattr(
+            self.settings,
+            "casadi_coarse_segments",
+            (40, 80, 160),
+        )
+        coarse_segments = tuple(int(max(1, seg)) for seg in coarse_segments)
+        resolution_ladder = getattr(self.settings, "casadi_resolution_ladder", None)
+        if resolution_ladder:
+            resolution_ladder = tuple(int(max(1, seg)) for seg in resolution_ladder)
+
+        return CasADiOptimizationSettings(
+            enable_warmstart=getattr(self.settings, "enable_warmstart", True),
+            poly_order=int(getattr(self.settings, "casadi_poly_order", 3)),
+            collocation_method=getattr(
+                self.settings,
+                "casadi_collocation_method",
+                "legendre",
+            ),
+            efficiency_target=float(
+                getattr(self.settings, "thermal_efficiency_target", 0.55),
+            ),
+            coarse_resolution_segments=coarse_segments,
+            resolution_ladder=resolution_ladder,
+            target_angle_resolution_deg=float(
+                getattr(self.settings, "casadi_target_angle_deg", 0.1),
+            ),
+            max_angle_resolution_segments=int(
+                getattr(self.settings, "casadi_max_segments", 4096),
+            ),
+            retry_failed_level=bool(
+                getattr(self.settings, "casadi_retry_failed_level", True),
+            ),
+        )
+
+    def _annotate_casadi_solution(
+        self,
+        result: OptimizationResult,
+        *,
+        cycle_time: float,
+        duration_angle_deg: float,
+    ) -> None:
+        """
+        Convert CasADi SI outputs to the mm-based units expected by downstream stages.
+        
+        Derives cycle_time from duration_angle_deg and engine_speed_rpm if available,
+        otherwise uses the provided cycle_time.
+        """
+        # Phase 6: Derive cycle_time from engine speed if available
+        engine_speed_rpm = getattr(self.data, "engine_speed_rpm", None)
+        if engine_speed_rpm is not None and engine_speed_rpm > 0:
+            # cycle_time = (duration_angle_deg / 360) * (60 / rpm)
+            derived_cycle_time = (duration_angle_deg / 360.0) * (60.0 / engine_speed_rpm)
+            cycle_time = derived_cycle_time
+            result.metadata["derived_cycle_time"] = True
+            result.metadata["engine_speed_rpm"] = engine_speed_rpm
+            # Phase 6: Store derived cycle_time in UnifiedOptimizationData
+            self.data.cycle_time = derived_cycle_time
+        else:
+            result.metadata["derived_cycle_time"] = False
+            # Phase 6: Store provided cycle_time in UnifiedOptimizationData
+            self.data.cycle_time = cycle_time
+        
+        # Store cycle_time in metadata for downstream use
+        result.metadata["cycle_time"] = cycle_time
+        result.metadata["duration_angle_deg"] = duration_angle_deg
+        solution = result.solution
+        if not solution:
+            return
+
+        position = solution.get("position")
+        if position is None:
+            return
+
+        position_arr = np.asarray(position, dtype=float)
+        if position_arr.size == 0:
+            return
+
+        mm_scale = 1_000.0
+        solution["position_m"] = position_arr
+        solution["position"] = position_arr * mm_scale
+
+        velocity = solution.get("velocity")
+        if velocity is not None:
+            vel_arr = np.asarray(velocity, dtype=float)
+            solution["velocity_m_per_deg"] = vel_arr
+            solution["velocity"] = vel_arr * mm_scale
+
+        acceleration = solution.get("acceleration")
+        if acceleration is not None:
+            acc_arr = np.asarray(acceleration, dtype=float)
+            solution["acceleration_m_per_deg2"] = acc_arr
+            solution["acceleration"] = acc_arr * mm_scale
+
+        jerk = solution.get("jerk")
+        if jerk is not None:
+            jerk_arr = np.asarray(jerk, dtype=float)
+            solution["jerk_m_per_deg3"] = jerk_arr
+            solution["jerk"] = jerk_arr * mm_scale
+
+        time_grid = np.linspace(0.0, cycle_time, position_arr.size)
+        solution["time"] = time_grid
+        theta_deg = solution.get("theta_deg")
+        if theta_deg is None:
+            theta_deg = np.linspace(0.0, duration_angle_deg, position_arr.size)
+        theta_rad = np.deg2rad(theta_deg)
+        solution["theta_deg"] = theta_deg
+        solution["theta_rad"] = theta_rad
+        solution["cam_angle"] = theta_rad
+
+        result.metadata["position_units"] = "mm"
+        result.metadata["time_span"] = cycle_time
+        result.metadata["duration_angle_deg"] = duration_angle_deg
+        result.metadata["velocity_units"] = "mm/deg"
+        result.metadata["acceleration_units"] = "mm/deg^2"
+        result.metadata["jerk_units"] = "mm/deg^3"
+
     def _update_data_from_primary(self, result: OptimizationResult) -> None:
         """Update data structure from primary optimization results."""
         if result.status == OptimizationStatus.CONVERGED:
@@ -1961,35 +3138,80 @@ class UnifiedOptimizationFramework:
                     vel = solution.get("velocity")
                     acc = solution.get("acceleration")
                     if pos is not None and vel is not None and acc is not None:
-                        # States mapping (interpolation by selected method; projection not needed here)
-                        if self.settings.mapper_method == "pchip":
-                            pos_u = GridMapper.periodic_pchip_resample(cam_angle_rad, pos, ug_th)
-                            vel_u = GridMapper.periodic_pchip_resample(cam_angle_rad, vel, ug_th)
-                            acc_u = GridMapper.periodic_pchip_resample(cam_angle_rad, acc, ug_th)
-                        elif self.settings.mapper_method == "barycentric":
-                            pos_u = GridMapper.barycentric_resample(cam_angle_rad, pos, ug_th)
-                            vel_u = GridMapper.barycentric_resample(cam_angle_rad, vel, ug_th)
-                            acc_u = GridMapper.barycentric_resample(cam_angle_rad, acc, ug_th)
+                        # Check if grids already match (size and values within tolerance)
+                        cam_angle_rad_arr = np.asarray(cam_angle_rad)
+                        ug_th_arr = np.asarray(ug_th)
+                        grids_match = (
+                            cam_angle_rad_arr.shape == ug_th_arr.shape
+                            and np.allclose(cam_angle_rad_arr, ug_th_arr, rtol=1e-10, atol=1e-12)
+                        )
+                        
+                        if grids_match:
+                            # Grids already match - skip remapping
+                            log.info(
+                                f"Grids already match ({len(cam_angle_rad_arr)} points), "
+                                "skipping remapping step"
+                            )
+                            pos_u = pos
+                            vel_u = vel
+                            acc_u = acc
                         else:
-                            pos_u = GridMapper.periodic_linear_resample(cam_angle_rad, pos, ug_th)
-                            vel_u = GridMapper.periodic_linear_resample(cam_angle_rad, vel, ug_th)
-                            acc_u = GridMapper.periodic_linear_resample(cam_angle_rad, acc, ug_th)
+                            # Grids don't match - this indicates legacy grid logic is being used
+                            raise ValueError(
+                                f"Grid mismatch detected: solution grid has {len(cam_angle_rad_arr)} points, "
+                                f"universal grid has {len(ug_th_arr)} points. "
+                                "The _update_data_from_primary process uses legacy universal grid logic. "
+                                "Update CasADi optimization to produce solutions on the universal grid before optimization."
+                            )
                         # Overwrite solution views to be universal-grid aligned
                         solution["cam_angle"] = ug_th
                         solution["position"] = pos_u
                         solution["velocity"] = vel_u
                         solution["acceleration"] = acc_u
+                        # Also align jerk to the universal grid (keep jerk as driven value if available)
+                        try:
+                            jrk = solution.get("jerk")
+                            if jrk is None:
+                                jrk = solution.get("control")
+                            if jrk is not None:
+                                if grids_match:
+                                    # Grids match - use jerk directly
+                                    jrk_u = jrk
+                                else:
+                                    # This should not be reached due to earlier error, but kept for safety
+                                    raise ValueError(
+                                        "Grid mismatch in jerk remapping. "
+                                        "The _update_data_from_primary process uses legacy universal grid logic. "
+                                        "Update CasADi optimization to produce solutions on the universal grid before optimization."
+                                    )
+                            else:
+                                # If jerk isn't provided, derive from mapped acceleration
+                                dtheta_deg = np.gradient(np.degrees(ug_th))
+                                jrk_u = np.gradient(acc_u, dtheta_deg, edge_order=2)
+                            solution["jerk"] = jrk_u
+                        except Exception:
+                            # Fallback derivation from mapped acceleration on universal grid
+                            dtheta_deg = np.gradient(np.degrees(ug_th))
+                            solution["jerk"] = np.gradient(acc_u, dtheta_deg, edge_order=2)
                         # Sensitivities: if gradients/Jacobians exist on internal grid, pull/push to U
                         try:
-                            P_u2g, P_g2u = GridMapper.operators(cam_angle_rad, ug_th, method=getattr(self.settings, "mapper_method", "linear"))
-                            grad_gi = solution.get("gradient")
-                            if grad_gi is not None:
-                                grad_u = GridMapper.pullback_gradient(np.asarray(grad_gi), P_g2u)
-                                solution["gradient_universal"] = grad_u
-                            jac_gi = solution.get("jacobian")
-                            if jac_gi is not None:
-                                J_u = GridMapper.pushforward_jacobian(np.asarray(jac_gi), P_u2g, P_g2u)
-                                solution["jacobian_universal"] = J_u
+                            if grids_match:
+                                # Grids match - sensitivities are already on universal grid
+                                grad_gi = solution.get("gradient")
+                                if grad_gi is not None:
+                                    solution["gradient_universal"] = np.asarray(grad_gi)
+                                jac_gi = solution.get("jacobian")
+                                if jac_gi is not None:
+                                    solution["jacobian_universal"] = np.asarray(jac_gi)
+                            else:
+                                # This should not be reached due to earlier error, but kept for safety
+                                raise ValueError(
+                                    "Grid mismatch in sensitivity remapping. "
+                                    "The _update_data_from_primary process uses legacy universal grid logic. "
+                                    "Update CasADi optimization to produce solutions on the universal grid before optimization."
+                                )
+                        except ValueError:
+                            raise
                         except Exception:
                             pass
 
@@ -2010,42 +3232,73 @@ class UnifiedOptimizationFramework:
                 cam_angle_deg = np.degrees(cam_angle_rad)
                 self.data.primary_theta = cam_angle_deg
             else:
-                # Fallback: try to get from time array (for backward compatibility)
-                time_array = solution.get("time")
-                if time_array is not None:
-                    # Convert time to cam angle (assuming constant angular velocity)
-                    cam_angular_velocity = 2 * np.pi / self.data.cycle_time  # rad/s
-                    cam_angle_rad = time_array * cam_angular_velocity
-                    cam_angle_deg = np.degrees(cam_angle_rad)
-                    self.data.primary_theta = cam_angle_deg
-                else:
-                    log.warning(
-                        "No cam angle or time data found in primary optimization result",
-                    )
-                    return
+                # No cam angle data found - this is required for per-degree optimization
+                raise ValueError(
+                    "Primary optimization result must include cam_angle or theta_deg. "
+                    "Time-based fallback is not supported in per-degree-only contract."
+                )
 
-            # Store motion law data (already in correct units)
-            self.data.primary_position = solution.get("position")
-            self.data.primary_velocity = solution.get("velocity")
-            self.data.primary_acceleration = solution.get("acceleration")
+            # Store motion law data (in per-degree units: m, m/deg, m/deg², m/deg³)
+            # Phase 3: Tag units in metadata so downstream stages know what they're consuming
+            self.data.primary_position = solution.get("position")  # m
+            self.data.primary_velocity = solution.get("velocity")  # m/deg (per-degree units)
+            self.data.primary_acceleration = solution.get("acceleration")  # m/deg² (per-degree units)
 
             # Handle jerk data (may be in 'control' or 'jerk' field)
             jerk_data = solution.get("jerk")
             if jerk_data is None:
                 jerk_data = solution.get("control")
-            self.data.primary_jerk = jerk_data
+            self.data.primary_jerk = jerk_data  # m/deg³ (per-degree units)
+            
+            # Phase 3: Store unit metadata for downstream consumers
+            if result.metadata is None:
+                result.metadata = {}
+            result.metadata["primary_velocity_units"] = "m/deg"
+            result.metadata["primary_acceleration_units"] = "m/deg²"
+            result.metadata["primary_jerk_units"] = "m/deg³"
+            result.metadata["primary_position_units"] = "m"
+            if "duration_angle_deg" in result.metadata:
+                result.metadata["duration_angle_deg"] = result.metadata["duration_angle_deg"]
 
             # Phase-1: constant load profile aligned with theta
+            # Translate workload_target to load pressure if available
             if self.data.primary_theta is not None:
                 n = len(self.data.primary_theta)
-                try:
-                    load_value = float(
-                        getattr(self.settings, "constant_load_value", 1.0),
-                    )
-                except Exception:
-                    load_value = 1.0
+                load_value = None
+                workload_target_j = None
+                p_load_kpa = None
+                
+                # Check if workload-derived load pressure is available in metadata
+                if result.metadata:
+                    pressure_meta = result.metadata.get("pressure_invariance")
+                    if pressure_meta:
+                        denom_base = pressure_meta.get("denominator_base")
+                        if denom_base and "p_load_kpa" in denom_base:
+                            p_load_kpa = float(denom_base["p_load_kpa"])
+                            # Use workload-derived load pressure as load_value
+                            load_value = p_load_kpa
+                        workload_target_j = pressure_meta.get("work_target_j")
+                
+                # Fallback to constant_load_value from settings if no workload translation
+                if load_value is None:
+                    try:
+                        load_value = float(
+                            getattr(self.settings, "constant_load_value", 1.0),
+                        )
+                    except Exception:
+                        load_value = 1.0
+                
                 self.data.primary_load_profile = np.full(n, load_value, dtype=float)
                 self.data.primary_constant_load_value = load_value
+                
+                # Store workload translation metadata
+                if workload_target_j is not None or p_load_kpa is not None:
+                    if not hasattr(self.data, 'primary_workload_metadata'):
+                        self.data.primary_workload_metadata = {}
+                    if workload_target_j is not None:
+                        self.data.primary_workload_metadata["workload_target_j"] = float(workload_target_j)
+                    if p_load_kpa is not None:
+                        self.data.primary_workload_metadata["p_load_kpa"] = float(p_load_kpa)
             # Store constant operating temperature
             try:
                 self.data.primary_constant_temperature_K = float(
@@ -2067,6 +3320,10 @@ class UnifiedOptimizationFramework:
                 if ca_markers:
                     self.data.primary_ca_markers = ca_markers
                     primary_meta["ca_markers"] = ca_markers
+                pressure_meta = result.metadata.get("pressure_invariance")
+                if pressure_meta:
+                    self.data.primary_pressure_invariance = pressure_meta
+                    primary_meta["pressure_invariance"] = pressure_meta
 
             self.data.convergence_info["primary"] = primary_meta
 
@@ -2111,7 +3368,6 @@ class UnifiedOptimizationFramework:
             # The cam_ring_optimizer returns:
             # - "cam_profile": {"theta": ..., "profile_radius": ...}
             # - "ring_profile": {"psi": ..., "R_psi": ...}
-            # But we also support top-level keys for backward compatibility
             cam_profile = solution.get("cam_profile")
             if cam_profile is not None:
                 # Extract from nested structure
@@ -2120,8 +3376,10 @@ class UnifiedOptimizationFramework:
                     "profile_radius": cam_profile.get("profile_radius"),
                 }
             else:
-                # Fallback to top-level "cam_curves" (for backward compatibility)
-                self.data.secondary_cam_curves = solution.get("cam_curves")
+                raise ValueError(
+                    "Secondary optimization result must include cam_profile. "
+                    "Top-level fallback keys are not supported in per-degree-only contract."
+                )
             
             ring_profile = solution.get("ring_profile")
             if ring_profile is not None:
@@ -2129,9 +3387,10 @@ class UnifiedOptimizationFramework:
                 self.data.secondary_psi = ring_profile.get("psi")
                 self.data.secondary_R_psi = ring_profile.get("R_psi")
             else:
-                # Fallback to top-level keys (for backward compatibility)
-                self.data.secondary_psi = solution.get("psi")
-                self.data.secondary_R_psi = solution.get("R_psi")
+                raise ValueError(
+                    "Secondary optimization result must include ring_profile. "
+                    "Top-level fallback keys are not supported in per-degree-only contract."
+                )
             
             self.data.secondary_gear_geometry = solution.get("gear_geometry")
             
@@ -2224,32 +3483,19 @@ class UnifiedOptimizationFramework:
             self.data.tertiary_max_side_load = performance_metrics.get("max_side_load")
 
         else:
-            # Even if optimization failed, provide default values for display
-            log.warning(
-                "Tertiary optimization failed, using default values for display",
+            log.error(
+                "Tertiary optimization failed; clearing downstream crank-center data",
             )
-
-            # Use default values based on secondary results
-            self.data.tertiary_crank_center_x = 0.0  # Default to origin
-            self.data.tertiary_crank_center_y = 0.0  # Default to origin
-            self.data.tertiary_crank_radius = (
-                self.data.secondary_base_radius * 2.0
-                if self.data.secondary_base_radius
-                else 50.0
-            )
-            self.data.tertiary_rod_length = (
-                self.data.secondary_base_radius * 6.0
-                if self.data.secondary_base_radius
-                else 150.0
-            )
-
-            # Default performance metrics (placeholder values)
-            self.data.tertiary_torque_output = 100.0  # N⋅m
-            self.data.tertiary_side_load_penalty = 50.0  # N
-            self.data.tertiary_max_torque = 120.0  # N⋅m
-            self.data.tertiary_torque_ripple = 10.0  # N⋅m
-            self.data.tertiary_power_output = 500.0  # W
-            self.data.tertiary_max_side_load = 200.0  # N
+            self.data.tertiary_crank_center_x = None
+            self.data.tertiary_crank_center_y = None
+            self.data.tertiary_crank_radius = None
+            self.data.tertiary_rod_length = None
+            self.data.tertiary_torque_output = None
+            self.data.tertiary_side_load_penalty = None
+            self.data.tertiary_max_torque = None
+            self.data.tertiary_torque_ripple = None
+            self.data.tertiary_power_output = None
+            self.data.tertiary_max_side_load = None
 
         # Store convergence info regardless of status
         self.data.convergence_info["tertiary"] = {

@@ -42,9 +42,9 @@ def demo_cascaded_optimization():
     cam_constraints = CamMotionConstraints(
         stroke=30.0,  # 30mm stroke
         upstroke_duration_percent=65.0,  # 65% upstroke
-        max_velocity=120.0,  # 120 mm/s max velocity
-        max_acceleration=60.0,  # 60 mm/s² max acceleration
-        max_jerk=15.0,  # 15 mm/s³ max jerk
+        max_velocity=0.013,  # 0.013 mm/deg max velocity (~120 mm/s at 26 Hz)
+        max_acceleration=0.00069,  # 0.00069 mm/deg² max acceleration (~60 mm/s² at 26 Hz)
+        max_jerk=0.000016,  # 0.000016 mm/deg³ max jerk (~15 mm/s³ at 26 Hz)
         dwell_at_tdc=True,
         dwell_at_bdc=True,
     )
@@ -52,7 +52,7 @@ def demo_cascaded_optimization():
     print("\nCam constraints:")
     print(f"  - Stroke: {cam_constraints.stroke} mm")
     print(f"  - Upstroke duration: {cam_constraints.upstroke_duration_percent}%")
-    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/s")
+    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/deg")
 
     # Create primary motion optimizer
     primary_settings = CollocationSettings(

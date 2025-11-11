@@ -4,6 +4,10 @@ Sun gear optimization for cam-ring systems.
 This module implements a third optimization layer that introduces a sun gear
 between the cam and ring follower to eliminate interference constraints and
 enable optimal journal placement with back rotation capabilities.
+
+NOTE: This module uses scipy.optimize.minimize and may be legacy code.
+The main optimization flow (phases 1, 2, 3) uses CasADi/IPOPT. This optimizer
+is exported in __init__.py but may not be actively used in the main flow.
 """
 from __future__ import annotations
 

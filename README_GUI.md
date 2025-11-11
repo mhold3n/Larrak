@@ -17,13 +17,10 @@ A simple Tkinter-based graphical interface for cam motion law optimization using
 ### Launch the GUI
 
 ```bash
-# Option 1: Direct launch
+# Launch the GUI directly
 python cam_motion_gui.py
 
-# Option 2: Using launcher
-python launch_gui.py
-
-# Option 3: Demo with preset parameters
+# Or use demo with preset parameters
 python scripts/gui_demo.py
 ```
 

@@ -294,15 +294,14 @@ class CollocationOptimizer(BaseOptimizer):
             result = motion_optimizer.solve_motion_law(motion_constraints, motion_type)
 
             # Convert result to expected format
+            # Per-degree contract: use cam_angle, not time
             solution = {
-                "time": np.linspace(
-                    0, time_horizon, n_points,
-                ),  # Keep time for compatibility
                 "position": result.position,
                 "velocity": result.velocity,
                 "acceleration": result.acceleration,
                 "control": result.jerk,  # 'control' is jerk in collocation
-                "cam_angle": result.cam_angle,  # Add cam angle for new format
+                "cam_angle": result.cam_angle,  # Required: cam angle in degrees
+                "theta_deg": result.cam_angle,  # Alias for consistency
                 "jerk": result.jerk,  # Add jerk for new format
             }
 

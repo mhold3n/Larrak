@@ -639,7 +639,9 @@ def _build_1d_collocation_nlp(
                 w += [q_sym]
                 w0 += [0.0]
                 lbw += [0.0]
-                ubw += [bounds.get("Q_comb_max", 10000.0)]
+                # Convert normalized bounds from kJ to J (multiply by 1e3)
+                q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
+                ubw += [q_comb_max_j]
             else:
                 Q_comb_stage.append(None)
 
@@ -1383,7 +1385,9 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 w += [q_sym]
                 w0 += [0.0]
                 lbw += [0.0]
-                ubw += [bounds.get("Q_comb_max", 10000.0)]
+                # Convert normalized bounds from kJ to J (multiply by 1e3)
+                q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
+                ubw += [q_comb_max_j]
                 # Q_comb is a penalty/control term, not a state variable
                 var_idx += 1
             else:
@@ -1794,8 +1798,11 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             # Pressure constraints
             p_kj = gas_pressure_from_state(rho=rho_colloc[j], T=T_colloc[j])
             g += [p_kj]  # Pressure constraint
-            lbg += [bounds.get("p_min", 1e4)]
-            ubg += [bounds.get("p_max", 1e7)]
+            # Convert normalized bounds from MPa to Pa (multiply by 1e6)
+            p_min_pa = bounds.get("p_min", 0.01) * 1e6  # Default 0.01 MPa = 1e4 Pa
+            p_max_pa = bounds.get("p_max", 10.0) * 1e6  # Default 10.0 MPa = 1e7 Pa
+            lbg += [p_min_pa]
+            ubg += [p_max_pa]
 
             # Temperature constraints
             T_kj = T_colloc[j]
@@ -1843,7 +1850,9 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             # Avoid Python conditionals on symbolic expressions; encode constraints directly.
             g += [Q_comb_kj]
             lbg += [0.0]
-            ubg += [bounds.get("Q_comb_max", 10000.0)]
+            # Convert normalized bounds from kJ to J (multiply by 1e3)
+            q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
+            ubg += [q_comb_max_j]
 
     # Cycle periodicity constraints
     g += [xL_k - xL0, xR_k - xR0, vL_k - vL0, vR_k - vR0]

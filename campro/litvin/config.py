@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+import numpy as np
 
 from .motion import RadialSlotMotion
 
@@ -29,6 +31,12 @@ class GeometrySearchConfig:
     motion: RadialSlotMotion
     section_boundaries: Any | None = None  # SectionBoundaries from section_analysis
     n_threads: int = 4
+    use_multiprocessing: bool = True  # Use ProcessPoolExecutor instead of ThreadPoolExecutor for CPU-bound work
+    # Actual theta arrays - when provided, these override samples_per_rev for grid generation
+    theta_deg: np.ndarray | None = field(default=None, compare=False)
+    theta_rad: np.ndarray | None = field(default=None, compare=False)
+    # Position array for recreating motion object in worker processes (avoids pickling lambda functions)
+    position: np.ndarray | None = field(default=None, compare=False)
 
 
 class OptimizationOrder:

@@ -65,25 +65,60 @@ def process_linear_to_ring_follower(
     """
     log.info("Processing linear follower motion law to ring follower design")
 
-    # Extract primary motion law data
+    # Phase 4: Extract primary motion law data (prefer angle-based inputs)
     time = primary_data.get("time", np.array([]))
     position = primary_data.get("position", np.array([]))
-    velocity = primary_data.get("velocity", np.array([]))
-    acceleration = primary_data.get("acceleration", np.array([]))
+    velocity = primary_data.get("velocity", np.array([]))  # May be in mm/deg (per-degree units)
+    acceleration = primary_data.get("acceleration", np.array([]))  # May be in mm/deg²
     cam_angle = primary_data.get("cam_angle", np.array([]))
+    theta_deg = primary_data.get("theta_deg", np.array([]))
+    
+    # Phase 4: Check metadata for units
+    velocity_units = primary_data.get("velocity_units", "mm/deg")  # Default to per-degree
+    acceleration_units = primary_data.get("acceleration_units", "mm/deg^2")
+    duration_angle_deg = primary_data.get("duration_angle_deg", 360.0)
+    cycle_time = primary_data.get("cycle_time", 1.0)
 
-    if len(time) == 0 or len(position) == 0:
-        raise ValueError("Primary data must contain time and position arrays")
+    if len(position) == 0:
+        raise ValueError("Primary data must contain position array")
 
-    # Use cam_angle if available, otherwise convert from time
-    if len(cam_angle) > 0:
-        theta = cam_angle  # Use provided cam angles (in degrees)
+    if len(time) == 0:
+        time = np.linspace(0.0, 1.0, len(position))
+
+    # Phase 4: Use cam_angle (radians) or explicit theta_deg if available, otherwise convert from time
+    if len(theta_deg) > 0:
+        theta = theta_deg
+    elif len(cam_angle) > 0:
+        theta = np.degrees(cam_angle)
     else:
         # Convert time-based motion to cam angle-based motion
         cam_angular_velocity = secondary_constraints.get(
             "cam_angular_velocity", 1.0,
         )  # rad/s
-        theta = cam_angular_velocity * time  # Cam angles
+        theta = np.degrees(cam_angular_velocity * time)
+    
+    # NOTE: Per-degree to per-second conversion for downstream modules only
+    # The primary optimization path uses per-degree units exclusively.
+    # This conversion is ONLY for downstream modules that explicitly require per-second units
+    # (e.g., legacy physics models). It is NOT part of the primary motion-law contract.
+    if len(velocity) > 0 and velocity_units in ("mm/deg", "m/deg"):
+        # Check if conversion is needed (if module requires mm/s)
+        needs_per_second = secondary_constraints.get("require_per_second_units", False)
+        if needs_per_second and cycle_time > 0 and duration_angle_deg > 0:
+            from campro.utils.conversion import convert_per_degree_to_per_second
+            velocity = convert_per_degree_to_per_second(
+                velocity, duration_angle_deg, cycle_time, derivative_order=1
+            )
+            log.info("Converted velocity from per-degree to per-second units for downstream module")
+    
+    if len(acceleration) > 0 and acceleration_units in ("mm/deg^2", "mm/deg²", "m/deg²"):
+        needs_per_second = secondary_constraints.get("require_per_second_units", False)
+        if needs_per_second and cycle_time > 0 and duration_angle_deg > 0:
+            from campro.utils.conversion import convert_per_degree_to_per_second
+            acceleration = convert_per_degree_to_per_second(
+                acceleration, duration_angle_deg, cycle_time, derivative_order=2
+            )
+            log.info("Converted acceleration from per-degree to per-second units for downstream module")
 
     # Linear follower displacement vs cam angle
     x_theta = position

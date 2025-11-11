@@ -1,0 +1,13 @@
+{
+  "run_id": "1762558838-7d6be5bb",
+  "status": "Failed",
+  "n_iter": 0,
+  "kkt": {},
+  "residuals": {},
+  "scaling_stats": {},
+  "feasibility_primary": null,
+  "artifacts": {
+    "ipopt_log": "runs/1762558838-7d6be5bb-ipopt.log",
+    "run_meta": "runs/1762558838-7d6be5bb.json"
+  }
+}

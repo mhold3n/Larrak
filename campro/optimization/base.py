@@ -60,6 +60,16 @@ class OptimizationResult:
         """Check if optimization was successful."""
         return self.status == OptimizationStatus.CONVERGED
 
+    @property
+    def successful(self) -> bool:
+        """Backward compatibility property for is_successful()."""
+        return self.is_successful()
+
+    @property
+    def variables(self) -> dict[str, np.ndarray]:
+        """Backward compatibility property for solution."""
+        return self.solution
+
     def has_solution(self) -> bool:
         """Check if solution data is available."""
         return len(self.solution) > 0

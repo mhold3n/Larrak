@@ -26,8 +26,107 @@ from campro.diagnostics.scaling import (
     unscale_value,
 )
 from campro.logging import get_logger
+from campro.utils.structured_reporter import StructuredReporter
 
 log = get_logger(__name__)
+
+_FALSEY = {"0", "false", "no", "off"}
+
+
+def _to_numpy_array(data: Any) -> np.ndarray:
+    if data is None:
+        return np.array([])
+    try:
+        arr = np.asarray(data, dtype=float)
+        return arr.flatten()
+    except Exception:
+        try:
+            return np.array([float(x) for x in data], dtype=float)
+        except Exception:
+            return np.array([])
+
+
+def _summarize_ipopt_iterations(stats: dict[str, Any], reporter: StructuredReporter) -> dict[str, Any] | None:
+    iterations = stats.get("iterations")
+    if not iterations or not isinstance(iterations, dict):
+        if reporter.show_debug:
+            reporter.debug("No IPOPT iteration diagnostics available.")
+        return None
+
+    k = _to_numpy_array(iterations.get("k"))
+    obj = _to_numpy_array(iterations.get("obj") or iterations.get("f"))
+    inf_pr = _to_numpy_array(iterations.get("inf_pr"))
+    inf_du = _to_numpy_array(iterations.get("inf_du"))
+    mu = _to_numpy_array(iterations.get("mu"))
+    step_types = iterations.get("type") or iterations.get("step_type") or []
+    if hasattr(step_types, "tolist"):
+        step_types = step_types.tolist()
+    step_types = [str(s) for s in step_types]
+
+    total_iters = int(len(k)) if k.size else 0
+    if total_iters == 0:
+        return None
+
+    restoration_steps = sum(1 for step in step_types if "r" in step.lower())
+    final_idx = total_iters - 1
+
+    def _safe_get(arr: np.ndarray, idx: int, default: float = float("nan")) -> float:
+        if arr.size == 0:
+            return default
+        try:
+            return float(arr[idx])
+        except Exception:
+            return default
+
+    summary = {
+        "iteration_count": total_iters,
+        "restoration_steps": restoration_steps,
+        "max_inf_pr": float(np.max(np.abs(inf_pr))) if inf_pr.size else float("nan"),
+        "max_inf_du": float(np.max(np.abs(inf_du))) if inf_du.size else float("nan"),
+        "objective": {
+            "start": _safe_get(obj, 0),
+            "min": float(np.min(obj)) if obj.size else float("nan"),
+            "max": float(np.max(obj)) if obj.size else float("nan"),
+        },
+        "final": {
+            "objective": _safe_get(obj, final_idx),
+            "inf_pr": _safe_get(inf_pr, final_idx),
+            "inf_du": _safe_get(inf_du, final_idx),
+            "mu": _safe_get(mu, final_idx),
+            "step": step_types[final_idx] if step_types else None,
+        },
+    }
+
+    reporter.info(
+        f"IPOPT iterations={summary['iteration_count']} restoration={summary['restoration_steps']} "
+        f"objective(start={summary['objective']['start']:.3e}, final={summary['final']['objective']:.3e})"
+    )
+    reporter.info(
+        f"Final residuals: inf_pr={summary['final']['inf_pr']:.3e} inf_du={summary['final']['inf_du']:.3e} "
+        f"mu={summary['final']['mu']:.3e}"
+    )
+
+    if reporter.show_debug and total_iters > 0:
+        recent_start = max(0, total_iters - 5)
+        recent_entries = []
+        with reporter.section("Recent IPOPT iterations", level="DEBUG"):
+            for idx in range(recent_start, total_iters):
+                entry = {
+                    "k": int(_safe_get(k, idx, default=idx)),
+                    "objective": _safe_get(obj, idx),
+                    "inf_pr": _safe_get(inf_pr, idx),
+                    "inf_du": _safe_get(inf_du, idx),
+                    "mu": _safe_get(mu, idx),
+                    "step": step_types[idx] if idx < len(step_types) else "",
+                }
+                recent_entries.append(entry)
+                reporter.debug(
+                    f"k={entry['k']:>4} f={entry['objective']:.3e} inf_pr={entry['inf_pr']:.3e} "
+                    f"inf_du={entry['inf_du']:.3e} mu={entry['mu']:.3e} step={entry['step']}"
+                )
+        summary["recent_iterations"] = recent_entries
+
+    return summary
 
 
 def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
@@ -48,30 +147,29 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
     C = int(num.get("C", 3))
     grid = make_grid(K, C, kind="radau")
 
+    iteration_summary: dict[str, Any] = {}
+
     # Check if combustion model is enabled
     combustion_cfg = P.get("combustion", {})
     use_combustion = bool(combustion_cfg.get("use_integrated_model", False))
     
+    reporter = StructuredReporter(
+        context="FREE-PISTON",
+        logger=None,
+        stream_out=sys.stderr,
+        stream_err=sys.stderr,
+        debug_env="FREE_PISTON_DEBUG",
+        force_debug=True,
+    )
+
     # Log problem parameters before building NLP
-    print(
-        f"[FREE-PISTON] Building collocation NLP: K={K}, C={C}, "
-        f"combustion_model={'enabled' if use_combustion else 'disabled'}",
-        file=sys.stderr,
-        flush=True,
+    reporter.info(
+        f"Building collocation NLP: K={K}, C={C}, combustion_model={'enabled' if use_combustion else 'disabled'}"
     )
     # Estimate complexity
     estimated_vars = K * C * 6 + 6 + K * C * 2  # Rough estimate
     estimated_constraints = K * C * 4  # Rough estimate
-    print(
-        f"[FREE-PISTON] Estimated problem size: vars≈{estimated_vars}, constraints≈{estimated_constraints}",
-        file=sys.stderr,
-        flush=True,
-    )
-    log.info(
-        f"Building collocation NLP: K={K}, C={C}, "
-        f"combustion_model={'enabled' if use_combustion else 'disabled'}"
-    )
-    log.info(
+    reporter.info(
         f"Estimated problem size: vars≈{estimated_vars}, constraints≈{estimated_constraints}"
     )
     
@@ -90,24 +188,11 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         # Extract actual problem size from meta
         n_vars = meta.get("n_vars", 0) if meta else 0
         n_constraints = meta.get("n_constraints", 0) if meta else 0
-        print(
-            f"[FREE-PISTON] NLP built in {nlp_build_elapsed:.3f}s: "
-            f"n_vars={n_vars}, n_constraints={n_constraints}",
-            file=sys.stderr,
-            flush=True,
-        )
-        log.info(
-            f"NLP built in {nlp_build_elapsed:.3f}s: "
-            f"n_vars={n_vars}, n_constraints={n_constraints}"
+        reporter.info(
+            f"NLP built in {nlp_build_elapsed:.3f}s: n_vars={n_vars}, n_constraints={n_constraints}"
         )
         if meta:
-            print(
-                f"[FREE-PISTON] Problem characteristics: K={meta.get('K', K)}, C={meta.get('C', C)}, "
-                f"combustion_model={'integrated' if use_combustion else 'none'}",
-                file=sys.stderr,
-                flush=True,
-            )
-            log.info(
+            reporter.info(
                 f"Problem characteristics: K={meta.get('K', K)}, C={meta.get('C', C)}, "
                 f"combustion_model={'integrated' if use_combustion else 'none'}"
             )
@@ -120,54 +205,31 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         if os.getenv("FREE_PISTON_DIAGNOSTIC_MODE", "0") == "1":
             solver_opts.setdefault("ipopt.derivative_test", "first-order")
             solver_opts.setdefault("ipopt.print_level", 12)
-            log.info("Diagnostic mode enabled: derivative test and verbose output activated")
+            reporter.info("Diagnostic mode enabled: derivative test and verbose output activated")
 
         # Create IPOPT solver
-        print(
-            "[FREE-PISTON] Creating IPOPT solver with options...",
-            file=sys.stderr,
-            flush=True,
-        )
+        reporter.info("Creating IPOPT solver with options...")
         solver_create_start = time.time()
         ipopt_options = _create_ipopt_options(solver_opts, P)
         solver = IPOPTSolver(ipopt_options)
         solver_create_elapsed = time.time() - solver_create_start
-        print(
-            f"[FREE-PISTON] IPOPT solver created in {solver_create_elapsed:.3f}s: "
-            f"max_iter={ipopt_options.max_iter}, tol={ipopt_options.tol:.2e}, "
-            f"print_level={ipopt_options.print_level}",
-            file=sys.stderr,
-            flush=True,
-        )
-        log.info(
+        reporter.info(
             f"IPOPT solver created in {solver_create_elapsed:.3f}s: "
             f"max_iter={ipopt_options.max_iter}, tol={ipopt_options.tol:.2e}, "
             f"print_level={ipopt_options.print_level}"
         )
         if os.getenv("FREE_PISTON_DIAGNOSTIC_MODE", "0") == "1":
-            print(
-                "[FREE-PISTON] Derivative test enabled. To disable: unset FREE_PISTON_DIAGNOSTIC_MODE",
-                file=sys.stderr,
-                flush=True,
-            )
+            reporter.info("Derivative test enabled. To disable: unset FREE_PISTON_DIAGNOSTIC_MODE")
 
         # Set up initial guess and bounds
-        print(
-            "[FREE-PISTON] Setting up optimization bounds and initial guess...",
-            file=sys.stderr,
-            flush=True,
-        )
+        reporter.info("Setting up optimization bounds and initial guess...")
         x0, lbx, ubx, lbg, ubg, p = _setup_optimization_bounds(nlp, P, warm_start)
         
         if x0 is None or lbx is None or ubx is None:
             raise ValueError("Failed to set up optimization bounds and initial guess")
         
         # Compute variable scaling factors (using group-based scaling with initial guess)
-        print(
-            "[FREE-PISTON] Computing variable scaling factors (group-based)...",
-            file=sys.stderr,
-            flush=True,
-        )
+        reporter.info("Computing variable scaling factors (group-based)...")
         # Get variable groups from metadata if available
         variable_groups = meta.get("variable_groups", {}) if meta else {}
         scale = _compute_variable_scaling(lbx, ubx, x0=x0, variable_groups=variable_groups)
@@ -176,58 +238,38 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         scale_min = scale.min()
         scale_max = scale.max()
         scale_mean = scale.mean()
-        print(
-            f"[FREE-PISTON] Variable scaling factors: min={scale_min:.3e}, max={scale_max:.3e}, mean={scale_mean:.3e}",
-            file=sys.stderr,
-            flush=True,
-        )
-        log.info(
-            f"Variable scaling (group-based): min={scale_min:.3e}, max={scale_max:.3e}, mean={scale_mean:.3e}"
+        reporter.info(
+            f"Variable scaling factors: min={scale_min:.3e}, max={scale_max:.3e}, mean={scale_mean:.3e}"
         )
         
         # Group-wise diagnostics
         if variable_groups:
-            print(
-                "[FREE-PISTON] Variable scaling by group:",
-                file=sys.stderr,
-                flush=True,
-            )
-            for group_name, indices in variable_groups.items():
-                if indices and len(indices) > 0:
-                    group_scales = scale[np.array(indices)]
-                    group_min = group_scales.min()
-                    group_max = group_scales.max()
-                    group_mean = group_scales.mean()
-                    group_range_ratio = group_max / group_min if group_min > 1e-10 else np.inf
-                    print(
-                        f"[FREE-PISTON]   Group '{group_name}' ({len(indices)} vars): "
-                        f"range=[{group_min:.3e}, {group_max:.3e}], mean={group_mean:.3e}, "
-                        f"ratio={group_range_ratio:.2e}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    log.info(
-                        f"Variable scaling group '{group_name}': "
-                        f"range=[{group_min:.3e}, {group_max:.3e}], mean={group_mean:.3e}, "
-                        f"ratio={group_range_ratio:.2e}"
-                    )
-                    if group_range_ratio > 1e6:
-                        log.warning(
-                            f"Group '{group_name}' has extreme scale ratio ({group_range_ratio:.2e}). "
-                            f"Consider adjusting unit references or bounds."
+            with reporter.section("Variable scaling by group"):
+                for group_name, indices in variable_groups.items():
+                    if indices and len(indices) > 0:
+                        group_scales = scale[np.array(indices)]
+                        group_min = group_scales.min()
+                        group_max = group_scales.max()
+                        group_mean = group_scales.mean()
+                        group_range_ratio = group_max / group_min if group_min > 1e-10 else np.inf
+                        reporter.info(
+                            f"Group '{group_name}' ({len(indices)} vars): "
+                            f"range=[{group_min:.3e}, {group_max:.3e}], mean={group_mean:.3e}, "
+                            f"ratio={group_range_ratio:.2e}"
                         )
+                        if group_range_ratio > 1e6:
+                            reporter.warning(
+                                f"Group '{group_name}' has extreme scale ratio ({group_range_ratio:.2e}). "
+                                f"Consider adjusting unit references or bounds."
+                            )
         
         # Compute constraint scaling factors (using evaluation-based scaling)
-        print(
-            "[FREE-PISTON] Computing constraint scaling factors (evaluation-based with Jacobian)...",
-            file=sys.stderr,
-            flush=True,
-        )
+        reporter.info("Computing constraint scaling factors (evaluation-based with Jacobian)...")
         try:
             scale_g = _compute_constraint_scaling_from_evaluation(nlp, x0, lbg, ubg, scale=scale)
             scaling_method = "evaluation-based with Jacobian"
         except Exception as e:
-            log.warning(f"Constraint evaluation-based scaling failed: {e}, falling back to bounds-based")
+            reporter.warning(f"Constraint evaluation-based scaling failed: {e}, falling back to bounds-based")
             scale_g = _compute_constraint_scaling(lbg, ubg)
             scaling_method = "bounds-based"
         
@@ -235,33 +277,20 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             scale_g_min = scale_g.min()
             scale_g_max = scale_g.max()
             scale_g_mean = scale_g.mean()
-            print(
-                f"[FREE-PISTON] Constraint scaling factors ({scaling_method}): min={scale_g_min:.3e}, max={scale_g_max:.3e}, mean={scale_g_mean:.3e}",
-                file=sys.stderr,
-                flush=True,
-            )
-            log.info(
-                f"Constraint scaling ({scaling_method}): min={scale_g_min:.3e}, max={scale_g_max:.3e}, mean={scale_g_mean:.3e}"
+            reporter.info(
+                f"Constraint scaling factors ({scaling_method}): "
+                f"min={scale_g_min:.3e}, max={scale_g_max:.3e}, mean={scale_g_mean:.3e}"
             )
         
         # Compute objective scaling factor
         scale_f = 1.0  # Initialize default (no scaling)
-        print(
-            "[FREE-PISTON] Computing objective scaling factor...",
-            file=sys.stderr,
-            flush=True,
-        )
+        reporter.info("Computing objective scaling factor...")
         try:
             scale_f = _compute_objective_scaling(nlp, x0)
             if scale_f != 1.0:
-                print(
-                    f"[FREE-PISTON] Objective scaling factor: {scale_f:.6e}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                log.info(f"Objective scaling: scale_f={scale_f:.6e}")
+                reporter.info(f"Objective scaling factor: {scale_f:.6e}")
         except Exception as e:
-            log.warning(f"Objective scaling failed: {e}, using no objective scaling")
+            reporter.warning(f"Objective scaling failed: {e}, using no objective scaling")
             scale_f = 1.0
         
         # Apply scaling to NLP
@@ -275,7 +304,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         else:
             # If nlp is a CasADi Function, convert to dict format first
             # This is a fallback - ideally nlp should be a dict
-            log.warning("NLP is not a dict, attempting to use unscaled NLP")
+            reporter.warning("NLP is not a dict, attempting to use unscaled NLP")
             nlp_scaled = nlp
             scale_f = 1.0  # No objective scaling if NLP not a dict
         
@@ -297,78 +326,42 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             ubg_scaled = ubg
         
         if x0 is not None:
-            print(
-                f"[FREE-PISTON] Initial guess (unscaled): n_vars={len(x0)}, "
-                f"x0_range=[{x0.min():.3e}, {x0.max():.3e}], mean={x0.mean():.3e}",
-                file=sys.stderr,
-                flush=True,
-            )
-            print(
-                f"[FREE-PISTON] Initial guess (scaled): n_vars={len(x0_scaled)}, "
-                f"x0_range=[{x0_scaled.min():.3e}, {x0_scaled.max():.3e}], mean={x0_scaled.mean():.3e}",
-                file=sys.stderr,
-                flush=True,
-            )
-            log.info(
+            reporter.info(
                 f"Initial guess (unscaled): n_vars={len(x0)}, "
                 f"x0_range=[{x0.min():.3e}, {x0.max():.3e}], mean={x0.mean():.3e}"
             )
-            log.info(
+            reporter.info(
                 f"Initial guess (scaled): n_vars={len(x0_scaled)}, "
                 f"x0_range=[{x0_scaled.min():.3e}, {x0_scaled.max():.3e}], mean={x0_scaled.mean():.3e}"
             )
         if lbx_scaled is not None and ubx_scaled is not None:
             bounded_vars = ((lbx_scaled > -np.inf) & (ubx_scaled < np.inf)).sum()
-            print(
-                f"[FREE-PISTON] Bounded variables: {bounded_vars}/{len(lbx_scaled) if lbx_scaled is not None else 0}",
-                file=sys.stderr,
-                flush=True,
+            reporter.info(
+                f"Bounded variables: {bounded_vars}/{len(lbx_scaled) if lbx_scaled is not None else 0}"
             )
-            log.info(f"Bounded variables: {bounded_vars}/{len(lbx_scaled) if lbx_scaled is not None else 0}")
 
         # Verify scaling quality (diagnostics)
-        _verify_scaling_quality(nlp, x0, scale, scale_g, lbg, ubg)
+        _verify_scaling_quality(nlp, x0, scale, scale_g, lbg, ubg, reporter=reporter)
         
         # Solve optimization problem with scaled NLP
-        print(
-            "[FREE-PISTON] Starting IPOPT optimization (with comprehensive scaling)...",
-            file=sys.stderr,
-            flush=True,
-        )
-        print(
-            f"[FREE-PISTON] Problem dimensions: n_vars={len(x0_scaled) if x0_scaled is not None else 0}, "
-            f"n_constraints={len(lbg_scaled) if lbg_scaled is not None else 0}",
-            file=sys.stderr,
-            flush=True,
-        )
-        log.info("Starting IPOPT optimization (with comprehensive scaling)...")
-        log.info(
+        reporter.info("Starting IPOPT optimization (with comprehensive scaling)...")
+        reporter.debug(
             f"Problem dimensions: n_vars={len(x0_scaled) if x0_scaled is not None else 0}, "
             f"n_constraints={len(lbg_scaled) if lbg_scaled is not None else 0}"
         )
         solve_start = time.time()
         result = solver.solve(nlp_scaled, x0_scaled, lbx_scaled, ubx_scaled, lbg_scaled, ubg_scaled, p)
         solve_elapsed = time.time() - solve_start
-        print(
-            f"[FREE-PISTON] IPOPT solve completed in {solve_elapsed:.3f}s",
-            file=sys.stderr,
-            flush=True,
-        )
-        log.info(f"IPOPT solve completed in {solve_elapsed:.3f}s")
+        reporter.info(f"IPOPT solve completed in {solve_elapsed:.3f}s")
+        stats = solver.stats()
+        iteration_summary = _summarize_ipopt_iterations(stats, reporter) or {}
 
         # Unscale solution
         if result.success and result.x_opt is not None and len(result.x_opt) > 0:
             x_opt_unscaled = unscale_value(result.x_opt, scale)
             # Unscale objective if it was scaled
             f_opt_unscaled = result.f_opt / scale_f if scale_f != 1.0 else result.f_opt
-            print(
-                f"[FREE-PISTON] Solution unscaled: "
-                f"x_opt_range=[{x_opt_unscaled.min():.3e}, {x_opt_unscaled.max():.3e}], "
-                f"f_opt={f_opt_unscaled:.6e}",
-                file=sys.stderr,
-                flush=True,
-            )
-            log.info(
+            reporter.info(
                 f"Solution unscaled: x_opt_range=[{x_opt_unscaled.min():.3e}, {x_opt_unscaled.max():.3e}], "
                 f"f_opt={f_opt_unscaled:.6e}"
             )
@@ -377,16 +370,14 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             f_opt_unscaled = result.f_opt / scale_f if scale_f != 1.0 else result.f_opt
 
         if result.success:
-            log.info(f"Optimization successful: {result.message}")
-            log.info(
-                f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s",
-            )
-            log.info(f"Objective value: {result.f_opt:.6e}")
-            log.info(f"KKT error: {result.kkt_error:.2e}")
-            log.info(f"Feasibility error: {result.feasibility_error:.2e}")
+            reporter.info(f"Optimization successful: {result.message}")
+            reporter.info(f"Iterations: {result.iterations}, CPU time: {result.cpu_time:.2f}s")
+            reporter.info(f"Objective value: {result.f_opt:.6e}")
+            reporter.info(f"KKT error: {result.kkt_error:.2e}")
+            reporter.info(f"Feasibility error: {result.feasibility_error:.2e}")
         else:
-            log.warning(f"Optimization failed: {result.message}")
-            log.warning(f"Status: {result.status}, Iterations: {result.iterations}")
+            reporter.warning(f"Optimization failed: {result.message}")
+            reporter.warning(f"Status: {result.status}, Iterations: {result.iterations}")
 
         # Store results (with unscaled solution)
         optimization_result = {
@@ -399,6 +390,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             "status": result.status,
             "kkt_error": result.kkt_error,
             "feasibility_error": result.feasibility_error,
+            "iteration_summary": iteration_summary,
         }
 
         # Optional checkpoint save per iteration group (best-effort minimal)
@@ -411,10 +403,10 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
                     filename="checkpoint.json",
                 )
             except Exception as exc:  # pragma: no cover
-                log.warning(f"Checkpoint save failed: {exc}")
+                reporter.warning(f"Checkpoint save failed: {exc}")
 
     except Exception as e:
-        log.error(f"Failed to build or solve NLP: {e!s}")
+        reporter.error(f"Failed to build or solve NLP: {e!s}")
         nlp, meta = None, None
         optimization_result = {
             "success": False,
@@ -425,6 +417,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             "cpu_time": 0.0,
             "message": f"NLP build/solve failed: {e!s}",
             "status": -1,
+            "iteration_summary": iteration_summary,
         }
 
     return Solution(
@@ -1071,6 +1064,7 @@ def _verify_scaling_quality(
     scale_g: np.ndarray,
     lbg: np.ndarray | None,
     ubg: np.ndarray | None,
+    reporter: StructuredReporter | None = None,
 ) -> None:
     """
     Verify scaling quality by checking constraint Jacobian at initial guess.
@@ -1105,7 +1099,10 @@ def _verify_scaling_quality(
             jac_g0 = jac_g_func(x0)
             jac_g0_arr = np.array(jac_g0)
         except Exception as e:
-            log.debug(f"Could not evaluate constraint Jacobian for scaling verification: {e}")
+            if reporter:
+                reporter.debug(f"Could not evaluate constraint Jacobian for scaling verification: {e}")
+            else:
+                log.debug(f"Could not evaluate constraint Jacobian for scaling verification: {e}")
             return
         
         # Apply scaling to Jacobian: J_scaled = scale_g * J * (1/scale)
@@ -1130,32 +1127,49 @@ def _verify_scaling_quality(
             jac_min = jac_mag[jac_mag > 0].min() if (jac_mag > 0).any() else 0.0
             
             # Log diagnostics
-            log.debug(
-                f"Scaled Jacobian statistics: min={jac_min:.3e}, mean={jac_mean:.3e}, max={jac_max:.3e}"
-            )
+            msg = f"Scaled Jacobian statistics: min={jac_min:.3e}, mean={jac_mean:.3e}, max={jac_max:.3e}"
+            if reporter:
+                reporter.debug(msg)
+            else:
+                log.debug(msg)
             
             # Warn if scaling appears insufficient
             if jac_max > 1e3:
-                log.warning(
+                warn_msg = (
                     f"Scaled Jacobian has large elements (max={jac_max:.3e}). "
                     f"Scaling may be insufficient. Consider adjusting scale factors."
                 )
+                if reporter:
+                    reporter.warning(warn_msg)
+                else:
+                    log.warning(warn_msg)
             if jac_min > 0 and jac_max / jac_min > 1e6:
-                log.warning(
+                warn_msg = (
                     f"Scaled Jacobian has large condition number (max/min={jac_max/jac_min:.3e}). "
                     f"Consider more uniform scaling."
                 )
+                if reporter:
+                    reporter.warning(warn_msg)
+                else:
+                    log.warning(warn_msg)
             
             # Check for very small elements that might cause numerical issues
             very_small = (jac_mag > 0) & (jac_mag < 1e-10)
             if very_small.sum() > 0:
-                log.debug(
+                debug_msg = (
                     f"Scaled Jacobian has {very_small.sum()} very small elements (<1e-10). "
                     f"This may indicate over-scaling."
                 )
+                if reporter:
+                    reporter.debug(debug_msg)
+                else:
+                    log.debug(debug_msg)
         
     except Exception as e:
-        log.debug(f"Scaling verification failed: {e}")
+        if reporter:
+            reporter.debug(f"Scaling verification failed: {e}")
+        else:
+            log.debug(f"Scaling verification failed: {e}")
 
 
 def _compute_objective_scaling(
@@ -1344,6 +1358,11 @@ def _compute_constraint_scaling_from_evaluation(
             # For equality constraints, use reference magnitude
             if equality_mask[i]:
                 magnitude = ref_magnitude
+                # Detect large-magnitude combustion residuals (>1e4) and apply aggressive scaling
+                if np.isfinite(g_val) and abs(g_val) > 1e4:
+                    # For large combustion residuals, use more aggressive normalization
+                    # Scale down by normalizing to typical residual magnitude
+                    magnitude = max(ref_magnitude, abs(g_val) / 1e6)  # Normalize large residuals
             else:
                 # For inequality constraints, compute from bounds and values
                 if lb == -np.inf and ub == np.inf:
@@ -1359,6 +1378,11 @@ def _compute_constraint_scaling_from_evaluation(
                 if np.isfinite(g_val):
                     # Use max of bounds and value, but cap value influence
                     magnitude = max(magnitude, min(abs(g_val), max(abs(lb), abs(ub)) * 10))
+                    # Detect large-magnitude combustion/energy constraints (>1e4) and apply aggressive scaling
+                    if abs(g_val) > 1e4 or magnitude > 1e4:
+                        # For large energy/combustion constraints, normalize more aggressively
+                        # This helps bring Jacobian entries from O(1e6-1e8) to O(1)
+                        magnitude = max(magnitude / 1e6, 1e-3)  # Normalize large constraints
             
             # Incorporate Jacobian row norm to account for constraint sensitivity
             # If constraint i has a large Jacobian row norm, it needs a smaller scale factor

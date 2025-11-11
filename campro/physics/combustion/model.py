@@ -59,6 +59,8 @@ class CombustionConfig:
     min_flame_speed: float = 0.1
     heating_value_override: float | None = None
     phi_override: float | None = None
+    injector_delay_s: float = 0.0  # Injector delay [s] - shifts effective combustion start
+    injector_delay_deg: float | None = None  # Injector delay [deg] - alternative to injector_delay_s
 
 
 @dataclass
@@ -263,6 +265,9 @@ class CombustionModel(BasePhysicsModel):
         S_T = ca_fmax(S_T, min_speed)
         burn_time = cfg.c_burn * clearance_h / ca_fmax(S_T, CASADI_EPS)
 
+        # Note: injector_delay handling in symbolic interface requires passing
+        # effective_ignition_time_s = ignition_time_s - injector_delay_s
+        # This is handled at the caller level; here we use ignition_time_s directly
         tau_raw = (time_s - ignition_time_s) / ca_fmax(burn_time, CASADI_EPS)
         tau = ca.if_else(
             tau_raw < 0.0,
@@ -338,6 +343,23 @@ class CombustionModel(BasePhysicsModel):
 
         ignition_time_s: float | None = inputs.get("ignition_time_s")
         ignition_theta_deg: float | None = inputs.get("ignition_theta_deg")
+        
+        # Get injector delay from inputs (takes precedence) or config
+        injector_delay_s_input: float | None = inputs.get("injector_delay_s")
+        injector_delay_deg_input: float | None = inputs.get("injector_delay_deg")
+        injector_delay_s: float = 0.0
+        if injector_delay_s_input is not None:
+            injector_delay_s = float(injector_delay_s_input)
+        elif injector_delay_deg_input is not None and theta_deg is not None and time_s is not None:
+            # Convert injector_delay_deg to time
+            omega_avg = 360.0 / cfg.cycle_time_s if cfg else 360.0 / max(time_s[-1] - time_s[0], 1e-9)
+            injector_delay_s = float(injector_delay_deg_input) / omega_avg
+        elif cfg and cfg.injector_delay_s is not None:
+            injector_delay_s = float(cfg.injector_delay_s)
+        elif cfg and cfg.injector_delay_deg is not None and theta_deg is not None and time_s is not None:
+            # Convert from config
+            omega_avg = 360.0 / cfg.cycle_time_s
+            injector_delay_s = float(cfg.injector_delay_deg) / omega_avg
 
         if ignition_time_s is None:
             if ignition_theta_deg is None or theta_deg is None:
@@ -359,10 +381,15 @@ class CombustionModel(BasePhysicsModel):
                     theta_deg,
                 ),
             )
+        
+        # Apply injector delay: shift effective ignition time earlier by delay
+        # Positive delay means fuel injected earlier, so combustion can start earlier
+        effective_ignition_time_s = ignition_time_s - injector_delay_s
 
         duration_profile = self._duration_profile_from_speed(piston_speed)
+        # Use effective ignition time for burn duration lookup
         burn_duration_s = float(
-            np.interp(ignition_time_s, time_s, duration_profile),
+            np.interp(effective_ignition_time_s, time_s, duration_profile),
         )
 
         if omega_deg_per_s is None and theta_deg is not None:
@@ -372,14 +399,25 @@ class CombustionModel(BasePhysicsModel):
             omega_deg_per_s = np.full_like(time_s, 360.0 / cfg.cycle_time_s)
 
         burn_duration_deg = float(burn_duration_s * np.interp(
-            ignition_time_s,
+            effective_ignition_time_s,
             time_s,
             omega_deg_per_s,
         ))
+        
+        # Compute effective ignition angle for output
+        effective_ignition_theta_deg: float | None = None
+        if theta_deg is not None:
+            effective_ignition_theta_deg = float(
+                np.interp(
+                    effective_ignition_time_s,
+                    time_s,
+                    theta_deg,
+                ),
+            )
 
         mfb, heat_rate, heat_per_deg = self._burn_profile(
             time_s=time_s,
-            ignition_time_s=ignition_time_s,
+            ignition_time_s=effective_ignition_time_s,  # Use effective ignition time
             burn_duration_s=burn_duration_s,
             omega_deg_per_s=omega_deg_per_s,
         )
@@ -402,8 +440,8 @@ class CombustionModel(BasePhysicsModel):
             heat_release_per_deg=heat_per_deg,
             burn_duration_s=burn_duration_s,
             burn_duration_deg=burn_duration_deg,
-            ignition_time_s=ignition_time_s,
-            ignition_theta_deg=ignition_theta_deg,
+            ignition_time_s=effective_ignition_time_s,  # Return effective ignition time
+            ignition_theta_deg=effective_ignition_theta_deg or ignition_theta_deg,
             ca10_deg=ca_points.get("CA10"),
             ca50_deg=ca_points.get("CA50"),
             ca90_deg=ca_points.get("CA90"),

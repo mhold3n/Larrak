@@ -62,12 +62,12 @@ def example_cam_with_velocity_limit():
     # Cam parameters with velocity constraint
     stroke = 25.0  # 25mm stroke
     upstroke_duration = 50.0  # 50% of cycle for upstroke
-    max_velocity = 100.0  # 100 mm/s max velocity
+    max_velocity = 0.011  # 0.011 mm/deg max velocity (~100 mm/s at 26 Hz)
     cycle_time = 0.5  # 0.5 second cycle (faster)
 
     print(f"Stroke: {stroke} mm")
     print(f"Upstroke duration: {upstroke_duration}% of cycle")
-    print(f"Max velocity: {max_velocity} mm/s")
+    print(f"Max velocity: {max_velocity} mm/deg")
     print(f"Cycle time: {cycle_time} s")
 
     # Solve with velocity constraint

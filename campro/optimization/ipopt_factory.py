@@ -9,11 +9,11 @@ multiple solvers try to set the same option.
 from __future__ import annotations
 
 import platform
-from typing import Any
+from typing import Any, Dict
 
 import casadi as ca
 
-from campro.constants import HSLLIB_PATH
+from campro.constants import HSLLIB_PATH, IPOPT_OPT_PATH
 from campro.diagnostics.ipopt_logger import ensure_runs_dir
 from campro.diagnostics.run_metadata import RUN_ID
 from campro.logging import get_logger
@@ -25,6 +25,114 @@ IS_MACOS = platform.system().lower() == "darwin"
 
 # Default linear solver for this machine
 DEFAULT_LINEAR_SOLVER = "ma27"
+
+_MA57_SUPPORT_CACHE: Dict[str, bool] = {}
+
+
+def _supports_ma57(hsl_path: str) -> bool:
+    """Return True if the provided HSL library exposes MA57 symbols."""
+    cached = _MA57_SUPPORT_CACHE.get(hsl_path)
+    if cached is not None:
+        return cached
+    try:
+        import ctypes
+
+        lib = ctypes.CDLL(hsl_path)
+        for symbol in ("ma57ad_", "ma57cd_", "ma57id_"):
+            getattr(lib, symbol)
+        _MA57_SUPPORT_CACHE[hsl_path] = True
+        return True
+    except (OSError, AttributeError):
+        _MA57_SUPPORT_CACHE[hsl_path] = False
+        return False
+
+
+def build_ipopt_solver_options(
+    options: dict[str, Any] | None = None,
+    linear_solver: str | None = None,
+    *,
+    enable_log_sink: bool = True,
+) -> dict[str, Any]:
+    """Return IPOPT options with centralized linear-solver wiring."""
+    opts = options.copy() if options else {}
+
+    solver_to_use = linear_solver or opts.get("ipopt.linear_solver") or DEFAULT_LINEAR_SOLVER
+    solver_lower = solver_to_use.lower()
+
+    # Guard against MA97 on macOS – fall back to MA57 as in create_ipopt_solver
+    if IS_MACOS and solver_lower == "ma97":
+        log.warning(
+            "MA97 solver is not supported on macOS due to known crash bug. "
+            "Falling back to MA57 for large problems.",
+        )
+        solver_to_use = "ma57"
+        solver_lower = "ma57"
+
+    has_option_file = bool(IPOPT_OPT_PATH)
+
+    # Inject hsllib path for HSL solvers (ma27/ma57/ma77/ma86)
+    if solver_lower in {"ma27", "ma57", "ma77", "ma86"}:
+        hsl_path = HSLLIB_PATH
+        if not hsl_path:
+            try:
+                from campro.environment.env_manager import find_hsl_library
+
+                detected = find_hsl_library()
+                if detected:
+                    hsl_path = str(detected)
+            except Exception:
+                hsl_path = None
+
+        if solver_lower == "ma57":
+            if not hsl_path:
+                log.warning(
+                    "MA57 requested but no HSL library found. Falling back to MA27.",
+                )
+                solver_to_use = "ma27"
+                solver_lower = "ma27"
+            elif not _supports_ma57(hsl_path):
+                log.warning(
+                    "HSL library %s does not expose MA57 symbols. Falling back to MA27.",
+                    hsl_path,
+                )
+                solver_to_use = "ma27"
+                solver_lower = "ma27"
+
+        if solver_lower in {"ma27", "ma77", "ma86"} and not hsl_path:
+            if has_option_file:
+                log.debug(
+                    "No HSLLIB_PATH detected for %s; deferring to ipopt.opt: %s",
+                    solver_to_use,
+                    IPOPT_OPT_PATH,
+                )
+            else:
+                log.warning(
+                    "Requested HSL solver '%s' but libcoinhsl was not found. "
+                    "Falling back to MUMPS.",
+                    solver_to_use,
+                )
+                solver_to_use = "mumps"
+                solver_lower = "mumps"
+
+        if hsl_path and solver_lower in {"ma27", "ma57", "ma77", "ma86"}:
+            opts["ipopt.hsllib"] = hsl_path
+
+    opts["ipopt.linear_solver"] = solver_to_use
+
+    # Keep log sink / output files consistent with IPOPT factory defaults
+    if enable_log_sink:
+        try:
+            ensure_runs_dir("runs")
+            opts.setdefault("ipopt.output_file", f"runs/{RUN_ID}-ipopt.log")
+            opts.setdefault("ipopt.print_level", 5)
+            opts.setdefault("ipopt.file_print_level", 5)
+        except Exception:
+            pass
+
+    if has_option_file:
+        opts.setdefault("ipopt.option_file_name", IPOPT_OPT_PATH)
+
+    return opts
 
 
 def create_ipopt_solver(
@@ -45,41 +153,9 @@ def create_ipopt_solver(
     Returns:
         CasADi IPOPT solver instance
     """
-    # Start with default options
-    opts = options.copy() if options else {}
+    opts = build_ipopt_solver_options(options, linear_solver)
 
-    # Set linear solver explicitly
-    solver_to_use = linear_solver or DEFAULT_LINEAR_SOLVER
-    
-    # CRITICAL: Prevent MA97 usage on macOS due to known segmentation fault bug
-    # MA97 has a bug in its destructor that causes crashes on macOS
-    if IS_MACOS and solver_to_use.lower() == "ma97":
-        log.warning(
-            "MA97 solver is not supported on macOS due to known crash bug. "
-            "Falling back to MA57 for large problems."
-        )
-        # For large problems, use MA57 instead of MA97 on macOS
-        solver_to_use = "ma57"
-        # If MA57 also fails, we'll fall back to MA27 in the HSL path check below
-    
-    opts["ipopt.linear_solver"] = solver_to_use
-
-    # Set HSL library path for all HSL solvers (MA27, MA57, MA77, MA86) except MA97
-    # Note: MA97 is excluded on macOS due to crash bug, but other HSL solvers use the same lib directory
-    if solver_to_use in ["ma27", "ma57", "ma77", "ma86"] and HSLLIB_PATH:
-        opts["ipopt.hsllib"] = HSLLIB_PATH
-
-    # Default Ipopt file sink per run (unless caller provided one)
-    try:
-        ensure_runs_dir("runs")
-        opts.setdefault("ipopt.output_file", f"runs/{RUN_ID}-ipopt.log")
-        opts.setdefault("ipopt.print_level", 5)
-        opts.setdefault("ipopt.file_print_level", 5)
-    except Exception:
-        # If directory cannot be created, continue without file sink
-        pass
-
-    log.debug(f"Creating solver '{name}' with linear solver: {solver_to_use}")
+    log.debug(f"Creating solver '{name}' with linear solver: {opts.get('ipopt.linear_solver')}")
 
     # Create the solver
     solver = ca.nlpsol(name, "ipopt", nlp, opts)

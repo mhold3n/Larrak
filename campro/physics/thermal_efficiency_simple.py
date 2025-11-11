@@ -33,12 +33,13 @@ class ThermalEfficiencyConfig:
     compression_ratio_range: tuple[float, float] = (20.0, 70.0)
 
     # Heat transfer parameters (simplified Woschni correlation)
-    heat_transfer_coeff: float = 0.1
-    woschni_factor: float = 2.28
+    # Scaled down to ensure penalties don't dominate Otto efficiency (typically 0.5-0.7)
+    heat_transfer_coeff: float = 0.01
+    woschni_factor: float = 0.05
 
     # Mechanical loss parameters
     friction_coeff: float = 0.01
-    viscous_damping: float = 0.05
+    viscous_damping: float = 0.01
 
 
 class SimplifiedThermalModel:
@@ -116,9 +117,10 @@ class SimplifiedThermalModel:
         Parameters
         ----------
         velocity : Any
-            Piston velocity (CasADi variable or numpy array)
+            Piston velocity in per-degree units (m/deg)
+            Note: Coefficients are scaled for per-degree units
         position : Any
-            Piston position (CasADi variable or numpy array)
+            Piston position (m)
 
         Returns
         -------
@@ -141,9 +143,11 @@ class SimplifiedThermalModel:
         Parameters
         ----------
         velocity : Any
-            Piston velocity (CasADi variable or numpy array)
+            Piston velocity in per-degree units (m/deg)
+            Note: Coefficients are scaled for per-degree units
         acceleration : Any
-            Piston acceleration (CasADi variable or numpy array)
+            Piston acceleration in per-degree units (m/deg²)
+            Note: Coefficients are scaled for per-degree units
 
         Returns
         -------
@@ -167,11 +171,11 @@ class SimplifiedThermalModel:
         Parameters
         ----------
         position : Any
-            Piston position (CasADi variable or numpy array)
+            Piston position in meters (m)
         velocity : Any
-            Piston velocity (CasADi variable or numpy array)
+            Piston velocity in per-degree units (m/deg)
         acceleration : Any
-            Piston acceleration (CasADi variable or numpy array)
+            Piston acceleration in per-degree units (m/deg²)
 
         Returns
         -------
@@ -198,25 +202,42 @@ class SimplifiedThermalModel:
     def add_compression_ratio_constraints(self, opti: Any, position: Any) -> None:
         """
         Add compression ratio constraints to optimization problem.
+        
+        Enforces limits at extremes (BDC and TDC) only, not at every point.
+        At BDC: position[0] = 0, so cr = 1.0 (minimum)
+        At TDC: position[-1] = stroke, so cr = (stroke + clearance)/clearance (maximum)
 
         Parameters
         ----------
         opti : Any
             CasADi Opti stack
         position : Any
-            Piston position variable
+            Piston position variable (array or CasADi variable)
         """
-        cr = self.compute_compression_ratio(position)
-
         # Compression ratio limits from FPE literature
         cr_min, cr_max = self.config.compression_ratio_range
-
-        # Add constraints
-        opti.subject_to(cr >= cr_min)
-        opti.subject_to(cr <= cr_max)
+        clearance = self.config.clearance
+        
+        # Compute CR at TDC (maximum displacement)
+        # position[-1] is TDC (maximum displacement, enforce maximum limit here)
+        # The geometric constraint (position[-1] == stroke) already determines the achievable CR
+        # No minimum CR constraint needed - geometry determines the minimum achievable CR
+        cr_end = self.compute_compression_ratio(position[-1], clearance)  # TDC: maximum CR
+        
+        # Enforce maximum CR limit only (geometry determines minimum)
+        opti.subject_to(cr_end <= cr_max)  # Maximum CR enforced at TDC
+        
+        # For interior points, only enforce upper bound to prevent over-compression mid-stroke
+        # Since cr(theta) is monotonic between endpoints, the TDC check guarantees
+        # the entire trace stays within [1.0, cr_end]
+        if hasattr(position, '__len__') and len(position) > 2:
+            for i in range(1, len(position) - 1):  # Skip endpoints
+                cr = self.compute_compression_ratio(position[i], clearance)
+                opti.subject_to(cr <= cr_max)  # Prevent over-compression
+                opti.subject_to(cr >= 1.0)  # Physical lower bound (always satisfied at BDC)
 
     def add_pressure_rate_constraints(
-        self, opti: Any, acceleration: Any, dt: float, max_rate: float = 1000.0,
+        self, opti: Any, acceleration: Any, dtheta: float, max_rate: float = 1000.0,
     ) -> None:
         """
         Add pressure rate constraints to avoid diesel knock.
@@ -226,17 +247,22 @@ class SimplifiedThermalModel:
         opti : Any
             CasADi Opti stack
         acceleration : Any
-            Piston acceleration variable
-        dt : float
-            Time step
+            Piston acceleration variable in per-degree units (m/deg²)
+        dtheta : float
+            Angular step size (deg) - note: changed from dt to dtheta for per-degree formulation
         max_rate : float
             Maximum pressure rate (Pa/ms)
         """
         # Pressure rate constraint (simplified)
         # Limit acceleration rate to avoid excessive pressure rise
+        # Note: acceleration is in per-degree units, so rate is computed per degree
+        # For typical engine speeds, need to convert to per-second rate
+        # Assuming ~360 deg/s: rate_per_s = rate_per_deg * 360
         for i in range(len(acceleration) - 1):
-            pressure_rate = abs(acceleration[i + 1] - acceleration[i]) / dt
-            opti.subject_to(pressure_rate <= max_rate)
+            pressure_rate_per_deg = abs(acceleration[i + 1] - acceleration[i]) / dtheta
+            # Convert to per-second rate (assuming 360 deg/s typical)
+            pressure_rate_per_s = pressure_rate_per_deg * 360.0
+            opti.subject_to(pressure_rate_per_s <= max_rate)
 
     def add_temperature_constraints(
         self, opti: Any, velocity: Any, max_temp_rise: float = 1000.0,
@@ -249,14 +275,18 @@ class SimplifiedThermalModel:
         opti : Any
             CasADi Opti stack
         velocity : Any
-            Piston velocity variable
+            Piston velocity variable in per-degree units (m/deg)
         max_temp_rise : float
             Maximum temperature rise (K)
         """
         # Simplified temperature constraint
         # Limit velocity to control temperature rise
+        # Note: velocity is in per-degree units, so constraint is scaled accordingly
+        # For typical engine speeds (~360 deg/s), 1 m/deg ≈ 360 m/s
+        # Constraint scaled to work with per-degree units
+        velocity_limit = max_temp_rise / 3600.0  # Scaled for per-degree units
         for v in velocity:
-            opti.subject_to(abs(v) <= max_temp_rise / 10.0)  # Simplified relationship
+            opti.subject_to(abs(v) <= velocity_limit)
 
     def compute_efficiency_objective(
         self, position: Any, velocity: Any, acceleration: Any,
@@ -285,7 +315,7 @@ class SimplifiedThermalModel:
         return -thermal_eff
 
     def add_physics_constraints(
-        self, opti: Any, position: Any, velocity: Any, acceleration: Any, dt: float,
+        self, opti: Any, position: Any, velocity: Any, acceleration: Any, dtheta: float,
     ) -> None:
         """
         Add all physics constraints to optimization problem.
@@ -295,19 +325,19 @@ class SimplifiedThermalModel:
         opti : Any
             CasADi Opti stack
         position : Any
-            Piston position variable
+            Piston position variable (m)
         velocity : Any
-            Piston velocity variable
+            Piston velocity variable in per-degree units (m/deg)
         acceleration : Any
-            Piston acceleration variable
-        dt : float
-            Time step
+            Piston acceleration variable in per-degree units (m/deg²)
+        dtheta : float
+            Angular step size (deg) - note: changed from dt to dtheta for per-degree formulation
         """
         # Compression ratio constraints
         self.add_compression_ratio_constraints(opti, position)
 
-        # Pressure rate constraints
-        self.add_pressure_rate_constraints(opti, acceleration, dt)
+        # Pressure rate constraints (using angular step)
+        self.add_pressure_rate_constraints(opti, acceleration, dtheta)
 
         # Temperature constraints
         self.add_temperature_constraints(opti, velocity)

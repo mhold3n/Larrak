@@ -107,12 +107,14 @@ def check_feasibility(constraints: dict, bounds: dict) -> FeasibilityReport:
 
 def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     """Phase-0 feasibility via slack-minimization NLP using CasADi/Ipopt.
-
-    - Variables: position samples x[i] on a uniform grid over θ∈[0, 2π], plus
+    
+    All computations use per-degree units:
+    - Variables: position samples x[i] on a uniform grid over θ∈[0, duration_angle_deg], plus
       nonnegative slack variables for equalities and inequalities.
     - Objective: minimize sum of squared slacks.
     - Constraints: encode equalities with two-sided slacks and inequalities with
       per-sample nonnegative slack dominating constraint residuals.
+    - Velocity, acceleration, jerk are computed in per-degree units (m/deg, m/deg², m/deg³).
     """
     try:
         import casadi as ca  # type: ignore
@@ -121,10 +123,19 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
         return check_feasibility(constraints, bounds)
 
     stroke = float(constraints.get("stroke", 0.0) or 0.0)
-    cycle_time = float(constraints.get("cycle_time", 0.0) or 0.0)
+    # Use duration_angle_deg if provided, otherwise default to 360° (not 2π radians)
+    duration_angle_deg = constraints.get("duration_angle_deg")
+    if duration_angle_deg is None:
+        # Default to 360° for backward compatibility, but prefer explicit value
+        duration_angle_deg = 360.0
+    duration_angle_deg = float(duration_angle_deg)
+    if duration_angle_deg <= 0:
+        # Invalid duration, fall back to heuristic
+        return check_feasibility(constraints, bounds)
+    
     up_pct = float(constraints.get("upstroke_percent", 60.0) or 0.0)
 
-    # Bounds (optional)
+    # Bounds (optional) - these are already in per-degree units
     v_max = bounds.get("max_velocity")
     a_max = bounds.get("max_acceleration")
     j_max = bounds.get("max_jerk")
@@ -134,14 +145,15 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
 
     # Problem size
     N = 72
-    theta = [2.0 * ca.pi * i / (N - 1) for i in range(N)]
-    dtheta = float(2.0 * 3.141592653589793 / (N - 1))
+    # Use degrees instead of radians
+    theta_deg = [duration_angle_deg * i / (N - 1) for i in range(N)]
+    dtheta_deg = duration_angle_deg / (N - 1)  # degrees per step
     idx = list(range(N))
 
     # Decision variables: x (position samples)
     x = ca.SX.sym("x", N)
 
-    # Equalities: x(0)=0, x(2π)=0, x(θ_up)=stroke
+    # Equalities: x(0)=0, x(θ_up)=stroke, x(duration_angle_deg)=0
     idx_up = int(round(up_pct / 100.0 * (N - 1)))
     idx_up = max(0, min(N - 1, idx_up))
 
@@ -169,17 +181,20 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     def imm(i):
         return (i - 2) % N
 
-    # Finite differences (periodic)
+    # Finite differences in per-degree units (periodic)
+    # v = dx/dθ (m/deg), a = d²x/dθ² (m/deg²), j = d³x/dθ³ (m/deg³)
     v = ca.SX.zeros(N, 1)
     a = ca.SX.zeros(N, 1)
     j = ca.SX.zeros(N, 1) if j_max is not None else None
     for i in idx:
-        v[i] = (x[ip(i)] - x[im(i)]) / (2.0 * dtheta)
-        a[i] = (x[ip(i)] - 2.0 * x[i] + x[im(i)]) / (dtheta * dtheta)
+        # Central difference for velocity: v[i] = (x[i+1] - x[i-1]) / (2 * dtheta_deg)
+        v[i] = (x[ip(i)] - x[im(i)]) / (2.0 * dtheta_deg)
+        # Second derivative for acceleration: a[i] = (x[i+1] - 2*x[i] + x[i-1]) / (dtheta_deg²)
+        a[i] = (x[ip(i)] - 2.0 * x[i] + x[im(i)]) / (dtheta_deg * dtheta_deg)
         if j is not None:
             # Third derivative central difference (approximate)
             j[i] = (x[ipp(i)] - 2.0 * x[ip(i)] + 2.0 * x[im(i)] - x[imm(i)]) / (
-                2.0 * (dtheta**3)
+                2.0 * (dtheta_deg**3)
             )
 
     g_list: list[ca.SX] = []
@@ -187,6 +202,7 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     ubg: list[float] = []
 
     # Equality constraints with two-sided slack: -s <= e(x) <= s
+    # x(0)=0, x(θ_up)=stroke, x(duration_angle_deg)=0
     e_vals = [x[0] - 0.0, x[idx_up] - stroke, x[N - 1] - 0.0]
     for k, e in enumerate(e_vals):
         # e - s_eq[k] <= 0
@@ -199,6 +215,7 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
         ubg.append(0.0)
 
     # Inequalities per-sample with slack dominance
+    # Bounds are already in per-degree units, so direct comparison
     if v_max is not None:
         for i in idx:
             g_list.append(v[i] - v_max - s_v[i])
@@ -266,9 +283,54 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     if n_sj:
         lbx[start : start + n_sj] = 0.0
 
-    # Initial guess: S-curve profile
-    theta_np = np.linspace(0.0, 2.0 * np.pi, N)
-    x0 = stroke * 0.5 * (1.0 - np.cos(theta_np))
+    # Initial guess: S-curve profile over degrees that respects all boundary conditions
+    # x[0] = 0, x[idx_up] = stroke, x[N-1] = 0
+    theta_np = np.linspace(0.0, duration_angle_deg, N)
+    x0 = np.zeros(N)
+    
+    # Use 5th-order smoothstep S-curve (same as actual optimizer)
+    # Smoothstep: 10*t³ - 15*t⁴ + 6*t⁵
+    def smoothstep(t: np.ndarray) -> np.ndarray:
+        """5th-order smoothstep function (0≤t≤1)."""
+        t = np.clip(t, 0.0, 1.0)
+        return 10 * t**3 - 15 * t**4 + 6 * t**5
+    
+    # Normal case: upstroke then downstroke
+    # Boundary conditions: x[0] = 0, x[idx_up] = stroke, x[N-1] = 0
+    if idx_up > 0 and idx_up < N - 1:
+        # Upstroke phase: 0 to stroke (from index 0 to idx_up)
+        upstroke_indices = np.arange(idx_up + 1)
+        up_phase = upstroke_indices / idx_up
+        x0[:idx_up + 1] = stroke * smoothstep(up_phase)
+        
+        # Downstroke phase: stroke to 0 (from index idx_up to N-1)
+        downstroke_indices = np.arange(idx_up, N)
+        down_phase = (downstroke_indices - idx_up) / (N - 1 - idx_up)
+        x0[idx_up:] = stroke * (1.0 - smoothstep(down_phase))
+    elif idx_up == 0:
+        # Edge case: upstroke at start (invalid for full cycle, but handle gracefully)
+        # Start at stroke, then downstroke to 0
+        if N > 1:
+            downstroke_indices = np.arange(N)
+            down_phase = downstroke_indices / (N - 1)
+            x0[:] = stroke * (1.0 - smoothstep(down_phase))
+        x0[0] = stroke  # Upstroke point
+        # Note: x[0] = 0 requirement will be violated, but that's expected for this edge case
+    elif idx_up == N - 1:
+        # Edge case: upstroke at end (invalid for full cycle, but handle gracefully)
+        # Upstroke to stroke at end
+        upstroke_indices = np.arange(N)
+        up_phase = upstroke_indices / max(idx_up, 1)
+        x0[:] = stroke * smoothstep(up_phase)
+        x0[N - 1] = stroke  # Upstroke point
+        # Note: x[N-1] = 0 requirement will be violated, but that's expected for this edge case
+    
+    # Ensure boundary conditions
+    x0[0] = 0.0  # Start at BDC
+    if 0 < idx_up < N - 1:
+        x0[idx_up] = stroke  # TDC at upstroke point (only if valid)
+    x0[N - 1] = 0.0  # End at BDC (full cycle)
+    
     z0 = np.zeros(total)
     z0[:n_x] = x0
 
@@ -330,11 +392,11 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
         if not feasible:
             dominant = max(violations, key=violations.get)
             if dominant in ("v_max",):
-                recs.append("Increase max_velocity or upstroke duration/cycle time")
+                recs.append("Increase max_velocity or upstroke duration/duration_angle_deg")
             elif dominant in ("a_max",):
-                recs.append("Increase max_acceleration or upstroke duration/cycle time")
+                recs.append("Increase max_acceleration or upstroke duration/duration_angle_deg")
             elif dominant in ("j_max",):
-                recs.append("Increase max_jerk or upstroke duration/cycle time")
+                recs.append("Increase max_jerk or upstroke duration/duration_angle_deg")
             else:
                 recs.append("Relax boundary/ stroke conditions or adjust phases")
 

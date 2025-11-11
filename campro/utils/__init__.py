@@ -8,6 +8,7 @@ conversion, and other common operations.
 from .conversion import cam_angle_to_time, convert_units, time_to_cam_angle
 from .plotting import apply_smart_scaling, create_smart_scaled_plots, plot_solution
 from .progress_logger import ProgressLogger
+from .structured_reporter import StructuredReporter
 from .validation import validate_constraints, validate_inputs
 
 __all__ = [
@@ -22,6 +23,8 @@ __all__ = [
     "convert_units",
     "time_to_cam_angle",
     "cam_angle_to_time",
+    # Reporting
+    "StructuredReporter",
     # Progress logging
     "ProgressLogger",
 ]

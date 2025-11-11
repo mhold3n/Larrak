@@ -3,6 +3,15 @@ Motion law optimizer using proper collocation methods.
 
 This module implements real optimization for motion law generation using
 collocation methods with proper constraint handling.
+
+NOTE: This module uses scipy.optimize.minimize and may be legacy code.
+The main optimization flow (phases 1, 2, 3) uses CasADi/IPOPT via:
+- Phase 1: FreePistonPhase1Adapter
+- Phase 2: CamRingOptimizer (Litvin optimization with CasADi/IPOPT)
+- Phase 3: CrankCenterOptimizer (currently uses scipy, may need conversion)
+
+This optimizer is still referenced in motion.py and collocation.py but may
+not be part of the primary optimization flow.
 """
 from __future__ import annotations
 

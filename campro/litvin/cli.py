@@ -65,6 +65,7 @@ def main() -> None:
         base_center_radius=args.R0,
         samples_per_rev=args.samples,
         motion=motion,
+        use_multiprocessing=True,
     )
     res = optimize_geometry(gcfg, order=args.order)
     out = {

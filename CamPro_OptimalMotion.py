@@ -895,11 +895,12 @@ class OptimalMotionSolver:
         Note: This is a placeholder until we implement the full CasADi integration
         with the new API.
         """
-        log.info("Using simplified motion law generation")
-
-        # Use reasonable default parameters that will vary based on input
-        # This is a temporary fix until proper CasADi integration
-        return self._generate_simple_motion_law(20.0, 10.0, 5.0, 2.0)
+        message = (
+            "OptimalMotionSolver collocation backend is not implemented. "
+            "Use the MotionLawOptimizer or provide a concrete implementation."
+        )
+        log.error(message)
+        raise NotImplementedError(message)
 
     def plot_solution(
         self,

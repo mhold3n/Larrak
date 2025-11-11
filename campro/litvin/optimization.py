@@ -171,22 +171,12 @@ def optimize_geometry(
         return OptimResult(best_config=cfg, objective_value=obj, feasible=True)
 
     if order == OptimizationOrder.ORDER1_GEOMETRY:
-        # Check if section-based optimization is available
-        if config.section_boundaries is not None:
-            # Use piecewise section-based optimization with multi-threading
-            return _optimize_piecewise_sections(config)
-        else:
-            # Fallback to original grid search
-            from campro.utils.progress_logger import ProgressLogger
-            fallback_logger = ProgressLogger("ORDER1", flush_immediately=True)
-            fallback_logger.warning(
-                "⚠ FALLBACK MODE: Section-based optimization not available. "
-                "Using sequential grid search instead of piecewise multi-threaded optimization."
+        if config.section_boundaries is None:
+            raise ValueError(
+                "ORDER1_GEOMETRY requires section_boundaries from the combustion model. "
+                "Provide section boundaries or disable ORDER1_GEOMETRY.",
             )
-            fallback_logger.info(
-                "Reason: Section boundaries not provided (combustion model may be unavailable or failed)."
-            )
-            return _optimize_grid_search(config)
+        return _optimize_piecewise_sections(config)
 
     if order == OptimizationOrder.ORDER2_MICRO:
         # Ipopt-based NLP optimization of the contact parameter sequence phi(θ)
@@ -196,112 +186,160 @@ def optimize_geometry(
     return OptimResult(best_config=None, objective_value=None, feasible=False)
 
 
-def _optimize_grid_search(config: GeometrySearchConfig) -> OptimResult:
-    """Original grid search implementation (fallback when section analysis unavailable)."""
+@dataclass(frozen=True)
+class WorkItem:
+    """A work item: evaluate a batch of gear combinations for one section.
+    
+    Frozen dataclass ensures immutability for safe parallel execution.
+    Each work item contains 2-3 combinations for better load balancing.
+    """
+    section_name: str
+    theta_range: tuple[float, float]
+    combinations: tuple[tuple[int, int], ...]  # List of (ring_teeth, planet_teeth) pairs
+
+
+def _evaluate_gear_combination_batch(
+    work_item: WorkItem,
+    pa_lo: float,
+    pa_hi: float,
+    af_lo: float,
+    af_hi: float,
+    base_center_radius: float,
+    samples_per_rev: int,
+    theta_deg: np.ndarray,
+    position: np.ndarray,
+) -> list[dict[str, Any]]:
+    """Evaluate a batch of gear combinations for a section with local refinement.
+    
+    This function is at module level to support multiprocessing (pickling).
+    The motion object is recreated from arrays to avoid pickling lambda functions.
+    
+    Parameters
+    ----------
+    work_item : WorkItem
+        Work item containing section_name, theta_range, and batch of (ring_teeth, planet_teeth) combinations
+    pa_lo : float
+        Lower bound for pressure angle
+    pa_hi : float
+        Upper bound for pressure angle
+    af_lo : float
+        Lower bound for addendum factor
+    af_hi : float
+        Upper bound for addendum factor
+    base_center_radius : float
+        Base center radius
+    samples_per_rev : int
+        Samples per revolution
+    theta_deg : np.ndarray
+        Cam angle array in degrees (for recreating motion object)
+    position : np.ndarray
+        Position array in mm (for recreating motion object)
+    
+    Returns
+    -------
+    list[dict[str, Any]]
+        List of results, one per combination in the batch
+    """
     import time
-    from campro.utils.progress_logger import ProgressLogger
+    from scipy.interpolate import interp1d
+    from campro.optimization.se2 import angle_map
+    from .motion import RadialSlotMotion
     
-    order1_logger = ProgressLogger("ORDER1", flush_immediately=True)
-    order1_logger.info("=" * 70)
-    order1_logger.warning(
-        "⚠ FALLBACK MODE ACTIVE: Using sequential grid search (slower than piecewise optimization)"
+    # Recreate RadialSlotMotion object from arrays to avoid pickling lambda functions
+    theta_rad = np.deg2rad(theta_deg)
+    center_offset_interp = interp1d(
+        theta_rad, position, kind="cubic", fill_value="extrapolate",
     )
-    order1_logger.info(
-        "This method evaluates all gear combinations sequentially without multi-threading."
-    )
-    order1_logger.info(
-        "To enable faster piecewise optimization, ensure combustion model is available."
-    )
-    order1_logger.info("=" * 70)
+    planet_angle_fn = lambda th: angle_map(th, scale=2.0, offset=0.0)
     
-    best_cfg: PlanetSynthesisConfig | None = None
-    best_obj: float | None = None
-    pa_lo, pa_hi = config.pressure_angle_deg_bounds
-    af_lo, af_hi = config.addendum_factor_bounds
-
-    def obj_for(pa: float, af: float, zr: int, zp: int) -> float:
-        cand = PlanetSynthesisConfig(
-            ring_teeth=zr,
-            planet_teeth=zp,
-            pressure_angle_deg=pa,
-            addendum_factor=af,
-            base_center_radius=config.base_center_radius,
-            samples_per_rev=config.samples_per_rev,
-            motion=config.motion,
-        )
-        return _order0_objective(cand)
-
-    total_combinations = len(config.ring_teeth_candidates) * len(config.planet_teeth_candidates)
-    combination_count = 0
-    order1_logger.info(f"Searching {total_combinations} gear combinations "
-                      f"({len(config.ring_teeth_candidates)} ring teeth × {len(config.planet_teeth_candidates)} planet teeth)")
-
-    for idx_zr, zr in enumerate(config.ring_teeth_candidates):
-        for idx_zp, zp in enumerate(config.planet_teeth_candidates):
-            combination_count += 1
-            combo_start = time.time()
-            order1_logger.info(
-                f"Evaluating combination {combination_count}/{total_combinations}: "
-                f"ring_teeth={zr}, planet_teeth={zp}"
-            )
-            
-            pa = 0.5 * (pa_lo + pa_hi)
-            af = 0.5 * (af_lo + af_hi)
-            step_pa = max(0.25, (pa_hi - pa_lo) / 8.0)
-            step_af = max(0.02, (af_hi - af_lo) / 8.0)
-            best_local = obj_for(pa, af, zr, zp)
-            improved = True
-            iters = 0
-            
-            while improved and iters < 20:
-                improved = False
-                iters += 1
-                # coordinate search in pa
-                for delta in (-step_pa, step_pa):
-                    pa_try = min(pa_hi, max(pa_lo, pa + delta))
-                    val = obj_for(pa_try, af, zr, zp)
-                    if val < best_local:
-                        best_local = val
-                        pa = pa_try
-                        improved = True
-                # coordinate search in af
-                for delta in (-step_af, step_af):
-                    af_try = min(af_hi, max(af_lo, af + delta))
-                    val = obj_for(pa, af_try, zr, zp)
-                    if val < best_local:
-                        best_local = val
-                        af = af_try
-                        improved = True
-                # decrease steps
-                step_pa *= 0.5
-                step_af *= 0.5
-
-            combo_elapsed = time.time() - combo_start
-            if best_obj is None or best_local < best_obj:
-                best_obj = best_local
-                best_cfg = PlanetSynthesisConfig(
+    motion = RadialSlotMotion(
+        center_offset_fn=lambda th: float(center_offset_interp(th)),
+        planet_angle_fn=planet_angle_fn,
+    )
+    
+    batch_start = time.time()
+    results = []
+    
+    # Select objective based on section
+    section_name = work_item.section_name
+    if "CA10" in section_name or "CA50" in section_name or "CA90" in section_name or "CA100" in section_name:
+        objective_func = _objective_ca10_to_ca100
+    elif "BDC" in section_name and "TDC" in section_name:
+        objective_func = _objective_bdc_to_tdc
+    else:
+        objective_func = _objective_transition_sections
+    
+    # Motion slice for this section (theta range for logging)
+    motion_slice = {
+        "theta": np.array([work_item.theta_range[0], work_item.theta_range[1]]),
+        "theta_start": work_item.theta_range[0],
+        "theta_end": work_item.theta_range[1],
+    }
+    
+    # Evaluate each combination in the batch
+    for zr, zp in work_item.combinations:
+        combo_start = time.time()
+        
+        # Local refinement for pa and af
+        pa = 0.5 * (pa_lo + pa_hi)
+        af = 0.5 * (af_lo + af_hi)
+        step_pa = max(0.25, (pa_hi - pa_lo) / 8.0)
+        step_af = max(0.02, (af_hi - af_lo) / 8.0)
+        best_local = float("inf")
+        improved = True
+        iters = 0
+        
+        while improved and iters < 10:  # Fewer iterations per combination
+            improved = False
+            iters += 1
+            for delta_pa in (-step_pa, step_pa):
+                pa_try = min(pa_hi, max(pa_lo, pa + delta_pa))
+                gear_cfg = PlanetSynthesisConfig(
+                    ring_teeth=zr,
+                    planet_teeth=zp,
+                    pressure_angle_deg=pa_try,
+                    addendum_factor=af,
+                    base_center_radius=base_center_radius,
+                    samples_per_rev=samples_per_rev,
+                    motion=motion,
+                )
+                val = objective_func(gear_cfg, work_item.theta_range, motion_slice)
+                if val < best_local:
+                    best_local = val
+                    pa = pa_try
+                    improved = True
+            for delta_af in (-step_af, step_af):
+                af_try = min(af_hi, max(af_lo, af + delta_af))
+                gear_cfg = PlanetSynthesisConfig(
                     ring_teeth=zr,
                     planet_teeth=zp,
                     pressure_angle_deg=pa,
-                    addendum_factor=af,
-                    base_center_radius=config.base_center_radius,
-                    samples_per_rev=config.samples_per_rev,
-                    motion=config.motion,
+                    addendum_factor=af_try,
+                    base_center_radius=base_center_radius,
+                    samples_per_rev=samples_per_rev,
+                    motion=motion,
                 )
-                order1_logger.info(
-                    f"  ✓ New best: obj={best_local:.6f}, "
-                    f"pa={pa:.2f}°, af={af:.3f} ({combo_elapsed:.3f}s)"
-                )
-            else:
-                order1_logger.info(
-                    f"  - Current: obj={best_local:.6f} (best={best_obj:.6f}) ({combo_elapsed:.3f}s)"
-                )
-
-    return OptimResult(
-        best_config=best_cfg,
-        objective_value=best_obj,
-        feasible=best_cfg is not None,
-    )
+                val = objective_func(gear_cfg, work_item.theta_range, motion_slice)
+                if val < best_local:
+                    best_local = val
+                    af = af_try
+                    improved = True
+            step_pa *= 0.5
+            step_af *= 0.5
+        
+        combo_elapsed = time.time() - combo_start
+        
+        results.append({
+            "section_name": section_name,
+            "ring_teeth": zr,
+            "planet_teeth": zp,
+            "best_pa": pa,
+            "best_af": af,
+            "best_obj": best_local,
+            "elapsed": combo_elapsed,
+        })
+    
+    return results
 
 
 def _optimize_piecewise_sections(config: GeometrySearchConfig) -> OptimResult:
@@ -323,11 +361,18 @@ def _optimize_piecewise_sections(config: GeometrySearchConfig) -> OptimResult:
         piecewise_logger.error("Section boundaries not available")
         return OptimResult(best_config=None, objective_value=None, feasible=False)
     
-    # Extract theta array from section boundaries
-    # The section boundaries were computed from primary_data which has theta in degrees
-    # We need to create a theta array matching the motion law grid
-    n_samples = config.samples_per_rev
-    theta_full = np.linspace(0, 360, n_samples, endpoint=False)  # Degrees
+    # Extract theta array - theta_deg is required for grid alignment
+    if config.theta_deg is None:
+        raise ValueError(
+            "theta_deg is required for piecewise section optimization. "
+            "The _optimize_piecewise_sections process uses legacy universal grid logic. "
+            "Update CamRingOptimizer to pass theta_deg in GeometrySearchConfig before optimization."
+        )
+    theta_full = np.asarray(config.theta_deg)
+    n_samples = len(theta_full)
+    piecewise_logger.info(
+        f"Using provided theta_deg array with {n_samples} points"
+    )
     
     # Get section indices for this theta array
     section_indices = get_section_boundaries(
@@ -407,7 +452,10 @@ def _optimize_sections_parallel(
     section_indices: dict[str, tuple[int, int]],
     logger: Any,  # ProgressLogger
 ) -> dict[str, dict[str, Any]]:
-    """Optimize gear teeth for each section in parallel.
+    """Optimize gear teeth for each section using work-item level parallelism.
+    
+    Creates a work queue of all (section, gear_combination) pairs and processes
+    them in parallel across all available threads for better utilization.
     
     Returns
     -------
@@ -415,7 +463,51 @@ def _optimize_sections_parallel(
         Section name -> {ratio: float, ring_teeth: int, planet_teeth: int, objective: float}
     """
     import time
+    import multiprocessing as mp
+    from functools import partial
     from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+    
+    # Use exactly 12 threads for even distribution
+    n_threads_target = 12
+    
+    # Generate all combinations first
+    all_combinations = [
+        (zr, zp)
+        for zr in config.ring_teeth_candidates
+        for zp in config.planet_teeth_candidates
+    ]
+    total_combinations = len(all_combinations)
+    n_sections = len(section_boundaries.sections)
+    
+    # Calculate optimal chunk size to evenly distribute across 12 threads
+    # Target: ~2-3 combinations per work item for good granularity
+    # For 25 combinations per section: 25 / 12 ≈ 2 combinations per thread
+    # Create work items with 2-3 combinations each for better load balancing
+    combinations_per_chunk = max(1, total_combinations // n_threads_target)
+    
+    # Generate work queue: chunk combinations into batches for each section
+    work_items: list[WorkItem] = []
+    for section_name, theta_range in section_boundaries.sections.items():
+        # Chunk combinations for this section
+        for i in range(0, len(all_combinations), combinations_per_chunk):
+            chunk = all_combinations[i:i + combinations_per_chunk]
+            work_items.append(WorkItem(
+                section_name=section_name,
+                theta_range=theta_range,
+                combinations=tuple(chunk),
+            ))
+    
+    total_work_items = len(work_items)
+    
+    logger.info(
+        f"Created work queue: {total_work_items} work items "
+        f"({n_sections} sections × ~{len(work_items) // n_sections} chunks per section, "
+        f"{combinations_per_chunk} combinations per chunk)"
+    )
+    logger.info(
+        f"Total combinations: {total_combinations} per section, "
+        f"distributed across {total_work_items} work items for {n_threads_target} threads"
+    )
     
     section_results: dict[str, dict[str, Any]] = {}
     # Only use lock for ThreadPoolExecutor (ProcessPoolExecutor doesn't need it)
@@ -425,257 +517,177 @@ def _optimize_sections_parallel(
     pa_lo, pa_hi = config.pressure_angle_deg_bounds
     af_lo, af_hi = config.addendum_factor_bounds
     
-    def optimize_section(section_name: str, theta_range: tuple[float, float]) -> dict[str, Any]:
-        """Optimize a single section."""
-        section_start = time.time()
-        last_progress_log = section_start
-        progress_log_interval = 2.0  # Log progress every 2 seconds
-        
-        # Select objective based on section
-        if "CA10" in section_name or "CA50" in section_name or "CA90" in section_name or "CA100" in section_name:
-            objective_func = _objective_ca10_to_ca100
-        elif "BDC" in section_name and "TDC" in section_name:
-            objective_func = _objective_bdc_to_tdc
-        else:
-            objective_func = _objective_transition_sections
-        
-        # Motion slice for this section (theta range for logging)
-        motion_slice = {
-            "theta": np.array([theta_range[0], theta_range[1]]),
-            "theta_start": theta_range[0],
-            "theta_end": theta_range[1],
-        }
-        
-        best_ratio = None
-        best_obj = float("inf")
-        best_zr = None
-        best_zp = None
-        best_pa = 0.5 * (pa_lo + pa_hi)
-        best_af = 0.5 * (af_lo + af_hi)
-        
-        # Calculate total combinations for progress tracking
-        total_combinations = len(config.ring_teeth_candidates) * len(config.planet_teeth_candidates)
-        combination_count = 0
-        
-        # Log section start
-        if results_lock is not None:
-            with results_lock:
-                logger.info(f"Section {section_name}: evaluating {total_combinations} gear combinations...")
-        
-        # Search over gear combinations
-        for zr in config.ring_teeth_candidates:
-            for zp in config.planet_teeth_candidates:
-                combination_count += 1
-                
-                # Periodic progress logging (every 2 seconds or 10% of combinations)
-                current_time = time.time()
-                progress_pct = (combination_count / total_combinations) * 100.0
-                should_log_progress = (
-                    (current_time - last_progress_log >= progress_log_interval) or
-                    (combination_count % max(1, total_combinations // 10) == 0)
-                )
-                
-                if should_log_progress and results_lock is not None:
-                    elapsed = current_time - section_start
-                    with results_lock:
-                        if best_ratio is not None:
-                            logger.info(
-                                f"Section {section_name}: {progress_pct:.1f}% complete "
-                                f"({combination_count}/{total_combinations} combinations, {elapsed:.1f}s elapsed) - "
-                                f"best so far: ratio={best_ratio:.3f} (ring={best_zr}, planet={best_zp}), obj={best_obj:.6f}"
-                            )
-                        else:
-                            logger.info(
-                                f"Section {section_name}: {progress_pct:.1f}% complete "
-                                f"({combination_count}/{total_combinations} combinations, {elapsed:.1f}s elapsed)"
-                            )
-                    last_progress_log = current_time
-                
-                # Local refinement for pa and af
-                pa = 0.5 * (pa_lo + pa_hi)
-                af = 0.5 * (af_lo + af_hi)
-                step_pa = max(0.25, (pa_hi - pa_lo) / 8.0)
-                step_af = max(0.02, (af_hi - af_lo) / 8.0)
-                best_local = float("inf")
-                improved = True
-                iters = 0
-                
-                while improved and iters < 10:  # Fewer iterations per section
-                    improved = False
-                    iters += 1
-                    for delta_pa in (-step_pa, step_pa):
-                        pa_try = min(pa_hi, max(pa_lo, pa + delta_pa))
-                        gear_cfg = PlanetSynthesisConfig(
-                            ring_teeth=zr,
-                            planet_teeth=zp,
-                            pressure_angle_deg=pa_try,
-                            addendum_factor=af,
-                            base_center_radius=config.base_center_radius,
-                            samples_per_rev=config.samples_per_rev,
-                            motion=config.motion,
-                        )
-                        val = objective_func(gear_cfg, theta_range, motion_slice)
-                        if val < best_local:
-                            best_local = val
-                            pa = pa_try
-                            improved = True
-                    for delta_af in (-step_af, step_af):
-                        af_try = min(af_hi, max(af_lo, af + delta_af))
-                        gear_cfg = PlanetSynthesisConfig(
-                            ring_teeth=zr,
-                            planet_teeth=zp,
-                            pressure_angle_deg=pa,
-                            addendum_factor=af_try,
-                            base_center_radius=config.base_center_radius,
-                            samples_per_rev=config.samples_per_rev,
-                            motion=config.motion,
-                        )
-                        val = objective_func(gear_cfg, theta_range, motion_slice)
-                        if val < best_local:
-                            best_local = val
-                            af = af_try
-                            improved = True
-                    step_pa *= 0.5
-                    step_af *= 0.5
-                
-                if best_local < best_obj:
-                    best_obj = best_local
-                    best_ratio = zr / zp
-                    best_zr = zr
-                    best_zp = zp
-        
-        section_elapsed = time.time() - section_start
-        
-        # Prepare log message outside lock to reduce contention
-        log_message = (
-            f"Section {section_name}: best ratio={best_ratio:.3f} "
-            f"(ring={best_zr}, planet={best_zp}), obj={best_obj:.6f} ({section_elapsed:.3f}s)"
+    # Validate that we have the required arrays for recreating motion object
+    if config.theta_deg is None or config.position is None:
+        logger.warning(
+            "theta_deg or position not available in config. "
+            "Falling back to using motion object directly (may fail with multiprocessing)."
         )
-        
-        # Log with minimal lock time (only for thread-safe logging, not needed for processes)
-        if results_lock is not None:
-            with results_lock:
-                logger.info(log_message)
-        else:
-            # For ProcessPoolExecutor, logging happens in main process after result collection
-            pass
-        
-        return {
-            "ratio": best_ratio,
-            "ring_teeth": best_zr,
-            "planet_teeth": best_zp,
-            "objective": best_obj,
-            "elapsed": section_elapsed,  # For utilization diagnostics
-            "section_name": section_name,  # For logging in main process
-            "log_message": log_message,  # For logging in main process
-        }
-    
-    # Run sections in parallel
-    # Cap thread count to number of sections to avoid idle threads
-    n_sections = len(section_boundaries.sections)
-    n_threads = min(config.n_threads, n_sections)
-    if config.n_threads > n_sections:
-        logger.info(
-            f"Thread count capped from {config.n_threads} to {n_threads} "
-            f"(matching {n_sections} sections)"
-        )
-    # Choose executor based on configuration
-    # Note: use_multiprocessing is checked earlier when creating results_lock
-    use_multiprocessing = getattr(config, "use_multiprocessing", False)
-    executor_class = ProcessPoolExecutor if use_multiprocessing else ThreadPoolExecutor
-    
-    if use_multiprocessing:
-        logger.info(
-            f"Using {n_threads} processes for parallel section optimization "
-            f"(bypasses GIL for CPU-bound work)"
+        # Fallback: try to use motion object (will fail if multiprocessing is enabled)
+        evaluate_batch = partial(
+            _evaluate_gear_combination_batch,
+            pa_lo=pa_lo,
+            pa_hi=pa_hi,
+            af_lo=af_lo,
+            af_hi=af_hi,
+            base_center_radius=config.base_center_radius,
+            samples_per_rev=config.samples_per_rev,
+            theta_deg=config.theta_deg if config.theta_deg is not None else np.array([]),
+            position=config.position if config.position is not None else np.array([]),
         )
     else:
-        logger.info(f"Using {n_threads} threads for parallel section optimization")
+        # Create a partial function with the fixed parameters for multiprocessing compatibility
+        # Pass arrays instead of motion object to avoid pickling lambda functions
+        evaluate_batch = partial(
+            _evaluate_gear_combination_batch,
+            pa_lo=pa_lo,
+            pa_hi=pa_hi,
+            af_lo=af_lo,
+            af_hi=af_hi,
+            base_center_radius=config.base_center_radius,
+            samples_per_rev=config.samples_per_rev,
+            theta_deg=config.theta_deg,
+            position=config.position,
+        )
+    
+    # Use exactly 12 threads for even distribution
+    n_threads = 12
+    if total_work_items < n_threads:
+        n_threads = total_work_items
+        logger.info(
+            f"Thread count reduced from 12 to {n_threads} "
+            f"(matching {total_work_items} work items)"
+        )
+    else:
+        logger.info(f"Using {n_threads} threads for work-item level optimization")
+    
+    # Choose executor based on configuration
+    use_multiprocessing = getattr(config, "use_multiprocessing", False)
+    executor_class = ProcessPoolExecutor if use_multiprocessing else ThreadPoolExecutor
+    executor_kwargs: dict[str, Any] = {"max_workers": n_threads}
+
+    if use_multiprocessing:
+        try:
+            mp_context = mp.get_context("fork")
+            executor_kwargs["mp_context"] = mp_context
+            logger.info(
+                f"Using {n_threads} processes for work-item level optimization "
+                f"(bypasses GIL for CPU-bound work via fork context)"
+            )
+        except ValueError:
+            logger.warning(
+                "Multiprocessing requested but 'fork' context unavailable on this platform. "
+                "Reverting to thread-based execution.",
+            )
+            use_multiprocessing = False
+            executor_class = ThreadPoolExecutor
+            executor_kwargs = {"max_workers": n_threads}
     
     # Track timing for utilization diagnostics
     parallel_start = time.time()
-    section_times: dict[str, float] = {}
+    work_item_times: list[float] = []
     
-    with executor_class(max_workers=n_threads) as executor:
-        # Submit all sections and log when each starts
-        futures = {}
-        for name, theta_range in section_boundaries.sections.items():
-            logger.info(f"Starting section {name}: {theta_range[0]:.2f}° to {theta_range[1]:.2f}°")
-            futures[executor.submit(optimize_section, name, theta_range)] = name
+    # Collect all results (will be aggregated by section later)
+    all_results: list[dict[str, Any]] = []
+    
+    with executor_class(**executor_kwargs) as executor:
+        # Submit all work items
+        futures = {executor.submit(evaluate_batch, work_item): work_item for work_item in work_items}
         
         completed_count = 0
-        total_sections = len(futures)
         last_summary_log = parallel_start
         summary_log_interval = 5.0  # Log summary every 5 seconds
         
         for future in as_completed(futures):
-            section_name = futures[future]
+            work_item = futures[future]
             completed_count += 1
             try:
-                result = future.result()
-                # Log result if using ProcessPoolExecutor (logging happens in main process)
-                if use_multiprocessing and "log_message" in result:
-                    logger.info(result["log_message"])
-                # Store result without logging fields
-                result_clean = {
-                    k: v for k, v in result.items()
-                    if k not in ("section_name", "log_message")
-                }
-                section_results[section_name] = result_clean
-                # Extract section time from result if available
-                if "elapsed" in result:
-                    section_times[section_name] = result["elapsed"]
+                batch_results = future.result()  # Returns list of results
+                all_results.extend(batch_results)  # Flatten into all_results
+                # Track time for each combination in the batch
+                for result in batch_results:
+                    work_item_times.append(result.get("elapsed", 0.0))
                 
-                # Log completion with progress counter
-                elapsed_time = result.get("elapsed", 0.0)
-                parallel_elapsed_so_far = time.time() - parallel_start
-                logger.info(
-                    f"✓ Section {section_name} completed ({completed_count}/{total_sections}) "
-                    f"in {elapsed_time:.3f}s (parallel elapsed: {parallel_elapsed_so_far:.3f}s)"
-                )
-                
-                # Periodic progress summary
+                # Periodic progress logging
                 current_time = time.time()
-                if (current_time - last_summary_log >= summary_log_interval) or (completed_count == total_sections):
-                    remaining = total_sections - completed_count
-                    progress_pct = (completed_count / total_sections) * 100.0
+                total_combinations_completed = len(all_results)
+                total_combinations_expected = total_combinations * n_sections
+                
+                if (current_time - last_summary_log >= summary_log_interval) or (completed_count == total_work_items):
+                    remaining_work_items = total_work_items - completed_count
+                    remaining_combinations = total_combinations_expected - total_combinations_completed
+                    progress_pct = (total_combinations_completed / total_combinations_expected) * 100.0
                     
-                    # Calculate average time per section and estimate remaining
-                    if completed_count > 0 and section_times:
-                        avg_section_time = sum(section_times.values()) / len(section_times)
-                        estimated_remaining = avg_section_time * remaining / n_threads if n_threads > 0 else 0.0
+                    # Calculate average time per combination and estimate remaining
+                    if total_combinations_completed > 0 and work_item_times:
+                        avg_combo_time = sum(work_item_times) / len(work_item_times)
+                        estimated_remaining = avg_combo_time * remaining_combinations / n_threads if n_threads > 0 else 0.0
                     else:
                         estimated_remaining = 0.0
                     
                     logger.info(
-                        f"Progress summary: {completed_count}/{total_sections} sections completed ({progress_pct:.1f}%) - "
-                        f"{remaining} remaining, estimated time remaining: {estimated_remaining:.1f}s"
+                        f"Progress: {total_combinations_completed}/{total_combinations_expected} combinations completed "
+                        f"({progress_pct:.1f}%) - {completed_count}/{total_work_items} work items, "
+                        f"{remaining_combinations} combinations remaining, estimated time: {estimated_remaining:.1f}s"
                     )
                     last_summary_log = current_time
             except Exception as e:
                 logger.warning(
-                    f"✗ Section {section_name} optimization failed ({completed_count}/{total_sections}): {e}"
+                    f"✗ Work item failed (section={work_item.section_name}, "
+                    f"batch_size={len(work_item.combinations)} combinations): {e}"
                 )
-                # Use default fallback
-                section_results[section_name] = {
-                    "ratio": 2.0,  # Default 2:1 ratio
-                    "ring_teeth": 40,
-                    "planet_teeth": 20,
-                    "objective": float("inf"),
-                }
+                # Continue - failed work items won't affect section results
+    
+    # Aggregate results by section: find best combination for each section
+    from collections import defaultdict
+    section_results_dict: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    
+    for result in all_results:
+        section_name = result["section_name"]
+        section_results_dict[section_name].append(result)
+    
+    # For each section, find the combination with minimum objective
+    for section_name, results in section_results_dict.items():
+        if not results:
+            # No valid results for this section - use default fallback
+            section_results[section_name] = {
+                "ratio": 2.0,  # Default 2:1 ratio
+                "ring_teeth": 40,
+                "planet_teeth": 20,
+                "objective": float("inf"),
+            }
+            continue
+        
+        # Find best result (minimum objective)
+        best_result = min(results, key=lambda r: r["best_obj"])
+        
+        # Convert to expected format
+        section_results[section_name] = {
+            "ratio": best_result["ring_teeth"] / best_result["planet_teeth"],
+            "ring_teeth": best_result["ring_teeth"],
+            "planet_teeth": best_result["planet_teeth"],
+            "objective": best_result["best_obj"],
+        }
+        
+        # Log best result for this section
+        logger.info(
+            f"✓ Section {section_name}: best ratio={section_results[section_name]['ratio']:.3f} "
+            f"(ring={best_result['ring_teeth']}, planet={best_result['planet_teeth']}), "
+            f"obj={best_result['best_obj']:.6f}"
+        )
     
     # Calculate utilization diagnostics
     parallel_elapsed = time.time() - parallel_start
-    total_section_time = sum(section_times.values()) if section_times else 0.0
+    total_work_time = sum(work_item_times) if work_item_times else 0.0
     
-    # Utilization metric: (sum of section times) / (wall time * n_threads)
+    # Utilization metric: (sum of work item times) / (wall time * n_threads)
     # Ideal: close to 1.0 (all threads busy all the time)
     # GIL contention: much less than 1.0 (threads waiting for GIL)
     if parallel_elapsed > 0 and n_threads > 0:
-        utilization = total_section_time / (parallel_elapsed * n_threads)
+        utilization = total_work_time / (parallel_elapsed * n_threads)
         
         # Calculate speedup (sequential time / parallel time)
-        sequential_time = total_section_time
+        sequential_time = total_work_time
         speedup = sequential_time / parallel_elapsed if parallel_elapsed > 0 else 0.0
         efficiency = speedup / n_threads if n_threads > 0 else 0.0
         
@@ -685,9 +697,9 @@ def _optimize_sections_parallel(
         logger.info("=" * 70)
         logger.info(
             f"Wall-clock time: {parallel_elapsed:.3f}s "
-            f"(sum of section times: {total_section_time:.3f}s)"
+            f"(sum of work item times: {total_work_time:.3f}s)"
         )
-        logger.info(f"Threads used: {n_threads}")
+        logger.info(f"Work items: {total_work_items}, Threads used: {n_threads}")
         logger.info(f"Speedup: {speedup:.2f}x (sequential: {sequential_time:.3f}s / parallel: {parallel_elapsed:.3f}s)")
         logger.info(f"Parallel efficiency: {efficiency:.2%} (speedup / threads)")
         logger.info(
@@ -695,11 +707,15 @@ def _optimize_sections_parallel(
             f"(ideal: 100%, GIL contention indicated if <50%)"
         )
         
-        # Per-section timing breakdown
-        if section_times:
-            logger.info("Section timing breakdown:")
-            for section_name, section_time in sorted(section_times.items(), key=lambda x: x[1], reverse=True):
-                logger.info(f"  {section_name}: {section_time:.3f}s")
+        # Per-section result summary
+        if section_results:
+            logger.info("Section results summary:")
+            for section_name, result in sorted(section_results.items()):
+                logger.info(
+                    f"  {section_name}: ratio={result['ratio']:.3f} "
+                    f"(ring={result['ring_teeth']}, planet={result['planet_teeth']}), "
+                    f"obj={result['objective']:.6f}"
+                )
         
         logger.info("=" * 70)
         if utilization < 0.5:
@@ -1110,39 +1126,14 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
                 feasible=m.feasible,
                 ipopt_analysis=analysis,
             )
-        order2_logger.warning(f"Ipopt optimization failed: {result.message}")
-        order2_logger.info("Falling back to simple smoothing...")
-        log.warning(f"ORDER2_MICRO Ipopt optimization failed: {result.message}")
-        # Fall back to simple smoothing
-        return _order2_fallback_smoothing(config, phi_init, cand)
+        failure_msg = f"ORDER2_MICRO Ipopt optimization failed: {result.message}"
+        order2_logger.error(failure_msg)
+        log.error(failure_msg)
+        raise RuntimeError(failure_msg)
 
     except Exception as e:
-        order2_logger.error(f"Ipopt optimization error: {e}")
-        order2_logger.info("Falling back to simple smoothing...")
-        log.error(f"ORDER2_MICRO Ipopt optimization error: {e}")
-        # Fall back to simple smoothing
-        return _order2_fallback_smoothing(config, phi_init, cand)
+        failure_msg = f"ORDER2_MICRO Ipopt optimization error: {e}"
+        order2_logger.error(failure_msg)
+        log.error(failure_msg)
+        raise RuntimeError(failure_msg) from e
 
-
-def _order2_fallback_smoothing(
-    config: GeometrySearchConfig, phi_init: np.ndarray, cand: PlanetSynthesisConfig,
-) -> OptimResult:
-    """Fallback to simple smoothing if Ipopt fails."""
-    phi_vals = phi_init.tolist()
-
-    # Simple smoothing (quadratic penalty) with few iterations
-    lam = 1e-2
-    for _ in range(5):
-        # local averaging as a proxy for solving (I + λL)φ = rhs
-        new_phi = phi_vals.copy()
-        for i in range(len(phi_vals)):
-            im = (i - 1) % len(phi_vals)
-            ip = (i + 1) % len(phi_vals)
-            new_phi[i] = (phi_vals[i] + lam * (phi_vals[im] + phi_vals[ip])) / (
-                1.0 + 2.0 * lam
-            )
-        phi_vals = new_phi
-
-    m = evaluate_order0_metrics_given_phi(cand, phi_vals)
-    obj = m.slip_integral - 0.1 * m.contact_length + (0.0 if m.feasible else 1e3)
-    return OptimResult(best_config=cand, objective_value=obj, feasible=m.feasible)

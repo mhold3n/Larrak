@@ -268,6 +268,21 @@ class CamRingOptimizer(BaseOptimizer):
         # Create RadialSlotMotion from primary motion law data (on universal grid)
             motion = self._create_radial_slot_motion(primary_data)
 
+            # Extract theta arrays from primary_data - required for grid alignment
+            theta_deg = primary_data.get("theta_deg")
+            theta_rad = primary_data.get("cam_angle")  # cam_angle is in radians
+            if theta_rad is None:
+                theta_rad = primary_data.get("theta_rad")
+            if theta_deg is None and theta_rad is not None:
+                theta_deg = np.degrees(theta_rad)
+            
+            if theta_deg is None or theta_rad is None:
+                raise ValueError(
+                    "theta_deg and theta_rad (or cam_angle) are required in primary_data. "
+                    "The CamRingOptimizer.optimize process uses legacy universal grid logic. "
+                    "Update primary optimization to include theta arrays in primary_data before optimization."
+                )
+
             # Build GeometrySearchConfig with gear parameter candidates
             geometry_config = GeometrySearchConfig(
                 ring_teeth_candidates=self.constraints.ring_teeth_candidates,
@@ -285,6 +300,10 @@ class CamRingOptimizer(BaseOptimizer):
                 motion=motion,
                 section_boundaries=section_boundaries if section_analysis_available else None,
                 n_threads=self.constraints.n_threads,
+                use_multiprocessing=True,
+                theta_deg=theta_deg,
+                theta_rad=theta_rad,
+                position=primary_data["position"],
             )
 
             # Perform multi-order optimization (0→1→2→3)
@@ -406,56 +425,18 @@ class CamRingOptimizer(BaseOptimizer):
                 )
 
             else:
-                # Provide fallback result to allow cascaded optimization to continue
-                # This is a temporary workaround while CasADi issues are resolved
-                log.warning("All optimization orders failed, providing fallback result")
-
-                # Create a simple fallback design with proper structure
-                fallback_design = {
-                    "optimized_parameters": {
-                        "base_radius": initial_guess.get(
-                            "base_radius", 20.0,
-                        ),  # Use initial guess or default
-                    },
-                    "gear_geometry": {
-                        "ring_teeth": 50,  # Default values
-                        "planet_teeth": 25,
-                        "pressure_angle_deg": 20.0,
-                        "addendum_factor": 1.0,
-                    },
+                order_summary = {
+                    "order0_feasible": order0_result.feasible,
+                    "order1_feasible": order1_result.feasible,
+                    "order2_feasible": order2_result.feasible,
                 }
-
-                result.status = OptimizationStatus.CONVERGED
-                result.solution = fallback_design
-                result.objective_value = float("inf")  # Indicate suboptimal
-                result.iterations = 0
-                result.metadata = {
-                    "optimization_method": "MultiOrderLitvin_Fallback",
-                    "optimized_gear_config": {
-                        "ring_teeth": fallback_design["gear_geometry"]["ring_teeth"],
-                        "planet_teeth": fallback_design["gear_geometry"][
-                            "planet_teeth"
-                        ],
-                        "pressure_angle_deg": fallback_design["gear_geometry"][
-                            "pressure_angle_deg"
-                        ],
-                        "addendum_factor": fallback_design["gear_geometry"][
-                            "addendum_factor"
-                        ],
-                        "base_center_radius": fallback_design["optimized_parameters"][
-                            "base_radius"
-                        ],
-                    },
-                    "order_results": {
-                        "order0_feasible": order0_result.feasible,
-                        "order1_feasible": order1_result.feasible,
-                        "order2_feasible": order2_result.feasible,
-                    },
-                    "fallback": True,
-                    "error_message": "All optimization orders failed, using fallback values",
-                }
-                log.warning(
-                    "Using fallback secondary optimization result to continue cascaded optimization",
+                log.error(
+                    "All cam-ring optimization orders failed; aborting cascaded optimization. "
+                    f"Feasibility summary: {order_summary}",
+                )
+                raise RuntimeError(
+                    "CamRingOptimizer failed: no feasible order (ORDER0/ORDER1/ORDER2) "
+                    f"completed successfully. Details: {order_summary}",
                 )
 
         except Exception as e:

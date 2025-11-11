@@ -30,9 +30,9 @@ def demo_constraint_system():
         stroke=25.0,  # 25mm stroke
         upstroke_duration_percent=55.0,  # 55% upstroke
         zero_accel_duration_percent=20.0,  # 20% zero acceleration
-        max_velocity=100.0,  # 100 mm/s max velocity
-        max_acceleration=50.0,  # 50 mm/s² max acceleration
-        max_jerk=10.0,  # 10 mm/s³ max jerk
+        max_velocity=0.011,  # 0.011 mm/deg max velocity (~100 mm/s at 26 Hz)
+        max_acceleration=0.00057,  # 0.00057 mm/deg² max acceleration (~50 mm/s² at 26 Hz)
+        max_jerk=0.000011,  # 0.000011 mm/deg³ max jerk (~10 mm/s³ at 26 Hz)
         dwell_at_tdc=True,
         dwell_at_bdc=True,
     )
@@ -43,7 +43,7 @@ def demo_constraint_system():
     print(
         f"  - Zero acceleration duration: {cam_constraints.zero_accel_duration_percent}%",
     )
-    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/s")
+    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/deg")
 
     # Validate constraints
     is_valid = cam_constraints.validate()
