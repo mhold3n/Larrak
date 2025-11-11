@@ -9,6 +9,7 @@ results back to OptimizationResult format.
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from typing import Any, Callable
@@ -16,12 +17,28 @@ from typing import Any, Callable
 import numpy as np
 
 from campro.constraints.cam import CamMotionConstraints
+from campro.physics.simple_cycle_adapter import (
+    SimpleCycleAdapter,
+    CycleGeometry,
+    CycleThermo,
+    WiebeParams,
+)
 from campro.freepiston.opt.config_factory import ConfigFactory
 from campro.freepiston.opt.driver import solve_cycle
 from campro.logging import get_logger
 from campro.optimization.base import BaseOptimizer, OptimizationResult, OptimizationStatus
+from campro.utils.structured_reporter import StructuredReporter
 
 log = get_logger(__name__)
+
+_FALSEY = {"0", "false", "no", "off"}
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() not in _FALSEY
 
 
 class FreePistonPhase1Adapter(BaseOptimizer):
@@ -37,6 +54,13 @@ class FreePistonPhase1Adapter(BaseOptimizer):
         super().__init__(name)
         self._is_configured = True
         self._config: dict[str, Any] = {}
+        self._last_combustion_inputs: dict[str, Any] = {}
+        self._last_geometry: dict[str, float] | None = None
+        self._last_cycle_time: float | None = None
+        self._bounce_alpha: float = 1.0
+        self._bounce_beta: float = 0.0
+        self._constant_load_value: float | None = None
+        self._workload_target_j: float | None = None
 
     def configure(self, **kwargs) -> None:
         """
@@ -54,6 +78,20 @@ class FreePistonPhase1Adapter(BaseOptimizer):
         self._min_segments = kwargs.get("min_segments", None)
         self._refinement_factor = kwargs.get("refinement_factor", None)
         self._disable_combustion = kwargs.get("disable_combustion", False)
+        if "bounce_alpha" in kwargs:
+            self._bounce_alpha = float(kwargs["bounce_alpha"])
+        if "bounce_beta" in kwargs:
+            self._bounce_beta = float(kwargs["bounce_beta"])
+        if "constant_load_value" in kwargs:
+            try:
+                self._constant_load_value = float(kwargs["constant_load_value"])
+            except Exception:
+                self._constant_load_value = None
+        if "workload_target" in kwargs:
+            try:
+                self._workload_target_j = float(kwargs["workload_target"])
+            except Exception:
+                self._workload_target_j = self._workload_target_j
         self._is_configured = True
 
     def optimize(
@@ -199,26 +237,33 @@ class FreePistonPhase1Adapter(BaseOptimizer):
         Returns:
             OptimizationResult with motion profile
         """
-        log.info(
+        reporter = StructuredReporter(
+            context="FREE-PISTON",
+            logger=None,
+            stream_out=sys.stderr,
+            stream_err=sys.stderr,
+            debug_env="FREE_PISTON_DEBUG",
+            force_debug=True,
+        )
+        reporter.info(
             f"Free-piston IPOPT Phase 1: stroke={cam_constraints.stroke}mm, "
             f"cycle_time={cycle_time}s, motion_type={motion_type}",
-        )
-        print(
-            f"[FREE-PISTON] Free-piston IPOPT Phase 1: stroke={cam_constraints.stroke}mm, "
-            f"cycle_time={cycle_time}s, motion_type={motion_type}",
-            file=sys.stderr,
-            flush=True,
         )
 
         try:
             # Convert constraints and inputs to free-piston parameter dict
-            print(
-                f"[FREE-PISTON] Building problem dictionary: "
-                f"n_points={n_points}, afr={afr}, ignition_timing={ignition_timing}",
-                file=sys.stderr,
-                flush=True,
+            reporter.info(
+                f"Building problem dictionary: n_points={n_points}, afr={afr}, ignition_timing={ignition_timing}"
             )
             build_start = time.time()
+            self._last_combustion_inputs = {
+                "afr": afr,
+                "fuel_mass": fuel_mass,
+                "ignition_time_s": ignition_timing,
+                "ca50_target_deg": ca50_target_deg,
+                "ca50_weight": ca50_weight,
+            }
+            self._last_cycle_time = cycle_time
             # Extract discretization parameters from config if available
             min_segments = getattr(self, '_min_segments', None)
             refinement_factor = getattr(self, '_refinement_factor', None)
@@ -246,38 +291,20 @@ class FreePistonPhase1Adapter(BaseOptimizer):
             C = int(num.get("C", 1))
             # Estimate variable count: K * C * 6 (states) + initial states + controls
             estimated_vars = K * C * 6 + 6 + K * C * 2  # Rough estimate
-            print(
-                f"[FREE-PISTON] Problem dictionary built in {build_elapsed:.3f}s: "
-                f"K={K}, C={C}, estimated_vars≈{estimated_vars}",
-                file=sys.stderr,
-                flush=True,
-            )
-            log.info(
+            reporter.info(
                 f"Problem dictionary built in {build_elapsed:.3f}s: "
                 f"K={K}, C={C}, estimated_vars≈{estimated_vars}"
             )
 
             # Solve using free-piston IPOPT flow
-            print(
-                f"[FREE-PISTON] Calling free-piston IPOPT solve_cycle()...",
-                file=sys.stderr,
-                flush=True,
-            )
-            print(
-                f"[FREE-PISTON] Problem dimensions: K={K}, C={C}, "
-                f"estimated_vars≈{estimated_vars}, estimated_constraints≈{K * C * 4}",
-                file=sys.stderr,
-                flush=True,
+            reporter.info("Calling free-piston IPOPT solve_cycle()...")
+            reporter.debug(
+                f"Problem dimensions: K={K}, C={C}, estimated_vars≈{estimated_vars}, estimated_constraints≈{K * C * 4}"
             )
             solve_start = time.time()
             solution = solve_cycle(P)
             solve_elapsed = time.time() - solve_start
-            print(
-                f"[FREE-PISTON] Free-piston IPOPT solve_cycle() completed in {solve_elapsed:.3f}s",
-                file=sys.stderr,
-                flush=True,
-            )
-            log.info(f"Free-piston IPOPT solve_cycle() completed in {solve_elapsed:.3f}s")
+            reporter.info(f"Free-piston IPOPT solve_cycle() completed in {solve_elapsed:.3f}s")
 
             # Convert solution to OptimizationResult
             result = self._convert_solution_to_result(
@@ -287,15 +314,77 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                 n_points=n_points or 360,
             )
 
-            log.info(
-                f"Free-piston IPOPT optimization completed: "
-                f"status={result.status}, iterations={result.iterations}",
+            reporter.info(
+                f"Free-piston IPOPT optimization completed: status={result.status}, iterations={result.iterations}"
             )
+
+            diag_enabled = _env_flag("FREE_PISTON_DIAGNOSTICS", default=True) or reporter.show_debug
+            if diag_enabled:
+                optimization_meta = solution.meta.get("optimization", {})
+                iteration_summary = optimization_meta.get("iteration_summary")
+                pressure_meta = result.metadata.get("pressure_invariance")
+                ca_markers = result.metadata.get("ca_markers") or {}
+                with reporter.section("Optimization diagnostics", level="INFO"):
+                    reporter.info(
+                        f"Solver status={optimization_meta.get('status')} success={optimization_meta.get('success')} "
+                        f"iterations={optimization_meta.get('iterations')} cpu_time={optimization_meta.get('cpu_time', 0.0):.3f}s"
+                    )
+                    if iteration_summary:
+                        objective_info = iteration_summary.get("objective", {})
+                        final_info = iteration_summary.get("final", {})
+                        reporter.info(
+                            f"Residuals final: inf_pr={final_info.get('inf_pr', float('nan')):.3e} "
+                            f"inf_du={final_info.get('inf_du', float('nan')):.3e} "
+                            f"mu={final_info.get('mu', float('nan')):.3e}"
+                        )
+                        reporter.info(
+                            f"Iterations total={iteration_summary.get('iteration_count')} "
+                            f"restoration={iteration_summary.get('restoration_steps')} "
+                            f"objective_start={objective_info.get('start', float('nan')):.3e} "
+                            f"objective_final={final_info.get('objective', float('nan')):.3e}"
+                        )
+                        recent = iteration_summary.get("recent_iterations")
+                        if recent and reporter.show_debug:
+                            with reporter.section("Recent IPOPT iterations", level="DEBUG"):
+                                for entry in recent:
+                                    reporter.debug(
+                                        f"k={entry['k']:>4} f={entry['objective']:.3e} "
+                                        f"inf_pr={entry['inf_pr']:.3e} inf_du={entry['inf_du']:.3e} "
+                                        f"mu={entry['mu']:.3e} step={entry['step']}"
+                                    )
+                    if pressure_meta:
+                        pr = pressure_meta.get("pressure_ratio", {})
+                        work = pressure_meta.get("workload", {})
+                        reporter.info(
+                            f"Pressure ratio peak={pr.get('pi_peak', float('nan')):.3f} "
+                            f"mean={pr.get('pi_mean', float('nan')):.3f} "
+                            f"target_peak={pr.get('pi_ref_peak', float('nan')):.3f}"
+                        )
+                        reporter.info(
+                            f"Workload target={work.get('target_work_j', float('nan')):.3f} "
+                            f"mean={work.get('cycle_work_mean_j', float('nan')):.3f} "
+                            f"error={work.get('cycle_work_error_j', float('nan')):.3f}"
+                        )
+                        if reporter.show_debug:
+                            cases = pr.get("cases") or []
+                            if cases:
+                                with reporter.section("Pressure ratio cases", level="DEBUG"):
+                                    for case in cases[:5]:
+                                        reporter.debug(
+                                            f"fuel_mult={case.get('fuel_multiplier')} "
+                                            f"load_delta={case.get('delta_p_load_kpa', 'n/a')} "
+                                            f"pi_peak={case.get('pi_peak', 'n/a')} "
+                                            f"imep={case.get('imep', 'n/a')}"
+                                        )
+                    if ca_markers:
+                        reporter.info(
+                            "CA markers: " + ", ".join(f"{k}={v:.1f}°" for k, v in ca_markers.items())
+                        )
 
             return result
 
         except Exception as e:
-            log.error(f"Free-piston IPOPT optimization failed: {e}", exc_info=True)
+            reporter.exception("Free-piston IPOPT optimization failed", e)
             return OptimizationResult(
                 status=OptimizationStatus.FAILED,
                 error_message=str(e),
@@ -348,6 +437,20 @@ class FreePistonPhase1Adapter(BaseOptimizer):
         stroke_volume_m3 = area_m2 * stroke_m
         clearance_volume_m3 = stroke_volume_m3 / (config.geometry["compression_ratio"] - 1.0)
         config.geometry["clearance_volume"] = clearance_volume_m3
+        self._last_geometry = {
+            "area_mm2": float(area_m2 * 1e6),
+            "Vc_mm3": float(clearance_volume_m3 * 1e9),
+            "stroke_mm": float(cam_constraints.stroke),
+            "bore_m": float(bore),
+        }
+        if self._constant_load_value is None:
+            try:
+                self._constant_load_value = float(self._config.get("constant_load_value", 0.0))
+            except Exception:
+                self._constant_load_value = None
+        if self._workload_target_j is None:
+            base_load_val = float(self._constant_load_value or 0.0)
+            self._workload_target_j = base_load_val * stroke_m
 
         # Set collocation grid size
         # K = number of finite elements, roughly n_points / C
@@ -549,6 +652,214 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                     except Exception as ca_exc:  # pragma: no cover - best effort
                         log.debug(f"CA marker evaluation failed: {ca_exc}")
 
+            pressure_invariance_meta: dict[str, Any] | None = None
+            try:
+                geom_info = self._last_geometry or {}
+                area_mm2 = float(geom_info.get("area_mm2", 0.0))
+                vc_mm3 = float(geom_info.get("Vc_mm3", 0.0))
+                if area_mm2 <= 0.0 or vc_mm3 <= 0.0:
+                    raise ValueError("Missing geometry data for pressure ratio computation")
+                geom_adapter = CycleGeometry(area_mm2=area_mm2, Vc_mm3=vc_mm3)
+                thermo_adapter = CycleThermo(gamma_bounce=1.25, p_atm_kpa=101.325)
+                adapter = SimpleCycleAdapter(
+                    wiebe=WiebeParams(a=5.0, m=2.0, start_deg=-5.0, duration_deg=25.0),
+                    alpha_fuel_to_base=float(self._bounce_alpha),
+                    beta_base=float(self._bounce_beta),
+                )
+                v_mm_per_theta = np.gradient(position, cam_angle)
+                cycle_time_ref = float(self._last_cycle_time or cycle_time)
+                combustion_inputs = None
+                afr_last = self._last_combustion_inputs.get("afr")
+                fuel_mass_last = self._last_combustion_inputs.get("fuel_mass")
+                if afr_last is not None and fuel_mass_last is not None:
+                    combustion_inputs = {
+                        "afr": float(afr_last),
+                        "fuel_mass": float(fuel_mass_last),
+                        "cycle_time_s": cycle_time_ref,
+                        "initial_temperature_K": float(
+                            self._last_combustion_inputs.get("initial_temperature_K", 900.0)
+                        ),
+                        "initial_pressure_Pa": float(
+                            self._last_combustion_inputs.get("initial_pressure_Pa", 101325.0)
+                        ),
+                    }
+                    ignition_time_last = self._last_combustion_inputs.get("ignition_time_s")
+                    ignition_deg_last = self._last_combustion_inputs.get("ignition_theta_deg")
+                    if ignition_time_last is not None:
+                        combustion_inputs["ignition_time_s"] = float(ignition_time_last)
+                    if ignition_deg_last is not None:
+                        combustion_inputs["ignition_theta_deg"] = float(ignition_deg_last)
+
+                # Compute workload-aligned p_load_kpa before evaluation
+                stroke_m = float(self._last_geometry.get("stroke_mm", cam_constraints.stroke)) / 1000.0
+                work_target_j = float(self._workload_target_j or 0.0)
+                area_m2 = float(area_mm2) * 1e-6
+                p_load_kpa_base = 0.0
+                if work_target_j and area_m2 > 0.0:
+                    p_load_pa_base = work_target_j / max(area_m2 * stroke_m, 1e-12)
+                    p_load_kpa_base = p_load_pa_base / 1000.0
+                
+                # Get fuel/load sweeps from config (default to single case)
+                fuel_sweep = self._config.get("fuel_sweep", [1.0])
+                if not fuel_sweep:
+                    fuel_sweep = [1.0]
+                fuel_sweep = [float(x) for x in fuel_sweep]
+                
+                load_sweep = self._config.get("load_sweep", [0.0])
+                if not load_sweep:
+                    load_sweep = [0.0]
+                load_sweep = [float(x) for x in load_sweep]
+                
+                p_env_eval = float(thermo_adapter.p_atm_kpa)
+                p_cc_eval = float(self._config.get("crankcase_pressure_kpa", 0.0))
+                
+                # Evaluate all fuel/load combinations
+                ratio_cases = []
+                work_cases = []
+                pi_traces = []
+                base_eval_out = None
+                
+                for fm in fuel_sweep:
+                    for c in load_sweep:
+                        # Build combustion inputs with fuel multiplier
+                        comb_inputs_case = None
+                        if combustion_inputs is not None:
+                            comb_inputs_case = dict(combustion_inputs)
+                            if "fuel_mass" in comb_inputs_case:
+                                comb_inputs_case["fuel_mass"] = float(comb_inputs_case["fuel_mass"]) * float(fm)
+                        
+                        eval_out_case = adapter.evaluate(
+                            cam_angle,
+                            position,
+                            v_mm_per_theta,
+                            float(fm),
+                            float(c),
+                            geom_adapter,
+                            thermo_adapter,
+                            combustion=comb_inputs_case,
+                            cycle_time_s=cycle_time_ref,
+                        )
+                        
+                        # Use base case for reference
+                        if abs(float(fm) - 1.0) < 1e-6 and float(c) == 0.0:
+                            base_eval_out = eval_out_case
+                        
+                        # Compute workload-aligned p_load_kpa for this case
+                        cycle_work_case = float(eval_out_case.get("cycle_work_j", 0.0))
+                        p_load_kpa_case = p_load_kpa_base
+                        if cycle_work_case > 0.0 and area_m2 > 0.0:
+                            # Use actual cycle work to compute case-specific load pressure
+                            p_load_pa_case = cycle_work_case / max(area_m2 * stroke_m, 1e-12)
+                            p_load_kpa_case = p_load_pa_case / 1000.0
+                        elif work_target_j and area_m2 > 0.0:
+                            # Scale by fuel multiplier as proxy
+                            effective_work = work_target_j * float(fm)
+                            p_load_pa_case = effective_work / max(area_m2 * stroke_m, 1e-12)
+                            p_load_kpa_case = p_load_pa_case / 1000.0
+                        
+                        p_cyl_case = np.asarray(eval_out_case.get("p_cyl") or eval_out_case.get("p_comb"), dtype=float)
+                        p_bounce_case = np.asarray(eval_out_case.get("p_bounce"), dtype=float)
+                        denom_case = p_load_kpa_case + p_cc_eval + p_env_eval + p_bounce_case
+                        pi_trace_case = p_cyl_case / np.maximum(denom_case, 1e-6)
+                        pi_traces.append(pi_trace_case)
+                        
+                        ca_markers_case = eval_out_case.get("ca_markers") or {}
+                        ratio_case = {
+                            "fuel_multiplier": float(fm),
+                            "load": float(c),
+                            "pi_mean": float(np.mean(pi_trace_case)),
+                            "pi_peak": float(np.max(pi_trace_case)),
+                            "pi_min": float(np.min(pi_trace_case)),
+                        }
+                        # Add CA markers if available
+                        if ca_markers_case:
+                            for key, value in ca_markers_case.items():
+                                if value is not None:
+                                    ratio_case[f"ca_{key.lower()}"] = float(value)
+                        ratio_cases.append(ratio_case)
+                        
+                        cycle_work_case_val = float(eval_out_case.get("cycle_work_j", 0.0))
+                        work_case = {
+                            "fuel_multiplier": float(fm),
+                            "load": float(c),
+                            "cycle_work_j": cycle_work_case_val,
+                            "work_error_j": cycle_work_case_val - work_target_j,
+                        }
+                        # Add CA markers to work cases if available
+                        if ca_markers_case:
+                            for key, value in ca_markers_case.items():
+                                if value is not None:
+                                    work_case[f"ca_{key.lower()}"] = float(value)
+                        work_cases.append(work_case)
+                
+                # Use base case for reference metrics
+                eval_out = base_eval_out if base_eval_out is not None else eval_out_case
+                p_cyl_eval = np.asarray(eval_out.get("p_cyl") or eval_out.get("p_comb"), dtype=float)
+                p_bounce_eval = np.asarray(eval_out.get("p_bounce"), dtype=float)
+                # Use workload-aligned p_load_kpa for reference denominator
+                denom_eval = p_load_kpa_base + p_cc_eval + p_env_eval + p_bounce_eval
+                pi_trace_eval = p_cyl_eval / np.maximum(denom_eval, 1e-6)
+                
+                # Aggregate statistics from all cases
+                if pi_traces:
+                    merged_pi = np.concatenate(pi_traces)
+                    pressure_ratio_meta = {
+                        "pi_mean": float(np.mean(merged_pi)),
+                        "pi_peak": float(np.max(merged_pi)),
+                        "pi_min": float(np.min(merged_pi)),
+                        "pi_std": float(np.std(merged_pi)),
+                        "pi_ref_mean": float(np.mean(pi_trace_eval)),
+                        "pi_ref_peak": float(np.max(pi_trace_eval)),
+                        "pi_ref_min": float(np.min(pi_trace_eval)),
+                        "pi_ref_std": float(np.std(pi_trace_eval)),
+                        "cases": ratio_cases,
+                    }
+                else:
+                    pressure_ratio_meta = {
+                        "pi_mean": float(np.mean(pi_trace_eval)),
+                        "pi_peak": float(np.max(pi_trace_eval)),
+                        "pi_min": float(np.min(pi_trace_eval)),
+                        "pi_std": float(np.std(pi_trace_eval)),
+                        "pi_ref_mean": float(np.mean(pi_trace_eval)),
+                        "pi_ref_peak": float(np.max(pi_trace_eval)),
+                        "pi_ref_min": float(np.min(pi_trace_eval)),
+                        "pi_ref_std": float(np.std(pi_trace_eval)),
+                        "cases": [],
+                    }
+                
+                # Aggregate work statistics
+                cycle_work_values = [w["cycle_work_j"] for w in work_cases]
+                work_mean = float(np.mean(cycle_work_values)) if cycle_work_values else 0.0
+                work_stats_meta = {
+                    "target_work_j": work_target_j,
+                    "cycle_work_mean_j": work_mean,
+                    "cycle_work_error_j": work_mean - work_target_j,
+                    "cases": work_cases,
+                }
+                pressure_invariance_meta = {
+                    "loss_p_mean": 0.0,
+                    "imep_avg": float(eval_out.get("imep", 0.0)),
+                    "fuel_sweep": fuel_sweep,
+                    "load_sweep": load_sweep,
+                    "pressure_ratio": pressure_ratio_meta,
+                    "pressure_ratio_target_mean": float(np.mean(pi_trace_eval)),
+                    "pi_reference": pi_trace_eval.tolist(),
+                    "theta_deg": np.degrees(cam_angle).tolist(),
+                    "denominator_base": {
+                        "p_load_kpa": p_load_kpa_base,  # Use workload-aligned base
+                        "p_env_kpa": p_env_eval,
+                        "p_cc_kpa": p_cc_eval,
+                    },
+                    "workload": work_stats_meta,
+                    "work_target_j": work_target_j,
+                }
+                ca_comb_eval = eval_out.get("ca_markers")
+                if ca_comb_eval:
+                    ca_markers.update(ca_comb_eval)
+            except Exception as ratio_exc:  # pragma: no cover - diagnostics path
+                log.debug(f"Free-piston ratio diagnostics failed: {ratio_exc}")
+                pressure_invariance_meta = None
+
             # Build metadata
             metadata = {
                 "free_piston_optimization": True,
@@ -562,6 +873,8 @@ class FreePistonPhase1Adapter(BaseOptimizer):
                 "iterations": iterations,
                 "cpu_time": cpu_time,
             }
+            if pressure_invariance_meta is not None:
+                metadata["pressure_invariance"] = pressure_invariance_meta
 
             return OptimizationResult(
                 status=status,

@@ -1,5 +1,4 @@
-"""
-Clean Cam-Ring System Designer GUI
+"""Clean Cam-Ring System Designer GUI.
 
 A comprehensive GUI with 5 tabs for three-stage optimization:
 1. Motion Law - Linear follower motion visualization (Run 1)
@@ -10,12 +9,15 @@ A comprehensive GUI with 5 tabs for three-stage optimization:
 """
 from __future__ import annotations
 
+import io
 import os
+import platform
 import subprocess
 import sys
 import threading
 import tkinter as tk
 from pathlib import Path
+from typing import Any
 from tkinter import filedialog, messagebox, ttk
 
 import numpy as np
@@ -24,8 +26,130 @@ from matplotlib.figure import Figure
 
 from campro.logging import get_logger
 from campro.optimization.solver_analysis import analyze_ipopt_run
+from campro.utils.structured_reporter import StructuredReporter
 
 log = get_logger(__name__)
+
+# Fix Windows console encoding for emoji/Unicode characters
+if sys.platform == "win32":
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    else:
+        # Fallback for older Python versions
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+# Add the current directory to Python path
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
+
+LOG = StructuredReporter(indent="  ", debug_env="LARRAK_LAUNCH_DEBUG")
+
+
+def check_conda_environment():
+    """Check if running in the correct conda environment and warn if not."""
+    conda_env = os.environ.get("CONDA_DEFAULT_ENV", "")
+    conda_prefix = os.environ.get("CONDA_PREFIX", "")
+
+    in_conda = bool(conda_prefix)
+
+    with LOG.optional_debug_section("Inspecting conda activation"):
+        LOG.debug(f"CONDA_DEFAULT_ENV = {conda_env or '<unset>'}")
+        LOG.debug(f"CONDA_PREFIX = {conda_prefix or '<unset>'}")
+    
+    try:
+        from campro.environment.platform_detector import (
+            get_local_conda_env_path,
+            is_local_conda_env_present,
+        )
+        
+        project_root = current_dir
+        if is_local_conda_env_present(project_root):
+            local_env_path = get_local_conda_env_path(project_root)
+            if str(Path(conda_prefix).resolve()) == str(local_env_path.resolve()):
+                LOG.debug(f"Using project-local conda environment at {local_env_path}")
+                return True
+            LOG.warning(
+                f"Project-local environment detected at {local_env_path}, but active env is {conda_prefix or '<unknown>'}"
+            )
+    except ImportError:
+        LOG.debug("campro.environment.platform_detector unavailable; skipping local environment detection")
+    
+    if conda_env == "larrak" or "larrak" in conda_prefix.lower():
+        LOG.debug(f"Active conda environment is larrak ({conda_env or 'larrak'})")
+        return True
+    
+    if not in_conda:
+        LOG.warning("No active conda environment detected.")
+        with LOG.section("Activate environment", level="INFO"):
+            LOG.item("conda activate larrak")
+        return False
+    
+    LOG.warning(f"Running in conda environment '{conda_env or '<unknown>'}' instead of 'larrak'.")
+    LOG.info("Missing dependencies (numpy, casadi, etc.) are likely.")
+    with LOG.section("Activate environment", level="INFO"):
+        LOG.item("conda activate larrak")
+    
+    home = Path.home()
+    system = platform.system().lower()
+    
+    if system == "windows":
+        possible_paths = [
+            home / "miniconda3" / "envs" / "larrak",
+            home / "anaconda3" / "envs" / "larrak",
+            current_dir / "conda_env_windows",
+        ]
+    elif system == "darwin":
+        possible_paths = [
+            home / "miniconda3" / "envs" / "larrak",
+            home / "anaconda3" / "envs" / "larrak",
+            current_dir / "conda_env_macos",
+        ]
+    else:
+        possible_paths = [
+            home / "miniconda3" / "envs" / "larrak",
+            home / "anaconda3" / "envs" / "larrak",
+            current_dir / "conda_env_linux",
+        ]
+    
+    with LOG.section("Searched for larrak environment", level="INFO"):
+        for larrak_path in possible_paths:
+            if larrak_path.exists():
+                LOG.info(f"Found at {larrak_path}")
+                LOG.info(f"Activate with: conda activate {larrak_path}")
+                break
+        else:
+            LOG.info("Not found in standard locations.")
+            LOG.info("Create it with: python scripts/setup_environment.py")
+    
+    return False
+
+
+def _check_casadi_available() -> bool:
+    """Basic check if CasADi can be imported. Detailed validation handled by GUI."""
+    try:
+        import casadi  # noqa: F401
+        LOG.debug("CasADi import check: available")
+        return True
+    except Exception:
+        LOG.debug("CasADi import check: not available (GUI will handle detailed validation)")
+        return False
+
+
+def _check_hsl_path() -> bool:
+    """Basic check if HSL path is set. Detailed validation handled by GUI."""
+    try:
+        from campro import constants as _c
+        hsl_path = getattr(_c, "HSLLIB_PATH", "")
+        if hsl_path and Path(hsl_path).exists():
+            LOG.debug(f"HSL path check: found at {hsl_path}")
+            return True
+        LOG.debug("HSL path check: not set or invalid (GUI will handle detailed validation)")
+        return False
+    except Exception:
+        LOG.debug("HSL path check: unable to check (GUI will handle detailed validation)")
+        return False
 
 
 # Validate environment before starting GUI
@@ -201,6 +325,9 @@ class CamMotionGUI:
         # Animation assembly state (initialized later after optimization)
         self.animation_state = None
         self._anim_rmax = None
+        
+        # Implied RPM from cycle_time and duration_angle_deg
+        self._implied_rpm = None
 
     def _configure_styles(self):
         """Configure ttk styles for better contrast and readability."""
@@ -280,6 +407,7 @@ class CamMotionGUI:
             # Core system parameters
             "stroke": tk.DoubleVar(value=20.0),
             "cycle_time": tk.DoubleVar(value=1.0),
+            "duration_angle_deg": tk.DoubleVar(value=360.0),
             "upstroke_duration": tk.DoubleVar(value=60.0),
             "zero_accel_duration": tk.DoubleVar(value=0.0),
             "motion_type": tk.StringVar(value="minimum_jerk"),
@@ -291,6 +419,7 @@ class CamMotionGUI:
             "combustion_ca50_weight": tk.DoubleVar(value=0.0),
             "combustion_duration_target": tk.DoubleVar(value=20.0),  # CA90-CA10 duration
             "combustion_duration_weight": tk.DoubleVar(value=0.0),
+            "injector_delay_deg": tk.DoubleVar(value=0.0),  # Injector delay [deg] - shifts effective combustion start
             # Cam-ring system parameters
             "base_radius": tk.DoubleVar(value=15.0),
             "connecting_rod_length": tk.DoubleVar(value=25.0),
@@ -325,18 +454,60 @@ class CamMotionGUI:
             # CasADi optimization options
             "use_casadi_optimizer": tk.BooleanVar(value=False),
             "enable_warmstart": tk.BooleanVar(value=True),
-            "casadi_n_segments": tk.IntVar(value=50),
             "casadi_poly_order": tk.IntVar(value=3),
             "casadi_collocation_method": tk.StringVar(value="legendre"),
             "thermal_efficiency_target": tk.DoubleVar(value=0.55),
             "enable_thermal_efficiency": tk.BooleanVar(value=True),
-            # Universal grid and mapper selections
-            "universal_n_points": tk.IntVar(value=360),
-            "mapper_method": tk.StringVar(value="linear"),  # linear, pchip, barycentric, projection
-            # Diagnostics toggles
-            "enable_grid_diagnostics": tk.BooleanVar(value=False),
-            "enable_grid_plots": tk.BooleanVar(value=False),
+            # Motion constraints (per-degree units) - empty by default (unbounded)
+            # User can enter values to enforce actuator limits, or leave empty for unbounded optimization
+            "max_velocity": tk.StringVar(value=""),  # mm/deg (empty = unbounded)
+            "max_acceleration": tk.StringVar(value=""),  # mm/deg² (empty = unbounded)
+            "max_jerk": tk.StringVar(value=""),  # mm/deg³ (empty = unbounded)
         }
+
+    def _snapshot_variables(self) -> dict[str, Any]:
+        """Capture current GUI variable values on the main thread."""
+        snapshot: dict[str, Any] = {}
+        for name, var in self.variables.items():
+            try:
+                snapshot[name] = var.get()
+            except Exception:
+                snapshot[name] = None
+        return snapshot
+
+    def _get_value(
+        self,
+        name: str,
+        snapshot: dict[str, Any] | None,
+        *,
+        default: Any = None,
+        cast: type | None = None,
+    ) -> Any:
+        """Retrieve a value from the snapshot (or live Tk var) with optional casting."""
+        if snapshot is not None and name in snapshot:
+            value = snapshot[name]
+        else:
+            var = self.variables.get(name)
+            if var is None:
+                value = None
+            else:
+                try:
+                    value = var.get()
+                except Exception:
+                    value = None
+
+        # Treat empty strings as None
+        if value == "":
+            value = None
+
+        if value is None:
+            return default
+        if cast is not None:
+            try:
+                return cast(value)
+            except Exception:
+                return default
+        return value
 
     def _create_widgets(self):
         """Create all GUI widgets."""
@@ -411,20 +582,34 @@ class CamMotionGUI:
         # --- System parameters -------------------------------------------------
         system_frame = ttk.LabelFrame(self.control_frame, text="System Parameters")
         system_frame.grid(row=0, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
-        for c in range(8):
+        for c in range(10):
             system_frame.grid_columnconfigure(c, weight=1)
 
         self.stroke_entry = ttk.Entry(system_frame, textvariable=self.variables["stroke"], width=8)
         add_field(system_frame, "Stroke (mm):", self.stroke_entry, 0, 0)
 
+        # Duration angle is primary - make it prominent
+        self.duration_angle_entry = ttk.Entry(system_frame, textvariable=self.variables["duration_angle_deg"], width=8)
+        add_field(system_frame, "Duration Angle (deg) *:", self.duration_angle_entry, 0, 1)
+
+        # Cycle time can be derived from duration_angle_deg + engine speed
         self.cycle_time_entry = ttk.Entry(system_frame, textvariable=self.variables["cycle_time"], width=8)
-        add_field(system_frame, "Cycle Time (s):", self.cycle_time_entry, 0, 1)
+        add_field(system_frame, "Cycle Time (s):", self.cycle_time_entry, 0, 2)
+        
+        # Helper label explaining angular nature
+        angle_helper = ttk.Label(
+            system_frame,
+            text="* Primary parameter: motion is defined in angular domain (per-degree units)",
+            font=("TkDefaultFont", 7),
+            foreground="blue",
+        )
+        angle_helper.grid(row=0, column=6, columnspan=4, sticky="w", padx=4)
 
         self.upstroke_entry = ttk.Entry(system_frame, textvariable=self.variables["upstroke_duration"], width=8)
-        add_field(system_frame, "Upstroke Duration (%):", self.upstroke_entry, 0, 2)
+        add_field(system_frame, "Upstroke Duration (%):", self.upstroke_entry, 0, 3)
 
         self.zero_accel_entry = ttk.Entry(system_frame, textvariable=self.variables["zero_accel_duration"], width=8)
-        add_field(system_frame, "Zero Accel Duration (%):", self.zero_accel_entry, 0, 3)
+        add_field(system_frame, "Zero Accel Duration (%):", self.zero_accel_entry, 0, 4)
 
         self.motion_type_combo = ttk.Combobox(
             system_frame,
@@ -470,6 +655,9 @@ class CamMotionGUI:
         self.ignition_entry = ttk.Entry(system_frame, textvariable=self.variables["combustion_ignition_deg"], width=8)
         add_field(system_frame, "Ignition (deg rel TDC):", self.ignition_entry, 3, 1)
 
+        self.injector_delay_entry = ttk.Entry(system_frame, textvariable=self.variables["injector_delay_deg"], width=8)
+        add_field(system_frame, "Injector Delay (deg):", self.injector_delay_entry, 3, 2)
+
         # --- Combustion targets -----------------------------------------------
         combustion_frame = ttk.LabelFrame(self.control_frame, text="Combustion Targets")
         combustion_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
@@ -505,9 +693,46 @@ class CamMotionGUI:
             1,
         )
 
+        # --- Motion constraints (per-degree units) ----------------------------
+        constraints_frame = ttk.LabelFrame(self.control_frame, text="Motion Constraints (Per-Degree Units)")
+        constraints_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
+        for c in range(3):
+            constraints_frame.grid_columnconfigure(c * 2 + 1, weight=1)
+
+        add_field(
+            constraints_frame,
+            "Max Velocity (mm/deg):",
+            ttk.Entry(constraints_frame, textvariable=self.variables["max_velocity"], width=10),
+            0,
+            0,
+        )
+        add_field(
+            constraints_frame,
+            "Max Acceleration (mm/deg²):",
+            ttk.Entry(constraints_frame, textvariable=self.variables["max_acceleration"], width=10),
+            0,
+            1,
+        )
+        add_field(
+            constraints_frame,
+            "Max Jerk (mm/deg³):",
+            ttk.Entry(constraints_frame, textvariable=self.variables["max_jerk"], width=10),
+            0,
+            2,
+        )
+
+        # Helper label explaining per-degree units
+        helper_label = ttk.Label(
+            constraints_frame,
+            text="Note: All constraints must be in per-degree units (mm/deg, mm/deg², mm/deg³). No per-second units accepted.",
+            font=("TkDefaultFont", 8),
+            foreground="gray",
+        )
+        helper_label.grid(row=1, column=0, columnspan=6, sticky="w", padx=4, pady=(2, 0))
+
         # --- Action buttons ----------------------------------------------------
         button_frame = ttk.Frame(self.control_frame)
-        button_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(5, 5))
+        button_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(5, 5))
         button_frame.grid_columnconfigure(3, weight=1)
 
         self.optimize_button = ttk.Button(
@@ -541,7 +766,7 @@ class CamMotionGUI:
 
         # --- Crank center optimization ----------------------------------------
         crank_frame = ttk.LabelFrame(self.control_frame, text="Crank Center Optimization (Run 3)")
-        crank_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
+        crank_frame.grid(row=4, column=0, columnspan=3, sticky="ew", padx=5, pady=(0, 5))
         for c in range(4):
             crank_frame.grid_columnconfigure(c * 2 + 1, weight=1)
 
@@ -631,8 +856,8 @@ class CamMotionGUI:
 
         add_field(
             casadi_frame,
-            "Segments:",
-            ttk.Entry(casadi_frame, textvariable=self.variables["casadi_n_segments"], width=8),
+            "Resolution:",
+            ttk.Label(casadi_frame, text="coarse -> fine angle (automatic)"),
             1,
             0,
         )
@@ -653,46 +878,13 @@ class CamMotionGUI:
         casadi_method_combo.set("legendre")
         add_field(casadi_frame, "Method:", casadi_method_combo, 1, 2)
 
-        universal_points_entry = ttk.Spinbox(
-            casadi_frame,
-            from_=90,
-            to=4096,
-            increment=10,
-            textvariable=self.variables["universal_n_points"],
-            width=6,
-        )
-        add_field(casadi_frame, "Universal Points:", universal_points_entry, 1, 3)
-
-        mapper_combo = ttk.Combobox(
-            casadi_frame,
-            textvariable=self.variables["mapper_method"],
-            values=["linear", "pchip", "barycentric", "projection"],
-            state="readonly",
-            width=12,
-        )
-        mapper_combo.set("linear")
-        add_field(casadi_frame, "Mapper Method:", mapper_combo, 2, 0)
-
         add_field(
             casadi_frame,
             "Efficiency Target:",
             ttk.Entry(casadi_frame, textvariable=self.variables["thermal_efficiency_target"], width=8),
-            2,
             1,
+            3,
         )
-
-        diag_frame = ttk.Frame(casadi_frame)
-        diag_frame.grid(row=2, column=4, columnspan=4, sticky="w", pady=2, padx=(0, 8))
-        ttk.Checkbutton(
-            diag_frame,
-            text="Grid Diagnostics",
-            variable=self.variables["enable_grid_diagnostics"],
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Checkbutton(
-            diag_frame,
-            text="Grid Plots",
-            variable=self.variables["enable_grid_plots"],
-        ).pack(side=tk.LEFT)
 
         # Add callback to update initial guesses when stroke changes
         self.variables["stroke"].trace("w", self._on_stroke_changed)
@@ -793,6 +985,14 @@ class CamMotionGUI:
         self.diag_feas_text = tk.Text(feas, height=8, wrap="none")
         self.diag_feas_text.pack(fill=tk.BOTH, expand=True)
         self.diag_feas_text.config(state="disabled")
+        # Combustion metrics group
+        combustion_frame = ttk.LabelFrame(
+            self.diagnostics_frame, text="Combustion Metrics", padding="10"
+        )
+        combustion_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        self.diag_combustion_text = tk.Text(combustion_frame, height=8, wrap="none")
+        self.diag_combustion_text.pack(fill=tk.BOTH, expand=True)
+        self.diag_combustion_text.config(state="disabled")
 
     def _update_diagnostics_tab(self, solve_report):
         """Populate diagnostics tab from a SolveReport-like object."""
@@ -928,6 +1128,63 @@ class CamMotionGUI:
                     )
             finally:
                 self.diag_feas_text.config(state="disabled")
+
+            # Combustion metrics
+            try:
+                self.diag_combustion_text.config(state="normal")
+                self.diag_combustion_text.delete("1.0", tk.END)
+                lines: list[str] = []
+                if hasattr(self, "unified_result") and self.unified_result is not None:
+                    markers = getattr(self.unified_result, "primary_ca_markers", {}) or {}
+                    pressure_meta = getattr(self.unified_result, "primary_pressure_invariance", {}) or {}
+                    if markers:
+                        lines.append("CA Markers:")
+                        for name in ("CA10", "CA50", "CA90", "CA100"):
+                            if name in markers and markers[name] is not None:
+                                try:
+                                    lines.append(f"  {name}: {float(markers[name]):.2f} deg")
+                                except Exception:
+                                    lines.append(f"  {name}: {markers[name]}")
+                    pressure_ratio = (
+                        pressure_meta.get("pressure_ratio") if isinstance(pressure_meta, dict) else {}
+                    ) or {}
+                    if pressure_ratio:
+                        if lines:
+                            lines.append("")
+                        lines.append("Pressure Ratio:")
+                        for key in ("pi_mean", "pi_peak", "pi_min", "pi_std"):
+                            if key in pressure_ratio and pressure_ratio[key] is not None:
+                                try:
+                                    lines.append(f"  {key}: {float(pressure_ratio[key]):.4f}")
+                                except Exception:
+                                    lines.append(f"  {key}: {pressure_ratio[key]}")
+                        cases = pressure_ratio.get("cases")
+                        if isinstance(cases, list) and cases:
+                            lines.append("")
+                            lines.append("Sweeps:")
+                            for case in cases:
+                                if not isinstance(case, dict):
+                                    continue
+                                fm = case.get("fuel_multiplier")
+                                load = case.get("load")
+                                pi_mean = case.get("pi_mean")
+                                try:
+                                    fm_val = float(fm) if fm is not None else None
+                                    load_val = float(load) if load is not None else None
+                                    pi_val = float(pi_mean) if pi_mean is not None else None
+                                    fm_str = f"{fm_val:.2f}" if fm_val is not None else "n/a"
+                                    load_str = f"{load_val:.2f}" if load_val is not None else "n/a"
+                                    pi_str = f"{pi_val:.4f}" if pi_val is not None else "n/a"
+                                    lines.append(f"  fm={fm_str}, load={load_str} -> pi_mean={pi_str}")
+                                except Exception:
+                                    lines.append(f"  case: {case}")
+                    if not lines:
+                        lines.append("No combustion metrics recorded.")
+                else:
+                    lines.append("No combustion metrics available.")
+                self.diag_combustion_text.insert(tk.END, "\n".join(lines) + "\n")
+            finally:
+                self.diag_combustion_text.config(state="disabled")
         except Exception as e:
             print(f"DEBUG: Failed to update diagnostics tab: {e}")
 
@@ -1329,12 +1586,18 @@ class CamMotionGUI:
         self.optimize_button.config(state="disabled")
         self.status_var.set("Running system optimization...")
 
+        # Snapshot GUI variables on the main thread for thread-safe access
+        variable_snapshot = self._snapshot_variables()
+
         # Run in separate thread to prevent GUI freezing
-        thread = threading.Thread(target=self._optimization_thread)
+        thread = threading.Thread(
+            target=self._optimization_thread,
+            args=(variable_snapshot,),
+        )
         thread.daemon = True
         thread.start()
 
-    def _optimization_thread(self):
+    def _optimization_thread(self, variable_snapshot: dict[str, Any] | None = None):
         """Thread function for system optimization."""
         import sys
         from campro.utils.progress_logger import ProgressLogger
@@ -1348,38 +1611,61 @@ class CamMotionGUI:
             sys.stdout.flush()
 
             # Configure unified framework
-            self._configure_unified_framework()
+            self._configure_unified_framework(variable_snapshot)
             gui_logger.step_complete("Framework configuration")
 
             # Prepare input data
             gui_logger.step(2, None, "Preparing input parameters")
+            def _val(name: str, default: Any = None, cast: type | None = None) -> Any:
+                return self._get_value(name, variable_snapshot, default=default, cast=cast)
+
             input_data = {
-                "stroke": self.variables["stroke"].get(),
-                "cycle_time": self.variables["cycle_time"].get(),
-                "upstroke_duration_percent": self.variables["upstroke_duration"].get(),
-                "zero_accel_duration_percent": self.variables[
-                    "zero_accel_duration"
-                ].get(),
-                "motion_type": self.variables["motion_type"].get(),
-                "afr": self.variables["combustion_afr"].get(),
-                "fuel_mass": self.variables["combustion_fuel_mass"].get(),
-                "ignition_deg": self.variables["combustion_ignition_deg"].get(),
-                "ca50_target_deg": self.variables["combustion_ca50_target"].get(),
-                "ca50_weight": self.variables["combustion_ca50_weight"].get(),
-                "ca_duration_target_deg": self.variables["combustion_duration_target"].get(),
-                "ca_duration_weight": self.variables["combustion_duration_weight"].get(),
+                "stroke": _val("stroke", 20.0, float),
+                "cycle_time": _val("cycle_time", 1.0, float),  # Derived from engine_speed_rpm and duration_angle_deg when available
+                "duration_angle_deg": _val("duration_angle_deg", 360.0, float),  # Required: primary input
+                "upstroke_duration_percent": _val("upstroke_duration", 60.0, float),
+                "zero_accel_duration_percent": _val("zero_accel_duration", 0.0, float),
+                "motion_type": _val("motion_type", "minimum_jerk", str),
+                "afr": _val("combustion_afr", 18.0, float),
+                "fuel_mass": _val("combustion_fuel_mass", 5e-4, float),
+                "ignition_deg": _val("combustion_ignition_deg", -5.0, float),
+                "ca50_target_deg": _val("combustion_ca50_target", 5.0, float),
+                "ca50_weight": _val("combustion_ca50_weight", 0.0, float),
+                "ca_duration_target_deg": _val("combustion_duration_target", 20.0, float),
+                "ca_duration_weight": _val("combustion_duration_weight", 0.0, float),
+                "injector_delay_deg": _val("injector_delay_deg", 0.0, float),
             }
 
-            gui_logger.info(
-                "Input parameters: stroke=%.2f mm, cycle_time=%.3f s, motion_type=%s, AFR=%.2f, ignition_deg=%.2f"
-                % (
-                    input_data["stroke"],
-                    input_data["cycle_time"],
-                    input_data["motion_type"],
-                    input_data["afr"],
-                    input_data["ignition_deg"],
-                ),
-            )
+            # Phase 2: Log both time and angle units for clarity
+            # Motion constraints are optional (None = unbounded)
+            max_velocity = self._get_value("max_velocity", variable_snapshot, default=None, cast=float)
+            max_acceleration = self._get_value("max_acceleration", variable_snapshot, default=None, cast=float)
+            max_jerk = self._get_value("max_jerk", variable_snapshot, default=None, cast=float)
+            
+            # Build log message with proper handling of None values
+            log_lines = [
+                f"Input parameters: stroke={input_data['stroke']:.2f} mm, cycle_time={input_data['cycle_time']:.3f} s, "
+                f"duration_angle={input_data['duration_angle_deg']:.2f} deg, motion_type={input_data['motion_type']}, "
+                f"AFR={input_data['afr']:.2f}, ignition_deg={input_data['ignition_deg']:.2f}"
+            ]
+            
+            if max_velocity is None and max_acceleration is None and max_jerk is None:
+                log_lines.append(
+                    "  Motion constraints (per-degree): unbounded velocity/accel/jerk (optimizer selects profile)"
+                )
+            else:
+                    constraint_parts = []
+                    if max_velocity is not None:
+                        constraint_parts.append(f"max_velocity={max_velocity:.3f} mm/deg")
+                    if max_acceleration is not None:
+                        constraint_parts.append(f"max_acceleration={max_acceleration:.2f} mm/deg²")
+                    if max_jerk is not None:
+                        constraint_parts.append(f"max_jerk={max_jerk:.2f} mm/deg³")
+                    
+                    if constraint_parts:
+                        log_lines.append(f"  Motion constraints (per-degree): {', '.join(constraint_parts)}")
+            
+            gui_logger.info("\n".join(log_lines))
             gui_logger.step_complete("Input preparation")
             sys.stderr.flush()
             sys.stdout.flush()
@@ -1464,10 +1750,15 @@ class CamMotionGUI:
         """Re-enable the optimize button."""
         self.optimize_button.config(state="normal")
 
-    def _configure_unified_framework(self):
+    def _configure_unified_framework(self, variable_snapshot: dict[str, Any] | None = None):
         """Configure the unified optimization framework with current settings."""
         # Get optimization method
-        method_name = self.variables["optimization_method"].get()
+        method_name = self._get_value(
+            "optimization_method",
+            variable_snapshot,
+            default="legendre_collocation",
+            cast=str,
+        )
         method = OptimizationMethod(method_name)
 
         # Create settings
@@ -1476,8 +1767,6 @@ class CamMotionGUI:
             collocation_degree=3,
             max_iterations=100,
             tolerance=1e-6,
-            lagrangian_tolerance=1e-8,
-            penalty_weight=1.0,
         )
 
         # Enable Ipopt analysis for MA57 readiness grading
@@ -1486,33 +1775,32 @@ class CamMotionGUI:
         # Thermal efficiency: only enable if explicitly requested (not hardcoded)
         # Default to False unless a GUI control exists and is checked
         settings.use_thermal_efficiency = bool(
-            self.variables.get("use_thermal_efficiency", tk.BooleanVar(value=False)).get()
-        ) if "use_thermal_efficiency" in self.variables else False
+            self._get_value("use_thermal_efficiency", variable_snapshot, default=False),
+        )
 
         # Configure CasADi validation mode from GUI
-        settings.enable_casadi_validation_mode = self.variables[
-            "enable_casadi_validation_mode"
-        ].get()
-        settings.casadi_validation_tolerance = self.variables[
-            "casadi_validation_tolerance"
-        ].get()
+        settings.enable_casadi_validation_mode = bool(
+            self._get_value("enable_casadi_validation_mode", variable_snapshot, default=False),
+        )
+        settings.casadi_validation_tolerance = float(
+            self._get_value("casadi_validation_tolerance", variable_snapshot, default=1e-4, cast=float),
+        )
 
         # The Lobatto/Radau/Legendre dropdown controls the SHARED collocation method used
         # across all modules (primary motion-law and MotionConstraints). This is a temporary
         # global toggle for simplicity. In a future session we will support granular, per-stage
         # method selection (e.g., primary=Radau, secondary=Lobatto) and per-stage degrees.
-        settings.collocation_method = self.variables["casadi_collocation_method"].get()
+        settings.collocation_method = self._get_value(
+            "casadi_collocation_method",
+            variable_snapshot,
+            default="legendre",
+            cast=str,
+        )
 
-        # Universal grid controls from GUI
-        settings.universal_n_points = int(self.variables["universal_n_points"].get())
-
-        # Mapper method selection from GUI (linear, pchip, barycentric, projection)
-        # Currently used inside invariance mappings and available for future stage wrappers.
-        settings.mapper_method = self.variables["mapper_method"].get()
-
-        # Diagnostics toggles from GUI
-        settings.enable_grid_diagnostics = bool(self.variables["enable_grid_diagnostics"].get())
-        settings.enable_grid_plots = bool(self.variables["enable_grid_plots"].get())
+        # Legacy/Universal-grid controls removed from GUI - they predate CasADi ladder system.
+        # These settings still exist in UnifiedOptimizationSettings with defaults for backward
+        # compatibility, but are no longer user-configurable via GUI. The CasADi ladder uses
+        # casadi_coarse_segments and casadi_resolution_ladder for automatic resolution refinement.
 
         # Exposing optimization weights in the GUI:
         # - To tune secondary tracking toward the golden profile, surface a numeric input bound to
@@ -1523,37 +1811,94 @@ class CamMotionGUI:
         #   and assigned before calling `configure()` below, enabling quick experimentation from the GUI.
 
         # Configure CasADi optimizer settings
-        settings.use_casadi = self.variables["use_casadi_optimizer"].get()
+        settings.use_casadi = bool(
+            self._get_value("use_casadi_optimizer", variable_snapshot, default=False),
+        )
         if settings.use_casadi:
-            settings.casadi_n_segments = self.variables["casadi_n_segments"].get()
-            settings.casadi_poly_order = self.variables["casadi_poly_order"].get()
-            settings.casadi_collocation_method = self.variables[
-                "casadi_collocation_method"
-            ].get()
-            settings.enable_warmstart = self.variables["enable_warmstart"].get()
-            settings.thermal_efficiency_target = self.variables[
-                "thermal_efficiency_target"
-            ].get()
-            settings.enable_thermal_efficiency = self.variables[
-                "enable_thermal_efficiency"
-            ].get()
+            settings.casadi_poly_order = int(
+                self._get_value("casadi_poly_order", variable_snapshot, default=3, cast=int),
+            )
+            settings.casadi_collocation_method = self._get_value(
+                "casadi_collocation_method",
+                variable_snapshot,
+                default="legendre",
+                cast=str,
+            )
+            settings.enable_warmstart = bool(
+                self._get_value("enable_warmstart", variable_snapshot, default=True),
+            )
+            settings.thermal_efficiency_target = float(
+                self._get_value("thermal_efficiency_target", variable_snapshot, default=0.55, cast=float),
+            )
+            settings.enable_thermal_efficiency = bool(
+                self._get_value("enable_thermal_efficiency", variable_snapshot, default=True),
+            )
 
         # Create constraints
+        # Read per-degree constraints from GUI (in mm/deg, mm/deg², mm/deg³)
+        # These are optional - if not provided or invalid, pass None (unbounded)
+        max_velocity_raw = self._get_value("max_velocity", variable_snapshot, default=None, cast=float)
+        max_acceleration_raw = self._get_value("max_acceleration", variable_snapshot, default=None, cast=float)
+        max_jerk_raw = self._get_value("max_jerk", variable_snapshot, default=None, cast=float)
+        
+        # Only use constraints if they are positive, otherwise None (unbounded)
+        max_velocity = max_velocity_raw if max_velocity_raw is not None and max_velocity_raw > 0 else None
+        max_acceleration = max_acceleration_raw if max_acceleration_raw is not None and max_acceleration_raw > 0 else None
+        max_jerk = max_jerk_raw if max_jerk_raw is not None and max_jerk_raw > 0 else None
+        
+        # Validate angular span consistency
+        duration_angle_deg = self._get_value("duration_angle_deg", variable_snapshot, default=360.0, cast=float)
+        upstroke_percent = self._get_value("upstroke_duration", variable_snapshot, default=60.0, cast=float)
+        zero_accel_percent = self._get_value("zero_accel_duration", variable_snapshot, default=0.0, cast=float)
+        
+        if duration_angle_deg <= 0:
+            self.status_var.set("ERROR: Duration angle must be positive")
+            return None
+        
+        if upstroke_percent < 0 or upstroke_percent > 100:
+            self.status_var.set("WARNING: Upstroke duration must be between 0 and 100%")
+        
+        if zero_accel_percent < 0 or zero_accel_percent > 100:
+            self.status_var.set("WARNING: Zero accel duration must be between 0 and 100%")
+        
+        if zero_accel_percent > upstroke_percent:
+            self.status_var.set("WARNING: Zero accel duration cannot exceed upstroke duration")
+        
+        # Compute implied cycle time for display (if engine speed were provided)
+        # This is informational only - actual cycle_time may be user-specified
+        cycle_time = self._get_value("cycle_time", variable_snapshot, default=1.0, cast=float)
+        if cycle_time > 0 and duration_angle_deg > 0:
+            implied_rpm = (duration_angle_deg / 360.0) * (60.0 / cycle_time)
+            # Store for potential display
+            self._implied_rpm = implied_rpm
+        
         constraints = UnifiedOptimizationConstraints(
             stroke_min=1.0,
             stroke_max=100.0,
-            max_velocity=100.0,
-            max_acceleration=1000.0,
-            max_jerk=10000.0,
+            max_velocity=max_velocity,
+            max_acceleration=max_acceleration,
+            max_jerk=max_jerk,
             base_radius_min=5.0,
             base_radius_max=100.0,
             # Add tertiary constraints
-            crank_center_x_min=self.variables["crank_center_x_min"].get(),
-            crank_center_x_max=self.variables["crank_center_x_max"].get(),
-            crank_center_y_min=self.variables["crank_center_y_min"].get(),
-            crank_center_y_max=self.variables["crank_center_y_max"].get(),
-            crank_radius_min=self.variables["crank_radius_min"].get(),
-            crank_radius_max=self.variables["crank_radius_max"].get(),
+            crank_center_x_min=float(
+                self._get_value("crank_center_x_min", variable_snapshot, default=-50.0, cast=float),
+            ),
+            crank_center_x_max=float(
+                self._get_value("crank_center_x_max", variable_snapshot, default=50.0, cast=float),
+            ),
+            crank_center_y_min=float(
+                self._get_value("crank_center_y_min", variable_snapshot, default=-50.0, cast=float),
+            ),
+            crank_center_y_max=float(
+                self._get_value("crank_center_y_max", variable_snapshot, default=50.0, cast=float),
+            ),
+            crank_radius_min=float(
+                self._get_value("crank_radius_min", variable_snapshot, default=20.0, cast=float),
+            ),
+            crank_radius_max=float(
+                self._get_value("crank_radius_max", variable_snapshot, default=100.0, cast=float),
+            ),
         )
 
         # Create targets
@@ -1565,16 +1910,24 @@ class CamMotionGUI:
             minimize_cam_size=True,
             minimize_curvature_variation=True,
             # Add tertiary targets
-            maximize_torque=self.variables["maximize_torque"].get(),
-            minimize_side_loading=self.variables["minimize_side_loading"].get(),
-            minimize_side_loading_during_compression=self.variables[
-                "minimize_compression_side_load"
-            ].get(),
-            minimize_side_loading_during_combustion=self.variables[
-                "minimize_combustion_side_load"
-            ].get(),
-            minimize_torque_ripple=self.variables["minimize_torque_ripple"].get(),
-            maximize_power_output=self.variables["maximize_power_output"].get(),
+            maximize_torque=bool(
+                self._get_value("maximize_torque", variable_snapshot, default=True),
+            ),
+            minimize_side_loading=bool(
+                self._get_value("minimize_side_loading", variable_snapshot, default=True),
+            ),
+            minimize_side_loading_during_compression=bool(
+                self._get_value("minimize_compression_side_load", variable_snapshot, default=True),
+            ),
+            minimize_side_loading_during_combustion=bool(
+                self._get_value("minimize_combustion_side_load", variable_snapshot, default=True),
+            ),
+            minimize_torque_ripple=bool(
+                self._get_value("minimize_torque_ripple", variable_snapshot, default=True),
+            ),
+            maximize_power_output=bool(
+                self._get_value("maximize_power_output", variable_snapshot, default=True),
+            ),
         )
 
         # Configure framework
@@ -1584,7 +1937,9 @@ class CamMotionGUI:
 
         # Enable ORDER2_MICRO (CasADi) if requested via checkbox
         try:
-            enable_order2 = bool(self.variables["enable_order2_micro"].get())
+            enable_order2 = bool(
+                self._get_value("enable_order2_micro", variable_snapshot, default=False),
+            )
             if (
                 hasattr(self.unified_framework, "secondary_optimizer")
                 and self.unified_framework.secondary_optimizer is not None
@@ -1746,6 +2101,21 @@ class CamMotionGUI:
             and len(result_data.primary_position) > 0
         ):
             print(f"DEBUG: Motion law plot: plotting {len(result_data.primary_theta)} points")
+
+            def _aligned_xy(x_array, y_array):
+                """Return aligned copies of x/y so Matplotlib gets matching lengths."""
+                x_vals = np.asarray(x_array)
+                y_vals = np.asarray(y_array)
+                n = min(len(x_vals), len(y_vals))
+                if n == 0:
+                    return None, None
+                if len(x_vals) != len(y_vals):
+                    print(
+                        "DEBUG: Motion law plot: aligning arrays with different lengths "
+                        f"(x={len(x_vals)}, y={len(y_vals)}); truncating to {n}",
+                    )
+                return x_vals[:n], y_vals[:n]
+
             # Create subplots for position, velocity, acceleration, and jerk
             ax1 = self.motion_law_fig.add_subplot(411)
             ax2 = self.motion_law_fig.add_subplot(412)
@@ -1753,67 +2123,79 @@ class CamMotionGUI:
             ax4 = self.motion_law_fig.add_subplot(414)
 
             # Plot position
-            ax1.plot(
-                result_data.primary_theta,
-                result_data.primary_position,
-                "b-",
-                linewidth=2,
-                label="Position",
+            pos_theta, pos_vals = _aligned_xy(
+                result_data.primary_theta, result_data.primary_position,
             )
+            if pos_theta is not None:
+                ax1.plot(
+                    pos_theta,
+                    pos_vals,
+                    "b-",
+                    linewidth=2,
+                    label="Position",
+                )
             ax1.set_ylabel("Position (mm)")
             ax1.grid(True, alpha=0.3)
             ax1.legend()
 
             # Plot velocity
             if result_data.primary_velocity is not None:
-                ax2.plot(
-                    result_data.primary_theta,
-                    result_data.primary_velocity,
-                    "g-",
-                    linewidth=2,
-                    label="Velocity",
+                vel_theta, vel_vals = _aligned_xy(
+                    result_data.primary_theta, result_data.primary_velocity,
                 )
+                if vel_theta is not None:
+                    ax2.plot(
+                        vel_theta,
+                        vel_vals,
+                        "g-",
+                        linewidth=2,
+                        label="Velocity",
+                    )
                 ax2.set_ylabel("Velocity (mm/s)")
                 ax2.grid(True, alpha=0.3)
                 ax2.legend()
 
             # Plot acceleration
+            acc_theta = acc_vals = None
             if result_data.primary_acceleration is not None:
-                ax3.plot(
-                    result_data.primary_theta,
-                    result_data.primary_acceleration,
-                    "r-",
-                    linewidth=2,
-                    label="Acceleration",
+                acc_theta, acc_vals = _aligned_xy(
+                    result_data.primary_theta, result_data.primary_acceleration,
                 )
+                if acc_theta is not None:
+                    ax3.plot(
+                        acc_theta,
+                        acc_vals,
+                        "r-",
+                        linewidth=2,
+                        label="Acceleration",
+                    )
                 ax3.set_ylabel("Acceleration (mm/s²)")
                 ax3.grid(True, alpha=0.3)
                 ax3.legend()
 
             # Plot jerk
             if result_data.primary_jerk is not None:
-                ax4.plot(
-                    result_data.primary_theta,
-                    result_data.primary_jerk,
-                    "m-",
-                    linewidth=2,
-                    label="Jerk",
+                jerk_theta, jerk_vals = _aligned_xy(
+                    result_data.primary_theta, result_data.primary_jerk,
                 )
+                if jerk_theta is not None:
+                    ax4.plot(
+                        jerk_theta,
+                        jerk_vals,
+                        "m-",
+                        linewidth=2,
+                        label="Jerk",
+                    )
                 ax4.set_ylabel("Jerk (mm/s³)")
                 ax4.set_xlabel("Cam Angle (degrees)")
                 ax4.grid(True, alpha=0.3)
                 ax4.legend()
             # If jerk data is not available, compute it from acceleration
-            elif (
-                result_data.primary_acceleration is not None
-                and len(result_data.primary_acceleration) > 1
-            ):
+            elif acc_vals is not None and len(acc_vals) > 1:
                 # Compute jerk as derivative of acceleration
-                jerk = np.gradient(
-                    result_data.primary_acceleration, result_data.primary_theta,
-                )
+                jerk = np.gradient(acc_vals, acc_theta)
                 ax4.plot(
-                    result_data.primary_theta,
+                    acc_theta,
                     jerk,
                     "m-",
                     linewidth=2,
@@ -2590,6 +2972,7 @@ Side-Loading:
                     "tertiary_max_torque": self.unified_result.tertiary_max_torque,
                     "tertiary_power_output": self.unified_result.tertiary_power_output,
                     "primary_ca_markers": self.unified_result.primary_ca_markers,
+                    "primary_pressure_invariance": self.unified_result.primary_pressure_invariance,
                 }
 
                 with open(filename, "w") as f:
@@ -2604,6 +2987,7 @@ Side-Loading:
         """Reset all parameters to default values."""
         self.variables["stroke"].set(20.0)
         self.variables["cycle_time"].set(1.0)
+        self.variables["duration_angle_deg"].set(360.0)
         self.variables["upstroke_duration"].set(60.0)
         self.variables["zero_accel_duration"].set(0.0)
         self.variables["motion_type"].set("minimum_jerk")
@@ -2640,7 +3024,6 @@ Side-Loading:
         # Reset CasADi optimization parameters
         self.variables["use_casadi_optimizer"].set(False)
         self.variables["enable_warmstart"].set(True)
-        self.variables["casadi_n_segments"].set(50)
         self.variables["casadi_poly_order"].set(3)
         self.variables["casadi_collocation_method"].set("legendre")
         self.variables["thermal_efficiency_target"].set(0.55)
@@ -2871,10 +3254,40 @@ Side-Loading:
 
 
 def main():
-    """Main function to run the GUI."""
-    root = tk.Tk()
-    app = CamMotionGUI(root)
-    root.mainloop()
+    """Main function to run the GUI with pre-launch environment checks."""
+    try:
+        with LOG.section("Environment preparation", level="INFO"):
+            env_ok = check_conda_environment()
+            LOG.debug(f"Conda environment check returned {env_ok}.")
+            if not env_ok:
+                LOG.warning("Continuing without confirmed environment; import errors may reveal missing dependencies.")
+        
+        # Basic dependency checks (detailed validation handled by GUI)
+        with LOG.section("Basic dependency checks", level="INFO"):
+            casadi_ok = _check_casadi_available()
+            hsl_ok = _check_hsl_path()
+            if not casadi_ok or not hsl_ok:
+                LOG.info("Some dependencies may be missing. GUI will handle detailed validation and user prompts.")
+        
+        LOG.info("Environment validation deferred until the optimize step runs.")
+        
+        with LOG.section("Starting GUI", level="INFO"):
+            LOG.debug("Initializing Cam-Ring System Designer GUI...")
+            root = tk.Tk()
+            app = CamMotionGUI(root)
+            LOG.debug("GUI initialized successfully.")
+            root.mainloop()
+            LOG.debug("GUI mainloop completed.")
+    
+    except ImportError as exc:
+        with LOG.section("Recover from missing dependencies", level="WARNING"):
+            LOG.item("python scripts/setup_environment.py")
+            LOG.item("pip install -r requirements.txt")
+        LOG.exception("❌ Error importing required modules", exc)
+        sys.exit(1)
+    except Exception as exc:
+        LOG.exception("❌ Error starting GUI", exc)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

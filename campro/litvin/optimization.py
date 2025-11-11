@@ -415,10 +415,12 @@ def _optimize_sections_parallel(
         Section name -> {ratio: float, ring_teeth: int, planet_teeth: int, objective: float}
     """
     import time
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
     
     section_results: dict[str, dict[str, Any]] = {}
-    results_lock = threading.Lock()
+    # Only use lock for ThreadPoolExecutor (ProcessPoolExecutor doesn't need it)
+    use_multiprocessing = getattr(config, "use_multiprocessing", False)
+    results_lock = threading.Lock() if not use_multiprocessing else None
     
     pa_lo, pa_hi = config.pressure_angle_deg_bounds
     af_lo, af_hi = config.addendum_factor_bounds
@@ -426,6 +428,8 @@ def _optimize_sections_parallel(
     def optimize_section(section_name: str, theta_range: tuple[float, float]) -> dict[str, Any]:
         """Optimize a single section."""
         section_start = time.time()
+        last_progress_log = section_start
+        progress_log_interval = 2.0  # Log progress every 2 seconds
         
         # Select objective based on section
         if "CA10" in section_name or "CA50" in section_name or "CA90" in section_name or "CA100" in section_name:
@@ -449,9 +453,44 @@ def _optimize_sections_parallel(
         best_pa = 0.5 * (pa_lo + pa_hi)
         best_af = 0.5 * (af_lo + af_hi)
         
+        # Calculate total combinations for progress tracking
+        total_combinations = len(config.ring_teeth_candidates) * len(config.planet_teeth_candidates)
+        combination_count = 0
+        
+        # Log section start
+        if results_lock is not None:
+            with results_lock:
+                logger.info(f"Section {section_name}: evaluating {total_combinations} gear combinations...")
+        
         # Search over gear combinations
         for zr in config.ring_teeth_candidates:
             for zp in config.planet_teeth_candidates:
+                combination_count += 1
+                
+                # Periodic progress logging (every 2 seconds or 10% of combinations)
+                current_time = time.time()
+                progress_pct = (combination_count / total_combinations) * 100.0
+                should_log_progress = (
+                    (current_time - last_progress_log >= progress_log_interval) or
+                    (combination_count % max(1, total_combinations // 10) == 0)
+                )
+                
+                if should_log_progress and results_lock is not None:
+                    elapsed = current_time - section_start
+                    with results_lock:
+                        if best_ratio is not None:
+                            logger.info(
+                                f"Section {section_name}: {progress_pct:.1f}% complete "
+                                f"({combination_count}/{total_combinations} combinations, {elapsed:.1f}s elapsed) - "
+                                f"best so far: ratio={best_ratio:.3f} (ring={best_zr}, planet={best_zp}), obj={best_obj:.6f}"
+                            )
+                        else:
+                            logger.info(
+                                f"Section {section_name}: {progress_pct:.1f}% complete "
+                                f"({combination_count}/{total_combinations} combinations, {elapsed:.1f}s elapsed)"
+                            )
+                    last_progress_log = current_time
+                
                 # Local refinement for pa and af
                 pa = 0.5 * (pa_lo + pa_hi)
                 af = 0.5 * (af_lo + af_hi)
@@ -507,36 +546,116 @@ def _optimize_sections_parallel(
         
         section_elapsed = time.time() - section_start
         
-        with results_lock:
-            logger.info(
-                f"Section {section_name}: best ratio={best_ratio:.3f} "
-                f"(ring={best_zr}, planet={best_zp}), obj={best_obj:.6f} ({section_elapsed:.3f}s)"
-            )
+        # Prepare log message outside lock to reduce contention
+        log_message = (
+            f"Section {section_name}: best ratio={best_ratio:.3f} "
+            f"(ring={best_zr}, planet={best_zp}), obj={best_obj:.6f} ({section_elapsed:.3f}s)"
+        )
+        
+        # Log with minimal lock time (only for thread-safe logging, not needed for processes)
+        if results_lock is not None:
+            with results_lock:
+                logger.info(log_message)
+        else:
+            # For ProcessPoolExecutor, logging happens in main process after result collection
+            pass
         
         return {
             "ratio": best_ratio,
             "ring_teeth": best_zr,
             "planet_teeth": best_zp,
             "objective": best_obj,
+            "elapsed": section_elapsed,  # For utilization diagnostics
+            "section_name": section_name,  # For logging in main process
+            "log_message": log_message,  # For logging in main process
         }
     
     # Run sections in parallel
-    n_threads = config.n_threads
-    logger.info(f"Using {n_threads} threads for parallel section optimization")
+    # Cap thread count to number of sections to avoid idle threads
+    n_sections = len(section_boundaries.sections)
+    n_threads = min(config.n_threads, n_sections)
+    if config.n_threads > n_sections:
+        logger.info(
+            f"Thread count capped from {config.n_threads} to {n_threads} "
+            f"(matching {n_sections} sections)"
+        )
+    # Choose executor based on configuration
+    # Note: use_multiprocessing is checked earlier when creating results_lock
+    use_multiprocessing = getattr(config, "use_multiprocessing", False)
+    executor_class = ProcessPoolExecutor if use_multiprocessing else ThreadPoolExecutor
     
-    with ThreadPoolExecutor(max_workers=n_threads) as executor:
-        futures = {
-            executor.submit(optimize_section, name, theta_range): name
-            for name, theta_range in section_boundaries.sections.items()
-        }
+    if use_multiprocessing:
+        logger.info(
+            f"Using {n_threads} processes for parallel section optimization "
+            f"(bypasses GIL for CPU-bound work)"
+        )
+    else:
+        logger.info(f"Using {n_threads} threads for parallel section optimization")
+    
+    # Track timing for utilization diagnostics
+    parallel_start = time.time()
+    section_times: dict[str, float] = {}
+    
+    with executor_class(max_workers=n_threads) as executor:
+        # Submit all sections and log when each starts
+        futures = {}
+        for name, theta_range in section_boundaries.sections.items():
+            logger.info(f"Starting section {name}: {theta_range[0]:.2f}° to {theta_range[1]:.2f}°")
+            futures[executor.submit(optimize_section, name, theta_range)] = name
+        
+        completed_count = 0
+        total_sections = len(futures)
+        last_summary_log = parallel_start
+        summary_log_interval = 5.0  # Log summary every 5 seconds
         
         for future in as_completed(futures):
             section_name = futures[future]
+            completed_count += 1
             try:
                 result = future.result()
-                section_results[section_name] = result
+                # Log result if using ProcessPoolExecutor (logging happens in main process)
+                if use_multiprocessing and "log_message" in result:
+                    logger.info(result["log_message"])
+                # Store result without logging fields
+                result_clean = {
+                    k: v for k, v in result.items()
+                    if k not in ("section_name", "log_message")
+                }
+                section_results[section_name] = result_clean
+                # Extract section time from result if available
+                if "elapsed" in result:
+                    section_times[section_name] = result["elapsed"]
+                
+                # Log completion with progress counter
+                elapsed_time = result.get("elapsed", 0.0)
+                parallel_elapsed_so_far = time.time() - parallel_start
+                logger.info(
+                    f"✓ Section {section_name} completed ({completed_count}/{total_sections}) "
+                    f"in {elapsed_time:.3f}s (parallel elapsed: {parallel_elapsed_so_far:.3f}s)"
+                )
+                
+                # Periodic progress summary
+                current_time = time.time()
+                if (current_time - last_summary_log >= summary_log_interval) or (completed_count == total_sections):
+                    remaining = total_sections - completed_count
+                    progress_pct = (completed_count / total_sections) * 100.0
+                    
+                    # Calculate average time per section and estimate remaining
+                    if completed_count > 0 and section_times:
+                        avg_section_time = sum(section_times.values()) / len(section_times)
+                        estimated_remaining = avg_section_time * remaining / n_threads if n_threads > 0 else 0.0
+                    else:
+                        estimated_remaining = 0.0
+                    
+                    logger.info(
+                        f"Progress summary: {completed_count}/{total_sections} sections completed ({progress_pct:.1f}%) - "
+                        f"{remaining} remaining, estimated time remaining: {estimated_remaining:.1f}s"
+                    )
+                    last_summary_log = current_time
             except Exception as e:
-                logger.warning(f"Section {section_name} optimization failed: {e}")
+                logger.warning(
+                    f"✗ Section {section_name} optimization failed ({completed_count}/{total_sections}): {e}"
+                )
                 # Use default fallback
                 section_results[section_name] = {
                     "ratio": 2.0,  # Default 2:1 ratio
@@ -545,7 +664,53 @@ def _optimize_sections_parallel(
                     "objective": float("inf"),
                 }
     
-    logger.step_complete("Parallel section optimization", 0.0)
+    # Calculate utilization diagnostics
+    parallel_elapsed = time.time() - parallel_start
+    total_section_time = sum(section_times.values()) if section_times else 0.0
+    
+    # Utilization metric: (sum of section times) / (wall time * n_threads)
+    # Ideal: close to 1.0 (all threads busy all the time)
+    # GIL contention: much less than 1.0 (threads waiting for GIL)
+    if parallel_elapsed > 0 and n_threads > 0:
+        utilization = total_section_time / (parallel_elapsed * n_threads)
+        
+        # Calculate speedup (sequential time / parallel time)
+        sequential_time = total_section_time
+        speedup = sequential_time / parallel_elapsed if parallel_elapsed > 0 else 0.0
+        efficiency = speedup / n_threads if n_threads > 0 else 0.0
+        
+        # Log comprehensive utilization summary
+        logger.info("=" * 70)
+        logger.info("Parallel Optimization Utilization Summary")
+        logger.info("=" * 70)
+        logger.info(
+            f"Wall-clock time: {parallel_elapsed:.3f}s "
+            f"(sum of section times: {total_section_time:.3f}s)"
+        )
+        logger.info(f"Threads used: {n_threads}")
+        logger.info(f"Speedup: {speedup:.2f}x (sequential: {sequential_time:.3f}s / parallel: {parallel_elapsed:.3f}s)")
+        logger.info(f"Parallel efficiency: {efficiency:.2%} (speedup / threads)")
+        logger.info(
+            f"Thread utilization: {utilization:.2%} "
+            f"(ideal: 100%, GIL contention indicated if <50%)"
+        )
+        
+        # Per-section timing breakdown
+        if section_times:
+            logger.info("Section timing breakdown:")
+            for section_name, section_time in sorted(section_times.items(), key=lambda x: x[1], reverse=True):
+                logger.info(f"  {section_name}: {section_time:.3f}s")
+        
+        logger.info("=" * 70)
+        if utilization < 0.5:
+            logger.warning(
+                f"Low thread utilization ({utilization:.2%}) suggests GIL contention. "
+                f"Consider using ProcessPoolExecutor for CPU-bound work."
+            )
+    else:
+        logger.info(f"Parallel optimization completed in {parallel_elapsed:.3f}s")
+    
+    logger.step_complete("Parallel section optimization", parallel_elapsed)
     return section_results
 
 
