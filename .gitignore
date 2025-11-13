@@ -56,7 +56,6 @@ cover/
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -181,23 +180,63 @@ conda-bld/
 # Pip cache
 .pip/
 
-# Project-specific
+# ============================================================================
+# Project-specific ignores
+# ============================================================================
+
+# Runtime and output directories
 logs/
-.github-mcp/
+# runs/ directory contains optimization outputs
+# Note: Some .npz warmstart files in runs/ are intentionally tracked
+runs/*.log
+runs/*-ipopt.log
+*.log
+# Application log files (framework logs handled elsewhere)
+
+# Test artifacts and temporary files
+test_value
+test_workflow.txt
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Image files (generated outputs)
+# Note: Some PNG files in plots/ are intentionally tracked as documentation
 *.png
 *.pdf
 *.svg
 *.jpg
 *.jpeg
 
-# IDE
+# Runtime data files
+*.npz
+# Note: Some warmstart .npz files in runs/ are tracked - add specific exceptions if needed
+
+# Windows binaries (from dependencies like CoinHSL)
+*.dll
+
+# Large dependency directories (excluded from version control)
+/casadi/
+coinhsl-archive-2023.11.17/
+CoinHSL-archive.v*
+ThirdParty-HSL/
+# Exclude campro/physics/casadi/ from being ignored (it's our code, not a dependency)
+!/campro/physics/casadi/
+
+# Solver configuration and state files
+ipopt.opt
+ma57_migration_data.json
+
+# Development tools and IDE
+.github-mcp/
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# OS-specific files
 .DS_Store
 .DS_Store?
 ._*
@@ -205,18 +244,3 @@ logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.backup
-
-# Large dependency directories (excluded from version control)
-casadi/
-coinhsl-archive-2023.11.17/
-ThirdParty-HSL/
-
-# Additional dependency files
-ipopt.opt
-ma57_migration_data.json
