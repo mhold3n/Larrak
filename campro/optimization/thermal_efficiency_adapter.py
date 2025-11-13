@@ -269,232 +269,159 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             )
 
         try:
-            # Run complex optimization
             complex_result = self.complex_optimizer.optimize_with_validation(
                 validate=True,
             )
+        except Exception as exc:  # pragma: no cover - direct passthrough
+            raise RuntimeError(
+                "Complex gas optimizer execution failed."
+            ) from exc
 
-            # Extract or generate analysis from complex result
-            if (
-                hasattr(complex_result, "ipopt_analysis")
-                and complex_result.ipopt_analysis is not None
-            ):
-                analysis = complex_result.ipopt_analysis
-            else:
-                # Perform analysis on complex result if not provided
-                from campro.optimization.solver_analysis import analyze_ipopt_run
-
-                # Get the most recent log file
-                log_file_path = self._get_log_file_path()
-
-                # Build stats from complex result
-                stats = {
-                    "success": complex_result.success,
-                    "iterations": complex_result.iterations,
-                    "primal_inf": getattr(complex_result, "primal_inf", 0.0),
-                    "dual_inf": getattr(complex_result, "dual_inf", 0.0),
-                    "return_status": getattr(complex_result, "status", "unknown"),
-                }
-
-                analysis = analyze_ipopt_run(stats, log_file_path)
-
-            # Convert to standard OptimizationResult
-            if complex_result.success:
-                # Extract motion law data from complex result
-                motion_law_data = self._extract_motion_law_data(
-                    complex_result, constraints,
-                )
-
-                # Validate thermal efficiency
-                thermal_efficiency = complex_result.performance_metrics.get(
-                    "thermal_efficiency", 0.0,
-                )
-                if thermal_efficiency < self.config.thermal_efficiency_min:
-                    log.warning(
-                        f"Thermal efficiency {thermal_efficiency:.3f} below minimum {self.config.thermal_efficiency_min}",
-                    )
-
-                # Use minimized objective as 1 - eta_th to directly reflect efficiency
-                return OptimizationResult(
-                    status=OptimizationStatus.CONVERGED,
-                    objective_value=float(1.0 - float(thermal_efficiency)),
-                    solution=motion_law_data,
-                    iterations=complex_result.iterations,
-                    solve_time=complex_result.cpu_time,
-                    metadata={
-                        "thermal_efficiency": thermal_efficiency,
-                        "indicated_work": complex_result.performance_metrics.get(
-                            "indicated_work", 0.0,
-                        ),
-                        "max_pressure": complex_result.performance_metrics.get(
-                            "max_pressure", 0.0,
-                        ),
-                        "max_temperature": complex_result.performance_metrics.get(
-                            "max_temperature", 0.0,
-                        ),
-                        "min_piston_gap": complex_result.performance_metrics.get(
-                            "min_piston_gap", 0.0,
-                        ),
-                        "optimization_method": "thermal_efficiency",
-                        "complex_optimizer": True,
-                        "validation_passed": self._validate_result(complex_result),
-                        "ipopt_analysis": analysis,
-                    },
-                )
-            log.warning(f"Complex optimization failed: {complex_result.message}")
-            return OptimizationResult(
-                status=OptimizationStatus.FAILED,
-                objective_value=float("inf"),
-                solution=None,
-                iterations=complex_result.iterations,
-                solve_time=complex_result.cpu_time,
-                metadata={"error": complex_result.message},
+        if not getattr(complex_result, "success", False):
+            message = getattr(complex_result, "message", "unknown failure")
+            raise RuntimeError(
+                f"Complex gas optimizer reported failure: {message}",
             )
 
-        except Exception as e:
-            log.error(f"Thermal efficiency optimization failed: {e}")
-            import traceback
-
-            log.error(f"Traceback: {traceback.format_exc()}")
-            return OptimizationResult(
-                status=OptimizationStatus.FAILED,
-                objective_value=float("inf"),
-                solution=None,
-                iterations=0,
-                solve_time=0.0,
-                metadata={"error": str(e)},
+        if not hasattr(complex_result, "performance_metrics"):
+            raise RuntimeError(
+                "Complex gas optimizer result is missing performance metrics.",
             )
+
+        if (
+            hasattr(complex_result, "ipopt_analysis")
+            and complex_result.ipopt_analysis is not None
+        ):
+            analysis = complex_result.ipopt_analysis
+        else:
+            from campro.optimization.solver_analysis import analyze_ipopt_run
+
+            log_file_path = self._get_log_file_path()
+            stats = {
+                "success": True,
+                "iterations": getattr(complex_result, "iterations", 0),
+                "primal_inf": getattr(complex_result, "primal_inf", 0.0),
+                "dual_inf": getattr(complex_result, "dual_inf", 0.0),
+                "return_status": getattr(complex_result, "status", "unknown"),
+            }
+            analysis = analyze_ipopt_run(stats, log_file_path)
+
+        motion_law_data = self._extract_motion_law_data(complex_result, constraints)
+
+        thermal_efficiency = complex_result.performance_metrics.get(
+            "thermal_efficiency", 0.0,
+        )
+        if thermal_efficiency < self.config.thermal_efficiency_min:
+            log.warning(
+                f"Thermal efficiency {thermal_efficiency:.3f} below minimum {self.config.thermal_efficiency_min}",
+            )
+
+        return OptimizationResult(
+            status=OptimizationStatus.CONVERGED,
+            objective_value=float(1.0 - float(thermal_efficiency)),
+            solution=motion_law_data,
+            iterations=getattr(complex_result, "iterations", 0),
+            solve_time=getattr(complex_result, "cpu_time", None),
+            metadata={
+                "thermal_efficiency": thermal_efficiency,
+                "indicated_work": complex_result.performance_metrics.get(
+                    "indicated_work", 0.0,
+                ),
+                "max_pressure": complex_result.performance_metrics.get(
+                    "max_pressure", 0.0,
+                ),
+                "max_temperature": complex_result.performance_metrics.get(
+                    "max_temperature", 0.0,
+                ),
+                "min_piston_gap": complex_result.performance_metrics.get(
+                    "min_piston_gap", 0.0,
+                ),
+                "optimization_method": "thermal_efficiency",
+                "complex_optimizer": True,
+                "validation_passed": self._validate_result(complex_result),
+                "ipopt_analysis": analysis,
+            },
+        )
 
     def _extract_motion_law_data(
         self, complex_result, constraints: MotionLawConstraints,
     ) -> dict[str, Any]:
         """Extract motion law data from complex optimization result."""
-        try:
-            # Extract optimized motion law from complex result
-            if (
-                hasattr(complex_result, "solution")
-                and complex_result.solution is not None
-            ):
-                solution = complex_result.solution
+        if not hasattr(complex_result, "solution") or complex_result.solution is None:
+            raise RuntimeError(
+                "Complex optimizer did not return a solution payload.",
+            )
 
-                # Extract state variables if available
-                if (
-                    hasattr(solution, "data")
-                    and isinstance(solution.data, dict)
-                    and "states" in solution.data
-                ):
-                    states = solution.data["states"]
+        solution = complex_result.solution
+        if not (
+            hasattr(solution, "data")
+            and isinstance(solution.data, dict)
+            and "states" in solution.data
+        ):
+            raise RuntimeError("Complex optimizer result is missing state data.")
 
-                    # Extract piston positions and velocities
-                    theta = np.linspace(0, 2 * np.pi, 360)  # Cam angle
-
-                    if "x_L" in states and "x_R" in states:
-                        x_L = states["x_L"]
-                        x_R = states["x_R"]
-
-                        # Map OP engine states (positions/velocities) to single follower motion in mm and per-rad units
-                        # Use average of left/right pistons as effective follower displacement
-                        # Convert meters to millimeters
-                        x_m = 0.5 * (
-                            np.asarray(states.get("x_L", np.zeros_like(theta)))
-                            + np.asarray(states.get("x_R", np.zeros_like(theta)))
-                        )
-                        v_ms = 0.5 * (
-                            np.asarray(states.get("v_L", np.zeros_like(theta)))
-                            + np.asarray(states.get("v_R", np.zeros_like(theta)))
-                        )
-
-                        # Ensure correct length by interpolating or trimming
-                        def resample(arr: np.ndarray) -> np.ndarray:
-                            arr = np.asarray(arr).flatten()
-                            if len(arr) == len(theta):
-                                return arr
-                            xsrc = np.linspace(0.0, 1.0, len(arr))
-                            xdst = np.linspace(0.0, 1.0, len(theta))
-                            return np.interp(xdst, xsrc, arr)
-
-                        x = resample(x_m) * 1000.0
-                        # Velocity provided in m/s; convert to mm/rad using dθ/dt = ω. Assume unit ω for lack of data
-                        v = resample(v_ms) * 1000.0  # mm/s ~ mm/rad with ω=1
-                        # Approximate acceleration and jerk by numerical differentiation over θ
-                        a = np.gradient(v, theta)
-                        j = np.gradient(a, theta)
-                    else:
-                        # Fallback: generate simple motion law
-                        x, v, a, j = self._generate_fallback_motion_law(constraints)
-                else:
-                    # Fallback: generate simple motion law
-                    x, v, a, j = self._generate_fallback_motion_law(constraints)
-            else:
-                # Fallback: generate simple motion law
-                x, v, a, j = self._generate_fallback_motion_law(constraints)
-
-            return {
-                "cam_angle": np.linspace(0, 2 * np.pi, 360),
-                "position": x,
-                "velocity": v,
-                "acceleration": a,
-                "jerk": j,
-                # Aliases expected by some tests
-                "theta": np.linspace(0, 2 * np.pi, 360),
-                "x": x,
-                "v": v,
-                "a": a,
-                "j": j,
-                "constraints": constraints.to_dict()
-                if hasattr(constraints, "to_dict")
-                else {
-                    "stroke": constraints.stroke,
-                    "upstroke_duration_percent": constraints.upstroke_duration_percent,
-                    "zero_accel_duration_percent": constraints.zero_accel_duration_percent,
-                    "max_velocity": constraints.max_velocity,
-                    "max_acceleration": constraints.max_acceleration,
-                    "max_jerk": constraints.max_jerk,
-                },
-                "optimization_type": "thermal_efficiency",
-                "thermal_efficiency": complex_result.performance_metrics.get(
-                    "thermal_efficiency", 0.0,
-                ),
-            }
-
-        except Exception as e:
-            log.error(f"Failed to extract motion law data: {e}")
-            # Return fallback motion law
-            x, v, a, j = self._generate_fallback_motion_law(constraints)
-            return {
-                "cam_angle": np.linspace(0, 2 * np.pi, 360),
-                "position": x,
-                "velocity": v,
-                "acceleration": a,
-                "jerk": j,
-                "constraints": constraints.to_dict()
-                if hasattr(constraints, "to_dict")
-                else {
-                    "stroke": constraints.stroke,
-                    "upstroke_duration_percent": constraints.upstroke_duration_percent,
-                    "zero_accel_duration_percent": constraints.zero_accel_duration_percent,
-                    "max_velocity": constraints.max_velocity,
-                    "max_acceleration": constraints.max_acceleration,
-                    "max_jerk": constraints.max_jerk,
-                },
-                "optimization_type": "thermal_efficiency",
-                "thermal_efficiency": 0.0,
-            }
-
-    def _generate_fallback_motion_law(
-        self, constraints: MotionLawConstraints,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Generate fallback motion law when complex optimization fails."""
+        states = solution.data["states"]
         theta = np.linspace(0, 2 * np.pi, 360)
 
-        # Generate simple harmonic motion as fallback
-        stroke = constraints.stroke / 1000.0  # Convert mm to m
-        x = stroke * 0.5 * (1 - np.cos(theta))
-        v = stroke * 0.5 * np.sin(theta)
-        a = stroke * 0.5 * np.cos(theta)
-        j = -stroke * 0.5 * np.sin(theta)
+        required_keys = {"x_L", "x_R", "v_L", "v_R"}
+        if not required_keys.issubset(states):
+            missing = ", ".join(sorted(required_keys.difference(states)))
+            raise RuntimeError(
+                f"Complex optimizer state output missing required keys: {missing}",
+            )
 
-        return x, v, a, j
+        def resample(arr: np.ndarray) -> np.ndarray:
+            arr = np.asarray(arr).flatten()
+            if len(arr) == len(theta):
+                return arr
+            xsrc = np.linspace(0.0, 1.0, len(arr))
+            xdst = np.linspace(0.0, 1.0, len(theta))
+            return np.interp(xdst, xsrc, arr)
+
+        x_m = 0.5 * (
+            resample(states["x_L"])
+            + resample(states["x_R"])
+        )
+        v_ms = 0.5 * (
+            resample(states["v_L"])
+            + resample(states["v_R"])
+        )
+
+        x = x_m * 1000.0
+        v = v_ms * 1000.0
+        a = np.gradient(v, theta)
+        j = np.gradient(a, theta)
+
+        constraints_dict = (
+            constraints.to_dict()
+            if hasattr(constraints, "to_dict")
+            else {
+                "stroke": constraints.stroke,
+                "upstroke_duration_percent": constraints.upstroke_duration_percent,
+                "zero_accel_duration_percent": constraints.zero_accel_duration_percent,
+                "max_velocity": constraints.max_velocity,
+                "max_acceleration": constraints.max_acceleration,
+                "max_jerk": constraints.max_jerk,
+            }
+        )
+
+        return {
+            "cam_angle": theta,
+            "position": x,
+            "velocity": v,
+            "acceleration": a,
+            "jerk": j,
+            "theta": theta,
+            "x": x,
+            "v": v,
+            "a": a,
+            "j": j,
+            "constraints": constraints_dict,
+            "optimization_type": "thermal_efficiency",
+            "thermal_efficiency": complex_result.performance_metrics.get(
+                "thermal_efficiency", 0.0,
+            ),
+        }
 
     def _validate_result(self, complex_result) -> bool:
         """Validate optimization result against constraints."""
@@ -578,35 +505,20 @@ class ThermalEfficiencyAdapter(BaseOptimizer):
             f"Solving thermal efficiency motion law (ignoring motion_type: {motion_type})",
         )
 
-        # Run optimization
         result = self.optimize(None, constraints)
-
-        if result.status == OptimizationStatus.CONVERGED:
-            # Convert to MotionLawResult
-            return MotionLawResult(
-                cam_angle=result.solution["cam_angle"],
-                position=result.solution["position"],
-                velocity=result.solution["velocity"],
-                acceleration=result.solution["acceleration"],
-                jerk=result.solution["jerk"],
-                objective_value=result.objective_value,
-                convergence_status="converged",
-                iterations=result.iterations,
-                solve_time=result.solve_time,
-                stroke=constraints.stroke,
-                upstroke_duration_percent=constraints.upstroke_duration_percent,
-                zero_accel_duration_percent=constraints.zero_accel_duration_percent,
-                motion_type=motion_type,
+        if result.status != OptimizationStatus.CONVERGED:
+            raise RuntimeError(
+                "Thermal efficiency optimization failed to converge.",
             )
-        # Return failed result
+
         return MotionLawResult(
-            cam_angle=np.linspace(0, 2 * np.pi, 360),
-            position=np.zeros(360),
-            velocity=np.zeros(360),
-            acceleration=np.zeros(360),
-            jerk=np.zeros(360),
-            objective_value=float("inf"),
-            convergence_status="failed",
+            cam_angle=result.solution["cam_angle"],
+            position=result.solution["position"],
+            velocity=result.solution["velocity"],
+            acceleration=result.solution["acceleration"],
+            jerk=result.solution["jerk"],
+            objective_value=result.objective_value,
+            convergence_status="converged",
             iterations=result.iterations,
             solve_time=result.solve_time,
             stroke=constraints.stroke,
