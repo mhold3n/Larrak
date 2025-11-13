@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import platform
 import threading
 from dataclasses import dataclass
 from math import pi
@@ -25,6 +26,13 @@ log = get_logger(__name__)
 # Explicit exports for consumers expecting named attributes
 __all__ = ["OptimizationOrder", "optimize_geometry", "OptimResult"]
 
+# Module-level platform check (checked once at import time)
+_WINDOWS_PLATFORM = platform.system().lower() == "windows"
+
+# Module-level flag to prevent duplicate multiprocessing fork warnings (thread-safe with lock)
+_fork_warning_lock = threading.Lock()
+_fork_warning_logged = False
+
 _CURVATURE_COMPONENT = CurvatureComponent(parameters={})
 
 
@@ -33,7 +41,7 @@ class OptimResult:
     best_config: PlanetSynthesisConfig | None
     objective_value: float | None
     feasible: bool
-    ipopt_analysis: Any | None = None  # Will be MA57ReadinessReport when available
+    ipopt_analysis: Any | None = None  # Stores IpoptAnalysisReport metadata when available
 
 
 def _order0_objective(cfg: PlanetSynthesisConfig) -> float:
@@ -382,6 +390,9 @@ def _evaluate_gear_combination_batch(
     theta_deg: np.ndarray,
     position: np.ndarray,
     rho_target: np.ndarray | None = None,
+    cumulative_constraint_weight: float = 0.0,
+    target_ratio: float = 2.0,
+    section_theta_spans: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Evaluate a batch of gear combinations for a section with local refinement.
     
@@ -513,13 +524,22 @@ def _evaluate_gear_combination_batch(
         
         combo_elapsed = time.time() - combo_start
         
+        # Add cumulative constraint penalty if enabled
+        objective_with_penalty = best_local
+        if cumulative_constraint_weight > 0.0:
+            ratio = zr / zp
+            ratio_deviation = abs(ratio - target_ratio)
+            # Penalty proportional to squared deviation from target ratio
+            constraint_penalty = cumulative_constraint_weight * (ratio_deviation ** 2)
+            objective_with_penalty = best_local + constraint_penalty
+        
         results.append({
             "section_name": section_name,
             "ring_teeth": zr,
             "planet_teeth": zp,
             "best_pa": pa,
             "best_af": af,
-            "best_obj": best_local,
+            "best_obj": objective_with_penalty,  # Use penalized objective
             "elapsed": combo_elapsed,
         })
     
@@ -571,10 +591,62 @@ def _optimize_piecewise_sections(config: GeometrySearchConfig) -> OptimResult:
     
     piecewise_logger.step_complete("Initialization", 0.0)
     
-    # Step 2: Optimize each section in parallel
+    # Step 2: Optimize each section in parallel with cumulative constraint awareness
     piecewise_logger.step(2, 5, "Optimizing sections in parallel")
+    
+    # Compute section theta spans for cumulative constraint penalty
+    section_theta_spans: dict[str, float] = {}
+    for section_name, (theta_start, theta_end) in section_boundaries.sections.items():
+        theta_end_normalized = 360.0 if theta_end == 0.0 else theta_end
+        if theta_start > theta_end_normalized:
+            # Wrap-around section
+            delta_theta_ring = np.deg2rad((360.0 - theta_start) + theta_end_normalized)
+        else:
+            delta_theta_ring = np.deg2rad(theta_end_normalized - theta_start)
+        section_theta_spans[section_name] = delta_theta_ring
+    
+    # Total ring rotation over all sections (should be 2π for one cam cycle)
+    total_ring_rotation = sum(section_theta_spans.values())
+    expected_planet_rotation = 4.0 * pi  # 2 full rotations
+    
+    # Compute target ratio for each section to satisfy cumulative constraint
+    # If all sections used the same ratio, ratio = expected_planet_rotation / total_ring_rotation
+    target_ratio = expected_planet_rotation / total_ring_rotation if total_ring_rotation > 0 else 2.0
+    
+    # Generate constraint-aware initial guess: start with gear pair that satisfies constraint
+    # Use weighted average: ratio_initial = 2.0 * (1 - cumulative_error / 4π)
+    # For initial guess, assume no error, so use target_ratio directly
+    constraint_aware_initial_ratio = target_ratio
+    
+    # Find gear pair closest to constraint-aware ratio for warm-start
+    initial_ring_teeth = None
+    initial_planet_teeth = None
+    min_ratio_error = float("inf")
+    for zr in config.ring_teeth_candidates:
+        for zp in config.planet_teeth_candidates:
+            ratio = zr / zp
+            error = abs(ratio - constraint_aware_initial_ratio)
+            if error < min_ratio_error:
+                min_ratio_error = error
+                initial_ring_teeth = zr
+                initial_planet_teeth = zp
+    
+    piecewise_logger.info(
+        f"Cumulative constraint target: total_ring_rotation={total_ring_rotation:.6f} rad, "
+        f"expected_planet_rotation={expected_planet_rotation:.6f} rad, "
+        f"target_ratio={target_ratio:.3f}"
+    )
+    if initial_ring_teeth is not None:
+        piecewise_logger.info(
+            f"Constraint-aware initial guess: ring={initial_ring_teeth}, planet={initial_planet_teeth}, "
+            f"ratio={initial_ring_teeth/initial_planet_teeth:.3f} (target={target_ratio:.3f})"
+        )
+    
     section_results = _optimize_sections_parallel(
-        config, section_boundaries, section_indices, piecewise_logger
+        config, section_boundaries, section_indices, piecewise_logger,
+        cumulative_constraint_weight=1e3,  # Penalty weight for constraint violation
+        target_ratio=target_ratio,
+        section_theta_spans=section_theta_spans,
     )
     
     # Step 3: Validate cumulative 2:1 constraint
@@ -635,6 +707,9 @@ def _optimize_sections_parallel(
     section_boundaries: Any,  # SectionBoundaries
     section_indices: dict[str, tuple[int, int]],
     logger: Any,  # ProgressLogger
+    cumulative_constraint_weight: float = 0.0,
+    target_ratio: float = 2.0,
+    section_theta_spans: dict[str, float] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Optimize gear teeth for each section using work-item level parallelism.
     
@@ -695,8 +770,8 @@ def _optimize_sections_parallel(
     
     section_results: dict[str, dict[str, Any]] = {}
     # Only use lock for ThreadPoolExecutor (ProcessPoolExecutor doesn't need it)
-    use_multiprocessing = getattr(config, "use_multiprocessing", False)
-    results_lock = threading.Lock() if not use_multiprocessing else None
+    # Note: use_multiprocessing is checked below with platform check, so defer lock creation
+    results_lock = None  # Will be set after platform check determines executor type
     
     pa_lo, pa_hi = config.pressure_angle_deg_bounds
     af_lo, af_hi = config.addendum_factor_bounds
@@ -719,6 +794,9 @@ def _optimize_sections_parallel(
             theta_deg=config.theta_deg if config.theta_deg is not None else np.array([]),
             position=config.position if config.position is not None else np.array([]),
             rho_target=config.rho_target,
+            cumulative_constraint_weight=cumulative_constraint_weight,
+            target_ratio=target_ratio,
+            section_theta_spans=section_theta_spans,
         )
     else:
         # Create a partial function with the fixed parameters for multiprocessing compatibility
@@ -734,6 +812,9 @@ def _optimize_sections_parallel(
             theta_deg=config.theta_deg,
             position=config.position,
             rho_target=config.rho_target,
+            cumulative_constraint_weight=cumulative_constraint_weight,
+            target_ratio=target_ratio,
+            section_theta_spans=section_theta_spans,
         )
     
     # Use exactly 12 threads for even distribution
@@ -748,11 +829,21 @@ def _optimize_sections_parallel(
         logger.info(f"Using {n_threads} threads for work-item level optimization")
     
     # Choose executor based on configuration
+    # CRITICAL: Check platform FIRST before attempting multiprocessing
+    # On Windows, skip multiprocessing entirely to avoid warnings
     use_multiprocessing = getattr(config, "use_multiprocessing", False)
+    
+    # Early platform check: Windows doesn't support fork, so disable multiprocessing immediately
+    if _WINDOWS_PLATFORM:
+        use_multiprocessing = False
+    
     executor_class = ProcessPoolExecutor if use_multiprocessing else ThreadPoolExecutor
     executor_kwargs: dict[str, Any] = {"max_workers": n_threads}
 
+    # Only attempt multiprocessing on Unix-like systems
     if use_multiprocessing:
+        # Unix-like systems: attempt fork context
+        global _fork_warning_logged, _fork_warning_lock
         try:
             mp_context = mp.get_context("fork")
             executor_kwargs["mp_context"] = mp_context
@@ -761,10 +852,14 @@ def _optimize_sections_parallel(
                 f"(bypasses GIL for CPU-bound work via fork context)"
             )
         except ValueError:
-            logger.warning(
-                "Multiprocessing requested but 'fork' context unavailable on this platform. "
-                "Reverting to thread-based execution.",
-            )
+            # Thread-safe check and set of warning flag for Unix fork failure
+            with _fork_warning_lock:
+                if not _fork_warning_logged:
+                    logger.warning(
+                        "Multiprocessing requested but 'fork' context unavailable on this platform. "
+                        "Reverting to thread-based execution.",
+                    )
+                    _fork_warning_logged = True
             use_multiprocessing = False
             executor_class = ThreadPoolExecutor
             executor_kwargs = {"max_workers": n_threads}
@@ -1187,11 +1282,28 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
     phi_vals: list[float] = []
     seed = flank.phi[len(flank.phi) // 2]
     for i, theta in enumerate(grid.theta):
+        # Improve seeding at wrap-around (θ=360° ≈ θ=0°)
+        # Use average of nearby points for better continuity
+        if i == n - 1:  # Last point (wrap-around)
+            # Use average of previous point and first point for better periodicity
+            if len(phi_vals) > 0:
+                seed = 0.5 * (phi_vals[-1] + phi_vals[0]) if len(phi_vals) > 0 else seed
+            else:
+                # Fallback: use previous point
+                seed = phi_vals[-1] if len(phi_vals) > 0 else seed
         phi = _newton_solve_phi(flank, kin, theta, seed) or seed
         phi_vals.append(phi)
         seed = phi
         if (i + 1) % max(1, n // 10) == 0:  # Progress every 10%
             order2_logger.info(f"  Initialized {i+1}/{n} points ({100*(i+1)//n}%)")
+    
+    # Enforce exact periodicity: phi[0] = phi[n-1]
+    if len(phi_vals) > 0:
+        phi_vals[-1] = phi_vals[0]
+        order2_logger.info(
+            f"  Enforced exact periodicity: phi[0]={phi_vals[0]:.6f}, phi[-1]={phi_vals[-1]:.6f}"
+        )
+    
     order2_logger.step_complete("Phi initialization", time.time() - phi_init_start)
 
     # Convert to numpy array for CasADi
@@ -1222,18 +1334,48 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         ip = (i + 1) % n
         smoothness_penalty += (phi[i] - 0.5 * (phi[im] + phi[ip])) ** 2
 
-    # Periodicity constraint: phi[n-1] should be close to phi[0]
+    # Periodicity constraint: phi[n-1] should equal phi[0] exactly
+    # Note: We enforce this in initialization, but keep constraint for Ipopt to maintain it
     periodicity_constraint = phi[n - 1] - phi[0]
 
+    # Physics feasibility surrogate constraints
+    # These approximate the physics metrics to keep the solution feasible during optimization
+    phi_min_flank = float(np.min(flank.phi))
+    phi_max_flank = float(np.max(flank.phi))
+    phi_span = phi_max_flank - phi_min_flank
+    
+    # Edge-contact constraint: keep phi away from flank edges (within 5% of span from edges)
+    edge_margin = 0.05 * phi_span
+    phi_min_safe = phi_min_flank + edge_margin
+    phi_max_safe = phi_max_flank - edge_margin
+    
+    # Constraint: phi[i] >= phi_min_safe and phi[i] <= phi_max_safe for all i
+    # We'll add these as bound constraints instead of explicit constraints (more efficient)
+    # But also add a soft penalty for edge proximity
+    edge_penalty = 0.0
+    for i in range(n):
+        # Penalize proximity to edges
+        dist_to_min = ca.fmax(phi_min_safe - phi[i], 0.0)
+        dist_to_max = ca.fmax(phi[i] - phi_max_safe, 0.0)
+        edge_penalty += 1e3 * (dist_to_min ** 2 + dist_to_max ** 2)
+    
+    # Closure surrogate: ensure smooth variation (large jumps indicate poor closure)
+    # This is already captured by smoothness_penalty, but add explicit closure-like constraint
+    # Closure is related to continuity of phi, which smoothness handles
+    
+    # Combine smoothness and edge penalties into objective
+    combined_objective = smoothness_penalty + 0.1 * edge_penalty
+
     # Bounds on phi values (based on flank geometry)
-    phi_min = float(np.min(flank.phi))
-    phi_max = float(np.max(flank.phi))
+    phi_min = phi_min_flank
+    phi_max = phi_max_flank
 
     # Create NLP problem (unscaled)
+    # Include physics surrogate constraints in objective and bounds
     nlp = {
         "x": phi,
-        "f": smoothness_penalty,
-        "g": periodicity_constraint,
+        "f": combined_objective,  # Smoothness + edge-contact penalty
+        "g": periodicity_constraint,  # Periodicity constraint
     }
 
     # Scaling for phi decision variable (keep z = s*phi ~ O(1))

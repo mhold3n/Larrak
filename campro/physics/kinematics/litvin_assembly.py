@@ -34,6 +34,7 @@ class AssemblyInputs:
     )
     motion_theta_deg: np.ndarray | None = None  # θ grid (deg) of primary motion
     motion_offset_mm: np.ndarray | None = None  # x(θ) in mm (≥0)
+    planet_spin_angle_override: np.ndarray | None = None  # Optional precomputed spin profile
 
 
 @dataclass
@@ -98,7 +99,14 @@ def compute_assembly_state(
     # Spin sign: internal meshes reverse spin relative to ring rotation.
     sign = -1.0 if inputs.contact_type == "internal" else 1.0
     ratio = (rb_ring / rb_cam) if rb_cam != 0 else 0.0
-    phi = sign * ratio * (psi - psi[0])
+    phi = sign * ratio * (psi - psi[0])
+
+    if inputs.planet_spin_angle_override is not None:
+        override = np.asarray(inputs.planet_spin_angle_override, dtype=float).flatten()
+        if override.size != psi.size:
+            raise ValueError("planet_spin_angle_override must match psi length")
+        phi = override
+
 
     planet_center_angle = psi.copy()
 

@@ -124,7 +124,7 @@ class DynamicParameterTuner:
     def create_ipopt_options(self, params: SolverParameters) -> dict:
         """Create Ipopt options dictionary from SolverParameters."""
         # Ensure MA27 is always used
-        if params.linear_solver not in ["ma27", "ma57"]:
+        if params.linear_solver != "ma27":
             log.warning(f"Invalid linear solver '{params.linear_solver}', forcing MA27")
             params.linear_solver = "ma27"
 
@@ -140,7 +140,7 @@ class DynamicParameterTuner:
     def create_casadi_options(self, params: SolverParameters) -> dict:
         """Create CasADi options dictionary from SolverParameters."""
         # Ensure MA27 is always used
-        if params.linear_solver not in ["ma27", "ma57"]:
+        if params.linear_solver != "ma27":
             log.warning(f"Invalid linear solver '{params.linear_solver}', forcing MA27")
             params.linear_solver = "ma27"
 

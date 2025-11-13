@@ -22,9 +22,7 @@ from campro.optimization.casadi_unified_flow import (
     CasADiOptimizationSettings,
     CasADiUnifiedFlow,
 )
-from campro.optimization.ma57_migration_analyzer import MA57MigrationAnalyzer
 from campro.optimization.parameter_tuning import DynamicParameterTuner
-from campro.optimization.solver_analysis import MA57ReadinessReport
 from campro.optimization.solver_selection import (
     AdaptiveSolverSelector,
     ProblemCharacteristics,
@@ -309,8 +307,12 @@ class UnifiedOptimizationData:
     secondary_cam_curves: dict[str, np.ndarray] | None = None
     secondary_psi: np.ndarray | None = None
     secondary_R_psi: np.ndarray | None = None
+    secondary_R_psi_planet: np.ndarray | None = None
+    secondary_R_psi_ring: np.ndarray | None = None
+    secondary_theta_planet: np.ndarray | None = None
     secondary_gear_geometry: dict[str, Any] | None = None
     secondary_ring_profile: dict[str, Any] | None = None  # Synchronized ring profile on universal theta grid
+    secondary_static_radii: dict[str, float] | None = None
 
     # Tertiary results (crank center optimization)
     tertiary_crank_center_x: float | None = None
@@ -337,9 +339,17 @@ class UnifiedOptimizationData:
     convergence_info: dict[str, Any] = field(default_factory=dict)
 
     # Per-phase Ipopt analysis results
-    primary_ipopt_analysis: MA57ReadinessReport | None = None
-    secondary_ipopt_analysis: MA57ReadinessReport | None = None
-    tertiary_ipopt_analysis: MA57ReadinessReport | None = None
+    primary_ipopt_analysis: dict[str, Any] | None = None
+    secondary_ipopt_analysis: dict[str, Any] | None = None
+    tertiary_ipopt_analysis: dict[str, Any] | None = None
+
+
+def _first_not_none(*values):
+    """Return the first argument that is not None."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 class UnifiedOptimizationFramework:
@@ -365,7 +375,6 @@ class UnifiedOptimizationFramework:
         # Add performance tuning components
         self.solver_selector = AdaptiveSolverSelector()
         self.parameter_tuner = DynamicParameterTuner()
-        self.migration_analyzer = MA57MigrationAnalyzer()
 
         # Initialize optimizers
         self._initialize_optimizers()
@@ -970,12 +979,41 @@ class UnifiedOptimizationFramework:
                 max_jerk=max_jerk,
                 primary_logger=primary_logger,
             )
-            if casadi_result is not None:
+            if casadi_result.successful:
                 return casadi_result
 
-            primary_logger.warning(
-                "CasADi primary flow failed or returned no result; falling back to FreePiston adapter",
+            status_str = (
+                casadi_result.status.value
+                if isinstance(casadi_result.status, OptimizationStatus)
+                else str(casadi_result.status)
             )
+            failure_parts = [f"status={status_str}"]
+            if casadi_result.error_message:
+                failure_parts.append(f"error={casadi_result.error_message}")
+
+            metadata = casadi_result.metadata or {}
+            ipopt_status = metadata.get("ipopt_return_status")
+            if not ipopt_status:
+                solver_stats = metadata.get("solver_stats")
+                if isinstance(solver_stats, dict):
+                    ipopt_status = solver_stats.get("return_status")
+            if ipopt_status:
+                failure_parts.append(f"ipopt_return_status={ipopt_status}")
+
+            output_file = metadata.get("ipopt_output_file") or metadata.get("output_file")
+            if output_file:
+                failure_parts.append(f"ipopt_output_file={output_file}")
+
+            failure_message = (
+                "CasADi primary flow failed; FreePiston fallback is disabled. "
+                + "; ".join(failure_parts)
+            )
+            primary_logger.error(failure_message)
+            self.data.convergence_info["casadi_primary_failure"] = {
+                "message": failure_message,
+                "details": failure_parts,
+            }
+            raise RuntimeError(failure_message)
 
         # Always-on Stage A: pressure-invariance robust objective, with optional Stage B TE refine
         try:
@@ -1200,7 +1238,7 @@ class UnifiedOptimizationFramework:
                     c_mid__,
                     geom,
                     thermo,
-                    combustion=comb_inputs_tune__,
+                    combustion=combustion_payload,
                     cycle_time_s=self.data.cycle_time,
                 )
                 cycle_work_tune__ = float(out_tune__.get("cycle_work_j", 0.0))
@@ -2047,28 +2085,6 @@ class UnifiedOptimizationFramework:
                         self.data.primary_ipopt_analysis = adapter_result_dict[
                             "ipopt_analysis"
                         ]
-
-                        # Collect data for MA57 migration analysis
-                        if (
-                            self.settings.enable_ipopt_analysis
-                            and self.data.primary_ipopt_analysis is not None
-                        ):
-                            problem_size = (
-                                len(self.data.primary_theta)
-                                if self.data.primary_theta is not None
-                                else 100,
-                                10,
-                            )
-                            self.migration_analyzer.add_ma27_run(
-                                phase="primary",
-                                problem_size=problem_size,
-                                ma27_report=self.data.primary_ipopt_analysis,
-                                metadata={
-                                    "stroke": self.data.stroke,
-                                    "cycle_time": self.data.cycle_time,
-                                    "use_thermal_efficiency": self.settings.use_thermal_efficiency,
-                                },
-                            )
                     else:
                         self.data.primary_ipopt_analysis = None
 
@@ -2558,15 +2574,26 @@ class UnifiedOptimizationFramework:
         secondary_logger.info(f"Initial guess: base_radius={initial_guess['base_radius']}mm")
         secondary_logger.step_complete("Initial guess setup", time.time() - guess_start)
 
-        # A3: Compute and record simple scaling stats for secondary design variables
+        # A3: Compute and record improved scaling stats for secondary design variables
         scaling_start = time.time()
         try:
             bmin, bmax = (
                 float(self.constraints.base_radius_min),
                 float(self.constraints.base_radius_max),
             )
-            sec_scales = compute_scaling_vector({"base_radius": (bmin, bmax)})
+            # Use typical range (50mm) for better scaling instead of just bounds
+            # This prevents extreme scaling when bounds are wide
+            typical_base_radius = 50.0  # Typical base radius in mm
+            # Scale by typical value, but clamp to reasonable range
+            scale_base = 1.0 / max(typical_base_radius, 1e-6)
+            # Ensure scale is reasonable (between 0.01 and 1.0)
+            scale_base = max(0.01, min(1.0, scale_base))
+            sec_scales = {"base_radius": scale_base}
             self.data.convergence_info["scaling_secondary"] = sec_scales
+            secondary_logger.info(
+                f"Secondary scaling: base_radius scale={scale_base:.6f} "
+                f"(typical={typical_base_radius}mm, bounds=[{bmin:.1f}, {bmax:.1f}]mm)"
+            )
             secondary_logger.step_complete("Scaling vector computation", time.time() - scaling_start)
         except Exception:
             secondary_logger.step_complete("Scaling vector computation (skipped)", time.time() - scaling_start)
@@ -2605,28 +2632,6 @@ class UnifiedOptimizationFramework:
             self.solver_selector.update_history(
                 "secondary", result.metadata["ipopt_analysis"],
             )
-
-            # Collect data for MA57 migration analysis
-            if (
-                self.settings.enable_ipopt_analysis
-                and self.data.secondary_ipopt_analysis is not None
-            ):
-                problem_size = (
-                    len(self.data.primary_theta)
-                    if self.data.primary_theta is not None
-                    else 100,
-                    10,
-                )
-                self.migration_analyzer.add_ma27_run(
-                    phase="secondary",
-                    problem_size=problem_size,
-                    ma27_report=self.data.secondary_ipopt_analysis,
-                    metadata={
-                        "base_radius": self.data.secondary_base_radius,
-                        "stroke": self.data.stroke,
-                        "solver_type": solver_type.value,
-                    },
-                )
         else:
             self.data.secondary_ipopt_analysis = None
 
@@ -2703,12 +2708,24 @@ class UnifiedOptimizationFramework:
             A bundle containing primary and secondary outputs sufficient to
             build deterministic Phase-2 relationships without solving.
         """
+        ring_profile = self.data.secondary_ring_profile or {}
+        theta_ring_deg = ring_profile.get("theta")
+        theta_ring_rad = ring_profile.get("theta_rad")
+        R_ring = ring_profile.get("R_psi_ring") or ring_profile.get("R_ring")
+        R_planet = ring_profile.get("R_psi_planet") or ring_profile.get("R_planet")
+        theta_planet = ring_profile.get("theta_planet")
+        psi_rad = ring_profile.get("psi")
+        if psi_rad is None and theta_ring_deg is not None:
+            psi_rad = np.deg2rad(theta_ring_deg)
+
         if (
             self.data.primary_theta is None
             or self.data.primary_position is None
             or self.data.secondary_base_radius is None
-            or self.data.secondary_psi is None
-            or self.data.secondary_R_psi is None
+            or theta_ring_deg is None
+            or R_ring is None
+            or R_planet is None
+            or theta_planet is None
         ):
             raise RuntimeError(
                 "Phase-2 animation inputs unavailable; ensure primary and secondary optimizations completed",
@@ -2718,9 +2735,15 @@ class UnifiedOptimizationFramework:
             "theta_deg": self.data.primary_theta,
             "x_theta_mm": self.data.primary_position,
             "base_radius_mm": float(self.data.secondary_base_radius),
-            "psi_rad": self.data.secondary_psi,
-            "R_psi_mm": self.data.secondary_R_psi,
+            "psi_rad": psi_rad,
+            "R_psi_mm": R_ring,
+            "theta_ring_deg": theta_ring_deg,
+            "theta_ring_rad": theta_ring_rad if theta_ring_rad is not None else (np.deg2rad(theta_ring_deg) if theta_ring_deg is not None else None),
+            "R_psi_ring_mm": R_ring,
+            "R_psi_planet_mm": R_planet,
+            "theta_planet_rad": theta_planet,
             "gear_geometry": self.data.secondary_gear_geometry or {},
+            "static_radii": self.data.secondary_static_radii or ring_profile.get("static_radii"),
         }
 
     def _optimize_tertiary(self) -> OptimizationResult:
@@ -2846,26 +2869,6 @@ class UnifiedOptimizationFramework:
             self.solver_selector.update_history(
                 "tertiary", result.metadata["ipopt_analysis"],
             )
-
-            # Collect data for MA57 migration analysis
-            if (
-                self.settings.enable_ipopt_analysis
-                and self.data.tertiary_ipopt_analysis is not None
-            ):
-                problem_size = (
-                    4,
-                    8,
-                )  # crank_center_x, crank_center_y, crank_radius, rod_length
-                self.migration_analyzer.add_ma27_run(
-                    phase="tertiary",
-                    problem_size=problem_size,
-                    ma27_report=self.data.tertiary_ipopt_analysis,
-                    metadata={
-                        "base_radius": self.data.secondary_base_radius,
-                        "stroke": self.data.stroke,
-                        "solver_type": solver_type.value,
-                    },
-                )
         else:
             self.data.tertiary_ipopt_analysis = None
 
@@ -2916,7 +2919,7 @@ class UnifiedOptimizationFramework:
         max_acceleration: float | None,
         max_jerk: float | None,
         primary_logger: ProgressLogger,
-    ) -> OptimizationResult | None:
+    ) -> OptimizationResult:
         """Execute the CasADi Phase 1 flow when enabled."""
         try:
             primary_logger.step(2, None, "Running CasADi Phase 1 optimization")
@@ -2953,15 +2956,45 @@ class UnifiedOptimizationFramework:
                 primary_logger.complete_phase(success=True)
                 return result
 
-            primary_logger.warning(
-                f"CasADi optimization failed: {result.error_message or result.status}",
+            status_str = (
+                result.status.value
+                if isinstance(result.status, OptimizationStatus)
+                else str(result.status)
             )
-            return None
+            ipopt_status = ""
+            solver_stats = result.metadata.get("solver_stats") if result.metadata else {}
+            if isinstance(solver_stats, dict):
+                ipopt_status = solver_stats.get("return_status") or ""
+            error_msg = result.error_message or "No error message provided"
+            primary_logger.error(
+                "CasADi optimization failed: status=%s; ipopt_return_status=%s; error=%s",
+                status_str,
+                ipopt_status or "unknown",
+                error_msg,
+            )
+            result.metadata = result.metadata or {}
+            result.metadata.setdefault("solver", "CasADiUnifiedFlow")
+            result.metadata["source"] = "casadi_phase1"
+            result.metadata.setdefault("ipopt_return_status", ipopt_status)
+            primary_logger.complete_phase(success=False)
+            return result
 
         except Exception as exc:  # pragma: no cover - safety fallback
             primary_logger.error(f"CasADi primary flow raised an exception: {exc}")
             log.error("CasADi primary flow failed", exc_info=True)
-            return None
+            primary_logger.complete_phase(success=False)
+            return OptimizationResult(
+                status=OptimizationStatus.FAILED,
+                objective_value=float("inf"),
+                solve_time=None,
+                solution={},
+                error_message=str(exc),
+                metadata={
+                    "source": "casadi_phase1",
+                    "solver": "CasADiUnifiedFlow",
+                    "exception_type": exc.__class__.__name__,
+                },
+            )
 
     def _build_casadi_primary_constraints(
         self,
@@ -3467,70 +3500,188 @@ class UnifiedOptimizationFramework:
                 )
             
             ring_profile = solution.get("ring_profile")
+
             if ring_profile is not None:
+
                 # Extract from nested structure
+
                 psi = ring_profile.get("psi")
+
                 self.data.secondary_psi = psi
-                
+
+
+
                 # Store full synchronized ring profile on universal theta grid
-                # This contains: theta, psi, R_planet, R_ring all aligned to the same theta domain
+
                 theta = ring_profile.get("theta")
+
+                theta_rad = ring_profile.get("theta_rad")
+
                 R_planet = ring_profile.get("R_planet")
                 R_ring = ring_profile.get("R_ring")
                 R_psi = ring_profile.get("R_psi")  # For backward compatibility
-                
+                R_psi_planet = _first_not_none(
+                    ring_profile.get("R_psi_planet"), R_planet, R_psi,
+                )
+                R_psi_ring = _first_not_none(
+                    ring_profile.get("R_psi_ring"), R_ring,
+                )
+                theta_planet = ring_profile.get("theta_planet")
+
+                static_radii = ring_profile.get("static_radii")
+
+
+
                 if theta is not None:
+
                     # Store complete synchronized ring profile
+
                     self.data.secondary_ring_profile = {
+
                         "theta": theta,  # Universal theta grid (degrees)
+
+                        "theta_rad": theta_rad,
+
                         "psi": psi,  # Ring angle (radians)
+
                         "R_planet": R_planet if R_planet is not None else R_psi,  # Planet pitch radius
-                        "R_ring": R_ring,  # Synchronized ring radius R_ring(θ) = ρ_target(θ) * R_planet(θ)
+
+                        "R_ring": R_ring,  # Synchronized ring radius R_ring(I,) = I?_target(I,) * R_planet(I,)
+
+                        "R_psi_planet": R_psi_planet,
+
+                        "R_psi_ring": R_psi_ring,
+
+                        "theta_planet": theta_planet,
+
+                        "static_radii": static_radii,
+
                     }
+
                     log.debug(
+
                         f"Stored synchronized ring profile on universal theta grid "
+
                         f"(len={len(theta)} points)"
+
                     )
+
                 else:
+
                     log.warning("Ring profile missing theta grid; storing partial profile")
+
                     self.data.secondary_ring_profile = {
+
                         "psi": psi,
+
                         "R_planet": R_planet if R_planet is not None else R_psi,
+
                         "R_ring": R_ring,
+
+                        "R_psi_planet": R_psi_planet,
+
+                        "R_psi_ring": R_psi_ring,
+
+                        "theta_planet": theta_planet,
+
+                        "static_radii": static_radii,
+
                     }
-                
+
+
+
                 # Maintain backward compatibility: keep the Litvin planet trajectory in
+
                 # secondary_R_psi when available, since legacy consumers expect that signal.
-                if R_psi is not None:
-                    self.data.secondary_R_psi = R_psi
+
+                chosen_R_psi = None
+
+                if R_psi_planet is not None:
+
+                    chosen_R_psi = R_psi_planet
+
+                elif R_psi is not None:
+
+                    chosen_R_psi = R_psi
+
+                if chosen_R_psi is not None:
+
+                    self.data.secondary_R_psi = np.asarray(chosen_R_psi)
+
                     log.debug("Stored Litvin R_psi (planet trajectory) for backward compatibility")
+
                 elif (
+
                     R_ring is not None
+
                     and theta is not None
+
                     and psi is not None
+
                 ):
+
                     # If R_psi is unavailable (unexpected), fall back to the synchronized ring
-                    # profile resampled onto the ψ grid so legacy code still receives data.
+
+                    # profile resampled onto the I^ grid so legacy code still receives data.
+
                     from campro.optimization.grid import GridMapper
 
+
+
                     R_ring_on_psi = GridMapper.periodic_linear_resample(
+
                         from_theta=np.deg2rad(theta),
+
                         from_values=R_ring,
+
                         to_theta=psi,
+
                     )
+
                     self.data.secondary_R_psi = R_ring_on_psi
+
                     log.debug(
-                        "Resampled R_ring from θ grid to ψ grid because R_psi was unavailable "
-                        f"(θ len={len(theta)}, ψ len={len(psi)})"
+
+                        "Resampled R_ring from I, grid to I^ grid because R_psi was unavailable "
+
+                        f"(I, len={len(theta)}, I^ len={len(psi)})"
+
                     )
+
                 else:
+
                     log.warning("No R_psi or R_ring data available for legacy secondary_R_psi field")
+
+
+
+                if R_psi_planet is not None:
+
+                    self.data.secondary_R_psi_planet = np.asarray(R_psi_planet)
+
+                if R_psi_ring is not None:
+
+                    self.data.secondary_R_psi_ring = np.asarray(R_psi_ring)
+
+                if theta_planet is not None:
+
+                    self.data.secondary_theta_planet = np.asarray(theta_planet)
+
+                if static_radii is not None:
+
+                    self.data.secondary_static_radii = static_radii
+
             else:
+
                 raise ValueError(
+
                     "Secondary optimization result must include ring_profile. "
+
                     "Top-level fallback keys are not supported in per-degree-only contract."
+
                 )
-            
+
+
+
             self.data.secondary_gear_geometry = solution.get("gear_geometry")
             
             # Log what was extracted for debugging
@@ -3690,29 +3841,11 @@ class UnifiedOptimizationFramework:
         }
 
     def get_migration_analysis(self) -> dict[str, Any]:
-        """Get MA57 migration analysis and recommendations."""
-        if not self.settings.enable_ipopt_analysis:
-            return {"error": "Ipopt analysis is not enabled"}
-
-        analysis = self.migration_analyzer.analyze_migration_readiness()
-        plan = self.migration_analyzer.get_migration_plan()
-
-        return {
-            "analysis": {
-                "total_runs": analysis.total_runs,
-                "ma57_beneficial_runs": analysis.ma57_beneficial_runs,
-                "average_speedup": analysis.average_speedup,
-                "convergence_improvements": analysis.convergence_improvements,
-                "migration_priority": analysis.migration_priority,
-                "estimated_effort": analysis.estimated_effort,
-            },
-            "recommendations": analysis.recommendations,
-            "migration_plan": plan,
-        }
+        """Legacy migration analysis has been removed."""
+        return {"error": "Migration analysis is no longer available; MA27 is always used."}
 
     def export_migration_report(self, output_file: str) -> None:
-        """Export comprehensive MA57 migration report."""
-        if not self.settings.enable_ipopt_analysis:
-            raise RuntimeError("Ipopt analysis is not enabled")
-
-        self.migration_analyzer.export_analysis_report(output_file)
+        """Legacy migration reporting has been removed."""
+        raise RuntimeError(
+            "Migration reporting is no longer available; MA27 is always used."
+        )

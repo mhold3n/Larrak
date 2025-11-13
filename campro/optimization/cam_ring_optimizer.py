@@ -769,6 +769,40 @@ class CamRingOptimizer(BaseOptimizer):
         # Use the psi from litvin_result, which is already on the theta grid
         psi_ring = litvin_result.psi
 
+
+
+        theta_planet = self._compute_planet_spin_profile(
+
+            theta_rad=theta_rad,
+
+            ring_radius=R_ring_theta,
+
+            planet_radius=R_planet_theta,
+
+            total_rotations=2.0,
+
+        )
+
+
+
+        static_radii = {
+
+            "r_outer_ring_surface": float(np.max(R_ring_theta)) if R_ring_theta.size else float(gear_geometry.base_circle_ring),
+
+            "r_piston_interference": float(
+
+                max(
+
+                    base_radius - (getattr(self.constraints, "planet_clearance_mm", 0.0) or 0.0),
+
+                    0.0,
+
+                ),
+
+            ),
+
+        }
+
         # Return complete gear design with tooth profiles
         return {
             "base_radius": base_radius,
@@ -782,7 +816,7 @@ class CamRingOptimizer(BaseOptimizer):
             },
             "ring_profile": {
                 "theta": theta,  # Universal theta grid (degrees) for synchronized evaluation
-                "psi": litvin_result.psi,  # Ring angle (radians) from Litvin synthesis
+                "psi": psi_ring,  # Ring angle (radians) from Litvin synthesis
                 "R_planet": R_planet_theta,  # Planet pitch radius R_planet(θ) = litvin_result.R_psi
                 "R_psi": litvin_result.R_psi,  # Planet radial-slot trajectory (kept for backward compatibility)
                 "R_ring": R_ring_theta,  # Synchronized ring radius R_ring(θ) = ρ_target(θ) * R_planet(θ)
@@ -828,3 +862,32 @@ class CamRingOptimizer(BaseOptimizer):
         )
 
         return constraints
+
+    @staticmethod
+    def _compute_planet_spin_profile(
+        *,
+        theta_rad: NDArray[np.float64],
+        ring_radius: NDArray[np.float64],
+        planet_radius: NDArray[np.float64],
+        total_rotations: float = 2.0,
+    ) -> NDArray[np.float64]:
+        """Integrate the instantaneous spin of the planet to enforce two turns per ring cycle."""
+        theta = np.asarray(theta_rad, dtype=float)
+        if theta.size == 0:
+            return np.asarray([], dtype=float)
+        ring = np.asarray(ring_radius, dtype=float)
+        planet = np.asarray(planet_radius, dtype=float)
+        ring = np.maximum(ring, 1e-9)
+        planet = np.maximum(planet, 1e-9)
+        ratio = ring / planet
+        phi = np.zeros_like(theta)
+        for idx in range(1, theta.size):
+            dtheta = theta[idx] - theta[idx - 1]
+            avg_ratio = 0.5 * (ratio[idx] + ratio[idx - 1])
+            phi[idx] = phi[idx - 1] + avg_ratio * dtheta
+        span = phi[-1] - phi[0]
+        desired_span = total_rotations * 2.0 * np.pi
+        if abs(span) > 1e-12:
+            scale = desired_span / span
+            phi = (phi - phi[0]) * scale
+        return phi

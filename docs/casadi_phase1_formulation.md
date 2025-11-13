@@ -373,7 +373,7 @@ opti.minimize(w_jerk * J_jerk + w_thermal * J_thermal)
 ```python
 # Set solver options
 opti.solver('ipopt', {
-    'ipopt.linear_solver': 'ma57',
+    'ipopt.linear_solver': 'ma27',
     'ipopt.max_iter': 1000,
     'ipopt.tol': 1e-6,
     'ipopt.print_level': 0,

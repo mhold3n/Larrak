@@ -974,7 +974,7 @@ class CrankCenterOptimizer(BaseOptimizer):
             "g": ca.vertcat(*constraint_exprs) if constraint_exprs else ca.SX(),
         }
 
-        # Set up Ipopt solver
+        # Set up Ipopt solver with improved settings
         solver_options = IPOPTOptions(
             max_iter=self.constraints.max_iterations,
             tol=self.constraints.tolerance,
@@ -982,6 +982,9 @@ class CrankCenterOptimizer(BaseOptimizer):
             enable_analysis=True,
             print_level=3,
             warm_start_init_point="yes",
+            # Add Hessian approximation for better convergence
+            hessian_approximation="limited-memory",  # Use L-BFGS instead of exact Hessian
+            limited_memory_max_history=10,  # More history for better approximation
         )
 
         # Create CasADi solver using centralized factory
@@ -1006,6 +1009,28 @@ class CrankCenterOptimizer(BaseOptimizer):
         lbx = np.array([b[0] for b in bounds])
         ubx = np.array([b[1] for b in bounds])
 
+        # Improve initial guess: use Phase 2 geometry and motion law data
+        improved_x0 = initial_params.copy()
+        if hasattr(gear_geometry, 'base_center_radius') and gear_geometry.base_center_radius:
+            # Use gear center as initial crank center estimate (start at origin)
+            improved_x0[0] = 0.0  # crank_center_x
+            improved_x0[1] = 0.0  # crank_center_y
+            # Use motion law stroke to estimate crank radius
+            if 'position' in motion_law_data and len(motion_law_data['position']) > 0:
+                max_position = float(np.max(motion_law_data['position']))
+                # Crank radius ≈ stroke / 2
+                improved_x0[2] = max_position / 2.0  # crank_radius
+                # Rod length: typically 3-4x stroke
+                improved_x0[3] = max_position * 3.5  # rod_length
+                log.info(
+                    f"Improved initial guess from Phase 2: "
+                    f"crank_radius={improved_x0[2]:.2f}mm (from stroke={max_position:.2f}mm), "
+                    f"rod_length={improved_x0[3]:.2f}mm"
+                )
+        
+        # Ensure initial guess is within bounds
+        improved_x0 = np.clip(improved_x0, lbx, ubx)
+        
         # Set up constraint bounds (simplified)
         if constraint_exprs:
             lbg = np.zeros(len(constraint_exprs))
@@ -1014,11 +1039,16 @@ class CrankCenterOptimizer(BaseOptimizer):
             lbg = np.array([])
             ubg = np.array([])
 
+        log.info(
+            f"Tertiary NLP: n_vars={n_vars}, n_constraints={len(constraint_exprs)}, "
+            f"x0={improved_x0}, bounds=[{lbx}, {ubx}]"
+        )
+
         # Solve the NLP
         try:
             result = solver.solve(
                 nlp=casadi_solver,
-                x0=initial_params,
+                x0=improved_x0,  # Improved initial guess
                 lbx=lbx,
                 ubx=ubx,
                 lbg=lbg,

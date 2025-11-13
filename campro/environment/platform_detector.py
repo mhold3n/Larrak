@@ -18,6 +18,11 @@ from campro.logging import get_logger
 
 log = get_logger(__name__)
 
+# OS detection constants for cross-platform compatibility
+IS_WINDOWS = platform.system().lower() == "windows"
+IS_MACOS = platform.system().lower() == "darwin"
+IS_LINUX = platform.system().lower() == "linux"
+
 
 @dataclass
 class PlatformInfo:
@@ -166,4 +171,7 @@ __all__ = [
     "get_local_conda_env_path",
     "get_local_conda_env_activate_command",
     "is_local_conda_env_present",
+    "IS_WINDOWS",
+    "IS_MACOS",
+    "IS_LINUX",
 ]

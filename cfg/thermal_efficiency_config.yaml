@@ -77,7 +77,7 @@ solver:
   ipopt:
     max_iter: 1000                    # Maximum iterations
     tol: 1e-6                        # Tolerance
-    linear_solver: ma57              # Linear solver
+    linear_solver: ma27              # Linear solver
     hessian_approximation: limited-memory  # Hessian approximation
     mu_strategy: adaptive            # Barrier parameter strategy
     mu_init: 1e-3                   # Initial barrier parameter

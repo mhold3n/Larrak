@@ -194,7 +194,7 @@ CASADI_PHYSICS_ENABLE_CHUNKING = True
 ```python
 # Ipopt configuration for CasADi
 ipopt_options = {
-    "linear_solver": "ma27",  # or "ma57" for larger problems
+    "linear_solver": "ma27",
     "max_iter": 1000,
     "tol": 1e-6,
     "print_level": 0

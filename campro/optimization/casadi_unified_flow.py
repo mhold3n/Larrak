@@ -63,7 +63,7 @@ class CasADiOptimizationSettings:
     def __post_init__(self):
         if self.solver_options is None:
             self.solver_options = {
-                "ipopt.linear_solver": "ma57",
+                # linear_solver is set by build_ipopt_solver_options() to avoid clobbering warnings
                 "ipopt.max_iter": 1000,
                 "ipopt.tol": 1e-6,
                 "ipopt.print_level": 0,

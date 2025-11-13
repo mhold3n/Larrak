@@ -7,18 +7,15 @@ including CasADi, ipopt, Python version, and required packages.
 
 from __future__ import annotations
 
-import platform
 import sys
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from campro.environment.platform_detector import IS_MACOS
 from campro.logging import get_logger
 
 log = get_logger(__name__)
-
-# Detect macOS platform - MA97 has known crash bug on macOS
-IS_MACOS = platform.system().lower() == "darwin"
 
 # Global flag to prevent multiple IPOPT linear solver initializations
 _IPOPT_LINEAR_SOLVER_INITIALIZED = False
@@ -188,7 +185,7 @@ def validate_hsl_solvers() -> list[ValidationResult]:
         import casadi as ca
 
         # Test all HSL solvers
-        hsl_solvers = ["ma27", "ma57", "ma77", "ma86", "ma97"]
+        hsl_solvers = ["ma27"]
         
         # CRITICAL: Skip MA97 on macOS due to known segmentation fault bug
         if IS_MACOS:

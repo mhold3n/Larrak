@@ -503,7 +503,7 @@ solver:
   ipopt:
     max_iter: 1000
     tol: 1e-6
-    linear_solver: ma57
+    linear_solver: ma27
     hessian_approximation: limited-memory
 
 # Validation

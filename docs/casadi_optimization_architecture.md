@@ -71,7 +71,7 @@ This document describes the architecture of the CasADi-based optimization framew
 - State variables: position, velocity, acceleration
 - Control variables: jerk
 - Boundary conditions from stroke/cycle time constraints
-- IPOPT solver with MA57 linear solver
+- IPOPT solver with MA27 linear solver
 
 **Class Diagram**:
 ```
@@ -263,7 +263,7 @@ The framework provides clean interfaces for Phase 2/3 integration:
 
 - **Deterministic seed**: Provides consistent boundary-satisfying initial iterate
 - **Polish pass**: Keeps derivatives within bounds, improving IPOPT restoration behavior
-- **IPOPT solver**: Robust convergence with MA57 linear solver
+- **IPOPT solver**: Robust convergence with MA27 linear solver
 - **Thermal efficiency**: 55% target achievable with simplified model
 
 ## Error Handling
@@ -311,7 +311,7 @@ The framework provides clean interfaces for Phase 2/3 integration:
 ### 1. Core Dependencies
 
 - **CasADi ≥ 3.6.0**: Optimization framework
-- **IPOPT with MA57**: Nonlinear solver
+- **IPOPT with MA27**: Nonlinear solver
 - **NumPy**: Numerical computations
 - **SciPy**: Scientific computing
 

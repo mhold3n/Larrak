@@ -111,7 +111,7 @@ This document provides a comprehensive status report on the implementation of th
 **Key Features**:
 - Problem size and complexity analysis
 - Historical performance tracking
-- MA27/MA57 solver selection logic
+- MA27 solver selection logic
 - Integration with all three optimization phases
 
 #### Phase 3B: Dynamic Parameter Tuning ✅ COMPLETED
@@ -154,14 +154,14 @@ This document provides a comprehensive status report on the implementation of th
 - Historical analysis tracking
 - Seamless integration with existing optimization flow
 
-### Phase 4: MA57 Migration Strategy ✅ COMPLETED
+### Phase 4: MA57 Migration Strategy ✅ (Retired)
 
-#### Phase 4A: Migration Analyzer Implementation ✅ COMPLETED
+#### Phase 4A: Migration Analyzer Implementation ✅ (Retired)
 
-**Objective**: Implement MA57 migration analyzer with comprehensive data collection
+**Objective**: (Legacy) Implement MA57 migration analyzer with comprehensive data collection – *feature retired in MA27-only roadmap*
 
 **Key Implementations**:
-- ✅ Created `MA57MigrationAnalyzer` class with data collection and analysis
+- ✅ Created `MA57MigrationAnalyzer` class with data collection and analysis *(removed in current codebase)*
 - ✅ Implemented `MigrationDataPoint` and `MigrationAnalysis` dataclasses
 - ✅ Added data persistence with JSON storage
 - ✅ Implemented migration readiness analysis and recommendations
@@ -172,14 +172,14 @@ This document provides a comprehensive status report on the implementation of th
 - `tests/test_ma57_migration_analyzer.py`
 
 **Key Features**:
-- MA27/MA57 performance comparison data collection
+- MA27 performance comparison data collection
 - Problem size and phase-specific analysis
 - Migration readiness assessment
 - Automated recommendation generation
 
-#### Phase 4B: Framework Integration ✅ COMPLETED
+#### Phase 4B: Framework Integration ✅ (Retired)
 
-**Objective**: Integrate MA57 analyzer with unified framework for data collection
+**Objective**: (Legacy) Integrate MA57 analyzer with unified framework for data collection – *retired*
 
 **Key Implementations**:
 - ✅ Added migration analyzer to `UnifiedOptimizationFramework`
@@ -249,7 +249,7 @@ This document provides a comprehensive status report on the implementation of th
 - Established historical performance tracking for continuous improvement
 
 ### 3. Data-Driven Migration Strategy
-- Built comprehensive data collection system for MA57 migration decisions
+- Built comprehensive data collection system for MA57 migration decisions *(retired)*
 - Created automated analysis and recommendation generation
 - Established clear migration criteria and success metrics
 
@@ -278,7 +278,7 @@ This document provides a comprehensive status report on the implementation of th
 ## Future Enhancements
 
 ### Short Term (Next 3 months)
-1. **MA57 Integration**: Implement actual MA57 solver integration when available
+1. **MA57 Integration**: (Retired) Implement actual MA57 solver integration when available
 2. **Performance Optimization**: Fine-tune adaptive selection algorithms based on real data
 3. **Enhanced Analysis**: Add more detailed performance metrics and visualizations
 
@@ -299,7 +299,7 @@ The Ipopt optimization system integration has been **successfully completed** wi
 - ✅ **Complete integration** across all three optimization phases
 - ✅ **Enhanced analysis** capabilities for optimization performance
 - ✅ **Adaptive tuning** for optimal solver performance
-- ✅ **Data-driven migration** strategy for MA57 adoption
+- ✅ **Data-driven migration** strategy for MA57 adoption *(legacy work, no longer active)*
 - ✅ **Comprehensive test coverage** ensuring reliability
 - ✅ **Future roadmap** for continued enhancement
 

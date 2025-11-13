@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from campro.optimization.base import OptimizationStatus
-from campro.optimization.solver_analysis import MA57ReadinessReport
+from campro.optimization.solver_analysis import IpoptAnalysisReport
 from campro.optimization.thermal_efficiency_adapter import (
     ThermalEfficiencyAdapter,
     ThermalEfficiencyConfig,
@@ -29,10 +29,10 @@ class TestThermalEfficiencyAnalysis:
     def test_thermal_efficiency_adapter_provides_analysis(self):
         """Test that thermal efficiency adapter extracts and provides Ipopt analysis."""
         # Create mock complex optimizer result with analysis
-        mock_analysis = MA57ReadinessReport(
+        mock_analysis = IpoptAnalysisReport(
             grade="medium",
             reasons=["High iteration count (1500)"],
-            suggested_action="Consider MA57 if available",
+            suggested_action="Investigate scaling and warm-start strategies to assist MA27.",
             stats={
                 "success": True,
                 "iter_count": 1500,
@@ -148,7 +148,7 @@ class TestThermalEfficiencyAnalysis:
         assert result.status == OptimizationStatus.CONVERGED
         assert "ipopt_analysis" in result.metadata
         analysis = result.metadata["ipopt_analysis"]
-        assert isinstance(analysis, MA57ReadinessReport)
+        assert isinstance(analysis, IpoptAnalysisReport)
         assert analysis.stats["iter_count"] == 2000
 
     def test_thermal_efficiency_analysis_with_log_file(self):
@@ -224,16 +224,16 @@ class TestThermalEfficiencyAnalysis:
     def test_thermal_efficiency_analysis_in_unified_framework(self):
         """Test that unified framework stores primary phase analysis."""
         # Create mock analysis
-        mock_analysis = MA57ReadinessReport(
-            grade="low",
-            reasons=["No adverse indicators detected"],
-            suggested_action="Stick with MA27; no strong indicators for MA57.",
+        mock_analysis = IpoptAnalysisReport(
+            grade="medium",
+            reasons=["High iteration count (1500)"],
+            suggested_action="Investigate scaling and warm-start strategies to assist MA27.",
             stats={
                 "success": True,
-                "iter_count": 500,
-                "ls_time_ratio": 0.2,
-                "primal_inf": 1e-8,
-                "dual_inf": 1e-8,
+                "iter_count": 1500,
+                "ls_time_ratio": 0.3,
+                "primal_inf": 1e-6,
+                "dual_inf": 1e-6,
             },
         )
 
@@ -273,7 +273,7 @@ class TestThermalEfficiencyAnalysis:
             # Verify analysis is stored in framework data
             assert result.metadata["ipopt_analysis"] == mock_analysis
             assert framework.data.primary_ipopt_analysis == mock_analysis
-            assert framework.data.primary_ipopt_analysis.grade == "low"
+            assert framework.data.primary_ipopt_analysis.grade == "medium"
 
     def test_thermal_efficiency_adapter_log_file_path_handling(self):
         """Test log file path handling when no log files exist."""

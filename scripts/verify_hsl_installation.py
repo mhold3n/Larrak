@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Verification script for CasADi with HSL solvers (MA27/MA57) installation.
-Run this script to verify that CasADi can access the HSL linear solvers.
+Verification script for CasADi with the MA27 HSL solver.
+Run this script to verify that CasADi can access the MA27 linear solver.
 """
 
 import os
@@ -22,22 +22,20 @@ def test_casadi_import():
 
 
 def test_hsl_solvers():
-    """Test if all HSL solvers (MA27, MA57, MA77, MA86, MA97) are available."""
+    """Test if the MA27 HSL solver is available."""
     try:
         import time
 
         import casadi as ca
 
-        # Create a simple optimization problem
         x = ca.MX.sym("x")
         nlp = {"x": x, "f": x**2, "g": x}
 
-        # Test all HSL solvers
-        hsl_solvers = ["ma27", "ma57", "ma77", "ma86", "ma97"]
+        hsl_solvers = ["ma27"]
         available_solvers = []
         solver_times = {}
 
-        print("Testing HSL solvers:")
+        print("Testing HSL solver (MA27 only):")
         for solver_name in hsl_solvers:
             try:
                 start_time = time.time()
@@ -62,14 +60,10 @@ def test_hsl_solvers():
             except Exception as e:
                 print(f"[FAIL] {solver_name.upper()}: Failed - {e}")
 
-        # Note: Solver creation test is sufficient to verify HSL availability
-        # The optimization test may fail due to problem formulation, but solver creation
-        # confirms that the HSL linear solvers are properly accessible to Ipopt
-
         print(
             f"\nSummary: {len(available_solvers)}/{len(hsl_solvers)} HSL solvers available",
         )
-        return len(available_solvers) > 0
+        return len(available_solvers) == len(hsl_solvers)
 
     except Exception as e:
         print(f"[FAIL] HSL solver test failed: {e}")

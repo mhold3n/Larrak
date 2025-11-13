@@ -68,12 +68,29 @@ class LitvinSynthesis:
         if max_disc > tolerance:
             idx = int(np.argmax(discrepancy))
             theta_deg = float(np.degrees(theta[int(np.clip(idx, 0, len(theta) - 1))])) if len(theta) else 0.0
+            # Check if deviation is at wrap-around point (θ=360°)
+            is_wrap_around = (
+                len(theta) > 0 and 
+                (idx == len(theta) - 1 or idx == 0) and
+                abs(float(np.degrees(theta[idx if idx < len(theta) else 0])) - 360.0) < 1.0
+            )
             log.warning(
-                "Litvin R_psi deviates from polar pitch by %.6f mm at θ=%.2f°. "
+                "Litvin R_psi deviates from polar pitch by %.6f mm at θ=%.2f°%s. "
                 "Clamping to supplied polar radius for this solve.",
                 max_disc,
                 theta_deg,
+                " (wrap-around)" if is_wrap_around else "",
             )
+            # Log diagnostic info at wrap-around
+            if is_wrap_around and len(theta) > 0:
+                log.debug(
+                    "Wrap-around diagnostic: R_psi[0]=%.6f, R_psi[-1]=%.6f, "
+                    "expected[0]=%.6f, expected[-1]=%.6f",
+                    float(actual[0]) if len(actual) > 0 else 0.0,
+                    float(actual[-1]) if len(actual) > 0 else 0.0,
+                    float(expected[0]) if len(expected) > 0 else 0.0,
+                    float(expected[-1]) if len(expected) > 0 else 0.0,
+                )
             return expected.copy(), True
         return actual, False
 

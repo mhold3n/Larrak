@@ -425,10 +425,15 @@ class TestCasADiUnifiedFlow:
         flow = CasADiUnifiedFlow(settings=settings)
         solve_calls: list[int] = []
 
-        def fake_solve(self, problem, seed):
+        def fake_solve(self, problem, seed, target_theta_rad=None, **kwargs):
             n_segments = self.n_segments
             solve_calls.append(n_segments)
             n_points = n_segments + 1
+            if target_theta_rad is not None and len(target_theta_rad) == n_points:
+                theta_rad = np.asarray(target_theta_rad)
+                theta_deg = np.degrees(theta_rad)
+            else:
+                theta_deg = np.linspace(0.0, float(problem.duration_angle_deg), n_points)
             position = np.linspace(0.0, problem.stroke, n_points)
             zeros = np.zeros(n_points)
             jerk = np.zeros(n_segments)
@@ -441,6 +446,7 @@ class TestCasADiUnifiedFlow:
                     "velocity": zeros,
                     "acceleration": zeros,
                     "jerk": jerk,
+                    "theta_deg": theta_deg,
                 },
                 metadata={"n_segments": n_segments},
             )
@@ -455,6 +461,8 @@ class TestCasADiUnifiedFlow:
             "stroke": 0.1,
             "cycle_time": 0.02,
             "upstroke_percent": 50.0,
+            "duration_angle_deg": 360.0,
+            "universal_n_points": 21,
         }
         targets = {
             "minimize_jerk": True,
@@ -561,6 +569,40 @@ class TestUnifiedFrameworkCasADiIntegration:
         ) == framework.data.stroke
         assert result.solution["cam_angle"].shape[0] == result.solution["position"].shape[0]
 
+    def test_use_casadi_failure_raises_runtime_error(self, monkeypatch):
+        framework = UnifiedOptimizationFramework()
+        framework.settings.use_casadi = True
+        framework.settings.enable_thermal_efficiency = False
+
+        class FailingFlow:
+            def __init__(self, settings):
+                self.settings = settings
+
+            def optimize_phase1(self, constraints, targets, **kwargs):
+                return OptimizationResult(
+                    status=OptimizationStatus.FAILED,
+                    objective_value=float("inf"),
+                    solve_time=0.0,
+                    solution={},
+                    error_message="simulated failure",
+                    metadata={
+                        "solver_stats": {"return_status": "DIVERGING"},
+                        "source": "casadi_phase1",
+                    },
+                )
+
+        monkeypatch.setattr(
+            "campro.optimization.unified_framework.CasADiUnifiedFlow",
+            FailingFlow,
+        )
+
+        with pytest.raises(RuntimeError) as excinfo:
+            framework._optimize_primary()
+
+        message = str(excinfo.value).lower()
+        assert "casadi primary flow failed" in message
+        assert "status=failed" in message
+
 
 class TestIntegration:
     """Test integration between components."""
@@ -627,22 +669,19 @@ class TestIntegration:
         """Test error handling for invalid problems."""
         optimizer = CasADiMotionOptimizer(n_segments=20, poly_order=2)
 
-        # Create invalid problem
-        invalid_problem = CasADiMotionProblem(
-            stroke=-0.1,  # Invalid negative stroke
-            cycle_time=0.0385,
-            upstroke_percent=50.0,
-            max_velocity=5.0,
-            max_acceleration=500.0,
-            max_jerk=50000.0,
-        )
-
-        # Should handle invalid problem gracefully
-        result = optimizer.solve(invalid_problem)
-
-        # Should either fail gracefully or raise appropriate error
-        assert not result.successful or result.metadata.get("error") is not None
+        # Creating an invalid problem should raise a ValueError
+        with pytest.raises(ValueError):
+            CasADiMotionProblem(
+                stroke=0.1,
+                cycle_time=0.0385,
+                upstroke_percent=50.0,
+                max_velocity=-5.0,  # Invalid negative constraint
+                max_acceleration=500.0,
+                max_jerk=50000.0,
+                duration_angle_deg=360.0,
+            )
 
 
 if __name__ == "__main__":
     pytest.main([__file__])
+

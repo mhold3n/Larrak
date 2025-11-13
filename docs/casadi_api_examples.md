@@ -218,7 +218,7 @@ problem = CasADiMotionProblem(
     poly_order=4,    # Higher order polynomials
     collocation_method="radau",
     solver_options={
-        'ipopt.linear_solver': 'ma57',
+        'ipopt.linear_solver': 'ma27',
         'ipopt.max_iter': 2000,
         'ipopt.tol': 1e-8,
         'ipopt.print_level': 1
@@ -343,7 +343,7 @@ settings = CasADiOptimizationSettings(
     poly_order=4,
     efficiency_target=0.60,
     solver_options={
-        'ipopt.linear_solver': 'ma57',
+        'ipopt.linear_solver': 'ma27',
         'ipopt.max_iter': 2000,
         'ipopt.tol': 1e-8,
         'ipopt.print_level': 0
@@ -527,7 +527,7 @@ optimizer = CasADiMotionOptimizer(
 
 # Set solver options for performance
 optimizer.opti.solver('ipopt', {
-    'ipopt.linear_solver': 'ma57',  # Use MA57 for better performance
+    'ipopt.linear_solver': 'ma27',
     'ipopt.max_iter': 1000,
     'ipopt.tol': 1e-6,
     'ipopt.print_level': 0,  # Suppress output for performance
@@ -613,3 +613,4 @@ These examples demonstrate the key features of the CasADi optimization framework
 - No per-second units are accepted; no compatibility mode or auto-conversion
 
 The framework provides a comprehensive solution for Phase 1 motion law optimization with thermal efficiency objectives, following CasADi best practices and documentation patterns.
+

@@ -54,9 +54,11 @@ def _detect_hsl_path() -> str:
     1. Local conda environment (OS-specific)
     2. Active conda environment
     3. Environment variable HSLLIB_PATH
-    4. Project CoinHSL archive (Windows)
+    4. Project CoinHSL archive (OS-specific)
     """
     try:
+        from campro.environment.platform_detector import IS_MACOS, IS_WINDOWS  # noqa: E402
+        
         project_root = _Path(__file__).resolve().parents[1]
         
         # Priority 1: Check local conda environment using env_manager
@@ -80,9 +82,9 @@ def _detect_hsl_path() -> str:
             if env_path.exists():
                 return str(env_path)
         
-        # Priority 3: Look for the specific CoinHSL archive folder shipped with the repo
-        # Prefer the specific version: CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5
-        if _sys.platform.startswith("win"):
+        # Priority 3: Look for OS-specific CoinHSL archive folder shipped with the repo
+        if IS_WINDOWS:
+            # Windows: Check for Windows-specific CoinHSL archive
             hsl_folder = project_root / "CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5"
             if hsl_folder.exists():
                 bin_dir = hsl_folder / "bin"
@@ -90,21 +92,34 @@ def _detect_hsl_path() -> str:
                 if dll.exists():
                     return str(dll)
             
-            # Fallback: search for any CoinHSL-archive.* folder (for compatibility)
+            # Fallback: search for any Windows CoinHSL-archive.* folder
             candidates = list(project_root.glob("CoinHSL-archive.*"))
-            if candidates:
-                bin_dir = candidates[0] / "bin"
-                dll = bin_dir / "libcoinhsl.dll"
-                if dll.exists():
-                    return str(dll)
+            for candidate in candidates:
+                # Check if it's a Windows archive (contains w64-mingw32 or similar)
+                if "w64" in candidate.name.lower() or "mingw" in candidate.name.lower():
+                    bin_dir = candidate / "bin"
+                    dll = bin_dir / "libcoinhsl.dll"
+                    if dll.exists():
+                        return str(dll)
+        elif IS_MACOS:
+            # macOS: Check for macOS-specific CoinHSL archive
+            candidates = list(project_root.glob("CoinHSL-archive.*"))
+            for candidate in candidates:
+                # Check if it's a macOS archive (contains darwin or apple)
+                if "darwin" in candidate.name.lower() or "apple" in candidate.name.lower():
+                    # Try lib directory first (standard macOS location)
+                    lib_dir = candidate / "lib"
+                    dylib = lib_dir / "libcoinhsl.dylib"
+                    if dylib.exists():
+                        return str(dylib)
+                    # Also check bin directory (some archives use bin/)
+                    bin_dir = candidate / "bin"
+                    dylib = bin_dir / "libcoinhsl.dylib"
+                    if dylib.exists():
+                        return str(dylib)
         
         # Priority 4: Platform-specific common locations (if env var not set)
-        if _sys.platform.startswith("linux"):
-            # Common Linux locations (as fallback only)
-            pass
-        elif _sys.platform == "darwin":
-            # Common macOS locations (as fallback only)
-            pass
+        # These are typically handled by conda environments, so we skip here
     except Exception:
         pass
     return ""

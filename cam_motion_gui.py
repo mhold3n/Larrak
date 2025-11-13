@@ -1983,7 +1983,9 @@ class CamMotionGUI:
             if result_data.secondary_cam_curves is not None:
                 print(f"    Keys: {list(result_data.secondary_cam_curves.keys())}")
             print(f"  - secondary_psi: {result_data.secondary_psi is not None} ({len(result_data.secondary_psi) if result_data.secondary_psi is not None else 0} points)")
-            print(f"  - secondary_R_psi: {result_data.secondary_R_psi is not None} ({len(result_data.secondary_R_psi) if result_data.secondary_R_psi is not None else 0} points)")
+            print(f"  - secondary_R_psi_planet: {getattr(result_data, 'secondary_R_psi_planet', None) is not None}")
+            print(f"  - secondary_R_psi_ring: {getattr(result_data, 'secondary_R_psi_ring', None) is not None}")
+            print(f"  - secondary_theta_planet: {getattr(result_data, 'secondary_theta_planet', None) is not None}")
             print(f"  - secondary_base_radius: {result_data.secondary_base_radius}")
 
             # Update Motion Law tab
@@ -2077,7 +2079,6 @@ class CamMotionGUI:
 
             # Show MA57 readiness analysis
             print("DEBUG: Showing MA57 readiness analysis...")
-            self._show_ma57_readiness()
 
             print("DEBUG: All plots updated successfully!")
 
@@ -2246,7 +2247,80 @@ class CamMotionGUI:
         """Update the cam/ring motion plot (Tab 2)."""
         self.motion_fig.clear()
 
-        if (
+        ring_profile = getattr(result_data, "secondary_ring_profile", None)
+        ring_theta = None
+        ring_radius = None
+        theta_planet = None
+        if isinstance(ring_profile, dict):
+            ring_theta = ring_profile.get("theta")
+            ring_radius = ring_profile.get("R_psi_ring")
+            if ring_radius is None:
+                ring_radius = ring_profile.get("R_ring")
+            theta_planet = ring_profile.get("theta_planet")
+
+        if ring_theta is not None and ring_radius is not None:
+            theta_arr = np.asarray(ring_theta)
+            ring_arr = np.asarray(ring_radius)
+            ax1 = self.motion_fig.add_subplot(211)
+            ax2 = self.motion_fig.add_subplot(212)
+
+            ax1.plot(
+                theta_arr,
+                ring_arr,
+                "purple",
+                linewidth=2,
+                label="R_psi_ring",
+            )
+            ax1.set_ylabel("Ring Radius (mm)")
+            ax1.set_xlabel("Ring Angle θ (deg)")
+            ax1.grid(True, alpha=0.3)
+            ax1.legend()
+            ax1.set_title("Ring Radius vs. Ring Angle")
+
+            # Plot cam motion (if available)
+            if result_data.secondary_cam_curves is not None:
+                cam_theta = result_data.secondary_cam_curves.get(
+                    "theta", result_data.primary_theta,
+                )
+                cam_radius = result_data.secondary_cam_curves.get("profile_radius")
+                if cam_radius is not None and cam_theta is not None:
+                    ax2.plot(
+                        cam_theta,
+                        cam_radius,
+                        "orange",
+                        linewidth=2,
+                        label="Cam Radius",
+                    )
+            ax2.set_ylabel("Cam Radius (mm)")
+            ax2.set_xlabel("Cam Angle θ (deg)")
+            ax2.grid(True, alpha=0.3)
+            planet_axis = None
+            if theta_planet is not None:
+                planet_spin = np.asarray(theta_planet)
+                if planet_spin.size == theta_arr.size:
+                    planet_axis = ax2.twinx()
+                    planet_axis.plot(
+                        theta_arr,
+                        np.degrees(planet_spin),
+                        "green",
+                        linewidth=1.75,
+                        label="Theta_planet",
+                    )
+                    planet_axis.set_ylabel("Planet Spin (deg)")
+                    planet_axis.grid(False)
+            handles, labels = ax2.get_legend_handles_labels()
+            if planet_axis is not None:
+                h2, l2 = planet_axis.get_legend_handles_labels()
+                handles += h2
+                labels += l2
+            if handles:
+                ax2.legend(handles, labels)
+            ax2.set_title("Cam Profile & Planet Spin")
+
+            self.motion_fig.suptitle(
+                "Cam and Ring Motion Relationships", fontsize=14, fontweight="bold",
+            )
+        elif (
             result_data.secondary_psi is not None
             and result_data.secondary_R_psi is not None
         ):
@@ -2306,19 +2380,26 @@ class CamMotionGUI:
         """Update the 2D profiles plot (Tab 3)."""
         self.profiles_fig.clear()
 
+        ring_profile = getattr(result_data, "secondary_ring_profile", None)
+        ring_theta = None
+        ring_radius = None
+        if isinstance(ring_profile, dict):
+            ring_theta = ring_profile.get("theta")
+            ring_radius = ring_profile.get("R_psi_ring")
+            if ring_radius is None:
+                ring_radius = ring_profile.get("R_ring")
+
         if (
             result_data.secondary_cam_curves is not None
-            and result_data.secondary_psi is not None
-            and result_data.secondary_R_psi is not None
-            and len(result_data.secondary_psi) > 0
-            and len(result_data.secondary_R_psi) > 0
+            and ring_theta is not None
+            and ring_radius is not None
         ):
-            print(f"DEBUG: Profiles plot: plotting {len(result_data.secondary_psi)} ring points")
-            # Create subplots for cam profile and ring profile
+            print(
+                f"DEBUG: Profiles plot: plotting {len(ring_theta)} synchronized ring points",
+            )
             ax1 = self.profiles_fig.add_subplot(121, projection="polar")
             ax2 = self.profiles_fig.add_subplot(122, projection="polar")
 
-            # Plot cam profile (polar) - use the theta from cam_curves
             if (
                 "theta" in result_data.secondary_cam_curves
                 and "profile_radius" in result_data.secondary_cam_curves
@@ -2335,51 +2416,26 @@ class CamMotionGUI:
                 )
                 ax1.set_title("Cam Profile (Polar)", pad=20)
                 ax1.grid(True)
-                ax1.set_ylim(0, max(cam_radius) * 1.1)  # Set appropriate radial limits
+                ax1.set_ylim(0, max(cam_radius) * 1.1)
             else:
-                print(f"DEBUG: Profiles plot: Cam profile data missing")
-                print(f"  Keys in secondary_cam_curves: {list(result_data.secondary_cam_curves.keys()) if result_data.secondary_cam_curves else 'None'}")
+                print("DEBUG: Profiles plot: Cam profile data missing")
+                print(
+                    f"  Keys in secondary_cam_curves: {list(result_data.secondary_cam_curves.keys()) if result_data.secondary_cam_curves else 'None'}",
+                )
                 ax1.text(0.5, 0.5, "Cam profile data not available", ha="center", va="center", transform=ax1.transAxes)
                 ax1.set_title("Cam Profile (Polar)", pad=20)
 
-            # Plot ring profile (polar)
-            # Prefer synchronized ring profile on universal theta grid if available
-            if (
-                hasattr(result_data, "secondary_ring_profile")
-                and result_data.secondary_ring_profile is not None
-                and "theta" in result_data.secondary_ring_profile
-                and "R_ring" in result_data.secondary_ring_profile
-            ):
-                # Use synchronized ring profile on universal theta grid
-                ring_theta_deg = result_data.secondary_ring_profile["theta"]
-                ring_theta_rad = np.radians(ring_theta_deg)
-                R_ring = result_data.secondary_ring_profile["R_ring"]
-                print(f"DEBUG: Profiles plot: Using synchronized ring profile - theta len={len(ring_theta_deg)}, R_ring len={len(R_ring)}")
-                ax2.plot(
-                    ring_theta_rad,
-                    R_ring,
-                    "purple",
-                    linewidth=2,
-                    label="Ring Profile (Synchronized)",
-                )
-                ax2.set_title("Ring Profile (Polar, θ-aligned)", pad=20)
-                ax2.grid(True)
-                ax2.set_ylim(0, max(R_ring) * 1.1)
-            else:
-                # Fallback to legacy psi-based plotting for backward compatibility
-                print(f"DEBUG: Profiles plot: Ring profile - using legacy psi-based plot, psi len={len(result_data.secondary_psi)}, R_ring len={len(result_data.secondary_R_psi)}")
-                ax2.plot(
-                    result_data.secondary_psi,
-                    result_data.secondary_R_psi,
-                    "purple",
-                    linewidth=2,
-                    label="Ring Profile (Legacy)",
-                )
-                ax2.set_title("Ring Profile (Polar)", pad=20)
-                ax2.grid(True)
-                ax2.set_ylim(
-                    0, max(result_data.secondary_R_psi) * 1.1,
-                )  # Set appropriate radial limits
+            ring_theta_rad = np.radians(ring_theta)
+            ax2.plot(
+                ring_theta_rad,
+                ring_radius,
+                "purple",
+                linewidth=2,
+                label="Ring Profile (R_psi_ring)",
+            )
+            ax2.set_title("Ring Profile (Polar, ?-aligned)", pad=20)
+            ax2.grid(True)
+            ax2.set_ylim(0, max(ring_radius) * 1.1)
 
             self.profiles_fig.suptitle(
                 "Cam and Ring 2D Profiles", fontsize=14, fontweight="bold",
@@ -2387,14 +2443,7 @@ class CamMotionGUI:
         else:
             print("DEBUG: Profiles plot: No data available")
             print(f"  secondary_cam_curves: {result_data.secondary_cam_curves is not None}")
-            print(f"  secondary_psi: {result_data.secondary_psi is not None}")
-            print(f"  secondary_R_psi: {result_data.secondary_R_psi is not None}")
-            if result_data.secondary_cam_curves is not None:
-                print(f"  secondary_cam_curves keys: {list(result_data.secondary_cam_curves.keys())}")
-            if result_data.secondary_psi is not None:
-                print(f"  secondary_psi length: {len(result_data.secondary_psi)}")
-            if result_data.secondary_R_psi is not None:
-                print(f"  secondary_R_psi length: {len(result_data.secondary_R_psi)}")
+            print(f"  secondary_ring_profile: {ring_profile is not None}")
             ax = self.profiles_fig.add_subplot(111)
             ax.text(
                 0.5,
@@ -2409,14 +2458,22 @@ class CamMotionGUI:
         self.profiles_fig.tight_layout()
         self.profiles_canvas.draw()
 
+
     def _update_animation_plot(self, result_data):
         """Update the animation plot (Tab 4)."""
         self.animation_fig.clear()
 
-        if (
-            result_data.secondary_psi is not None
-            and result_data.secondary_R_psi is not None
-        ):
+        ring_profile = getattr(result_data, "secondary_ring_profile", None)
+        has_ring_profile = (
+            isinstance(ring_profile, dict)
+            and ring_profile.get("theta") is not None
+            and (
+                ring_profile.get("R_psi_ring") is not None
+                or ring_profile.get("R_ring") is not None
+            )
+        )
+
+        if has_ring_profile:
             # Store animation data
             self.animation_data = result_data
 
@@ -2428,9 +2485,26 @@ class CamMotionGUI:
                     theta_deg=np.asarray(bundle["theta_deg"]),
                     x_theta_mm=np.asarray(bundle["x_theta_mm"]),
                     base_radius_mm=float(bundle["base_radius_mm"]),
-                    psi_rad=np.asarray(bundle["psi_rad"]),
-                    R_psi_mm=np.asarray(bundle["R_psi_mm"]),
+                    psi_rad=np.asarray(bundle["psi_rad"])
+                    if bundle.get("psi_rad") is not None
+                    else None,
+                    R_psi_mm=np.asarray(bundle["R_psi_mm"])
+                    if bundle.get("R_psi_mm") is not None
+                    else None,
                     gear_geometry=bundle.get("gear_geometry", {}) or {},
+                    theta_ring_rad=np.asarray(bundle["theta_ring_rad"])
+                    if bundle.get("theta_ring_rad") is not None
+                    else None,
+                    R_psi_ring_mm=np.asarray(bundle["R_psi_ring_mm"])
+                    if bundle.get("R_psi_ring_mm") is not None
+                    else None,
+                    R_psi_planet_mm=np.asarray(bundle["R_psi_planet_mm"])
+                    if bundle.get("R_psi_planet_mm") is not None
+                    else None,
+                    theta_planet_rad=np.asarray(bundle["theta_planet_rad"])
+                    if bundle.get("theta_planet_rad") is not None
+                    else None,
+                    static_radii=bundle.get("static_radii"),
                     contact_type=contact_type,
                     constrain_center_to_x_axis=True,
                     align_tdc_at_theta0=True,
@@ -2454,25 +2528,35 @@ class CamMotionGUI:
                 theta_cam_deg = None
                 if isinstance(result_data.secondary_cam_curves, dict):
                     theta_cam_deg = result_data.secondary_cam_curves.get("theta")
+                psi_series = result_data.secondary_psi
+                if psi_series is None and isinstance(ring_profile, dict) and ring_profile.get("theta") is not None:
+                    psi_series = np.radians(ring_profile.get("theta"))
+                if psi_series is None:
+                    psi_series = np.linspace(0.0, 2.0 * np.pi, 360)
                 theta_cam_rad = (
                     np.radians(theta_cam_deg)
                     if theta_cam_deg is not None
-                    else np.linspace(0, 2 * np.pi, len(result_data.secondary_psi))
+                    else np.linspace(0, 2 * np.pi, len(psi_series))
                 )
+                ring_radius_series = getattr(result_data, "secondary_R_psi_ring", None)
+                if ring_radius_series is None and isinstance(ring_profile, dict):
+                    ring_radius_series = ring_profile.get("R_psi_ring")
+                    if ring_radius_series is None:
+                        ring_radius_series = ring_profile.get("R_ring")
+                if ring_radius_series is None:
+                    ring_radius_series = result_data.secondary_R_psi
                 inputs = AssemblyInputs(
                     base_circle_cam=base_circle_cam,
                     base_circle_ring=base_circle_ring,
                     z_cam=z_cam,
                     contact_type=contact_type,
-                    psi=result_data.secondary_psi,
-                    R_psi=result_data.secondary_R_psi,
+                    psi=np.asarray(psi_series),
+                    R_psi=np.asarray(ring_radius_series),
                     theta_cam_rad=theta_cam_rad,
                 )
                 self.animation_state = compute_assembly_state(inputs)
             self._anim_rmax = compute_global_rmax(self.animation_state)
-
-            # Frames from psi
-            self._total_frames = len(result_data.secondary_psi)
+            self._total_frames = len(getattr(self.animation_state, "contact_theta", []))
 
             # Create initial frame directly (we're already on main thread when this is called)
             self._draw_animation_frame(0)
@@ -2521,15 +2605,16 @@ class CamMotionGUI:
         if not hasattr(self, "animation_data") or self.animation_data is None:
             return
 
-        # Prefer ring contact angles (psi, radians) for animation; fallback to primary theta (degrees)
-        psi_data = getattr(self.animation_data, "secondary_psi", None)
-        theta_deg_data = getattr(self.animation_data, "primary_theta", None)
-
-        if psi_data is not None and len(psi_data) > 0:
-            angle_series = psi_data  # radians
-        elif theta_deg_data is not None and len(theta_deg_data) > 0:
-            angle_series = np.radians(theta_deg_data)  # convert degrees -> radians
-        else:
+        # Prefer contact theta from the animation state, then legacy psi, then primary theta
+        angle_series = getattr(self.animation_state, "contact_theta", None)
+        if angle_series is None or len(angle_series) == 0:
+            psi_data = getattr(self.animation_data, "secondary_psi", None)
+            theta_deg_data = getattr(self.animation_data, "primary_theta", None)
+            if psi_data is not None and len(psi_data) > 0:
+                angle_series = psi_data
+            elif theta_deg_data is not None and len(theta_deg_data) > 0:
+                angle_series = np.radians(theta_deg_data)
+        if angle_series is None or len(angle_series) == 0:
             return
 
         # Calculate total frames from available angle series
@@ -2571,9 +2656,16 @@ class CamMotionGUI:
         )
 
         # Draw ring gear (fixed, centered): phase-2 profile directly
-        ring_psi = self.animation_data.secondary_psi
-        ring_R_psi = self.animation_data.secondary_R_psi
-        ax.plot(ring_psi, ring_R_psi, "r-", linewidth=3, label="Ring Gear")
+        ring_angles = getattr(self.animation_state, "contact_theta", None)
+        ring_radius = getattr(self.animation_state, "contact_radius", None)
+        if ring_angles is None:
+            ring_angles = getattr(self.animation_data, "secondary_psi", None)
+        if ring_radius is None:
+            ring_radius = getattr(self.animation_data, "secondary_R_psi_ring", None)
+        if ring_radius is None:
+            ring_radius = getattr(self.animation_data, "secondary_R_psi", None)
+        if ring_angles is not None and ring_radius is not None:
+            ax.plot(ring_angles, ring_radius, "r-", linewidth=3, label="Ring Gear")
 
         # Draw 3 planet teeth using assembly transform
         st = self.animation_state
@@ -2639,11 +2731,15 @@ class CamMotionGUI:
 
         # Draw contact point
         # Contact from phase-2 data directly
-        contact_radius = (
-            float(self.animation_state.contact_radius[self.animation_frame_index])
-            if self.animation_state is not None
-            else float(np.mean(self.animation_data.secondary_R_psi))
-        )
+        if self.animation_state is not None:
+            contact_radius = float(
+                self.animation_state.contact_radius[self.animation_frame_index],
+            )
+        else:
+            fallback_ring = getattr(self.animation_data, "secondary_R_psi_ring", None)
+            if fallback_ring is None:
+                fallback_ring = getattr(self.animation_data, "secondary_R_psi", None)
+            contact_radius = float(np.mean(fallback_ring)) if fallback_ring is not None else 0.0
         ax.plot(
             current_theta, contact_radius, "go", markersize=8, label="Contact Point",
         )
@@ -2665,12 +2761,19 @@ class CamMotionGUI:
         ax.set_title(f"Tooth Contact Detail - Frame {frame_index + 1}/{total_frames}")
 
         # Draw ring gear teeth in detail region
-        ring_psi = self.animation_data.secondary_psi
-        ring_R_psi = self.animation_data.secondary_R_psi
-        mask = (ring_psi >= current_theta - detail_angle_range) & (
-            ring_psi <= current_theta + detail_angle_range
-        )
-        ax.plot(ring_psi[mask], ring_R_psi[mask], "r-", linewidth=3, label="Ring Teeth")
+        ring_psi = getattr(self.animation_state, "contact_theta", None)
+        ring_R_psi = getattr(self.animation_state, "contact_radius", None)
+        if ring_psi is None:
+            ring_psi = getattr(self.animation_data, "secondary_psi", None)
+        if ring_R_psi is None:
+            ring_R_psi = getattr(self.animation_data, "secondary_R_psi_ring", None)
+        if ring_R_psi is None:
+            ring_R_psi = getattr(self.animation_data, "secondary_R_psi", None)
+        if ring_psi is not None and ring_R_psi is not None:
+            mask = (ring_psi >= current_theta - detail_angle_range) & (
+                ring_psi <= current_theta + detail_angle_range
+            )
+            ax.plot(ring_psi[mask], ring_R_psi[mask], "r-", linewidth=3, label="Ring Teeth")
 
         # Draw cam teeth in detail region using assembly transform
         st = self.animation_state
@@ -2742,11 +2845,15 @@ class CamMotionGUI:
                     )
 
         # Highlight the exact contact point
-        contact_radius = (
-            float(self.animation_state.contact_radius[self.animation_frame_index])
-            if self.animation_state is not None
-            else float(np.mean(self.animation_data.secondary_R_psi))
-        )
+        if self.animation_state is not None:
+            contact_radius = float(
+                self.animation_state.contact_radius[self.animation_frame_index],
+            )
+        else:
+            fallback_ring = getattr(self.animation_data, "secondary_R_psi_ring", None)
+            if fallback_ring is None:
+                fallback_ring = getattr(self.animation_data, "secondary_R_psi", None)
+            contact_radius = float(np.mean(fallback_ring)) if fallback_ring is not None else 0.0
         ax.plot(
             current_theta, contact_radius, "go", markersize=10, label="Contact Point",
         )
@@ -2894,13 +3001,14 @@ Side-Loading:
             self.status_var.set("No animation data available. Run optimization first.")
             return
 
-        # Calculate total frames from collocation points
-        theta_data = getattr(self.animation_data, "primary_theta", None)
-        if theta_data is None or len(theta_data) == 0:
-            self.status_var.set("No collocation data available for animation.")
-            return
-
-        total_frames = len(theta_data)
+        total_frames = getattr(self, "_total_frames", 0)
+        if not total_frames:
+            theta_data = getattr(self.animation_data, "primary_theta", None)
+            if theta_data is None or len(theta_data) == 0:
+                self.status_var.set("No collocation data available for animation.")
+                return
+            total_frames = len(theta_data)
+            self._total_frames = total_frames
 
         self.animation_playing = True
         self.animation_frame_index = 0
@@ -2915,12 +3023,13 @@ Side-Loading:
         if not self.animation_playing:
             return
 
-        # Calculate total frames from collocation points
-        theta_data = getattr(self.animation_data, "primary_theta", None)
-        if theta_data is None or len(theta_data) == 0:
-            return
-
-        total_frames = len(theta_data)
+        total_frames = getattr(self, "_total_frames", 0)
+        if not total_frames:
+            theta_data = getattr(self.animation_data, "primary_theta", None)
+            if theta_data is None or len(theta_data) == 0:
+                return
+            total_frames = len(theta_data)
+            self._total_frames = total_frames
 
         self._draw_animation_frame(self.animation_frame_index)
 
@@ -2984,6 +3093,16 @@ Side-Loading:
                     "secondary_R_psi": self.unified_result.secondary_R_psi.tolist()
                     if self.unified_result.secondary_R_psi is not None
                     else None,
+                    "secondary_R_psi_ring": getattr(self.unified_result, "secondary_R_psi_ring", None).tolist()
+                    if getattr(self.unified_result, "secondary_R_psi_ring", None) is not None
+                    else None,
+                    "secondary_R_psi_planet": getattr(self.unified_result, "secondary_R_psi_planet", None).tolist()
+                    if getattr(self.unified_result, "secondary_R_psi_planet", None) is not None
+                    else None,
+                    "secondary_theta_planet": getattr(self.unified_result, "secondary_theta_planet", None).tolist()
+                    if getattr(self.unified_result, "secondary_theta_planet", None) is not None
+                    else None,
+                    "secondary_static_radii": getattr(self.unified_result, "secondary_static_radii", None),
                     "secondary_base_radius": self.unified_result.secondary_base_radius,
                     "secondary_rod_length": 25.0,  # Fixed connecting rod length for phase 2 simplification
                     "total_solve_time": self.unified_result.total_solve_time,
@@ -3140,48 +3259,6 @@ Side-Loading:
 
         except Exception as e:
             print(f"DEBUG: Detailed analysis display failed: {e}")
-
-    def _show_ma57_readiness(self):
-        """Analyze all optimization phases and show comprehensive MA57 readiness."""
-        try:
-            if not hasattr(self, "unified_result") or not self.unified_result:
-                return
-
-            # Extract analysis from all phases
-            p1_analysis = getattr(self.unified_result, "primary_ipopt_analysis", None)
-            p2_analysis = getattr(self.unified_result, "secondary_ipopt_analysis", None)
-            p3_analysis = getattr(self.unified_result, "tertiary_ipopt_analysis", None)
-
-            # Display each phase separately
-            status_lines = []
-            if p1_analysis:
-                status_lines.append(f"P1 MA57: {p1_analysis.grade.upper()}")
-            if p2_analysis:
-                status_lines.append(f"P2 MA57: {p2_analysis.grade.upper()}")
-            if p3_analysis:
-                status_lines.append(f"P3 MA57: {p3_analysis.grade.upper()}")
-
-            # Update status bar with all three phases
-            if status_lines:
-                current_status = self.status_var.get()
-                # Remove any existing MA57 info
-                if " | MA57" in current_status:
-                    current_status = current_status.split(" | MA57")[0]
-                grade_info = " | " + " | ".join(status_lines)
-                self.status_var.set(current_status + grade_info)
-
-            # Log detailed analysis for debugging
-            print("DEBUG: Multi-phase MA57 readiness analysis:")
-            if p1_analysis:
-                print(f"  Phase 1: {p1_analysis.grade} - {p1_analysis.reasons}")
-            if p2_analysis:
-                print(f"  Phase 2: {p2_analysis.grade} - {p2_analysis.reasons}")
-            if p3_analysis:
-                print(f"  Phase 3: {p3_analysis.grade} - {p3_analysis.reasons}")
-
-        except Exception as e:
-            # If analysis fails, keep normal status
-            print(f"DEBUG: Multi-phase MA57 readiness analysis failed: {e}")
 
     def _diagnose_nlp(self):
         """Run quick diagnostics: residuals and MA57 readiness from last run."""

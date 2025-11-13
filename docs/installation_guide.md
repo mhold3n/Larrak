@@ -451,13 +451,13 @@ conda env remove -n larrak
 rm -rf /path/to/Larrak
 ```
 
-## Optional HSL Solvers (MA27/MA57)
+## Optional HSL Solver (MA27)
 
 HSL (Harwell Subroutine Library) solvers are optional but significantly improve optimization performance for large problems. These are not included in GitHub clones due to licensing requirements.
 
 ### About HSL Solvers
 
-- **MA27/MA57**: Sparse linear algebra solvers used by IPOPT
+- **MA27**: Sparse linear algebra solver used by IPOPT
 - **Performance**: Can provide 2-10x speedup for large optimization problems
 - **Licensing**: Commercial license required from STFC
 - **Optional**: IPOPT works without HSL but with reduced performance

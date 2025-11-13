@@ -11,7 +11,7 @@ log = get_logger(__name__)
 
 
 @dataclass
-class MA57ReadinessReport:
+class IpoptAnalysisReport:
     grade: str  # "low" | "medium" | "high"
     reasons: list[str]
     suggested_action: str
@@ -38,7 +38,7 @@ def _safe_get(d: dict[str, Any], key: str, default: Any) -> Any:
 
 def analyze_ipopt_run(
     stats: dict[str, Any], ipopt_output_file: str | None,
-) -> MA57ReadinessReport:
+) -> IpoptAnalysisReport:
     """
     Analyze an Ipopt run (stats + optional output file) and estimate whether MA57
     would likely yield better robustness/performance than MA27.
@@ -134,12 +134,12 @@ def analyze_ipopt_run(
         grade = "low"
 
     suggested_action = {
-        "low": "Stick with MA27; no strong indicators for MA57.",
-        "medium": "Consider MA57 if available; issues suggest sensitivity to factorization.",
-        "high": "Strongly consider MA57 and better preconditioning/scaling; investigate model conditioning.",
+        "low": "MA27 performing well; maintain current configuration.",
+        "medium": "Investigate scaling and warm-start strategies to assist MA27.",
+        "high": "Significant issues detected; revisit model conditioning, scaling, and bounds before re-running MA27.",
     }[grade]
 
-    report = MA57ReadinessReport(
+    report = IpoptAnalysisReport(
         grade=grade,
         reasons=reasons or ["No adverse indicators detected"],
         suggested_action=suggested_action,

@@ -129,7 +129,7 @@ class CasADiMotionOptimizer(BaseOptimizer):
             "ipopt.tol": 1e-6,
             "ipopt.print_level": 0,
             "ipopt.warm_start_init_point": "yes",
-            "ipopt.linear_solver": "ma57",
+            # linear_solver is set by build_ipopt_solver_options() to avoid clobbering warnings
         }
         if solver_options:
             self._solver_options.update(solver_options)

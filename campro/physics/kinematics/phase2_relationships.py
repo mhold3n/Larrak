@@ -29,17 +29,22 @@ log = get_logger(__name__)
 class Phase2AnimationInputs:
     """Container for deterministic Phase-2 animation inputs."""
 
-    theta_deg: np.ndarray  # Primary motion θ grid [deg]
-    x_theta_mm: np.ndarray  # Primary motion x(θ) [mm]
+    theta_deg: np.ndarray  # Primary motion I, grid [deg]
+    x_theta_mm: np.ndarray  # Primary motion x(I,) [mm]
     base_radius_mm: float  # Optimized base radius r_b [mm] (used as C0)
-    psi_rad: np.ndarray  # Synthesized ring angle ψ [rad]
-    R_psi_mm: np.ndarray  # Ring instantaneous radius R(ψ) [mm]
-    gear_geometry: dict[str, Any]  # Gear bases and optional flanks/metadata
+    psi_rad: np.ndarray | None = None  # Synthesized ring angle I^ [rad]
+    R_psi_mm: np.ndarray | None = None  # Ring instantaneous radius R(I^) [mm]
+    gear_geometry: dict[str, Any] | None = None  # Gear bases and optional flanks/metadata
+    theta_ring_rad: np.ndarray | None = None  # Optional ring-domain theta for R_psi_ring
+    R_psi_ring_mm: np.ndarray | None = None  # Ring radius measured from assembly center
+    R_psi_planet_mm: np.ndarray | None = None  # Planet radius measured from planet center
+    theta_planet_rad: np.ndarray | None = None  # Precomputed planet spin profile
+    static_radii: dict[str, float] | None = None  # Constant diagnostic radii
     contact_type: str = "internal"  # "internal" or "external"
     constrain_center_to_x_axis: bool = (
         False  # If True, fix orbit angle to 0 (horizontal axis)
     )
-    align_tdc_at_theta0: bool = False  # If True, rotate ψ so max R occurs at θ=0
+    align_tdc_at_theta0: bool = False  # If True, rotate I^ so max R occurs at I,=0
 
 
 def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
@@ -58,15 +63,25 @@ def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
     # Validate arrays
     theta_deg = np.asarray(inputs.theta_deg).flatten()
     x_theta = np.asarray(inputs.x_theta_mm).flatten()
-    psi = np.asarray(inputs.psi_rad).flatten()
-    R_psi = np.asarray(inputs.R_psi_mm).flatten()
+    psi_source = inputs.psi_rad
+    if psi_source is None and inputs.theta_ring_rad is not None:
+        psi_source = inputs.theta_ring_rad
+    if psi_source is None:
+        raise ValueError("Secondary array psi_rad/theta_ring_rad must be provided")
+    psi = np.asarray(psi_source).flatten()
+    R_source = inputs.R_psi_mm
+    if R_source is None and inputs.R_psi_ring_mm is not None:
+        R_source = inputs.R_psi_ring_mm
+    if R_source is None:
+        raise ValueError("Secondary radius array (R_psi_mm or R_psi_ring_mm) must be provided")
+    R_psi = np.asarray(R_source).flatten()
 
     if theta_deg.size == 0 or x_theta.size == 0:
         raise ValueError(
             "Primary motion arrays (theta_deg, x_theta_mm) must be non-empty",
         )
     if psi.size == 0 or R_psi.size == 0:
-        raise ValueError("Secondary arrays (psi_rad, R_psi_mm) must be non-empty")
+        raise ValueError("Secondary arrays (psi_rad/theta_ring_rad, R_psi) must be non-empty")
     if theta_deg.size != x_theta.size:
         raise ValueError("theta_deg and x_theta_mm must have equal length")
 
@@ -90,6 +105,10 @@ def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
     # Align theta domain to radians for assembly inputs (optional for downstream tools)
     theta_cam_rad = np.deg2rad(theta_deg)
 
+    planet_spin_override = None
+    if inputs.theta_planet_rad is not None:
+        planet_spin_override = np.asarray(inputs.theta_planet_rad).flatten()
+
     assembly_inputs = AssemblyInputs(
         base_circle_cam=base_circle_cam,
         base_circle_ring=base_circle_ring,
@@ -101,6 +120,7 @@ def build_phase2_relationships(inputs: Phase2AnimationInputs) -> AssemblyState:
         center_base_radius=float(inputs.base_radius_mm),
         motion_theta_deg=theta_deg,
         motion_offset_mm=x_theta,
+        planet_spin_angle_override=planet_spin_override,
     )
 
     state = compute_assembly_state(assembly_inputs)
