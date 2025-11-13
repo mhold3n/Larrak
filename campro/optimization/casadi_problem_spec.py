@@ -42,18 +42,22 @@ class CasADiMotionProblem:
 
     This class provides a clean interface for defining optimization problems
     with proper validation and default values.
+
+    All motion constraints are in per-degree units:
+    - max_velocity: m/deg (SI units)
+    - max_acceleration: m/deg² (SI units)
+    - max_jerk: m/deg³ (SI units)
     """
 
     # Boundary conditions
-    stroke: float
-    cycle_time: float
-    upstroke_percent: float
-
-    # Physical constraints
-    max_velocity: float
-    max_acceleration: float
-    max_jerk: float
-    compression_ratio_limits: tuple[float, float] = (20.0, 70.0)
+    stroke: float  # Stroke length in meters (SI)
+    cycle_time: float  # Cycle time in seconds
+    upstroke_percent: float  # Upstroke percentage (0-100)
+    duration_angle_deg: float  # Total motion duration in degrees (required, no default)
+    max_velocity: float | None = None  # Maximum velocity constraint in m/deg (per-degree units, optional)
+    max_acceleration: float | None = None  # Maximum acceleration constraint in m/deg² (per-degree units, optional)
+    max_jerk: float | None = None  # Maximum jerk constraint in m/deg³ (per-degree units, optional)
+    compression_ratio_limits: tuple[float, float] = (20.0, 70.0)  # Compression ratio bounds
 
     # Optimization objectives
     objectives: list[OptimizationObjective] = field(
@@ -107,18 +111,24 @@ class CasADiMotionProblem:
 
         if self.cycle_time <= 0:
             raise ValueError("Cycle time must be positive")
+        if self.duration_angle_deg <= 0:
+            raise ValueError(
+                f"duration_angle_deg must be positive, got {self.duration_angle_deg}. "
+                "Phase 1 optimization requires angle-based units, not time-based. "
+                "duration_angle_deg is required and must be explicitly set."
+            )
 
         if not 0 < self.upstroke_percent < 100:
             raise ValueError("Upstroke percent must be between 0 and 100")
 
-        if self.max_velocity <= 0:
-            raise ValueError("Max velocity must be positive")
+        if self.max_velocity is not None and self.max_velocity <= 0:
+            raise ValueError("Max velocity must be positive (units: m/deg)")
 
-        if self.max_acceleration <= 0:
-            raise ValueError("Max acceleration must be positive")
+        if self.max_acceleration is not None and self.max_acceleration <= 0:
+            raise ValueError("Max acceleration must be positive (units: m/deg²)")
 
-        if self.max_jerk <= 0:
-            raise ValueError("Max jerk must be positive")
+        if self.max_jerk is not None and self.max_jerk <= 0:
+            raise ValueError("Max jerk must be positive (units: m/deg³)")
 
         if self.compression_ratio_limits[0] >= self.compression_ratio_limits[1]:
             raise ValueError("Compression ratio limits must be ordered")
@@ -131,6 +141,26 @@ class CasADiMotionProblem:
 
         if not 0 < self.thermal_efficiency_target < 1:
             raise ValueError("Thermal efficiency target must be between 0 and 1")
+        
+        # Validate per-degree units
+        self._validate_per_degree_units()
+
+    def _validate_per_degree_units(self) -> None:
+        """
+        Validate that motion constraints are in per-degree SI units.
+        
+        Raises
+        ------
+        ValueError
+            If constraints are invalid (negative values, etc.).
+        """
+        # Basic validation: ensure constraints are positive if provided
+        if self.max_velocity is not None and self.max_velocity <= 0:
+            raise ValueError(f"max_velocity must be positive, got {self.max_velocity}")
+        if self.max_acceleration is not None and self.max_acceleration <= 0:
+            raise ValueError(f"max_acceleration must be positive, got {self.max_acceleration}")
+        if self.max_jerk is not None and self.max_jerk <= 0:
+            raise ValueError(f"max_jerk must be positive, got {self.max_jerk}")
 
     def _normalize_weights(self) -> None:
         """Normalize objective weights."""
@@ -144,6 +174,7 @@ class CasADiMotionProblem:
         return {
             "stroke": self.stroke,
             "cycle_time": self.cycle_time,
+            "duration_angle_deg": self.duration_angle_deg,
             "upstroke_percent": self.upstroke_percent,
             "max_velocity": self.max_velocity,
             "max_acceleration": self.max_acceleration,
@@ -171,9 +202,25 @@ class CasADiMotionProblem:
             data.get("collocation_method", "legendre"),
         )
 
+        # Require duration_angle_deg - no fallback to default 360.0
+        duration_angle_deg = data.get("duration_angle_deg")
+        if duration_angle_deg is None:
+            raise ValueError(
+                "duration_angle_deg is required for Phase 1 per-degree optimization. "
+                "It must be provided in data dict. "
+                "No fallback to default 360.0 is allowed to prevent unit mixing."
+            )
+        duration_angle_deg = float(duration_angle_deg)
+        if duration_angle_deg <= 0:
+            raise ValueError(
+                f"duration_angle_deg must be positive, got {duration_angle_deg}. "
+                "Phase 1 optimization requires angle-based units, not time-based."
+            )
+        
         return cls(
             stroke=data["stroke"],
             cycle_time=data["cycle_time"],
+            duration_angle_deg=duration_angle_deg,
             upstroke_percent=data["upstroke_percent"],
             max_velocity=data["max_velocity"],
             max_acceleration=data["max_acceleration"],
@@ -306,7 +353,14 @@ class CasADiOptimizationResult:
 
 
 def create_default_problem(
-    stroke: float = 0.1, cycle_time: float = 0.0385, upstroke_percent: float = 50.0,
+    stroke: float = 0.1,
+    cycle_time: float = 0.0385,
+    duration_angle_deg: float = 360.0,
+    upstroke_percent: float = 50.0,
+    max_velocity: float = 0.00028,  # m/deg (default ~0.28 mm/deg)
+    max_acceleration: float = 0.00278,  # m/deg² (default ~2.78 mm/deg²)
+    max_jerk: float = 0.02778,  # m/deg³ (default ~27.78 mm/deg³)
+    compression_ratio_limits: tuple[float, float] = (20.0, 70.0),
 ) -> CasADiMotionProblem:
     """
     Create a default optimization problem.
@@ -317,8 +371,18 @@ def create_default_problem(
         Stroke length in meters
     cycle_time : float
         Cycle time in seconds
+    duration_angle_deg : float
+        Total motion duration expressed in crank degrees
     upstroke_percent : float
         Upstroke percentage
+    max_velocity : float
+        Maximum velocity constraint in m/deg (per-degree units)
+    max_acceleration : float
+        Maximum acceleration constraint in m/deg² (per-degree units)
+    max_jerk : float
+        Maximum jerk constraint in m/deg³ (per-degree units)
+    compression_ratio_limits : tuple[float, float]
+        Compression ratio limits
 
     Returns
     -------
@@ -328,11 +392,12 @@ def create_default_problem(
     return CasADiMotionProblem(
         stroke=stroke,
         cycle_time=cycle_time,
+        duration_angle_deg=duration_angle_deg,
         upstroke_percent=upstroke_percent,
-        max_velocity=5.0,
-        max_acceleration=500.0,
-        max_jerk=50000.0,
-        compression_ratio_limits=(20.0, 70.0),
+        max_velocity=max_velocity,
+        max_acceleration=max_acceleration,
+        max_jerk=max_jerk,
+        compression_ratio_limits=compression_ratio_limits,
         objectives=[
             OptimizationObjective.MINIMIZE_JERK,
             OptimizationObjective.MAXIMIZE_THERMAL_EFFICIENCY,
@@ -346,7 +411,9 @@ def create_default_problem(
 
 
 def create_high_efficiency_problem(
-    stroke: float = 0.1, cycle_time: float = 0.0385,
+    stroke: float = 0.1,
+    cycle_time: float = 0.0385,
+    duration_angle_deg: float = 360.0,
 ) -> CasADiMotionProblem:
     """
     Create a high-efficiency optimization problem.
@@ -357,6 +424,8 @@ def create_high_efficiency_problem(
         Stroke length in meters
     cycle_time : float
         Cycle time in seconds
+    duration_angle_deg : float
+        Total motion duration in crank degrees
 
     Returns
     -------
@@ -366,10 +435,11 @@ def create_high_efficiency_problem(
     return CasADiMotionProblem(
         stroke=stroke,
         cycle_time=cycle_time,
+        duration_angle_deg=duration_angle_deg,
         upstroke_percent=45.0,  # Slightly shorter upstroke for efficiency
-        max_velocity=4.0,  # Lower velocity for efficiency
-        max_acceleration=400.0,  # Lower acceleration
-        max_jerk=40000.0,  # Lower jerk
+        max_velocity=0.00022,  # m/deg (lower velocity for efficiency)
+        max_acceleration=0.00222,  # m/deg² (lower acceleration)
+        max_jerk=0.02222,  # m/deg³ (lower jerk)
         compression_ratio_limits=(25.0, 70.0),  # Higher minimum CR
         objectives=[
             OptimizationObjective.MAXIMIZE_THERMAL_EFFICIENCY,
@@ -385,7 +455,9 @@ def create_high_efficiency_problem(
 
 
 def create_smooth_motion_problem(
-    stroke: float = 0.1, cycle_time: float = 0.0385,
+    stroke: float = 0.1,
+    cycle_time: float = 0.0385,
+    duration_angle_deg: float = 360.0,
 ) -> CasADiMotionProblem:
     """
     Create a smooth motion optimization problem.
@@ -396,6 +468,8 @@ def create_smooth_motion_problem(
         Stroke length in meters
     cycle_time : float
         Cycle time in seconds
+    duration_angle_deg : float
+        Total motion duration in crank degrees
 
     Returns
     -------
@@ -405,10 +479,11 @@ def create_smooth_motion_problem(
     return CasADiMotionProblem(
         stroke=stroke,
         cycle_time=cycle_time,
+        duration_angle_deg=duration_angle_deg,
         upstroke_percent=50.0,
-        max_velocity=3.0,  # Lower velocity for smoothness
-        max_acceleration=300.0,  # Lower acceleration
-        max_jerk=30000.0,  # Lower jerk
+        max_velocity=0.00017,  # m/deg (lower velocity for smoothness)
+        max_acceleration=0.00167,  # m/deg² (lower acceleration)
+        max_jerk=0.01667,  # m/deg³ (lower jerk)
         compression_ratio_limits=(20.0, 50.0),  # Lower CR range
         objectives=[
             OptimizationObjective.SMOOTHNESS,

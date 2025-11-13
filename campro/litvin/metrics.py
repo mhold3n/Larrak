@@ -30,6 +30,18 @@ class Order0Metrics:
 
 
 def evaluate_order0_metrics(config: PlanetSynthesisConfig) -> Order0Metrics:
+    """Evaluate order-0 metrics for gear configuration.
+    
+    Performance note: This function is CPU-bound and GIL-bound due to:
+    - Python loop over theta_vals (n_theta iterations, typically 64-360)
+    - Newton solve per iteration (_newton_solve_phi) - pure Python
+    - Geometric calculations in Python loops
+    
+    For parallel execution with ThreadPoolExecutor, GIL contention limits
+    true parallelism. Consider ProcessPoolExecutor for CPU-bound workloads
+    or optimizing critical paths (Newton solve, coordinate calculations)
+    with C extensions that release the GIL.
+    """
     # Build flank and kinematics identically to synthesis
     module = (
         config.base_center_radius
@@ -53,6 +65,8 @@ def evaluate_order0_metrics(config: PlanetSynthesisConfig) -> Order0Metrics:
     slips: list[float] = []
     phi_hits: list[float] = []
 
+    # GIL-bound loop: Each iteration holds GIL during Newton solve and calculations
+    # This is the main bottleneck for ThreadPoolExecutor parallelism
     prev_phi: float | None = None
     for theta_r in theta_vals:
         # seed from previous for continuity
@@ -61,6 +75,7 @@ def evaluate_order0_metrics(config: PlanetSynthesisConfig) -> Order0Metrics:
             phi_seed = flank.phi[len(flank.phi) // 2]
         else:
             phi_seed = prev_phi
+        # Newton solve: CPU-bound, GIL-held operation
         phi_contact = _newton_solve_phi(flank, kin, theta_r, phi_seed) or phi_seed
         (pt, tangent) = _planet_coords(flank, kin, phi_contact, theta_r)
         dtheta_vec = _partial_theta(flank, kin, phi_contact, theta_r, h)

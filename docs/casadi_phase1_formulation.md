@@ -1,5 +1,18 @@
 # CasADi Phase 1 Optimization Formulation
 
+### Phase‑1 Free‑Piston Export (Combustion‑Time Driven)
+
+Phase‑1 now sources the motion law directly from the free‑piston IPOPT solution:
+
+- Authoritative time base comes from the combustion model. The adapter reconstructs time per collocation stage using the combustion cycle time and grid nodes; it does not impose UI‑driven timing.
+- The motion law is exported as time series: `time_s`, `position_mm`, `velocity_mm_per_s`, `acceleration_mm_per_s2`. Backward‑compatibility fields on a uniform crank‑angle grid are also provided: `cam_angle`, `position`, `velocity`, `acceleration`.
+- Cylinder pressure is exported and mapped to multiple coordinates for plotting/analysis:
+  - `pressure.vs_time = {t_s, p_pa}`
+  - `pressure.vs_position = {x_mm, p_pa}`
+  - `pressure.vs_theta = {theta_deg, p_pa}`
+- Thermodynamic summaries (e.g., IMEP average) are exposed in SolveReport under `thermo` when available.
+
+Set `PHASE1_USE_FREEPISTON_MOTION=0` to fall back to the legacy placeholder (not recommended).
 ## Mathematical Formulation
 
 This document provides the mathematical formulation for Phase 1 motion law optimization using CasADi's direct collocation method with thermal efficiency objectives.

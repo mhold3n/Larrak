@@ -21,8 +21,6 @@ Strategy order (configurable):
 Each stage logs parameters, elapsed time and outcome via project logger.
 """
 
-from __future__ import annotations  # noqa: E402
-
 import time  # noqa: E402
 from collections.abc import Sequence  # noqa: E402
 from copy import deepcopy  # noqa: E402
@@ -32,7 +30,7 @@ from campro.logging import get_logger  # noqa: E402
 
 log = get_logger(__name__)
 
-__all__ = ["safe_solve"]
+__all__ = ["safe_solve", "RetryStrategy", "MaxRetriesExceeded"]
 
 
 class SolveResultProtocol:  # pragma: no cover – used only for typing
@@ -96,11 +94,15 @@ class MaxRetriesExceededError(Exception):
     """Raised when all retry strategies fail."""
 
 
+MaxRetriesExceeded = MaxRetriesExceededError
+
+
 def safe_solve(
     solve_fn: SolveFn,
     *,
     base_options: dict[str, Any],
     strategies: Sequence[RetryStrategy] | None = None,
+    use_default_strategies: bool = False,
 ) -> SolveResultProtocol:
     """Attempt NLP solve with staged recovery.
 
@@ -113,14 +115,19 @@ def safe_solve(
         Initial options dict used for the first attempt and as the baseline for
         subsequent strategy overrides.
     strategies
-        Custom retry strategies; defaults to built-in sequence.
+        Custom retry strategies; defaults to none (single attempt).
+    use_default_strategies
+        When True and *strategies* is None, enable the built-in retry sequence.
     """
 
-    strategies = list(strategies or _DEFAULT_STRATEGIES)
+    if strategies is None:
+        strategy_list = list(_DEFAULT_STRATEGIES) if use_default_strategies else []
+    else:
+        strategy_list = list(strategies)
 
     attempt_opts = deepcopy(base_options)
 
-    for idx, strat in enumerate([None, *strategies]):
+    for idx, strat in enumerate([None, *strategy_list]):
         label = "initial" if strat is None else strat.name
         if strat is not None:
             attempt_opts.update(strat.overrides)

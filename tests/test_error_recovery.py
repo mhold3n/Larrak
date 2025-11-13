@@ -25,7 +25,7 @@ class _CounterSolve:
 
 def test_safe_solve_succeeds_after_retries():
     solve = _CounterSolve(n_fail=2)
-    result = safe_solve(solve, base_options={})
+    result = safe_solve(solve, base_options={}, use_default_strategies=True)
     assert result.success is True
     assert solve.calls == 3  # initial + 2 retries
 
@@ -34,3 +34,9 @@ def test_safe_solve_exhausts_strategies():
     solve = _CounterSolve(n_fail=10)
     with pytest.raises(MaxRetriesExceeded):
         safe_solve(solve, base_options={}, strategies=[RetryStrategy("dummy")])
+
+
+def test_safe_solve_without_default_retries_fails_fast():
+    solve = _CounterSolve(n_fail=1)
+    with pytest.raises(MaxRetriesExceeded):
+        safe_solve(solve, base_options={})

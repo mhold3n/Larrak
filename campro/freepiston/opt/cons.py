@@ -56,8 +56,11 @@ def comprehensive_path_constraints(
     if "pressure" in states:
         for p in states["pressure"]:
             g_path.append(p)
-            lbg_path.append(bounds.get("p_min", 1e3))
-            ubg_path.append(bounds.get("p_max", 1e7))
+            # Convert normalized bounds from MPa to Pa (multiply by 1e6)
+            p_min_pa = bounds.get("p_min", 0.01) * 1e6  # Default 0.01 MPa = 1e4 Pa
+            p_max_pa = bounds.get("p_max", 10.0) * 1e6  # Default 10.0 MPa = 1e7 Pa
+            lbg_path.append(p_min_pa)
+            ubg_path.append(p_max_pa)
 
     # Temperature constraints
     if "temperature" in states:
@@ -159,8 +162,11 @@ def pressure_constraints(
 
     for p in pressure_states:
         g_pressure.append(p)
-        lbg_pressure.append(bounds.get("p_min", 1e3))
-        ubg_pressure.append(bounds.get("p_max", 1e7))
+        # Convert normalized bounds from MPa to Pa (multiply by 1e6)
+        p_min_pa = bounds.get("p_min", 0.01) * 1e6  # Default 0.01 MPa = 1e4 Pa
+        p_max_pa = bounds.get("p_max", 10.0) * 1e6  # Default 10.0 MPa = 1e7 Pa
+        lbg_pressure.append(p_min_pa)
+        ubg_pressure.append(p_max_pa)
 
     return g_pressure, lbg_pressure, ubg_pressure
 
@@ -423,7 +429,9 @@ def combustion_timing_constraints(
         # Avoid Python conditionals on symbolic expressions; encode constraints directly.
         g_combustion.append(Q_comb)
         lbg_combustion.append(0.0)
-        ubg_combustion.append(bounds.get("Q_comb_max", 10000.0))
+        # Convert normalized bounds from kJ to J (multiply by 1e3)
+        q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
+        ubg_combustion.append(q_comb_max_j)
 
     return g_combustion, lbg_combustion, ubg_combustion
 
@@ -549,9 +557,9 @@ def get_default_bounds() -> dict[str, float]:
         Dictionary of default bounds
     """
     return {
-        # Pressure bounds [Pa]
-        "p_min": 1e3,
-        "p_max": 1e7,
+        # Pressure bounds [MPa] (normalized to match variable scaling reference)
+        "p_min": 0.01,  # 0.01 MPa = 1e4 Pa
+        "p_max": 10.0,  # 10.0 MPa = 1e7 Pa
         # Temperature bounds [K]
         "T_min": 200.0,
         "T_max": 2000.0,
@@ -581,8 +589,8 @@ def get_default_bounds() -> dict[str, float]:
         # Energy bounds [J/kg]
         "E_min": 0.1,
         "E_max": 100.0,
-        # Combustion bounds [W]
-        "Q_comb_max": 10000.0,
+        # Combustion bounds [kJ] (normalized from J to bring energy terms to O(1-10) range)
+        "Q_comb_max": 10.0,  # 10.0 kJ = 10000.0 J
         # Wall temperature bounds [K]
         "T_wall_min": 250.0,
         "T_wall_max": 800.0,

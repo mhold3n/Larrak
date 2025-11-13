@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, cast
 
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.freepiston.gas import build_gas_model
 from campro.freepiston.opt.colloc import CollocationGrid, make_grid
 from campro.logging import get_logger
+from campro.physics.combustion import CombustionModel
 
 log = get_logger(__name__)
 
 
-def _import_casadi():
+def _import_casadi() -> Any:
     try:
-        import casadi as ca  # type: ignore
+        import casadi as ca
     except Exception as exc:  # pragma: no cover
         raise RuntimeError("CasADi is required for NLP building") from exc
     return ca
@@ -113,7 +114,13 @@ def enhanced_piston_dae_constraints(
     # Clearance penalty forces (smooth)
     gap_min = geometry.get("gap_min", 0.0008)
     gap_current = xR_c - xL_c
-    penalty_stiffness = geometry.get("penalty_stiffness", 1e6)
+    penalty_stiffness_raw = geometry.get("penalty_stiffness", 1e6)
+
+    # Cap penalty stiffness to keep scaled forces O(1)
+    # Typical force scale ~1e4 N, typical position scale ~1e-1 m
+    # So penalty_stiffness should be ~1e5 N/m to give forces ~1e4 N
+    # Cap at 1e6 N/m to prevent extreme Jacobian entries
+    penalty_stiffness = min(penalty_stiffness_raw, 1e6)
 
     # Smooth penalty function
     gap_violation = ca.fmax(0.0, gap_min - gap_current)
@@ -226,7 +233,9 @@ def piston_force_balance(
 
     # Enhanced clearance penalty forces
     gap_min = geometry.get("clearance_min", 0.001)  # m
-    k_clearance = geometry.get("clearance_stiffness", 1e6)  # N/m
+    k_clearance_raw = geometry.get("clearance_stiffness", 1e6)  # N/m
+    # Cap clearance stiffness to keep scaled forces O(1)
+    k_clearance = min(k_clearance_raw, 1e6)  # N/m
     clearance_smooth = geometry.get("clearance_smooth", 0.0001)  # m
 
     gap = x_R - x_L
@@ -456,6 +465,85 @@ def _build_1d_collocation_nlp(
     obj_cfg = P.get("obj", {})
     walls_cfg = P.get("walls", {})
     flow_cfg = P.get("flow", {})
+    combustion_cfg = P.get("combustion", {})
+
+    use_combustion_model = bool(combustion_cfg.get("use_integrated_model", False))
+    if use_combustion_model and flow_cfg.get("use_1d_gas", False):
+        raise NotImplementedError(
+            "Integrated combustion model is not yet supported with 1D gas dynamics.",
+        )
+
+    combustion_model: CombustionModel | None = None
+    combustion_cycle_time = None
+    omega_deg_per_s_const = None
+    omega_deg_per_s_dm = None
+    combustion_samples: list[tuple[float, Any]] = []
+
+    if use_combustion_model:
+        required_keys = [
+            "fuel_type",
+            "afr",
+            "fuel_mass_kg",
+            "cycle_time_s",
+            "initial_temperature_K",
+        ]
+        for key in required_keys:
+            if key not in combustion_cfg:
+                raise ValueError(f"combustion configuration missing required key '{key}'")
+
+        combustion_cycle_time = float(combustion_cfg["cycle_time_s"])
+        combustion_model = CombustionModel()
+        combustion_model.configure(
+            fuel_type=combustion_cfg["fuel_type"],
+            afr=float(combustion_cfg["afr"]),
+            bore_m=float(geometry.get("bore", 0.1)),
+            stroke_m=float(geometry.get("stroke", 0.1)),
+            clearance_volume_m3=float(geometry.get("clearance_volume", 1e-4)),
+            fuel_mass_kg=float(combustion_cfg["fuel_mass_kg"]),
+            cycle_time_s=combustion_cycle_time,
+            initial_temperature_K=float(combustion_cfg["initial_temperature_K"]),
+            initial_pressure_Pa=float(combustion_cfg.get("initial_pressure_Pa", 1e5)),
+            target_mfb=float(combustion_cfg.get("target_mfb", 0.99)),
+            m_wiebe=float(combustion_cfg.get("m_wiebe", 2.0)),
+            k_turb=float(combustion_cfg.get("k_turb", 0.3)),
+            c_burn=float(combustion_cfg.get("c_burn", 3.0)),
+            turbulence_exponent=float(combustion_cfg.get("turbulence_exponent", 0.7)),
+            min_flame_speed=float(combustion_cfg.get("min_flame_speed", 0.2)),
+            heating_value_override=combustion_cfg.get("heating_value_override"),
+            phi_override=combustion_cfg.get("phi_override"),
+        )
+        omega_deg_per_s_const = float(
+            combustion_cfg.get(
+                "omega_deg_per_s",
+                360.0 / max(combustion_cycle_time, 1e-9),
+            ),
+        )
+        omega_deg_per_s_dm = ca.DM(omega_deg_per_s_const)
+
+    # Define ignition time variable if using combustion model
+    if use_combustion_model:
+        ignition_bounds = combustion_cfg.get(
+            "ignition_bounds_s",
+            (0.0, max(combustion_cycle_time or 1.0, 1e-6)),
+        )
+        ignition_initial = float(
+            combustion_cfg.get(
+                "ignition_initial_s",
+                0.1 * max(combustion_cycle_time or 1.0, 1e-6),
+            ),
+        )
+        t_ign = ca.SX.sym("t_ign")
+        # Add t_ign to variables
+        w_ign = [t_ign]
+        w0_ign = [ignition_initial]
+        lbw_ign = [float(ignition_bounds[0])]
+        ubw_ign = [float(ignition_bounds[1])]
+    else:
+        t_ign = None
+        w_ign = []
+        w0_ign = []
+        lbw_ign = []
+        ubw_ign = []
 
     # Variables, initial guesses, and bounds
     w = []
@@ -465,6 +553,12 @@ def _build_1d_collocation_nlp(
     g = []
     lbg = []
     ubg = []
+
+    # Add ignition variable if using combustion model
+    w += w_ign
+    w0 += w0_ign
+    lbw += lbw_ign
+    ubw += ubw_ign
 
     # Initial states
     xL0 = ca.SX.sym("xL0")
@@ -531,6 +625,13 @@ def _build_1d_collocation_nlp(
     scav_penalty_accum = 0.0
     smooth_penalty_accum = 0.0
 
+    # Define dt_real for combustion model timing
+    if use_combustion_model:
+        dt_real = (combustion_cycle_time or 1.0) / max(K, 1)
+        combustion_samples.append((0.0, ca.DM(0.0)))
+    else:
+        dt_real = None
+
     # Scavenging and timing accumulator initial states
     yF0 = ca.SX.sym("yF0")
     Mdel0 = ca.SX.sym("Mdel0")
@@ -553,19 +654,34 @@ def _build_1d_collocation_nlp(
 
     for k in range(K):
         # Stage controls (valve areas and combustion heat release)
-        Ain_stage = [ca.SX.sym(f"Ain_{k}_{j}") for j in range(C)]
-        Aex_stage = [ca.SX.sym(f"Aex_{k}_{j}") for j in range(C)]
-        Q_comb_stage = [ca.SX.sym(f"Q_comb_{k}_{j}") for j in range(C)]
+        Ain_stage: list[Any] = []
+        Aex_stage: list[Any] = []
+        Q_comb_stage: list[Any] = []
 
         for j in range(C):
-            w += [Ain_stage[j], Aex_stage[j], Q_comb_stage[j]]
-            w0 += [0.0, 0.0, 0.0]
-            lbw += [0.0, 0.0, 0.0]
+            ain_sym = ca.SX.sym(f"Ain_{k}_{j}")
+            aex_sym = ca.SX.sym(f"Aex_{k}_{j}")
+            Ain_stage.append(ain_sym)
+            Aex_stage.append(aex_sym)
+            w += [ain_sym, aex_sym]
+            w0 += [0.0, 0.0]
+            lbw += [0.0, 0.0]
             ubw += [
                 bounds.get("Ain_max", 0.01),
                 bounds.get("Aex_max", 0.01),
-                bounds.get("Q_comb_max", 10000.0),
             ]
+
+            if not use_combustion_model:
+                q_sym = ca.SX.sym(f"Q_comb_{k}_{j}")
+                Q_comb_stage.append(q_sym)
+                w += [q_sym]
+                w0 += [0.0]
+                lbw += [0.0]
+                # Convert normalized bounds from kJ to J (multiply by 1e3)
+                q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
+                ubw += [q_comb_max_j]
+            else:
+                Q_comb_stage.append(None)
 
         # Collocation states for pistons
         xL_colloc = [ca.SX.sym(f"xL_{k}_{j}") for j in range(C)]
@@ -623,7 +739,23 @@ def _build_1d_collocation_nlp(
             vR_c = vR_colloc[c]
             Ain_c = Ain_stage[c]
             Aex_c = Aex_stage[c]
-            Q_comb_c = Q_comb_stage[c]
+
+            if use_combustion_model and combustion_model is not None:
+                time_val = (k + grid.nodes[c]) * float(dt_real or 0.0)
+                time_dm = ca.DM(time_val)
+                piston_speed_expr = 0.5 * ca.fabs(vR_c - vL_c)
+                comb_expr = combustion_model.symbolic_heat_release(
+                    ca=ca,
+                    time_s=time_dm,
+                    piston_speed_m_per_s=piston_speed_expr,
+                    ignition_time_s=t_ign,
+                    omega_deg_per_s=omega_deg_per_s_dm,
+                )
+                Q_comb_c = comb_expr["heat_release_rate"]
+                Q_comb_stage[c] = Q_comb_c
+                combustion_samples.append((time_val, comb_expr["mfb"]))
+            else:
+                Q_comb_c = Q_comb_stage[c]
 
             # Chamber volume and its rate of change
             V_c = chamber_volume_from_pistons(
@@ -955,7 +1087,7 @@ def _build_1d_collocation_nlp(
     return nlp, meta
 
 
-def _hllc_flux_symbolic(U_L: List[Any], U_R: List[Any], ca: Any) -> List[Any]:
+def _hllc_flux_symbolic(U_L: list[Any], U_R: list[Any], ca: Any) -> list[Any]:
     """Symbolic HLLC flux calculation for CasADi."""
     # Simplified HLLC implementation for symbolic computation
     # In practice, this would be more sophisticated
@@ -1014,7 +1146,7 @@ def _calculate_1d_source_terms(
     Q_comb: Any,
     Ain: Any,
     Aex: Any,
-) -> List[Any]:
+) -> list[Any]:
     """Calculate 1D source terms for gas dynamics equations."""
     ca = _import_casadi()
 
@@ -1062,6 +1194,56 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     obj_cfg = P.get("obj", {})
     walls_cfg = P.get("walls", {})
     flow_cfg = P.get("flow", {})
+    combustion_cfg = P.get("combustion", {})
+
+    # Check if combustion model is enabled
+    use_combustion_model = bool(combustion_cfg.get("use_integrated_model", False))
+    combustion_model: CombustionModel | None = None
+    combustion_cycle_time = None
+    omega_deg_per_s_const = None
+    omega_deg_per_s_dm = None
+    combustion_samples: list[tuple[float, Any]] = []
+
+    if use_combustion_model:
+        required_keys = [
+            "fuel_type",
+            "afr",
+            "fuel_mass_kg",
+            "cycle_time_s",
+            "initial_temperature_K",
+        ]
+        for key in required_keys:
+            if key not in combustion_cfg:
+                raise ValueError(f"combustion configuration missing required key '{key}'")
+
+        combustion_cycle_time = float(combustion_cfg["cycle_time_s"])
+        combustion_model = CombustionModel()
+        combustion_model.configure(
+            fuel_type=combustion_cfg["fuel_type"],
+            afr=float(combustion_cfg["afr"]),
+            bore_m=float(geometry.get("bore", 0.1)),
+            stroke_m=float(geometry.get("stroke", 0.1)),
+            clearance_volume_m3=float(geometry.get("clearance_volume", 1e-4)),
+            fuel_mass_kg=float(combustion_cfg["fuel_mass_kg"]),
+            cycle_time_s=combustion_cycle_time,
+            initial_temperature_K=float(combustion_cfg["initial_temperature_K"]),
+            initial_pressure_Pa=float(combustion_cfg.get("initial_pressure_Pa", 1e5)),
+            target_mfb=float(combustion_cfg.get("target_mfb", 0.99)),
+            m_wiebe=float(combustion_cfg.get("m_wiebe", 2.0)),
+            k_turb=float(combustion_cfg.get("k_turb", 0.3)),
+            c_burn=float(combustion_cfg.get("c_burn", 3.0)),
+            turbulence_exponent=float(combustion_cfg.get("turbulence_exponent", 0.7)),
+            min_flame_speed=float(combustion_cfg.get("min_flame_speed", 0.2)),
+            heating_value_override=combustion_cfg.get("heating_value_override"),
+            phi_override=combustion_cfg.get("phi_override"),
+        )
+        omega_deg_per_s_const = float(
+            combustion_cfg.get(
+                "omega_deg_per_s",
+                360.0 / max(combustion_cycle_time, 1e-9),
+            ),
+        )
+        omega_deg_per_s_dm = ca.DM(omega_deg_per_s_const)
 
     # Unified gas closures (0D/1D strategy)
     gas_model = build_gas_model(P)
@@ -1075,6 +1257,18 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     lbg = []
     ubg = []
 
+    # Track variable groups for metadata
+    var_groups: dict[str, list[int]] = {
+        "positions": [],
+        "velocities": [],
+        "densities": [],
+        "temperatures": [],
+        "valve_areas": [],
+        "ignition": [],
+        "penalties": [],  # Scavenging/timing states
+    }
+    var_idx = 0  # Track current variable index
+
     # Initial states
     xL0 = ca.SX.sym("xL0")
     xR0 = ca.SX.sym("xR0")
@@ -1085,6 +1279,12 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
 
     w += [xL0, xR0, vL0, vR0, rho0, T0]
     w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
+    # Track initial state groups
+    var_groups["positions"].extend([var_idx, var_idx + 1])  # xL0, xR0
+    var_groups["velocities"].extend([var_idx + 2, var_idx + 3])  # vL0, vR0
+    var_groups["densities"].append(var_idx + 4)  # rho0
+    var_groups["temperatures"].append(var_idx + 5)  # T0
+    var_idx += 6
     lbw += [
         bounds.get("xL_min", -0.1),
         bounds.get("xR_min", 0.0),
@@ -1102,11 +1302,34 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         bounds.get("T_max", 2000.0),
     ]
 
+    if use_combustion_model:
+        ignition_bounds = combustion_cfg.get(
+            "ignition_bounds_s",
+            (0.0, max(combustion_cycle_time or 1.0, 1e-6)),
+        )
+        ignition_initial = float(
+            combustion_cfg.get(
+                "ignition_initial_s",
+                0.1 * max(combustion_cycle_time or 1.0, 1e-6),
+            ),
+        )
+        t_ign = ca.SX.sym("t_ign")
+        w += [t_ign]
+        w0 += [ignition_initial]
+        lbw += [float(ignition_bounds[0])]
+        ubw += [float(ignition_bounds[1])]
+        var_groups["ignition"].append(var_idx)
+        var_idx += 1
+    else:
+        t_ign = None
+
     # Valve controls
     Ain0 = ca.SX.sym("Ain0")
     Aex0 = ca.SX.sym("Aex0")
     w += [Ain0, Aex0]
     w0 += [0.0, 0.0]
+    var_groups["valve_areas"].extend([var_idx, var_idx + 1])  # Ain0, Aex0
+    var_idx += 2
     lbw += [0.0, 0.0]
     ubw += [bounds.get("Ain_max", 0.01), bounds.get("Aex_max", 0.01)]
 
@@ -1127,6 +1350,12 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     scav_penalty_accum = 0.0
     smooth_penalty_accum = 0.0
 
+    if use_combustion_model:
+        dt_real = (combustion_cycle_time or 1.0) / max(K, 1)
+        combustion_samples.append((0.0, ca.DM(0.0)))
+    else:
+        dt_real = None
+
     # Optional dynamic wall temperature state
     dynamic_wall = bool(walls_cfg.get("dynamic", False))
     Cw = float(walls_cfg.get("capacitance", 0.0))  # [J/K]
@@ -1137,6 +1366,8 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         w0 += [T_wall_const]
         lbw += [walls_cfg.get("T_wall_min", 250.0)]
         ubw += [walls_cfg.get("T_wall_max", 800.0)]
+        var_groups["temperatures"].append(var_idx)  # Tw0
+        var_idx += 1
         Tw_k = Tw0
     else:
         Tw_k = T_wall_const
@@ -1151,6 +1382,10 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     AexTmom0 = ca.SX.sym("AexTmom0")
     w += [yF0, Mdel0, Mlost0, AinInt0, AinTmom0, AexInt0, AexTmom0]
     w0 += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    # Track penalty/scavenging states
+    penalty_start_idx = var_idx
+    var_groups["penalties"].extend(range(var_idx, var_idx + 7))
+    var_idx += 7
     lbw += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     ubw += [1.0, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf]
     yF_k = yF0
@@ -1163,19 +1398,38 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
 
     for k in range(K):
         # Stage controls (valve areas and combustion heat release)
-        Ain_stage = [ca.SX.sym(f"Ain_{k}_{j}") for j in range(C)]
-        Aex_stage = [ca.SX.sym(f"Aex_{k}_{j}") for j in range(C)]
-        Q_comb_stage = [ca.SX.sym(f"Q_comb_{k}_{j}") for j in range(C)]
+        Ain_stage = []
+        Aex_stage = []
+        Q_comb_stage: list[Any] = []
 
         for j in range(C):
-            w += [Ain_stage[j], Aex_stage[j], Q_comb_stage[j]]
-            w0 += [0.0, 0.0, 0.0]
-            lbw += [0.0, 0.0, 0.0]
+            ain_sym = ca.SX.sym(f"Ain_{k}_{j}")
+            aex_sym = ca.SX.sym(f"Aex_{k}_{j}")
+            Ain_stage.append(ain_sym)
+            Aex_stage.append(aex_sym)
+            w += [ain_sym, aex_sym]
+            w0 += [0.0, 0.0]
+            lbw += [0.0, 0.0]
             ubw += [
                 bounds.get("Ain_max", 0.01),
                 bounds.get("Aex_max", 0.01),
-                bounds.get("Q_comb_max", 10000.0),
             ]
+            var_groups["valve_areas"].extend([var_idx, var_idx + 1])
+            var_idx += 2
+
+            if not use_combustion_model:
+                q_sym = ca.SX.sym(f"Q_comb_{k}_{j}")
+                Q_comb_stage.append(q_sym)
+                w += [q_sym]
+                w0 += [0.0]
+                lbw += [0.0]
+                # Convert normalized bounds from kJ to J (multiply by 1e3)
+                q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
+                ubw += [q_comb_max_j]
+                # Q_comb is a penalty/control term, not a state variable
+                var_idx += 1
+            else:
+                Q_comb_stage.append(None)
 
         # Collocation states
         xL_colloc = [ca.SX.sym(f"xL_{k}_{j}") for j in range(C)]
@@ -1195,6 +1449,12 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 T_colloc[j],
             ]
             w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
+            # Track collocation state groups
+            var_groups["positions"].extend([var_idx, var_idx + 1])  # xL, xR
+            var_groups["velocities"].extend([var_idx + 2, var_idx + 3])  # vL, vR
+            var_groups["densities"].append(var_idx + 4)  # rho
+            var_groups["temperatures"].append(var_idx + 5)  # T
+            var_idx += 6
             lbw += [
                 bounds.get("xL_min", -0.1),
                 bounds.get("xR_min", 0.0),
@@ -1223,7 +1483,22 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             T_c = T_colloc[c]
             Ain_c = Ain_stage[c]
             Aex_c = Aex_stage[c]
-            Q_comb_c = Q_comb_stage[c]
+            if use_combustion_model and combustion_model is not None:
+                time_val = (k + grid.nodes[c]) * float(dt_real or 0.0)
+                time_dm = ca.DM(time_val)
+                piston_speed_expr = 0.5 * ca.fabs(vR_c - vL_c)
+                comb_expr = combustion_model.symbolic_heat_release(
+                    ca=ca,
+                    time_s=time_dm,
+                    piston_speed_m_per_s=piston_speed_expr,
+                    ignition_time_s=t_ign,
+                    omega_deg_per_s=omega_deg_per_s_dm,
+                )
+                Q_comb_c = comb_expr["heat_release_rate"]
+                Q_comb_stage[c] = Q_comb_c
+                combustion_samples.append((time_val, comb_expr["mfb"]))
+            else:
+                Q_comb_c = Q_comb_stage[c]
 
             # Chamber volume and its rate of change
             V_c = chamber_volume_from_pistons(
@@ -1561,8 +1836,11 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             # Pressure constraints
             p_kj = gas_pressure_from_state(rho=rho_colloc[j], T=T_colloc[j])
             g += [p_kj]  # Pressure constraint
-            lbg += [bounds.get("p_min", 1e4)]
-            ubg += [bounds.get("p_max", 1e7)]
+            # Convert normalized bounds from MPa to Pa (multiply by 1e6)
+            p_min_pa = bounds.get("p_min", 0.01) * 1e6  # Default 0.01 MPa = 1e4 Pa
+            p_max_pa = bounds.get("p_max", 10.0) * 1e6  # Default 10.0 MPa = 1e7 Pa
+            lbg += [p_min_pa]
+            ubg += [p_max_pa]
 
             # Temperature constraints
             T_kj = T_colloc[j]
@@ -1610,7 +1888,9 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             # Avoid Python conditionals on symbolic expressions; encode constraints directly.
             g += [Q_comb_kj]
             lbg += [0.0]
-            ubg += [bounds.get("Q_comb_max", 10000.0)]
+            # Convert normalized bounds from kJ to J (multiply by 1e3)
+            q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
+            ubg += [q_comb_max_j]
 
     # Cycle periodicity constraints
     g += [xL_k - xL0, xR_k - xR0, vL_k - vL0, vR_k - vR0]
@@ -1695,6 +1975,66 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     if w_smooth > 0.0:
         J_terms.append(smooth_penalty_accum)
 
+    combustion_meta: dict[str, Any] | None = None
+    if use_combustion_model:
+        beta = float(combustion_cfg.get("ca_softening", 200.0))
+        ca_targets = {
+            "CA10": 0.10,
+            "CA50": 0.50,
+            "CA90": 0.90,
+            "CA100": 0.99,
+        }
+        ca_marker_expr: dict[str, Any] = {}
+        if combustion_samples:
+            for name, target in ca_targets.items():
+                numerator = 0.0
+                denominator = 0.0
+                for time_val, mfb_expr in combustion_samples:
+                    theta_val = float(omega_deg_per_s_const or 0.0) * time_val
+                    weight = ca.exp(-beta * (mfb_expr - target) ** 2)
+                    numerator += theta_val * weight
+                    denominator += weight
+                fallback_theta = (
+                    float(omega_deg_per_s_const or 0.0) * combustion_samples[-1][0]
+                    if combustion_samples
+                    else 0.0
+                )
+                ca_marker_expr[name] = ca.if_else(
+                    denominator > 1e-9,
+                    numerator / denominator,
+                    fallback_theta,
+                )
+        else:
+            # Default zeros if no samples captured (degenerate grids)
+            for name in ca_targets:
+                ca_marker_expr[name] = ca.DM(0.0)
+
+        # Soft CA phasing objectives
+        w_ca50 = float(combustion_cfg.get("w_ca50", 0.0))
+        if w_ca50 > 0.0 and "CA50" in ca_marker_expr:
+            ca50_target = float(combustion_cfg.get("ca50_target_deg", 0.0))
+            delta_ca50 = ca_marker_expr["CA50"] - ca50_target
+            J_terms.append(w_ca50 * delta_ca50 * delta_ca50)
+
+        w_cadur = float(combustion_cfg.get("w_ca_duration", 0.0))
+        if (
+            w_cadur > 0.0
+            and "CA90" in ca_marker_expr
+            and "CA10" in ca_marker_expr
+        ):
+            cadur_target = float(combustion_cfg.get("ca_duration_target_deg", 0.0))
+            cadur = ca_marker_expr["CA90"] - ca_marker_expr["CA10"]
+            delta_cadur = cadur - cadur_target
+            J_terms.append(w_cadur * delta_cadur * delta_cadur)
+
+        combustion_meta = {
+            "type": "integrated_wiebe",
+            "omega_deg_per_s": omega_deg_per_s_const,
+            "ignition_time_var": t_ign,
+            "ca_markers": ca_marker_expr,
+            "sample_times": [sample[0] for sample in combustion_samples],
+        }
+
     J = sum(J_terms)
 
     nlp = {"x": ca.vertcat(*w), "f": J, "g": ca.vertcat(*g)}
@@ -1707,5 +2047,16 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         "dynamic_wall": dynamic_wall,
         "scavenging_states": True,
         "timing_states": True,
+        "variable_groups": var_groups,  # Add variable group metadata
     }
+    if combustion_meta is not None:
+        meta["combustion_model"] = combustion_meta
+        try:
+            # Expose simple cycle markers for downstream consumers
+            cycle_time = float(combustion_cfg.get("cycle_time_s", 1.0))
+            # Use cast to avoid mypy inference issues with dict literal
+            cycle_markers = cast(dict[str, Any], {"t0": 0.0, "T": cycle_time})
+            meta["cycle"] = cycle_markers
+        except Exception:
+            pass
     return nlp, meta

@@ -65,11 +65,11 @@ class ConfigFactory:
                 "rho_max": 10.0,
                 "T_min": 200.0,
                 "T_max": 2000.0,
-                "p_min": 1e4,
-                "p_max": 1e7,
+                "p_min": 0.01,  # MPa (normalized from 1e4 Pa to match variable scaling reference)
+                "p_max": 10.0,  # MPa (normalized from 1e7 Pa to match variable scaling reference)
                 "Ain_max": 0.01,
                 "Aex_max": 0.01,
-                "Q_comb_max": 10000.0,
+                "Q_comb_max": 10.0,  # kJ (normalized from 10000.0 J to bring energy terms to O(1-10) range)
                 "dA_dt_max": 0.02,
                 "a_max": 1000.0,
                 "x_gap_min": 0.0008,
@@ -96,6 +96,28 @@ class ConfigFactory:
                     "short_circuit": 1.0,
                     "eta_th": 0.1,
                 },
+            },
+            combustion={
+                "use_integrated_model": False,
+                "fuel_type": "diesel",
+                "afr": 18.0,
+                "cycle_time_s": 0.02,
+                "initial_temperature_K": 900.0,
+                "initial_pressure_Pa": 1e5,
+                "fuel_mass_kg": 5e-4,
+                "target_mfb": 0.99,
+                "m_wiebe": 2.0,
+                "k_turb": 0.3,
+                "c_burn": 3.0,
+                "turbulence_exponent": 0.7,
+                "min_flame_speed": 0.2,
+                "ignition_initial_s": 0.005,
+                "ignition_bounds_s": (0.001, 0.015),
+                "w_ca50": 0.0,
+                "ca50_target_deg": 0.0,
+                "w_ca_duration": 0.0,
+                "ca_duration_target_deg": 0.0,
+                "ca_softening": 200.0,
             },
             validation={
                 "check_convergence": True,
@@ -452,8 +474,8 @@ def create_optimization_scenario(scenario: str, **kwargs) -> OptimizationConfig:
         }
         base_config.bounds.update(
             {
-                "Q_comb_max": 20000.0,
-                "p_max": 2e7,
+                "Q_comb_max": 20.0,  # kJ (normalized from 20000.0 J)
+                "p_max": 20.0,  # MPa (normalized from 2e7 Pa)
             },
         )
 

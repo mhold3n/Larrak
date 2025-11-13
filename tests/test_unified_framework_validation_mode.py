@@ -159,6 +159,10 @@ class TestUnifiedFrameworkValidationMode:
         self.framework.data.primary_acceleration = -np.sin(
             np.linspace(0, 2 * np.pi, 100),
         )
+        self.framework.data.primary_position_units = "mm"
+        self.framework.data.primary_velocity_units = "mm/deg"
+        self.framework.data.primary_acceleration_units = "mm/deg^2"
+        self.framework.data.primary_jerk_units = "mm/deg^3"
         self.framework.data.primary_load_profile = np.ones(100) * 1e5
         self.framework.data.secondary_base_radius = 25.0
 
@@ -225,3 +229,37 @@ class TestUnifiedFrameworkValidationMode:
             # Should work with any method
             assert framework.settings.enable_casadi_validation_mode is True
             assert framework.settings.method == method
+
+    def test_primary_motion_unit_conversion_to_mm(self):
+        """Meter-scale primary motion converts to mm for secondary stage."""
+        self.framework.data.primary_position = np.array([0.0, 0.01, 0.02])
+        self.framework.data.primary_velocity = np.array([0.001, 0.002, 0.003])
+        self.framework.data.primary_acceleration = np.array([1e-4, 2e-4, 3e-4])
+        self.framework.data.primary_jerk = np.array([1e-5, 2e-5, 3e-5])
+        self.framework.data.primary_position_units = "m"
+        self.framework.data.primary_velocity_units = "m/deg"
+        self.framework.data.primary_acceleration_units = "m/deg^2"
+        self.framework.data.primary_jerk_units = "m/deg^3"
+
+        self.framework._ensure_primary_motion_mm()
+
+        assert np.allclose(
+            self.framework.data.primary_position,
+            np.array([0.0, 10.0, 20.0]),
+        )
+        assert np.allclose(
+            self.framework.data.primary_velocity,
+            np.array([1.0, 2.0, 3.0]),
+        )
+        assert np.allclose(
+            self.framework.data.primary_acceleration,
+            np.array([0.1, 0.2, 0.3]),
+        )
+        assert np.allclose(
+            self.framework.data.primary_jerk,
+            np.array([0.01, 0.02, 0.03]),
+        )
+        assert self.framework.data.primary_position_units == "mm"
+        assert self.framework.data.primary_velocity_units == "mm/deg"
+        assert self.framework.data.primary_acceleration_units == "mm/deg^2"
+        assert self.framework.data.primary_jerk_units == "mm/deg^3"

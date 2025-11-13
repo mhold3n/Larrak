@@ -34,8 +34,9 @@ class UniversalGrid:
     periodic: bool = True
 
     def __post_init__(self) -> None:
-        # Uniform angular grid in radians on [0, 2π)
-        self.theta = np.linspace(0.0, 2.0 * np.pi, int(self.n_points), endpoint=False)
+        # Uniform angular grid in radians on [1°, 360°] (π/180 to 2π)
+        # This avoids wraparound issues at 0°/360° boundary
+        self.theta = np.linspace(np.pi / 180.0, 2.0 * np.pi, int(self.n_points), endpoint=True)
 
     @property
     def theta_rad(self) -> np.ndarray:

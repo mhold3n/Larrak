@@ -62,6 +62,7 @@ class OptimizationConfig:
     model_type: str = "0d"  # "0d" or "1d"
     use_1d_gas: bool = False
     n_cells: int = 50
+    combustion: dict[str, Any] = field(default_factory=dict)
 
     # Validation and post-processing
     validation: dict[str, Any] = field(default_factory=dict)
@@ -260,6 +261,7 @@ class ProblemBuilder:
             "solver": self.config.solver,
             "obj": self.config.objective,
             "model_type": self.config.model_type,
+            "combustion": self.config.combustion,
             "flow": {
                 "use_1d_gas": self.config.use_1d_gas,
                 "mesh_cells": self.config.n_cells,
@@ -515,6 +517,7 @@ class MotionLawOptimizer:
             model_type=config_dict.get("model_type", "0d"),
             use_1d_gas=config_dict.get("use_1d_gas", False),
             n_cells=config_dict.get("n_cells", 50),
+            combustion=config_dict.get("combustion", {}),
             validation=config_dict.get("validation", {}),
             output=config_dict.get("output", {}),
             warm_start=config_dict.get("warm_start"),

@@ -51,9 +51,9 @@ def demo_shell_based_optimization():
     cam_constraints = CamMotionConstraints(
         stroke=40.0,  # 40mm stroke
         upstroke_duration_percent=75.0,  # 75% upstroke
-        max_velocity=180.0,  # 180 mm/s max velocity
-        max_acceleration=90.0,  # 90 mm/s² max acceleration
-        max_jerk=25.0,  # 25 mm/s³ max jerk
+        max_velocity=0.019,  # 0.019 mm/deg max velocity (~180 mm/s at 26 Hz)
+        max_acceleration=0.00103,  # 0.00103 mm/deg² max acceleration (~90 mm/s² at 26 Hz)
+        max_jerk=0.000027,  # 0.000027 mm/deg³ max jerk (~25 mm/s³ at 26 Hz)
         dwell_at_tdc=True,
         dwell_at_bdc=True,
     )
@@ -61,7 +61,7 @@ def demo_shell_based_optimization():
     print("\nCam constraints:")
     print(f"  - Stroke: {cam_constraints.stroke} mm")
     print(f"  - Upstroke duration: {cam_constraints.upstroke_duration_percent}%")
-    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/s")
+    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/deg")
 
     # Create primary motion optimizer (has implementation)
     primary_settings = CollocationSettings(

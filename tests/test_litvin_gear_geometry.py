@@ -37,6 +37,7 @@ def test_gear_geometry_basic_metrics():
         psi=syn.psi,
         R_psi=syn.R_psi,
         target_average_radius=np.mean(syn.R_psi),
+        R_ring_profile=syn.R_psi,
     )
 
     # Base circles positive
@@ -70,6 +71,7 @@ def test_ratio_affects_base_circle_and_teeth(ratio: float):
         psi=syn.psi,
         R_psi=syn.R_psi,
         target_average_radius=np.mean(syn.R_psi),
+        R_ring_profile=syn.R_psi,
     )
 
     # Teeth counts must be integers and maintain ratio approximately

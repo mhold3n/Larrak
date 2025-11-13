@@ -134,6 +134,138 @@ def rpm_to_angular_velocity(rpm: float | np.ndarray) -> float | np.ndarray:
     return rpm * 2 * np.pi / 60
 
 
+def convert_per_degree_to_per_second(
+    value_per_deg: float | np.ndarray,
+    duration_angle_deg: float,
+    cycle_time: float,
+    derivative_order: int = 1,
+) -> float | np.ndarray:
+    """
+    Convert per-degree derivatives to per-second derivatives.
+    
+    Phase 4: Helper function for converting per-degree motion constraints
+    to per-second units when needed by downstream physics models.
+    
+    Parameters
+    ----------
+    value_per_deg : float | np.ndarray
+        Value(s) in per-degree units (e.g., mm/deg, mm/deg², mm/deg³)
+    duration_angle_deg : float
+        Total motion duration in degrees
+    cycle_time : float
+        Cycle time in seconds
+    derivative_order : int, optional
+        Order of derivative (1=velocity, 2=acceleration, 3=jerk), by default 1
+        
+    Returns
+    -------
+    float | np.ndarray
+        Value(s) in per-second units (e.g., mm/s, mm/s², mm/s³)
+        
+    Examples
+    --------
+    >>> # Convert velocity: mm/deg -> mm/s
+    >>> velocity_mm_per_s = convert_per_degree_to_per_second(
+    ...     velocity_mm_per_deg=0.28,  # mm/deg
+    ...     duration_angle_deg=360.0,  # deg
+    ...     cycle_time=0.0385,  # s
+    ...     derivative_order=1,
+    ... )
+    >>> # velocity_mm_per_s ≈ 0.28 * (360.0 / 0.0385) ≈ 2618 mm/s
+    >>> 
+    >>> # Convert acceleration: mm/deg² -> mm/s²
+    >>> accel_mm_per_s2 = convert_per_degree_to_per_second(
+    ...     accel_mm_per_deg2=2.78,  # mm/deg²
+    ...     duration_angle_deg=360.0,
+    ...     cycle_time=0.0385,
+    ...     derivative_order=2,
+    ... )
+    """
+    if cycle_time <= 0 or duration_angle_deg <= 0:
+        raise ValueError(
+            "cycle_time and duration_angle_deg must be positive for conversion"
+        )
+    if derivative_order < 1 or derivative_order > 3:
+        raise ValueError("derivative_order must be 1, 2, or 3")
+    
+    # Conversion factor: deg/s = duration_angle_deg / cycle_time
+    deg_per_s = duration_angle_deg / cycle_time
+    
+    # Apply appropriate power based on derivative order
+    conversion_factor = deg_per_s ** derivative_order
+    
+    if isinstance(value_per_deg, np.ndarray):
+        return value_per_deg * conversion_factor
+    else:
+        return float(value_per_deg) * conversion_factor
+
+
+def convert_per_second_to_per_degree(
+    value_per_s: float | np.ndarray,
+    duration_angle_deg: float,
+    cycle_time: float,
+    derivative_order: int = 1,
+) -> float | np.ndarray:
+    """
+    Convert per-second derivatives to per-degree derivatives.
+    
+    Phase 4: Helper function for converting per-second motion constraints
+    to per-degree units for Phase 1 optimization.
+    
+    Parameters
+    ----------
+    value_per_s : float | np.ndarray
+        Value(s) in per-second units (e.g., mm/s, mm/s², mm/s³)
+    duration_angle_deg : float
+        Total motion duration in degrees
+    cycle_time : float
+        Cycle time in seconds
+    derivative_order : int, optional
+        Order of derivative (1=velocity, 2=acceleration, 3=jerk), by default 1
+        
+    Returns
+    -------
+    float | np.ndarray
+        Value(s) in per-degree units (e.g., mm/deg, mm/deg², mm/deg³)
+        
+    Examples
+    --------
+    >>> # Convert velocity: mm/s -> mm/deg
+    >>> velocity_mm_per_deg = convert_per_second_to_per_degree(
+    ...     velocity_mm_per_s=100.0,  # mm/s
+    ...     duration_angle_deg=360.0,  # deg
+    ...     cycle_time=0.0385,  # s
+    ...     derivative_order=1,
+    ... )
+    >>> # velocity_mm_per_deg ≈ 100.0 / (360.0 / 0.0385) ≈ 0.0107 mm/deg
+    >>> 
+    >>> # Convert acceleration: mm/s² -> mm/deg²
+    >>> accel_mm_per_deg2 = convert_per_second_to_per_degree(
+    ...     accel_mm_per_s2=1000.0,  # mm/s²
+    ...     duration_angle_deg=360.0,
+    ...     cycle_time=0.0385,
+    ...     derivative_order=2,
+    ... )
+    """
+    if cycle_time <= 0 or duration_angle_deg <= 0:
+        raise ValueError(
+            "cycle_time and duration_angle_deg must be positive for conversion"
+        )
+    if derivative_order < 1 or derivative_order > 3:
+        raise ValueError("derivative_order must be 1, 2, or 3")
+    
+    # Conversion factor: deg/s = duration_angle_deg / cycle_time
+    deg_per_s = duration_angle_deg / cycle_time
+    
+    # Apply appropriate power based on derivative order (inverse)
+    conversion_factor = deg_per_s ** derivative_order
+    
+    if isinstance(value_per_s, np.ndarray):
+        return value_per_s / conversion_factor
+    else:
+        return float(value_per_s) / conversion_factor
+
+
 def angular_velocity_to_rpm(
     angular_velocity: float | np.ndarray,
 ) -> float | np.ndarray:

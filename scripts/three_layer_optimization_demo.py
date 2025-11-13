@@ -46,12 +46,13 @@ def demo_three_layer_optimization():
     print("  - tertiary_optimizer (tertiary)")
 
     # Create cam constraints
+    # All constraints must be in per-degree units (mm/deg, mm/deg², mm/deg³)
     cam_constraints = CamMotionConstraints(
         stroke=35.0,  # 35mm stroke
         upstroke_duration_percent=70.0,  # 70% upstroke
-        max_velocity=150.0,  # 150 mm/s max velocity
-        max_acceleration=75.0,  # 75 mm/s² max acceleration
-        max_jerk=20.0,  # 20 mm/s³ max jerk
+        max_velocity=0.016,  # 0.016 mm/deg max velocity (~150 mm/s at 26 Hz)
+        max_acceleration=0.00086,  # 0.00086 mm/deg² max acceleration (~75 mm/s² at 26 Hz)
+        max_jerk=0.0000245,  # 0.0000245 mm/deg³ max jerk (~20 mm/s³ at 26 Hz)
         dwell_at_tdc=True,
         dwell_at_bdc=True,
     )
@@ -59,9 +60,9 @@ def demo_three_layer_optimization():
     print("\nCam constraints:")
     print(f"  - Stroke: {cam_constraints.stroke} mm")
     print(f"  - Upstroke duration: {cam_constraints.upstroke_duration_percent}%")
-    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/s")
-    print(f"  - Max acceleration: {cam_constraints.max_acceleration} mm/s²")
-    print(f"  - Max jerk: {cam_constraints.max_jerk} mm/s³")
+    print(f"  - Max velocity: {cam_constraints.max_velocity} mm/deg")
+    print(f"  - Max acceleration: {cam_constraints.max_acceleration} mm/deg²")
+    print(f"  - Max jerk: {cam_constraints.max_jerk} mm/deg³")
 
     # Create primary motion optimizer
     primary_settings = CollocationSettings(

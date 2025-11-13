@@ -17,7 +17,7 @@ from campro.constraints.motion import MotionConstraints
 from campro.logging import get_logger
 from campro.storage import OptimizationRegistry
 
-from .base import BaseOptimizer, OptimizationResult
+from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
 from .collocation import CollocationOptimizer, CollocationSettings
 from .grid import GridSpec
 
@@ -396,8 +396,6 @@ class MotionOptimizer(BaseOptimizer):
             )
 
             # Convert result to OptimizationResult format, attaching assumptions via metadata
-            from .base import OptimizationResult, OptimizationStatus
-
             return OptimizationResult(
                 status=OptimizationStatus.CONVERGED
                 if result.convergence_status == "converged"
@@ -418,15 +416,7 @@ class MotionOptimizer(BaseOptimizer):
 
         except Exception as e:
             log.error(f"Motion law optimization failed: {e}")
-            # Fall back to old method
-            return self.solve_minimum_jerk(
-                motion_constraints,
-                distance=cam_constraints.stroke,
-                max_velocity=cam_constraints.max_velocity or 100.0,
-                max_acceleration=cam_constraints.max_acceleration or 50.0,
-                max_jerk=cam_constraints.max_jerk or 10.0,
-                time_horizon=upstroke_time,
-            )
+            raise RuntimeError("Motion law optimization failed") from e
 
     def store_result(
         self,

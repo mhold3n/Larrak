@@ -18,6 +18,7 @@ from .geometry.litvin import LitvinGearGeometry, LitvinSynthesis, LitvinSynthesi
 from .kinematics.crank_kinematics import CrankKinematics, CrankKinematicsResult
 from .mechanics.side_loading import SideLoadAnalyzer, SideLoadResult
 from .mechanics.torque_analysis import PistonTorqueCalculator, TorqueAnalysisResult
+from .combustion import CombustionModel, CombustionOutputs, CombustionConfig
 
 __all__ = [
     # Base classes
@@ -40,8 +41,8 @@ __all__ = [
     # Kinematics modules
     "CrankKinematics",
     "CrankKinematicsResult",
-    # Future modules will be added here:
-    # 'CombustionModel',
-    # 'ThermodynamicsModel',
-    # 'ValveTimingModel',
+    # Combustion module
+    "CombustionModel",
+    "CombustionOutputs",
+    "CombustionConfig",
 ]

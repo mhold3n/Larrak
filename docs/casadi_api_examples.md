@@ -5,7 +5,7 @@ This document provides practical code snippets and examples for using the CasADi
 ## Table of Contents
 
 1. [Basic Phase 1 Optimization](#basic-phase-1-optimization)
-2. [Warm-Starting Examples](#warm-starting-examples)
+2. [Deterministic Seeding Examples](#deterministic-seeding-examples)
 3. [Problem Specification](#problem-specification)
 4. [Thermal Efficiency Integration](#thermal-efficiency-integration)
 5. [Advanced Configuration](#advanced-configuration)
@@ -20,13 +20,16 @@ This document provides practical code snippets and examples for using the CasADi
 from campro.optimization.casadi_motion_optimizer import CasADiMotionOptimizer, CasADiMotionProblem
 
 # Create optimization problem
+# All motion constraints must be in per-degree units (m/deg, m/deg², m/deg³)
+# duration_angle_deg is required
 problem = CasADiMotionProblem(
-    stroke=0.100,  # 100mm stroke
-    cycle_time=0.0385,  # 26 Hz
+    stroke=0.100,  # 100mm stroke (in meters)
+    duration_angle_deg=360.0,  # Required: motion law duration in degrees
+    cycle_time=0.0385,  # 26 Hz (derived from engine_speed_rpm and duration_angle_deg)
     upstroke_percent=50.0,
-    max_velocity=5.0,
-    max_acceleration=500.0,
-    max_jerk=50000.0,
+    max_velocity=0.00019,  # m/deg (~0.19 mm/deg)
+    max_acceleration=0.0019,  # m/deg² (~1.9 mm/deg²)
+    max_jerk=0.019,  # m/deg³ (~19 mm/deg³)
     compression_ratio_limits=(20.0, 70.0),
     minimize_jerk=True,
     maximize_thermal_efficiency=True,
@@ -72,19 +75,23 @@ from campro.optimization.casadi_problem_spec import (
 )
 
 # Create different problem types
+# duration_angle_deg is required for all problems
 default_problem = create_default_problem(
     stroke=0.1,
+    duration_angle_deg=360.0,
     cycle_time=0.0385,
     upstroke_percent=50.0
 )
 
 high_efficiency_problem = create_high_efficiency_problem(
     stroke=0.1,
+    duration_angle_deg=360.0,
     cycle_time=0.0385
 )
 
 smooth_motion_problem = create_smooth_motion_problem(
     stroke=0.1,
+    duration_angle_deg=360.0,
     cycle_time=0.0385
 )
 
@@ -107,121 +114,77 @@ for name, problem in [
         print(f"  Failed: {result.metadata.get('error', 'Unknown error')}")
 ```
 
-## Warm-Starting Examples
+## Deterministic Seeding Examples
 
-### Example 3: Basic Warm-Starting
+### Example 3: Basic Seed Generation and Polish
 
 ```python
-from campro.optimization.warmstart_manager import WarmStartManager
 from campro.optimization.casadi_motion_optimizer import CasADiMotionOptimizer
+from campro.optimization.casadi_problem_spec import create_default_problem
+from campro.optimization.initial_guess import InitialGuessBuilder
 
-# Initialize warm-start manager
-warmstart_mgr = WarmStartManager(
-    max_history=50,
-    tolerance=0.1,
-    storage_path="warmstart_history.json"
-)
+# Build problem/optimizer
+# duration_angle_deg is required
+problem = create_default_problem(stroke=0.1, duration_angle_deg=360.0, cycle_time=0.0385)
+optimizer = CasADiMotionOptimizer(n_segments=50, poly_order=3)
 
-# Initialize optimizer
-optimizer = CasADiMotionOptimizer()
+# Deterministic seed
+builder = InitialGuessBuilder(n_segments=optimizer.n_segments)
+seed = builder.build_seed(problem)
 
-# First optimization (cold start)
-problem1 = create_default_problem(stroke=0.1, cycle_time=0.0385)
-result1 = optimizer.solve(problem1)
+# Optional polish (clips velocity/acc/jerk to constraints)
+polished_seed = builder.polish_seed(problem, seed)
 
-if result1.successful:
-    # Store solution for warm-starting
-    warmstart_mgr.store_solution(
-        problem1.to_dict(),
-        {
-            'position': result1.variables['position'],
-            'velocity': result1.variables['velocity'],
-            'acceleration': result1.variables['acceleration'],
-            'jerk': result1.variables['jerk']
-        },
-        {
-            'solve_time': result1.solve_time,
-            'objective_value': result1.objective_value,
-            'n_segments': 50,
-            'timestamp': time.time()
-        }
-    )
-    print("Solution stored for warm-starting")
+# Solve with polished seed
+result = optimizer.solve(problem, polished_seed)
 
-# Second optimization (warm start)
-problem2 = create_default_problem(stroke=0.105, cycle_time=0.040)  # Similar parameters
-initial_guess = warmstart_mgr.get_initial_guess(problem2.to_dict())
-
-if initial_guess:
-    print("Using warm-start initial guess")
-    result2 = optimizer.solve(problem2, initial_guess)
-    
-    print(f"Cold start time: {result1.solve_time:.3f}s")
-    print(f"Warm start time: {result2.solve_time:.3f}s")
-    print(f"Speedup: {result1.solve_time / result2.solve_time:.2f}x")
+if result.successful:
+    print(f"Solve time: {result.solve_time:.3f}s")
+    print(f"Objective: {result.objective_value:.6f}")
 else:
-    print("No suitable warm-start found, using default initial guess")
-    result2 = optimizer.solve(problem2)
+    print("Optimization failed")
 ```
 
-### Example 4: Warm-Start Strategy Comparison
+### Example 4: Comparing Raw vs Polished Seeds
 
 ```python
 import time
 import numpy as np
 
-# Test warm-starting across parameter ranges
+from campro.optimization.casadi_motion_optimizer import CasADiMotionOptimizer
+from campro.optimization.casadi_problem_spec import create_default_problem
+from campro.optimization.initial_guess import InitialGuessBuilder
+
+optimizer = CasADiMotionOptimizer()
+builder = InitialGuessBuilder(n_segments=optimizer.n_segments)
+
 stroke_values = np.linspace(0.08, 0.12, 5)
 cycle_time_values = np.linspace(0.035, 0.042, 5)
 
-cold_start_times = []
-warm_start_times = []
+raw_times = []
+polished_times = []
 
 for stroke in stroke_values:
     for cycle_time in cycle_time_values:
-        problem = create_default_problem(stroke=stroke, cycle_time=cycle_time)
-        
-        # Cold start
-        start_time = time.time()
-        cold_result = optimizer.solve(problem)
-        cold_time = time.time() - start_time
-        cold_start_times.append(cold_time)
-        
-        if cold_result.successful:
-            # Store for warm-starting
-            warmstart_mgr.store_solution(
-                problem.to_dict(),
-                {
-                    'position': cold_result.variables['position'],
-                    'velocity': cold_result.variables['velocity'],
-                    'acceleration': cold_result.variables['acceleration'],
-                    'jerk': cold_result.variables['jerk']
-                },
-                {
-                    'solve_time': cold_result.solve_time,
-                    'objective_value': cold_result.objective_value,
-                    'n_segments': 50,
-                    'timestamp': time.time()
-                }
-            )
-            
-            # Warm start
-            initial_guess = warmstart_mgr.get_initial_guess(problem.to_dict())
-            start_time = time.time()
-            warm_result = optimizer.solve(problem, initial_guess)
-            warm_time = time.time() - start_time
-            warm_start_times.append(warm_time)
-        else:
-            warm_start_times.append(cold_time)
+        # duration_angle_deg is required
+        problem = create_default_problem(stroke=stroke, duration_angle_deg=360.0, cycle_time=cycle_time)
 
-# Analyze results
-avg_cold_time = np.mean(cold_start_times)
-avg_warm_time = np.mean(warm_start_times)
-speedup = avg_cold_time / avg_warm_time
+        seed = builder.build_seed(problem)
 
-print(f"Average cold start time: {avg_cold_time:.3f}s")
-print(f"Average warm start time: {avg_warm_time:.3f}s")
-print(f"Average speedup: {speedup:.2f}x")
+        # Raw seed solve
+        start = time.time()
+        raw_result = optimizer.solve(problem, seed)
+        raw_times.append(time.time() - start)
+
+        # Polished seed solve
+        polished_seed = builder.polish_seed(problem, seed)
+        start = time.time()
+        polished_result = optimizer.solve(problem, polished_seed)
+        polished_times.append(time.time() - start)
+
+print(f"Average raw seed time: {np.mean(raw_times):.3f}s")
+print(f"Average polished seed time: {np.mean(polished_times):.3f}s")
+print(f"Speedup factor: {np.mean(raw_times) / np.mean(polished_times):.2f}x")
 ```
 
 ## Problem Specification
@@ -232,13 +195,15 @@ print(f"Average speedup: {speedup:.2f}x")
 from campro.optimization.casadi_problem_spec import CasADiMotionProblem, OptimizationObjective
 
 # Create custom problem with specific objectives
+# All constraints must be in per-degree units
 problem = CasADiMotionProblem(
     stroke=0.1,
+    duration_angle_deg=360.0,  # Required
     cycle_time=0.0385,
     upstroke_percent=50.0,
-    max_velocity=4.0,
-    max_acceleration=400.0,
-    max_jerk=40000.0,
+    max_velocity=0.00015,  # m/deg (~0.15 mm/deg)
+    max_acceleration=0.0015,  # m/deg² (~1.5 mm/deg²)
+    max_jerk=0.015,  # m/deg³ (~15 mm/deg³)
     compression_ratio_limits=(25.0, 70.0),
     objectives=[
         OptimizationObjective.MAXIMIZE_THERMAL_EFFICIENCY,
@@ -262,12 +227,14 @@ problem = CasADiMotionProblem(
 
 print("Custom problem configuration:")
 print(f"Stroke: {problem.stroke} m")
-print(f"Cycle time: {problem.cycle_time} s")
+print(f"Duration angle: {problem.duration_angle_deg} deg (required)")
+print(f"Cycle time: {problem.cycle_time} s (derived)")
 print(f"Frequency: {problem.get_frequency():.1f} Hz")
 print(f"Objectives: {[obj.value for obj in problem.objectives]}")
 print(f"Weights: {problem.weights}")
 print(f"Segments: {problem.n_segments}")
 print(f"Polynomial order: {problem.poly_order}")
+print("Note: All motion constraints are in per-degree units (m/deg, m/deg², m/deg³)")
 ```
 
 ### Example 6: Problem Validation and Modification
@@ -330,6 +297,7 @@ if result.successful:
 # Create high-efficiency problem
 efficiency_problem = create_high_efficiency_problem(
     stroke=0.1,
+    duration_angle_deg=360.0,
     cycle_time=0.0385
 )
 
@@ -369,11 +337,9 @@ from campro.optimization.casadi_unified_flow import CasADiUnifiedFlow, CasADiOpt
 
 # Create unified flow with custom settings
 settings = CasADiOptimizationSettings(
-    enable_warmstart=True,
-    max_history=100,
-    tolerance=0.05,
-    storage_path="optimization_history.json",
-    n_segments=100,
+    enable_warmstart=True,  # toggles deterministic seed polishing
+    coarse_resolution_segments=(40, 80, 160),  # coarse -> fine bootstrap levels
+    target_angle_resolution_deg=0.05,        # target angular step for finest collocation grid
     poly_order=4,
     efficiency_target=0.60,
     solver_options={
@@ -388,13 +354,15 @@ settings = CasADiOptimizationSettings(
 unified_flow = CasADiUnifiedFlow(settings)
 
 # Optimize with unified flow
+# All constraints must be in per-degree units
 constraints = {
     'stroke': 0.1,
+    'duration_angle_deg': 360.0,  # Required
     'cycle_time': 0.0385,
     'upstroke_percent': 50.0,
-    'max_velocity': 5.0,
-    'max_acceleration': 500.0,
-    'max_jerk': 50000.0,
+    'max_velocity': 0.00019,  # m/deg (~0.19 mm/deg)
+    'max_acceleration': 0.0019,  # m/deg² (~1.9 mm/deg²)
+    'max_jerk': 0.019,  # m/deg³ (~19 mm/deg³)
     'compression_ratio_limits': (20.0, 70.0)
 }
 
@@ -424,15 +392,15 @@ else:
 # Benchmark across multiple problem specifications
 problem_specs = [
     {
-        'constraints': {'stroke': 0.08, 'cycle_time': 0.035, 'upstroke_percent': 45.0},
+        'constraints': {'stroke': 0.08, 'duration_angle_deg': 360.0, 'cycle_time': 0.035, 'upstroke_percent': 45.0},
         'targets': {'minimize_jerk': True, 'maximize_thermal_efficiency': True}
     },
     {
-        'constraints': {'stroke': 0.10, 'cycle_time': 0.0385, 'upstroke_percent': 50.0},
+        'constraints': {'stroke': 0.10, 'duration_angle_deg': 360.0, 'cycle_time': 0.0385, 'upstroke_percent': 50.0},
         'targets': {'minimize_jerk': True, 'maximize_thermal_efficiency': True}
     },
     {
-        'constraints': {'stroke': 0.12, 'cycle_time': 0.042, 'upstroke_percent': 55.0},
+        'constraints': {'stroke': 0.12, 'duration_angle_deg': 360.0, 'cycle_time': 0.042, 'upstroke_percent': 55.0},
         'targets': {'minimize_jerk': True, 'maximize_thermal_efficiency': True}
     }
 ]
@@ -447,11 +415,10 @@ print(f"Success rate: {benchmark_results['success_rate']:.1%}")
 print(f"Average solve time: {benchmark_results['avg_solve_time']:.3f}s")
 print(f"Average efficiency: {benchmark_results['avg_efficiency']:.3f}")
 
-# Get warm-start statistics
-warmstart_stats = unified_flow.get_warmstart_stats()
-print(f"\nWarm-start statistics:")
-print(f"History size: {warmstart_stats['count']}")
-print(f"Average solve time: {warmstart_stats['avg_solve_time']:.3f}s")
+# Inspect deterministic seed configuration
+seed_stats = unified_flow.get_warmstart_stats()
+print(f"\nInitial guess strategy: {seed_stats['strategy']}")
+print(f"Segments: {seed_stats['n_segments']}")
 ```
 
 ## Error Handling
@@ -506,21 +473,24 @@ def validate_problem(problem):
     if problem.stroke <= 0:
         errors.append("Stroke must be positive")
     
+    if not hasattr(problem, 'duration_angle_deg') or problem.duration_angle_deg <= 0:
+        errors.append("duration_angle_deg is required and must be positive")
+    
     if problem.cycle_time <= 0:
         errors.append("Cycle time must be positive")
     
     if not 0 < problem.upstroke_percent < 100:
         errors.append("Upstroke percent must be between 0 and 100")
     
-    # Check motion limits
-    if problem.max_velocity <= 0:
-        errors.append("Max velocity must be positive")
+    # Check motion limits (must be in per-degree units)
+    if problem.max_velocity is not None and problem.max_velocity <= 0:
+        errors.append("Max velocity must be positive (in m/deg)")
     
-    if problem.max_acceleration <= 0:
-        errors.append("Max acceleration must be positive")
+    if problem.max_acceleration is not None and problem.max_acceleration <= 0:
+        errors.append("Max acceleration must be positive (in m/deg²)")
     
-    if problem.max_jerk <= 0:
-        errors.append("Max jerk must be positive")
+    if problem.max_jerk is not None and problem.max_jerk <= 0:
+        errors.append("Max jerk must be positive (in m/deg³)")
     
     # Check compression ratio limits
     if problem.compression_ratio_limits[0] >= problem.compression_ratio_limits[1]:
@@ -561,7 +531,7 @@ optimizer.opti.solver('ipopt', {
     'ipopt.max_iter': 1000,
     'ipopt.tol': 1e-6,
     'ipopt.print_level': 0,  # Suppress output for performance
-    'ipopt.warm_start_init_point': 'yes',  # Enable warm-starting
+    'ipopt.warm_start_init_point': 'yes',  # Let IPOPT reuse the provided seed
     'ipopt.mu_strategy': 'adaptive',  # Adaptive barrier parameter
     'ipopt.hessian_approximation': 'limited-memory'  # Use L-BFGS
 })
@@ -573,17 +543,13 @@ result = optimizer.solve(problem)
 ### Example 14: Memory Management
 
 ```python
-# Clear warm-start history periodically
-warmstart_mgr = WarmStartManager(max_history=50)
+# Keep seed builder aligned with solver grid to avoid stale arrays
+builder = InitialGuessBuilder(n_segments=optimizer.n_segments)
 
-# Check history size
-stats = warmstart_mgr.get_history_stats()
-print(f"History size: {stats['count']}")
-
-# Clear history if it gets too large
-if stats['count'] > 100:
-    warmstart_mgr.clear_history()
-    print("Cleared warm-start history")
+# If you change the discretization at runtime:
+new_segments = 80
+optimizer = CasADiMotionOptimizer(n_segments=new_segments)
+builder.update_segments(new_segments)
 
 # Monitor memory usage
 import psutil
@@ -616,9 +582,9 @@ def optimize_parallel(problem_specs, max_workers=None):
 
 # Example parallel optimization
 problem_specs = [
-    {'constraints': {'stroke': 0.08, 'cycle_time': 0.035}},
-    {'constraints': {'stroke': 0.10, 'cycle_time': 0.0385}},
-    {'constraints': {'stroke': 0.12, 'cycle_time': 0.042}}
+    {'constraints': {'stroke': 0.08, 'duration_angle_deg': 360.0, 'cycle_time': 0.035}},
+    {'constraints': {'stroke': 0.10, 'duration_angle_deg': 360.0, 'cycle_time': 0.0385}},
+    {'constraints': {'stroke': 0.12, 'duration_angle_deg': 360.0, 'cycle_time': 0.042}}
 ]
 
 results = optimize_parallel(problem_specs)
@@ -638,14 +604,12 @@ These examples demonstrate the key features of the CasADi optimization framework
 6. **Error handling** and robustness
 7. **Performance optimization** techniques
 
+## Important: Per-Degree Units Contract
+
+**All motion-law inputs must be in per-degree units:**
+- `duration_angle_deg` is **required** (no fallback)
+- Motion constraints: `max_velocity` (m/deg), `max_acceleration` (m/deg²), `max_jerk` (m/deg³)
+- `cycle_time` is derived from `engine_speed_rpm` and `duration_angle_deg`, not a primary input
+- No per-second units are accepted; no compatibility mode or auto-conversion
+
 The framework provides a comprehensive solution for Phase 1 motion law optimization with thermal efficiency objectives, following CasADi best practices and documentation patterns.
-
-
-
-
-
-
-
-
-
-

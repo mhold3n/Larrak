@@ -1,15 +1,33 @@
 from __future__ import annotations
 
+import os
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import casadi as ca
 import numpy as np
+
+# Force iteration tracing unless explicitly overridden later in the process.
+os.environ["FREE_PISTON_IPOPT_TRACE"] = "1"
+
+_FALSEY = {"0", "false", "no", "off"}
+NLPSOL_OUTPUT_NAMES: tuple[str, ...] = tuple(ca.nlpsol_out())
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Read boolean flag from environment."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() not in _FALSEY
 
 from campro.constants import IPOPT_LOG_DIR
 from campro.logging import get_logger
+from campro.utils.structured_reporter import StructuredReporter
 
 log = get_logger(__name__)
 
@@ -30,10 +48,12 @@ class IPOPTOptions:
     linear_solver_options: dict[str, Any] = None
 
     # Barrier parameter options
-    mu_strategy: str = "adaptive"  # "monotone", "adaptive"
-    mu_init: float = 0.1
-    mu_max: float = 1e5
+    mu_strategy: str = "monotone"  # "monotone", "adaptive" - monotone provides better control
+    mu_init: float = 1e-2  # Reduced from 0.1 for better initial convergence
+    mu_max: float = 1e3  # Reduced from 1e5 to prevent getting stuck at maximum
     mu_min: float = 1e-11
+    mu_linear_decrease_factor: float = 0.2  # Factor for linear decrease in monotone mode
+    barrier_tol_factor: float = 10.0  # Factor for barrier complementarity tolerance
 
     # Line search options
     line_search_method: str = "filter"  # "filter", "cg-penalty", "cg-penalty-equality"
@@ -44,7 +64,7 @@ class IPOPTOptions:
     constr_viol_tol: float = 1e-4
 
     # Output options
-    print_level: int = 5  # 0=silent, 5=normal, 12=verbose
+    print_level: int = 5  # 0=silent, 5=normal (iteration summary), 8+ includes detailed constraint residuals
     print_frequency_iter: int = 1
     print_frequency_time: float = 5.0
     output_file: str | None = None
@@ -59,6 +79,12 @@ class IPOPTOptions:
     hessian_approximation: str = "limited-memory"  # "exact", "limited-memory"
     limited_memory_max_history: int = 6
     limited_memory_update_type: str = "bfgs"  # "bfgs", "sr1", "bfgs-powell"
+    
+    # Restoration phase options (for finding feasible initial point)
+    bound_relax_factor: float = 0.0  # 0.0 = no relaxation, >0 = relax bounds to find feasible point
+    expect_infeasible_problem: str = "no"  # "no" = disabled (scaling should make problems more feasible)
+    soft_resto_pderror_reduction_factor: float = 0.9999  # Restoration phase tolerance
+    required_infeasibility_reduction: float = 0.9  # Required reduction in infeasibility for restoration
 
     def __post_init__(self):
         if self.linear_solver_options is None:
@@ -91,6 +117,143 @@ class IPOPTResult:
     # Solution quality
     kkt_error: float
     feasibility_error: float
+
+
+class IPOPTIterationCallback(ca.Callback):
+    """Stream IPOPT iterates through CasADi's iteration_callback hook."""
+
+    def __init__(
+        self,
+        reporter: StructuredReporter,
+        n_vars: int,
+        n_constraints: int,
+        n_params: int,
+        step: int = 1,
+    ) -> None:
+        self._reporter = reporter
+        self.callback_step = max(1, int(step))
+        self._n_vars = int(n_vars)
+        self._n_constraints = int(n_constraints)
+        self._n_params = int(n_params)
+        self._lbx: np.ndarray | None = None
+        self._ubx: np.ndarray | None = None
+        self._lbg: np.ndarray | None = None
+        self._ubg: np.ndarray | None = None
+        self._prev_x: np.ndarray | None = None
+        self._iteration = 0
+        self._reported_failure = False
+        self._names = NLPSOL_OUTPUT_NAMES
+        sparsity_lookup = {
+            "x": ca.Sparsity.dense(self._n_vars, 1),
+            "f": ca.Sparsity.dense(1, 1),
+            "g": ca.Sparsity.dense(self._n_constraints, 1),
+            "lam_x": ca.Sparsity.dense(self._n_vars, 1),
+            "lam_g": ca.Sparsity.dense(self._n_constraints, 1),
+            "lam_p": ca.Sparsity.dense(self._n_params, 1),
+        }
+        self._sparsity_lookup = sparsity_lookup
+        ca.Callback.__init__(self)
+        self.construct("ipopt_iteration_callback", {"enable_fd": False})
+
+    def get_n_in(self) -> int:  # noqa: D401
+        return len(self._names)
+
+    def get_n_out(self) -> int:  # noqa: D401
+        return 1
+
+    def get_sparsity_in(self, idx: int) -> ca.Sparsity:
+        name = self._names[idx]
+        return self._sparsity_lookup.get(name, ca.Sparsity.dense(0, 1))
+
+    def get_sparsity_out(self, idx: int) -> ca.Sparsity:  # noqa: D401
+        return ca.Sparsity.dense(1, 1)
+
+    def update_bounds(
+        self,
+        lbx: np.ndarray | None,
+        ubx: np.ndarray | None,
+        lbg: np.ndarray | None,
+        ubg: np.ndarray | None,
+    ) -> None:
+        """Attach the current bounds so violations can be measured."""
+        self._lbx = self._flatten_or_none(lbx)
+        self._ubx = self._flatten_or_none(ubx)
+        self._lbg = self._flatten_or_none(lbg)
+        self._ubg = self._flatten_or_none(ubg)
+
+    def eval(self, args: list[Any]) -> list[int]:
+        self._iteration += 1
+        if (self._iteration - 1) % self.callback_step != 0:
+            return [0]
+
+        try:
+            data = {
+                name: self._flatten_or_none(arg)
+                for name, arg in zip(self._names, args, strict=False)
+            }
+            x = data.get("x")
+            g = data.get("g")
+            lam_g = data.get("lam_g")
+            obj_val = float(data.get("f")[0]) if data.get("f") is not None and data.get("f").size else float("nan")
+
+            step_inf = self._compute_step_norm(x)
+            primal_violation = self._compute_violation(g, self._lbg, self._ubg)
+            bound_violation = self._compute_violation(x, self._lbx, self._ubx)
+            lambda_inf = (
+                float(np.max(np.abs(lam_g))) if lam_g is not None and lam_g.size else 0.0
+            )
+
+            self._reporter.debug(
+                "[iter] "
+                f"k={self._iteration:04d} "
+                f"obj={obj_val: .3e} "
+                f"step_inf={step_inf: .2e} "
+                f"g_violation={primal_violation: .2e} "
+                f"bound_violation={bound_violation: .2e} "
+                f"|lam_g|_inf={lambda_inf: .2e}"
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging
+            if not self._reported_failure:
+                self._reporter.debug(f"Iteration diagnostics unavailable: {exc}")
+                self._reported_failure = True
+
+        return [0]
+
+    def _compute_step_norm(self, x: np.ndarray | None) -> float:
+        if x is None or x.size == 0:
+            return 0.0
+        if self._prev_x is None or self._prev_x.size != x.size:
+            self._prev_x = x.copy()
+            return 0.0
+        delta = np.abs(x - self._prev_x)
+        self._prev_x = x.copy()
+        return float(delta.max()) if delta.size else 0.0
+
+    @staticmethod
+    def _flatten_or_none(value: Any) -> np.ndarray | None:
+        if value is None:
+            return None
+        try:
+            arr = np.asarray(value, dtype=float).reshape(-1)
+        except Exception:
+            return None
+        return arr
+
+    @staticmethod
+    def _compute_violation(
+        values: np.ndarray | None,
+        lower: np.ndarray | None,
+        upper: np.ndarray | None,
+    ) -> float:
+        if values is None or values.size == 0:
+            return 0.0
+        vec = values
+        if lower is None or upper is None:
+            return float(np.max(np.abs(vec))) if vec.size else 0.0
+        lb_violation = np.maximum(0.0, lower - vec)
+        ub_violation = np.maximum(0.0, vec - upper)
+        violation = np.maximum(lb_violation, ub_violation)
+        return float(np.max(violation)) if violation.size else 0.0
 
 
 class IPOPTSolver:
@@ -169,25 +332,66 @@ class IPOPTSolver:
             IPOPT result
         """
         if not self.ipopt_available:
-            return self._fallback_solve(nlp, x0, lbx, ubx, lbg, ubg, p)
+            raise RuntimeError(
+                "IPOPT solver is not available in this environment. "
+                "Ensure CasADi is built with IPOPT support or install the IPOPT binaries.",
+            )
 
         start_time = time.time()
+        solver_create_start = time.time()
+        reporter = StructuredReporter(
+            context="IPOPT",
+            logger=None,
+            stream_out=sys.stderr,
+            stream_err=sys.stderr,
+            debug_env="IPOPT_DEBUG",
+            force_debug=True,
+        )
 
         try:
+            # Infer problem dimensions up-front so diagnostic hooks can be configured
+            n_vars, n_constraints, n_params = self._infer_dimensions(nlp)
+
+            # Optional iteration streaming (disabled unless explicitly requested)
+            iteration_callback: IPOPTIterationCallback | None = None
+            if _env_flag("FREE_PISTON_IPOPT_TRACE", default=False):
+                step_raw = os.environ.get("FREE_PISTON_IPOPT_TRACE_STEP", "5")
+                try:
+                    callback_step = max(1, int(step_raw))
+                except Exception:
+                    callback_step = 5
+                iteration_callback = IPOPTIterationCallback(
+                    reporter=reporter,
+                    n_vars=n_vars,
+                    n_constraints=n_constraints,
+                    n_params=n_params,
+                    step=callback_step,
+                )
+                reporter.debug(
+                    f"IPOPT iteration streaming enabled every {callback_step} iteration(s)"
+                )
+
             # Create IPOPT solver
-            solver = self._create_solver(nlp)
+            solver = self._create_solver(nlp, iteration_callback=iteration_callback)
+            solver_create_elapsed = time.time() - solver_create_start
+            reporter.info(f"Solver created in {solver_create_elapsed:.3f}s")
+
+            reporter.info(
+                f"Beginning solve: max_iter={self.options.max_iter}, tol={self.options.tol:.2e}, "
+                f"print_level={self.options.print_level}, n_vars={n_vars}, n_constraints={n_constraints}"
+            )
 
             # Set initial guess and bounds
             if x0 is None:
-                x0 = np.zeros(nlp.size1_in(0))
+                x0 = np.zeros(n_vars)
             if lbx is None:
                 lbx = -np.inf * np.ones_like(x0)
             if ubx is None:
                 ubx = np.inf * np.ones_like(x0)
             if lbg is None:
-                lbg = -np.inf * np.ones(nlp.size1_out(0))
+                lbg = -np.inf * np.ones(n_constraints)
             if ubg is None:
-                ubg = np.inf * np.ones(nlp.size1_out(0))
+                ubg = np.inf * np.ones(n_constraints)
             if p is None:
                 p = np.array([])
 
@@ -207,12 +411,58 @@ class IPOPTSolver:
                         else (int(np.asarray(ubg).size) if ubg is not None else 0)
                     )
                     warm_kwargs = load_warmstart(n_x, n_g)
+                    if warm_kwargs:
+                        reporter.info("Using warm start from previous solution")
             except Exception:
                 warm_kwargs = {}
 
+            # Log initial guess characteristics
+            if x0 is not None and len(x0) > 0:
+                reporter.info(
+                    f"Initial guess: range=[{x0.min():.3e}, {x0.max():.3e}], "
+                    f"mean={x0.mean():.3e}, std={x0.std():.3e}"
+                )
+
             # Solve
-            result = solver(
-                x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs,
+            reporter.info("Calling IPOPT solver...")
+            reporter.info(
+                f"Note: Solving large problem (n_vars={n_vars}, n_constraints={n_constraints}). "
+                f"This may take several minutes. IPOPT is running now (print_level={self.options.print_level})."
+            )
+            reporter.info(
+                f"IPOPT output will appear below. If no progress is visible, "
+                f"consider increasing print_level (current={self.options.print_level}) for more verbose output."
+            )
+            if iteration_callback is not None:
+                iteration_callback.update_bounds(lbx, ubx, lbg, ubg)
+            solve_call_start = time.time()
+            # Flush all buffers before blocking call
+            sys.stderr.flush()
+            sys.stdout.flush()
+            try:
+                result = solver(
+                    x0=x0, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg, p=p, **warm_kwargs,
+                )
+                solve_call_elapsed = time.time() - solve_call_start
+                # Flush after return
+                sys.stderr.flush()
+                sys.stdout.flush()
+                reporter.info(f"Solver call returned after {solve_call_elapsed:.3f}s")
+            except Exception as solve_exc:
+                solve_call_elapsed = time.time() - solve_call_start
+                sys.stderr.flush()
+                sys.stdout.flush()
+                reporter.error(
+                    f"ERROR: Solver call raised exception after {solve_call_elapsed:.3f}s: {solve_exc}"
+                )
+                raise
+
+            iter_count = int(result.get("iter_count", 0))
+            status_flag = int(result.get("return_status", -1))
+            elapsed = time.time() - start_time
+            reporter.info(
+                f"Completed solve in {elapsed:.3f}s (solver call: {solve_call_elapsed:.3f}s): "
+                f"iter={iter_count}, status={status_flag}"
             )
 
             # Extract solution
@@ -235,6 +485,15 @@ class IPOPTSolver:
             dual_inf = stats.get("dual_inf", 0.0)
             complementarity = stats.get("complementarity", 0.0)
             constraint_violation = stats.get("constraint_violation", 0.0)
+            
+            # Log detailed convergence information
+            reporter.info(
+                "Solve statistics: "
+                f"success={success}, iterations={iterations}, cpu_time={cpu_time:.3f}s, "
+                f"primal_inf={primal_inf:.2e}, dual_inf={dual_inf:.2e}, "
+                f"complementarity={complementarity:.2e}, constraint_violation={constraint_violation:.2e}"
+            )
+            reporter.debug(f"Problem size: n_vars={n_vars}, n_constraints={n_constraints}")
 
             # Compute KKT error
             kkt_error = self._compute_kkt_error(nlp, x_opt, lambda_opt, p)
@@ -277,14 +536,24 @@ class IPOPTSolver:
             return out
 
         except Exception as e:
-            log.error(f"IPOPT solve failed: {e!s}")
-            return self._create_error_result(str(e), time.time() - start_time)
+            elapsed = time.time() - start_time
+            reporter.error(f"ERROR: IPOPT solve failed after {elapsed:.3f}s: {e!s}")
+            log.error(f"IPOPT solve failed: {e!s}", exc_info=True)
+            return self._create_error_result(str(e), elapsed)
 
-    def _create_solver(self, nlp: Any) -> Any:
+    def _create_solver(
+        self,
+        nlp: Any,
+        iteration_callback: IPOPTIterationCallback | None = None,
+    ) -> Any:
         """Create IPOPT solver with options."""
 
         # Convert options to CasADi format
         opts = self._convert_options()
+
+        if iteration_callback is not None:
+            opts["iteration_callback"] = iteration_callback
+            opts["iteration_callback_step"] = max(1, iteration_callback.callback_step)
 
         # Use centralized factory with explicit linear solver
         from campro.optimization.ipopt_factory import create_ipopt_solver
@@ -312,6 +581,10 @@ class IPOPTSolver:
         opts["ipopt.mu_init"] = self.options.mu_init
         opts["ipopt.mu_max"] = self.options.mu_max
         opts["ipopt.mu_min"] = self.options.mu_min
+        if hasattr(self.options, "mu_linear_decrease_factor"):
+            opts["ipopt.mu_linear_decrease_factor"] = self.options.mu_linear_decrease_factor
+        if hasattr(self.options, "barrier_tol_factor"):
+            opts["ipopt.barrier_tol_factor"] = self.options.barrier_tol_factor
 
         # Line search
         opts["ipopt.line_search_method"] = self.options.line_search_method
@@ -358,6 +631,17 @@ class IPOPTSolver:
         opts["ipopt.limited_memory_update_type"] = (
             self.options.limited_memory_update_type
         )
+        
+        # Restoration phase options (help find feasible initial point)
+        opts["ipopt.bound_relax_factor"] = self.options.bound_relax_factor
+        opts["ipopt.expect_infeasible_problem"] = self.options.expect_infeasible_problem
+        opts["ipopt.soft_resto_pderror_reduction_factor"] = (
+            self.options.soft_resto_pderror_reduction_factor
+        )
+        if hasattr(self.options, "required_infeasibility_reduction"):
+            opts["ipopt.required_infeasibility_reduction"] = (
+                self.options.required_infeasibility_reduction
+            )
 
         # Add linear solver options if provided
         for key, value in self.options.linear_solver_options.items():
@@ -371,6 +655,24 @@ class IPOPTSolver:
         log.debug(f"Full IPOPT options dict: {opts}")
 
         return opts
+
+    def _infer_dimensions(self, nlp: Any) -> tuple[int, int, int]:
+        """Return (n_vars, n_constraints, n_params) for the NLP."""
+        try:
+            if isinstance(nlp, dict):
+                n_vars = int(nlp["x"].size1())
+                n_constraints = int(nlp["g"].size1())
+                n_params = int(nlp.get("p", ca.SX()).size1()) if "p" in nlp else 0
+                return n_vars, n_constraints, n_params
+
+            x_index = ca.nlpsol_in().index("x0")
+            p_index = ca.nlpsol_in().index("p")
+            n_vars = int(nlp.size1_in(x_index))
+            n_constraints = int(nlp.size1_out(0))
+            n_params = int(nlp.size1_in(p_index))
+            return n_vars, n_constraints, n_params
+        except Exception:
+            return 0, 0, 0
 
     def _compute_kkt_error(
         self,
@@ -434,47 +736,6 @@ class IPOPTSolver:
         }
 
         return status_messages.get(status, f"Unknown status: {status}")
-
-    def _fallback_solve(
-        self,
-        nlp: Any,
-        x0: np.ndarray | None = None,
-        lbx: np.ndarray | None = None,
-        ubx: np.ndarray | None = None,
-        lbg: np.ndarray | None = None,
-        ubg: np.ndarray | None = None,
-        p: np.ndarray | None = None,
-    ) -> IPOPTResult:
-        """Fallback solver when IPOPT is not available."""
-        log.warning("IPOPT not available, using fallback solver")
-
-        # Simple gradient descent fallback
-        if x0 is None:
-            x0 = np.zeros(10)  # Default size
-
-        # Run simple optimization
-        x_opt = x0.copy()
-        f_opt = 0.0
-        g_opt = np.zeros(10)
-        lambda_opt = np.zeros(10)
-
-        return IPOPTResult(
-            success=False,
-            x_opt=x_opt,
-            f_opt=f_opt,
-            g_opt=g_opt,
-            lambda_opt=lambda_opt,
-            iterations=0,
-            cpu_time=0.0,
-            message="IPOPT not available, using fallback solver",
-            status=-1,
-            primal_inf=float("inf"),
-            dual_inf=float("inf"),
-            complementarity=float("inf"),
-            constraint_violation=float("inf"),
-            kkt_error=float("inf"),
-            feasibility_error=float("inf"),
-        )
 
     def _create_error_result(self, error_message: str, cpu_time: float) -> IPOPTResult:
         """Create error result."""
@@ -558,10 +819,15 @@ def get_default_ipopt_options() -> IPOPTOptions:
     options.tol = 1e-6
     options.acceptable_tol = 1e-4
     # Linear solver is configured via ipopt.opt
-    options.mu_strategy = "adaptive"
+    options.mu_strategy = "monotone"  # Use monotone for better barrier parameter control
+    options.mu_init = 1e-2  # Start with smaller barrier parameter
+    options.mu_max = 1e3  # Reduced maximum to prevent getting stuck
     options.line_search_method = "filter"
-    options.print_level = 3  # Reduced output
+    options.print_level = 5  # Normal output: iteration summary without detailed constraint residuals
     options.hessian_approximation = "limited-memory"
+    # Disable restoration phase (scaling should make problems more feasible)
+    options.expect_infeasible_problem = "no"
+    options.bound_relax_factor = 0.0  # No relaxation needed with proper scaling
 
     return options
 
@@ -576,8 +842,13 @@ def get_robust_ipopt_options() -> IPOPTOptions:
     options.acceptable_tol = 1e-3
     # Linear solver is configured via ipopt.opt
     options.mu_strategy = "monotone"
+    options.mu_init = 1e-2  # Start with smaller barrier parameter
+    options.mu_max = 1e3  # Reduced maximum to prevent getting stuck
     options.line_search_method = "cg-penalty"
-    options.print_level = 5
+    options.print_level = 5  # Normal output: iteration summary without detailed constraint residuals
     options.hessian_approximation = "exact"
+    # Disable restoration phase (scaling should make problems more feasible)
+    options.expect_infeasible_problem = "no"
+    options.bound_relax_factor = 0.0  # No relaxation needed with proper scaling
 
     return options

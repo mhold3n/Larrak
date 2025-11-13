@@ -63,8 +63,8 @@ The integration replaces the previous single-variable `base_radius` optimization
 3. **ORDER2_MICRO**: Uses collocation methods to refine contact parameter sequences
 
 ### Motion Law Adaptation
-Primary motion law data is converted to `RadialSlotMotion` format:
-- Center offset: `r(θ) = r_base + x(θ)` where `x(θ)` is the primary motion
+- Primary motion is normalised to **millimetres** before entering Phase-2. The framework hard-stops if units are unknown and logs when a conversion from metres is applied so diagnostics can confirm the scale.
+- Motion data is converted to `RadialSlotMotion` and evaluated through `PlanetKinematics.center_distance(θ)` to obtain the true polar pitch curve. The legacy fallback `r(θ) = r_base + x(θ)` has been removed; discrepancies now surface through diagnostics instead of being clamped.
 - Planet angle: `θ_p = 2·θ_r` (standard Litvin planetary relation)
 
 ### Gear Synthesis

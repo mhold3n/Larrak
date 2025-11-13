@@ -1,6 +1,7 @@
 """Adaptive solver selection based on problem characteristics and analysis history."""
 from __future__ import annotations
 
+import platform
 from dataclasses import dataclass
 from enum import Enum
 
@@ -8,6 +9,9 @@ from campro.logging import get_logger
 from campro.optimization.solver_analysis import MA57ReadinessReport
 
 log = get_logger(__name__)
+
+# Detect macOS platform - MA97 has known crash bug on macOS
+IS_MACOS = platform.system().lower() == "darwin"
 
 
 class SolverType(Enum):
@@ -94,7 +98,8 @@ class AdaptiveSolverSelector:
             else:
                 chosen = self._fallback_solver(available_solvers)
         # Very large problems - prefer MA97 or MA77
-        elif SolverType.MA97 in available_solvers:
+        # CRITICAL: Skip MA97 on macOS due to known crash bug
+        elif not IS_MACOS and SolverType.MA97 in available_solvers:
             chosen = SolverType.MA97
         elif SolverType.MA77 in available_solvers:
             chosen = SolverType.MA77
@@ -126,6 +131,11 @@ class AdaptiveSolverSelector:
 
             # Test each solver
             for solver_type in SolverType:
+                # CRITICAL: Skip MA97 on macOS due to known segmentation fault bug
+                # MA97 destructor crashes on macOS during cleanup
+                if IS_MACOS and solver_type == SolverType.MA97:
+                    log.debug("Skipping MA97 on macOS due to known crash bug")
+                    continue
                 try:
                     # Create a simple test problem
                     x = ca.SX.sym("x")
@@ -145,11 +155,12 @@ class AdaptiveSolverSelector:
                         },
                     )
 
-                    # Test the solver
+                    # Test the solver - if we can create it and run it, it's available
+                    # Don't require success - just that the solver can execute
                     result = solver(x0=0, lbg=0, ubg=0)
-                    stats = solver.stats()
-                    if stats["success"]:
-                        available.append(solver_type)
+                    # If we get here without exception, the solver is available
+                    # The solver might not succeed on the test problem, but that's okay
+                    available.append(solver_type)
 
                 except Exception:
                     # Solver not available
@@ -185,10 +196,18 @@ class AdaptiveSolverSelector:
             return
 
         if phase not in self.analysis_history:
+            # Handle None values from stats
+            ls_time_ratio = analysis.stats.get("ls_time_ratio")
+            if ls_time_ratio is None:
+                ls_time_ratio = 0.0
+            iter_count = analysis.stats.get("iter_count")
+            if iter_count is None:
+                iter_count = 0
+            
             self.analysis_history[phase] = AnalysisHistory(
                 avg_grade=analysis.grade,
-                avg_linear_solver_ratio=analysis.stats.get("ls_time_ratio", 0.0),
-                avg_iterations=analysis.stats.get("iter_count", 0),
+                avg_linear_solver_ratio=ls_time_ratio,
+                avg_iterations=iter_count,
                 convergence_issues_count=1
                 if analysis.grade in ["medium", "high"]
                 else 0,
@@ -200,13 +219,19 @@ class AdaptiveSolverSelector:
             n = len(history.ma57_benefits)
 
             # Moving average for numerical metrics
+            # Handle None values from stats
+            ls_time_ratio = analysis.stats.get("ls_time_ratio")
+            if ls_time_ratio is None:
+                ls_time_ratio = 0.0
+            iter_count = analysis.stats.get("iter_count")
+            if iter_count is None:
+                iter_count = 0
+            
             history.avg_linear_solver_ratio = (
-                history.avg_linear_solver_ratio * n
-                + analysis.stats.get("ls_time_ratio", 0.0)
+                history.avg_linear_solver_ratio * n + ls_time_ratio
             ) / (n + 1)
             history.avg_iterations = int(
-                (history.avg_iterations * n + analysis.stats.get("iter_count", 0))
-                / (n + 1),
+                (history.avg_iterations * n + iter_count) / (n + 1),
             )
 
             # Update counts
@@ -219,9 +244,15 @@ class AdaptiveSolverSelector:
             # Update grade (most recent)
             history.avg_grade = analysis.grade
 
+        # Handle case where analysis.grade might be None
+        grade_str = analysis.grade if analysis.grade is not None else "unknown"
+        # Handle case where ls_time_ratio might be None
+        ls_ratio = analysis.stats.get("ls_time_ratio")
+        if ls_ratio is None:
+            ls_ratio = 0.0
         log.debug(
-            f"Updated analysis history for {phase} phase: grade={analysis.grade}, "
-            f"ls_ratio={analysis.stats.get('ls_time_ratio', 0.0):.3f}",
+            f"Updated analysis history for {phase} phase: grade={grade_str}, "
+            f"ls_ratio={ls_ratio:.3f}",
         )
 
     def get_history_summary(self, phase: str) -> dict | None:

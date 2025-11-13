@@ -127,7 +127,7 @@ max_refinements: 3              # Maximum number of refinements
 
 # Performance settings
 performance:
-  parallel_processing: false     # Enable parallel processing
+  parallel_processing: true     # Enable parallel processing
   memory_limit: 2e9            # Memory limit in bytes
   cpu_time_limit: 300          # CPU time limit in seconds
 

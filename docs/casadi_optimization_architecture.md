@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the architecture of the CasADi-based optimization framework for Phase 1 motion law optimization with thermal efficiency objectives. The framework implements direct collocation using CasADi's Opti stack with warm-starting capabilities and physics-based constraints from free-piston engine literature.
+This document describes the architecture of the CasADi-based optimization framework for Phase 1 motion law optimization with thermal efficiency objectives. The framework implements direct collocation using CasADi's Opti stack with deterministic seeding/polish capabilities and physics-based constraints from free-piston engine literature.
 
 ## System Architecture
 
@@ -13,7 +13,7 @@ This document describes the architecture of the CasADi-based optimization framew
 │                  CasADi Optimization Flow                   │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  [Problem Spec] ──> [WarmStart Manager] ──> [Initial Guess]│
+│  [Problem Spec] ──> [Initial Guess Builder] ──> [Seed/Polish]│
 │        │                                           │        │
 │        │                                           ▼        │
 │        └──────> [CasADi Opti Stack] <──────────────        │
@@ -24,7 +24,7 @@ This document describes the architecture of the CasADi-based optimization framew
 │                        └─> [IPOPT Solver]                  │
 │                                │                            │
 │                                ▼                            │
-│                        [Solution Storage] ──> History       │
+│                        [Result Metadata] ──> Phase Summary  │
 │                                │                            │
 │                                ▼                            │
 │                        [Phase 2/3 Interface]               │
@@ -38,15 +38,15 @@ This document describes the architecture of the CasADi-based optimization framew
 │                    CasADiUnifiedFlow                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  ┌─────────────────┐    ┌─────────────────┐                │
-│  │ CasADiMotion    │    │ WarmStart       │                │
-│  │ Optimizer       │    │ Manager         │                │
-│  │                 │    │                 │                │
-│  │ ┌─────────────┐ │    │ ┌─────────────┐ │                │
-│  │ │ CasADi Opti │ │    │ │ Solution    │ │                │
-│  │ │ Stack       │ │    │ │ History     │ │                │
-│  │ └─────────────┘ │    │ └─────────────┘ │                │
-│  └─────────────────┘    └─────────────────┘                │
+│  ┌─────────────────┐    ┌───────────────────────────────┐ │
+│  │ CasADiMotion    │    │ Initial Guess Builder          │ │
+│  │ Optimizer       │    │                               │ │
+│  │                 │    │ ┌─────────────┐  ┌──────────┐ │ │
+│  │ ┌─────────────┐ │    │ │ build_seed │  │ polish   │ │ │
+│  │ │ CasADi Opti │ │    │ └─────────────┘  └──────────┘ │ │
+│  │ │ Stack       │ │    └───────────────────────────────┘ │
+│  │ └─────────────┘ │                                      │
+│  └─────────────────┘                                      │
 │                                                             │
 │  ┌─────────────────┐    ┌─────────────────┐                │
 │  │ Simplified      │    │ CasADiMotion    │                │
@@ -88,29 +88,23 @@ CasADiMotionOptimizer
 └── solve()
 ```
 
-### 2. WarmStartManager
+### 2. InitialGuessBuilder
 
-**Purpose**: Manages solution history and generates initial guesses for warm-starting.
+**Purpose**: Generates deterministic seeds (with optional polishing) for the CasADi optimizer without relying on historical solutions.
 
 **Key Features**:
-- Solution history storage with metadata
-- Parameter-based solution matching
-- Linear interpolation between solutions
-- Fallback to polynomial interpolation
-- Persistent storage support
+- Analytic 5th-order S-curve that satisfies boundary conditions on any grid
+- Optional smoothing/polishing pass that enforces velocity/acceleration/jerk limits
+- Automatic rescaling when GUI updates the collocation segment count
+- Stateless design: no persistent history required
 
 **Class Diagram**:
 ```
-WarmStartManager
-├── solution_history: List[SolutionRecord]
-├── max_history: int
-├── tolerance: float
-├── storage_path: Optional[str]
-├── store_solution()
-├── get_initial_guess()
-├── _find_closest_solution()
-├── _interpolate_solution()
-└── _generate_fallback_guess()
+InitialGuessBuilder
+├── n_segments: int
+├── build_seed(problem)
+├── polish_seed(problem, guess, smoothing_passes=2)
+└── update_segments(n_segments)
 ```
 
 ### 3. SimplifiedThermalModel
@@ -140,26 +134,25 @@ SimplifiedThermalModel
 
 ### 4. CasADiUnifiedFlow
 
-**Purpose**: Orchestrates the complete optimization flow including problem setup, warm-starting, optimization, and solution storage.
+**Purpose**: Orchestrates the complete optimization flow including problem setup, deterministic seeding/polishing, optimization, and thermal analysis.
 
 **Key Features**:
 - Problem setup and validation
-- Warm-starting from previous solutions
+- Deterministic initial guess with optional polishing
 - CasADi Opti stack optimization
 - Thermal efficiency evaluation
-- Solution storage for future warm-starts
+- Adaptive collocation resolution ladder (coarse -> fine angle) with interpolation between levels
 - Benchmarking capabilities
 
 **Class Diagram**:
 ```
 CasADiUnifiedFlow
 ├── motion_optimizer: CasADiMotionOptimizer
-├── warmstart_mgr: WarmStartManager
+├── initial_guess_builder: InitialGuessBuilder
 ├── thermal_model: SimplifiedThermalModel
 ├── settings: CasADiOptimizationSettings
 ├── optimize_phase1()
 ├── _create_problem_from_constraints()
-├── _store_solution()
 └── benchmark_optimization()
 ```
 
@@ -177,20 +170,16 @@ Parameter Validation
 Problem Specification
 ```
 
-### 2. Warm-Start Flow
+### 2. Initial Guess Flow
 
 ```
 Problem Parameters
     ↓
-WarmStartManager.get_initial_guess()
+InitialGuessBuilder.build_seed()
+    ↓ (if enabled)
+InitialGuessBuilder.polish_seed()
     ↓
-Strategy 1: Find Closest Solution
-    ↓ (if no match)
-Strategy 2: Interpolate Between Solutions
-    ↓ (if no bracketing)
-Strategy 3: Generate Fallback Guess
-    ↓
-Initial Guess Variables
+Seeded Variables (x, v, a, j)
 ```
 
 ### 3. Optimization Flow
@@ -224,11 +213,9 @@ Extract Variables (x, v, a, j)
     ↓
 Evaluate Thermal Efficiency
     ↓
-Create SolutionRecord
+Update Metadata / GUI Display
     ↓
-WarmStartManager.store_solution()
-    ↓
-Persistent Storage
+Archive result (optional analytics)
 ```
 
 ## Integration Points
@@ -238,15 +225,15 @@ Persistent Storage
 The CasADi optimization framework integrates with the existing unified optimization framework through:
 
 - **Replacement of MotionOptimizer**: `unified_framework.py` line 292
-- **Warm-start logic**: Added before line 482 (primary optimization call)
-- **Solution storage**: After line 483 for warm-starting
+- **Deterministic seeding**: InitialGuessBuilder invoked inside CasADiUnifiedFlow
+- **Result metadata updates**: Efficiency metrics injected for downstream phases
 
 ### 2. GUI Integration
 
 The framework integrates with the GUI through:
 
 - **CasADi optimization option**: Checkbox to enable CasADi Opti stack
-- **Warm-start toggle**: Enable/disable warm-starting
+- **Seed polish toggle**: Reuses the existing “Enable warm-start” checkbox to control the polish pass
 - **Thermal efficiency display**: Show efficiency in results
 - **Convergence history plot**: Display optimization progress
 
@@ -256,14 +243,14 @@ The framework provides clean interfaces for Phase 2/3 integration:
 
 - **Motion profile output**: Standardized format for cam-ring optimization
 - **Thermal efficiency metrics**: For crank center optimization
-- **Solution metadata**: For warm-starting subsequent phases
+- **Solution metadata**: For reporting/diagnostics (no persistent warm-start history)
 
 ## Performance Characteristics
 
 ### 1. Computational Complexity
 
 - **Direct Collocation**: O(N³) where N is number of segments
-- **Warm-starting**: O(M) where M is history size
+- **Deterministic seed/polish**: O(N) smoothing and clipping
 - **Thermal efficiency**: O(N) per evaluation
 
 ### 2. Memory Requirements
@@ -274,7 +261,8 @@ The framework provides clean interfaces for Phase 2/3 integration:
 
 ### 3. Convergence Properties
 
-- **Direct collocation**: Typically 3-5x faster with warm-starting
+- **Deterministic seed**: Provides consistent boundary-satisfying initial iterate
+- **Polish pass**: Keeps derivatives within bounds, improving IPOPT restoration behavior
 - **IPOPT solver**: Robust convergence with MA57 linear solver
 - **Thermal efficiency**: 55% target achievable with simplified model
 
@@ -286,11 +274,11 @@ The framework provides clean interfaces for Phase 2/3 integration:
 - **Constraint violations**: Validated before optimization
 - **Numerical issues**: Handled by IPOPT with appropriate tolerances
 
-### 2. Warm-start Failures
+### 2. Seed/Polish Behavior
 
-- **No history**: Falls back to default initial guess
-- **Parameter mismatch**: Uses interpolation or fallback
-- **Storage errors**: Logged but doesn't stop optimization
+- **Polish disabled**: Solver proceeds with raw S-curve seed
+- **Constraint clipping**: Polish clamps derivatives to avoid infeasible starts
+- **Failure handling**: Any polish error is logged and the raw seed is used
 
 ### 3. Physics Model Failures
 
@@ -338,4 +326,3 @@ The framework provides clean interfaces for Phase 2/3 integration:
 - **Pytest**: Testing framework
 - **Black**: Code formatting
 - **MyPy**: Type checking
-

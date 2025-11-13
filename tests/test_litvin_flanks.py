@@ -23,6 +23,7 @@ def test_flank_generation_and_pressure_angle_limits():
         psi=syn.psi,
         R_psi=syn.R_psi,
         target_average_radius=float(np.mean(syn.R_psi)),
+        R_ring_profile=syn.R_psi,
         module=2.0,
         max_pressure_angle_deg=35.0,
     )
