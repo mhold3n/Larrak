@@ -2979,22 +2979,11 @@ class UnifiedOptimizationFramework:
             primary_logger.complete_phase(success=False)
             return result
 
-        except Exception as exc:  # pragma: no cover - safety fallback
+        except Exception as exc:  # pragma: no cover - propagate failure
             primary_logger.error(f"CasADi primary flow raised an exception: {exc}")
             log.error("CasADi primary flow failed", exc_info=True)
             primary_logger.complete_phase(success=False)
-            return OptimizationResult(
-                status=OptimizationStatus.FAILED,
-                objective_value=float("inf"),
-                solve_time=None,
-                solution={},
-                error_message=str(exc),
-                metadata={
-                    "source": "casadi_phase1",
-                    "solver": "CasADiUnifiedFlow",
-                    "exception_type": exc.__class__.__name__,
-                },
-            )
+            raise
 
     def _build_casadi_primary_constraints(
         self,

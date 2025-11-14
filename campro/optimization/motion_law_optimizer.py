@@ -80,8 +80,13 @@ class MotionLawOptimizer(BaseOptimizer):
                 ThermalEfficiencyAdapter,
                 ThermalEfficiencyConfig,
             )
+        except ImportError as exc:  # pragma: no cover - dependency failure
+            raise RuntimeError(
+                "Failed to import thermal efficiency adapter. "
+                "Install CasADi/IPOPT thermal efficiency dependencies.",
+            ) from exc
 
-            # Create configuration with current settings
+        try:
             config = ThermalEfficiencyConfig()
             config.collocation_points = self.n_points
             config.collocation_degree = self.degree
@@ -90,13 +95,10 @@ class MotionLawOptimizer(BaseOptimizer):
 
             self.thermal_adapter = ThermalEfficiencyAdapter(config)
             log.info("Thermal efficiency adapter initialized")
-
-        except ImportError as e:
-            log.warning(f"Failed to import thermal efficiency adapter: {e}")
-            self.thermal_adapter = None
-        except Exception as e:
-            log.error(f"Failed to setup thermal efficiency adapter: {e}")
-            self.thermal_adapter = None
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to set up thermal efficiency adapter.",
+            ) from exc
 
     def configure(self, **kwargs) -> None:
         """Configure the motion law optimizer."""
@@ -232,7 +234,11 @@ class MotionLawOptimizer(BaseOptimizer):
         )
 
         # Route to thermal efficiency optimization if enabled
-        if self.use_thermal_efficiency and self.thermal_adapter is not None:
+        if self.use_thermal_efficiency:
+            if self.thermal_adapter is None:
+                raise RuntimeError(
+                    "Thermal efficiency optimization requested but adapter is unavailable.",
+                )
             log.info("Using thermal efficiency optimization")
             return self.thermal_adapter.solve_motion_law(constraints, motion_type)
         log.info("Using simple motion law optimization")

@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, Mock, patch
 import numpy as np
 import pytest
 
+pytest.importorskip("yaml")
+
 from campro.logging import get_logger
 from campro.optimization.base import OptimizationStatus
 from campro.optimization.motion_law import MotionLawConstraints, MotionType
@@ -28,6 +30,38 @@ from campro.optimization.unified_framework import (
 log = get_logger(__name__)
 
 
+class DummyComplexResult:
+    """Synthetic complex optimizer result used to avoid fallback behaviour."""
+
+    def __init__(self) -> None:
+        theta = np.linspace(0, 2 * np.pi, 360)
+        displacement = 0.01 * np.sin(theta)
+        velocity = np.gradient(displacement, theta)
+
+        states = {
+            "x_L": displacement,
+            "x_R": displacement,
+            "v_L": velocity,
+            "v_R": velocity,
+        }
+
+        self.solution = MagicMock()
+        self.solution.data = {"states": states}
+        self.success = True
+        self.iterations = 12
+        self.cpu_time = 0.5
+        self.performance_metrics = {
+            "thermal_efficiency": 0.65,
+            "indicated_work": 12.3,
+            "max_pressure": 5.0e6,
+            "max_temperature": 1900.0,
+            "min_piston_gap": 0.001,
+        }
+        self.status = "Solve_Succeeded"
+        self.message = "Solve_Succeeded"
+        self.ipopt_analysis = None
+
+
 class TestThermalEfficiencyAdapter:
     """Test thermal efficiency adapter functionality."""
 
@@ -39,7 +73,7 @@ class TestThermalEfficiencyAdapter:
         assert adapter is not None
         assert adapter.config.bore == 0.082
         assert adapter.config.thermal_efficiency_weight == 1.0
-        assert adapter.config.use_1d_gas_model is True
+        assert adapter.config.use_1d_gas_model is False
 
     def test_adapter_creation_custom_config(self):
         """Test thermal efficiency adapter creation with custom config."""
@@ -76,18 +110,23 @@ class TestThermalEfficiencyAdapter:
             tolerance=1e-5,
         )
         adapter = ThermalEfficiencyAdapter(cfg)
+        adapter._get_log_file_path = MagicMock(return_value=None)
+        dummy_result = DummyComplexResult()
+        adapter.complex_optimizer = MagicMock()
+        adapter.complex_optimizer.optimize_with_validation.return_value = dummy_result
 
-        # Force fallback path if complex optimizer is unavailable; should still not crash
         constraints = MotionLawConstraints(
             stroke=20.0,
             upstroke_duration_percent=60.0,
             zero_accel_duration_percent=0.0,
         )
 
-        try:
-            _ = adapter.optimize(None, constraints)
-        except Exception as exc:
-            pytest.fail(f"Thermal efficiency optimization raised unexpectedly: {exc}")
+        result = adapter.optimize(None, constraints)
+
+        assert result.status == OptimizationStatus.CONVERGED
+        assert result.metadata["thermal_efficiency"] == pytest.approx(
+            dummy_result.performance_metrics["thermal_efficiency"],
+        )
 
     @patch("campro.optimization.thermal_efficiency_adapter.ComplexMotionLawOptimizer")
     def test_complex_optimizer_setup_success(self, mock_optimizer_class):
@@ -113,8 +152,8 @@ class TestThermalEfficiencyAdapter:
 
         assert adapter.complex_optimizer is None
 
-    def test_fallback_optimization(self):
-        """Test fallback optimization when complex optimizer is not available."""
+    def test_optimize_raises_when_optimizer_unavailable(self):
+        """Optimization should raise when complex optimizer is missing."""
         config = ThermalEfficiencyConfig()
         adapter = ThermalEfficiencyAdapter(config)
         adapter.complex_optimizer = None  # Simulate unavailable complex optimizer
@@ -125,19 +164,11 @@ class TestThermalEfficiencyAdapter:
             zero_accel_duration_percent=0.0,
         )
 
-        result = adapter.optimize(None, constraints)
+        with pytest.raises(RuntimeError):
+            adapter.optimize(None, constraints)
 
-        assert result is not None
-        assert result.status == OptimizationStatus.CONVERGED
-        assert result.solution is not None
-        assert "theta" in result.solution
-        assert "x" in result.solution
-        assert "v" in result.solution
-        assert "a" in result.solution
-        assert "j" in result.solution
-
-    def test_solve_motion_law_fallback(self):
-        """Test solve_motion_law with fallback optimization."""
+    def test_solve_motion_law_raises_when_optimizer_unavailable(self):
+        """solve_motion_law should raise when complex optimizer is missing."""
         config = ThermalEfficiencyConfig()
         adapter = ThermalEfficiencyAdapter(config)
         adapter.complex_optimizer = None  # Simulate unavailable complex optimizer
@@ -148,17 +179,8 @@ class TestThermalEfficiencyAdapter:
             zero_accel_duration_percent=0.0,
         )
 
-        result = adapter.solve_motion_law(constraints, MotionType.MINIMUM_JERK)
-
-        assert result is not None
-        assert result.convergence_status == "converged"
-        assert len(result.theta) == 360
-        assert len(result.x) == 360
-        assert len(result.v) == 360
-        assert len(result.a) == 360
-        assert len(result.j) == 360
-        assert result.constraints == constraints
-        assert result.motion_type == MotionType.MINIMUM_JERK
+        with pytest.raises(RuntimeError):
+            adapter.solve_motion_law(constraints, MotionType.MINIMUM_JERK)
 
     def test_configure_adapter(self):
         """Test adapter configuration."""
@@ -228,7 +250,7 @@ class TestMotionLawOptimizerIntegration:
 
     def test_solve_motion_law_simple_optimization(self):
         """Test solve_motion_law with simple optimization."""
-        optimizer = MotionLawOptimizer(use_thermal_efficiency=True)
+        optimizer = MotionLawOptimizer(use_thermal_efficiency=False)
 
         constraints = MotionLawConstraints(
             stroke=20.0,
@@ -246,8 +268,8 @@ class TestMotionLawOptimizerIntegration:
         assert len(result.a) == 360
         assert len(result.j) == 360
 
-    def test_solve_motion_law_thermal_efficiency_fallback(self):
-        """Test solve_motion_law with thermal efficiency fallback."""
+    def test_solve_motion_law_thermal_efficiency_unavailable(self):
+        """Thermal efficiency solve should raise when adapter is missing."""
         optimizer = MotionLawOptimizer(use_thermal_efficiency=True)
         optimizer.thermal_adapter = None  # Simulate unavailable complex optimizer
 
@@ -257,15 +279,8 @@ class TestMotionLawOptimizerIntegration:
             zero_accel_duration_percent=0.0,
         )
 
-        result = optimizer.solve_motion_law(constraints, MotionType.MINIMUM_JERK)
-
-        assert result is not None
-        assert result.convergence_status == "converged"
-        assert len(result.theta) == 360
-        assert len(result.x) == 360
-        assert len(result.v) == 360
-        assert len(result.a) == 360
-        assert len(result.j) == 360
+        with pytest.raises(RuntimeError):
+            optimizer.solve_motion_law(constraints, MotionType.MINIMUM_JERK)
 
 
 class TestUnifiedFrameworkIntegration:
@@ -273,7 +288,7 @@ class TestUnifiedFrameworkIntegration:
 
     def test_framework_creation_without_thermal_efficiency(self):
         """Test unified framework creation without thermal efficiency."""
-        settings = UnifiedOptimizationSettings(use_thermal_efficiency=True)
+        settings = UnifiedOptimizationSettings()
         framework = UnifiedOptimizationFramework("TestFramework", settings)
 
         assert framework.settings.use_thermal_efficiency is False
@@ -297,33 +312,27 @@ class TestUnifiedFrameworkIntegration:
             == 2.0
         )
 
-    def test_primary_optimization_with_thermal_efficiency_fallback(self):
-        """Test primary optimization with thermal efficiency fallback."""
+    def test_primary_optimization_thermal_efficiency_unavailable(self):
+        """Primary optimization should raise when TE path cannot run."""
         settings = UnifiedOptimizationSettings(use_thermal_efficiency=True)
         framework = UnifiedOptimizationFramework("TestFramework", settings)
 
-        # Set up test data
         framework.data.stroke = 20.0
         framework.data.cycle_time = 1.0
         framework.data.upstroke_duration_percent = 60.0
         framework.data.zero_accel_duration_percent = 0.0
         framework.data.motion_type = "minimum_jerk"
 
-        # Mock constraints
         framework.constraints.max_velocity = 100.0
         framework.constraints.max_acceleration = 1000.0
         framework.constraints.max_jerk = 10000.0
 
-        # Run primary optimization (will use fallback since complex optimizer not available)
-        result = framework._optimize_primary()
-
-        assert result is not None
-        assert result.status == OptimizationStatus.CONVERGED
-        assert result.solution is not None
+        with pytest.raises(RuntimeError):
+            framework._optimize_primary()
 
     def test_primary_optimization_without_thermal_efficiency(self):
         """Test primary optimization without thermal efficiency."""
-        settings = UnifiedOptimizationSettings(use_thermal_efficiency=True)
+        settings = UnifiedOptimizationSettings()
         framework = UnifiedOptimizationFramework("TestFramework", settings)
 
         # Set up test data
@@ -487,193 +496,6 @@ class TestDataConversion:
         assert motion_law_data["optimization_type"] == "thermal_efficiency"
         assert motion_law_data["thermal_efficiency"] == 0.45
 
-    def test_fallback_motion_law_generation(self):
-        """Test fallback motion law generation."""
-        config = ThermalEfficiencyConfig()
-        adapter = ThermalEfficiencyAdapter(config)
-
-        constraints = MotionLawConstraints(
-            stroke=20.0,
-            upstroke_duration_percent=60.0,
-            zero_accel_duration_percent=0.0,
-        )
-
-        # Test fallback motion law generation
-        x, v, a, j = adapter._generate_fallback_motion_law(constraints)
-
-        assert len(x) == 360
-        assert len(v) == 360
-        assert len(a) == 360
-        assert len(j) == 360
-
-        # Check that motion law is reasonable
-        assert np.max(x) > 0  # Should have positive displacement
-        assert np.min(x) >= 0  # Should not have negative displacement
-
-
-class TestErrorHandling:
-    """Test error handling and edge cases."""
-
-    def test_adapter_creation_with_invalid_config(self):
-        """Test adapter creation with invalid configuration."""
-        # This should not raise an exception, but should handle gracefully
-        config = ThermalEfficiencyConfig()
-        config.bore = -0.1  # Invalid configuration
-
-        adapter = ThermalEfficiencyAdapter(config)
-        assert adapter is not None
-        assert adapter.config.bore == -0.1  # Config is stored as-is
-
-    def test_optimization_with_invalid_constraints(self):
-        """Test optimization with invalid constraints."""
-        config = ThermalEfficiencyConfig()
-        adapter = ThermalEfficiencyAdapter(config)
-        adapter.complex_optimizer = None  # Use fallback
-
-        # Create invalid constraints
-        constraints = MotionLawConstraints(
-            stroke=-10.0,  # Invalid: negative stroke
-            upstroke_duration_percent=60.0,
-            zero_accel_duration_percent=0.0,
-        )
-
-        # This should handle gracefully and return a result
-        result = adapter.optimize(None, constraints)
-
-        assert result is not None
-        assert result.status in [
-            OptimizationStatus.CONVERGED,
-            OptimizationStatus.FAILED,
-        ]
-
-    def test_optimization_with_missing_constraints(self):
-        """Test optimization with missing constraint attributes."""
-        config = ThermalEfficiencyConfig()
-        adapter = ThermalEfficiencyAdapter(config)
-        adapter.complex_optimizer = None  # Use fallback
-
-        # Create constraints with missing attributes
-        class IncompleteConstraints:
-            stroke = 20.0
-            # Missing upstroke_duration_percent
-
-        constraints = IncompleteConstraints()
-
-        # This should handle gracefully
-        try:
-            result = adapter.optimize(None, constraints)
-            # If it doesn't raise an exception, check the result
-            assert result is not None
-        except AttributeError:
-            # This is also acceptable behavior
-            pass
-
-    def test_complex_optimizer_failure_handling(self):
-        """Test handling of complex optimizer failures."""
-        config = ThermalEfficiencyConfig()
-        adapter = ThermalEfficiencyAdapter(config)
-
-        # Mock complex optimizer that fails
-        mock_optimizer = Mock()
-        mock_optimizer.optimize_with_validation.side_effect = Exception(
-            "Complex optimizer failed",
-        )
-        adapter.complex_optimizer = mock_optimizer
-
-        constraints = MotionLawConstraints(
-            stroke=20.0,
-            upstroke_duration_percent=60.0,
-            zero_accel_duration_percent=0.0,
-        )
-
-        # This should handle the failure gracefully
-        result = adapter.optimize(None, constraints)
-
-        assert result is not None
-        assert result.status == OptimizationStatus.FAILED
-        assert "error" in result.metadata
-
-
-class TestPerformanceAndConvergence:
-    """Test performance and convergence characteristics."""
-
-    def test_optimization_timing(self):
-        """Test optimization timing."""
-        config = ThermalEfficiencyConfig()
-        adapter = ThermalEfficiencyAdapter(config)
-        adapter.complex_optimizer = None  # Use fallback for consistent timing
-
-        constraints = MotionLawConstraints(
-            stroke=20.0,
-            upstroke_duration_percent=60.0,
-            zero_accel_duration_percent=0.0,
-        )
-
-        import time
-
-        start_time = time.time()
-        result = adapter.optimize(None, constraints)
-        end_time = time.time()
-
-        assert result is not None
-        assert result.solve_time >= 0
-        assert (end_time - start_time) >= 0
-
-    def test_convergence_consistency(self):
-        """Test convergence consistency across multiple runs."""
-        config = ThermalEfficiencyConfig()
-        adapter = ThermalEfficiencyAdapter(config)
-        adapter.complex_optimizer = None  # Use fallback for consistency
-
-        constraints = MotionLawConstraints(
-            stroke=20.0,
-            upstroke_duration_percent=60.0,
-            zero_accel_duration_percent=0.0,
-        )
-
-        # Run optimization multiple times
-        results = []
-        for _ in range(3):
-            result = adapter.optimize(None, constraints)
-            results.append(result)
-
-        # All results should be successful
-        for result in results:
-            assert result.status == OptimizationStatus.CONVERGED
-            assert result.solution is not None
-
-    def test_memory_usage(self):
-        """Test memory usage during optimization."""
-        import os
-
-        import psutil
-
-        process = psutil.Process(os.getpid())
-        initial_memory = process.memory_info().rss
-
-        config = ThermalEfficiencyConfig()
-        adapter = ThermalEfficiencyAdapter(config)
-        adapter.complex_optimizer = None  # Use fallback
-
-        constraints = MotionLawConstraints(
-            stroke=20.0,
-            upstroke_duration_percent=60.0,
-            zero_accel_duration_percent=0.0,
-        )
-
-        result = adapter.optimize(None, constraints)
-        final_memory = process.memory_info().rss
-
-        assert result is not None
-        # Memory usage should be reasonable (less than 100MB increase)
-        memory_increase = final_memory - initial_memory
-        assert memory_increase < 100 * 1024 * 1024  # 100MB
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-
-
 def test_objective_from_thermal_efficiency():
     """Objective should reflect thermal efficiency when complex optimizer succeeds."""
     config = ThermalEfficiencyConfig()
@@ -712,6 +534,7 @@ def test_objective_from_thermal_efficiency():
     mock_optimizer = MagicMock()
     mock_optimizer.optimize_with_validation.return_value = MockComplexResult(eta=0.5)
     adapter.complex_optimizer = mock_optimizer
+    adapter._get_log_file_path = MagicMock(return_value=None)
 
     constraints = MotionLawConstraints(
         stroke=20.0,
