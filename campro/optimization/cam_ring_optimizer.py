@@ -221,6 +221,31 @@ class CamRingOptimizer(BaseOptimizer):
 
                 comb_logger = ProgressLogger("COMBUSTION", flush_immediately=True)
                 comb_logger.info("Initializing default combustion parameters (gasoline)")
+
+                def _extract_input(key: str) -> Any:
+                    if isinstance(primary_data, dict):
+                        return primary_data.get(key)
+                    return getattr(primary_data, key, None)
+
+                afr_input = _extract_input("afr")
+                ignition_input = _extract_input("ignition_deg")
+                if afr_input is not None or ignition_input is not None:
+                    afr_str = (
+                        f"{float(afr_input):.2f}"
+                        if isinstance(afr_input, (int, float))
+                        else str(afr_input)
+                    )
+                    ign_str = (
+                        f"{float(ignition_input):.2f}"
+                        if isinstance(ignition_input, (int, float))
+                        else str(ignition_input)
+                    )
+                    comb_logger.info(
+                        "GUI combustion inputs (AFR=%s, ignition_deg=%s) are not yet connected; using defaults.",
+                        afr_str if afr_input is not None else "n/a",
+                        ign_str if ignition_input is not None else "n/a",
+                    )
+
                 self.constraints.combustion_params = create_combustion_parameters("gasoline")
                 comb_logger.info(
                     f"Combustion params: start={self.constraints.combustion_params.theta_start:.2f}°, "

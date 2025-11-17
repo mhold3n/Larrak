@@ -774,3 +774,16 @@ All of these prevent proper error handling and may lead to:
 - `docs/implementation_quick_reference.md` - Documents previous fixes to remove fallback mechanisms
 - `docs/mock_placeholder_analysis.md` - Analysis of placeholder implementations
 - `IMPLEMENTATION_REVIEW.md` - Review of implementation status
+- `docs/silent_fallback_audit_comprehensive.md` - **NEW**: Comprehensive audit of all silent fallbacks (2024)
+- `docs/silent_fallback_fix_plan.md` - **NEW**: Implementation plan for fixing identified fallbacks
+- `docs/silent_fallback_audit_report.md` - **NEW**: Raw audit findings with file locations
+
+## Update: 2024 Comprehensive Audit
+
+A comprehensive audit was performed identifying **3 CRITICAL** silent fallbacks that mask failures:
+
+1. **HSL Path Detection** (`campro/constants.py`) - Silent exception handlers, returns empty string on failure
+2. **HSL Library Detection** (`campro/environment/env_manager.py`) - Silent exception handling in fallback path
+3. **IPOPT Factory Solver Fallback** (`campro/optimization/ipopt_factory.py`) - Silent fallback to MA27
+
+See `docs/silent_fallback_audit_comprehensive.md` for full details and `docs/silent_fallback_fix_plan.md` for implementation steps.

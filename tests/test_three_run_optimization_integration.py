@@ -1,6 +1,9 @@
 """
 Integration tests for three-run optimization system.
 
+NOTE: This file is OUT OF SCOPE for current refactoring.
+Phase 3 functionality is not in scope of the project right now.
+
 Tests the complete three-run optimization pipeline with Phase 3 integration:
 - Run 1: Motion law optimization (primary)
 - Run 2: Litvin profile synthesis (secondary)

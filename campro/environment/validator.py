@@ -180,17 +180,33 @@ def validate_hsl_solvers() -> list[ValidationResult]:
     
     results: list[ValidationResult] = []
 
-    # Check for all HSL solvers availability through CasADi
+    # Detect available solvers using hsl_detector
     try:
-        import casadi as ca
-
-        # Test all HSL solvers
-        hsl_solvers = ["ma27"]
+        from campro.environment.hsl_detector import detect_available_solvers
         
-        # CRITICAL: Skip MA97 on macOS due to known segmentation fault bug
-        if IS_MACOS:
-            hsl_solvers = [s for s in hsl_solvers if s != "ma97"]
-            log.debug("Skipping MA97 validation on macOS due to known crash bug")
+        # Get list of solvers to test (detected from CoinHSL config)
+        hsl_solvers = detect_available_solvers(test_runtime=False)
+        
+        if not hsl_solvers:
+            results.append(
+                ValidationResult(
+                    status=ValidationStatus.WARNING,
+                    message="No HSL solvers detected in CoinHSL library",
+                    details="CoinHSL directory not found or no solvers configured",
+                    suggestion=(
+                        "HSL solvers are optional but improve performance. To obtain them:\n"
+                        "1. Visit STFC licensing portal: https://licences.stfc.ac.uk/product/coin-hsl\n"
+                        "2. Obtain a license for HSL software\n"
+                        "3. Follow installation instructions in docs/installation_guide.md\n"
+                        "4. Note: ipopt works without HSL but with reduced performance"
+                    ),
+                ),
+            )
+            return results
+        
+        # Test runtime availability through CasADi
+        import casadi as ca
+        
         available_solvers = []
         solver_details = []
 
@@ -199,19 +215,26 @@ def validate_hsl_solvers() -> list[ValidationResult]:
         f = x**2
         g = x - 1
         nlp = {"x": x, "f": f, "g": g}
+        
+        # Get HSL library path for solver configuration
+        from campro.environment.hsl_detector import get_hsl_library_path
+        hsl_lib_path = get_hsl_library_path()
+        solver_opts = {}
+        if hsl_lib_path:
+            solver_opts["ipopt.hsllib"] = str(hsl_lib_path)
 
         for solver_name in hsl_solvers:
             try:
                 # Try to create a solver with this HSL linear solver
+                solver_opts["ipopt.linear_solver"] = solver_name
+                solver_opts["ipopt.print_level"] = 0
+                solver_opts["ipopt.sb"] = "yes"
+                
                 solver = ca.nlpsol(
                     f"hsl_test_{solver_name}",
                     "ipopt",
                     nlp,
-                    {
-                        "ipopt.linear_solver": solver_name,
-                        "ipopt.print_level": 0,
-                        "ipopt.sb": "yes",
-                    },
+                    solver_opts,
                 )
 
                 # Test the solver with a simple problem
@@ -224,15 +247,16 @@ def validate_hsl_solvers() -> list[ValidationResult]:
                 else:
                     solver_details.append(f"{solver_name.upper()}(failed)")
 
-            except Exception:
-                solver_details.append(f"{solver_name.upper()}(error)")
+            except Exception as e:
+                solver_details.append(f"{solver_name.upper()}(error: {str(e)[:50]})")
 
+        total_possible = 5  # MA27, MA57, MA77, MA86, MA97
         if available_solvers:
             results.append(
                 ValidationResult(
                     status=ValidationStatus.PASS,
-                    message=f"HSL solvers are available ({len(available_solvers)}/5)",
-                    details=f"Available: {', '.join(available_solvers)} | All tested: {', '.join(solver_details)}",
+                    message=f"HSL solvers are available ({len(available_solvers)}/{len(hsl_solvers)} detected, {total_possible} possible)",
+                    details=f"Available: {', '.join(available_solvers)} | Tested: {', '.join(solver_details)}",
                     suggestion="HSL solvers will significantly improve optimization performance",
                 ),
             )
@@ -240,14 +264,14 @@ def validate_hsl_solvers() -> list[ValidationResult]:
             results.append(
                 ValidationResult(
                     status=ValidationStatus.WARNING,
-                    message="No HSL solvers are available",
-                    details=f"Tested: {', '.join(solver_details)}",
+                    message="No HSL solvers are available at runtime",
+                    details=f"Detected: {', '.join(hsl_solvers)} | Tested: {', '.join(solver_details)}",
                     suggestion=(
-                        "HSL solvers are optional but improve performance. To obtain them:\n"
-                        "1. Visit STFC licensing portal: https://licences.stfc.ac.uk/product/coin-hsl\n"
-                        "2. Obtain a license for HSL software\n"
-                        "3. Follow installation instructions in docs/installation_guide.md\n"
-                        "4. Note: ipopt works without HSL but with reduced performance"
+                        "HSL solvers detected but not available at runtime. Check:\n"
+                        "1. HSL library path is correctly configured\n"
+                        "2. All required dependencies are available\n"
+                        "3. CasADi can access the HSL library\n"
+                        "Note: ipopt works without HSL but with reduced performance"
                     ),
                 ),
             )

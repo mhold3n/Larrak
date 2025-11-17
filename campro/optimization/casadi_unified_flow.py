@@ -166,6 +166,7 @@ class CasADiUnifiedFlow:
         try:
             problem = self._create_problem_from_constraints(constraints, targets)
             resolution_schedule = self._build_resolution_schedule(problem, constraints)
+            planned_final_segments = resolution_schedule[-1] if resolution_schedule else None
             
             # Explicit logging for ladder resolution and warm-start visibility
             schedule_str = " -> ".join(str(seg) for seg in resolution_schedule)
@@ -182,6 +183,8 @@ class CasADiUnifiedFlow:
             ladder_history: list[dict[str, Any]] = []
             previous_success: OptimizationResult | None = None
             last_attempt: OptimizationResult | None = None
+            early_exit_triggered = False
+            early_exit_source_segments: int | None = None
 
             # Extract universal_theta_rad if provided for final level
             universal_theta_rad = constraints.get("universal_theta_rad")
@@ -227,7 +230,24 @@ class CasADiUnifiedFlow:
                 last_attempt = result
 
                 if result.successful:
+                    improvement = self._relative_objective_improvement(previous_success, result)
                     previous_success = result
+                    if (
+                        improvement is not None
+                        and improvement <= self.settings.refinement_improvement_threshold
+                        and level_index < len(resolution_schedule) - 1
+                    ):
+                        log.warning(
+                            "Objective change %.3e <= %.3e; stopping ladder early at %d segments",
+                            improvement,
+                            self.settings.refinement_improvement_threshold,
+                            segments,
+                        )
+                        ladder_history[-1]["early_exit"] = True
+                        ladder_history[-1]["objective_delta"] = improvement
+                        early_exit_triggered = True
+                        early_exit_source_segments = segments
+                        break
                     continue
 
                 if not self.settings.retry_failed_level:
@@ -279,8 +299,29 @@ class CasADiUnifiedFlow:
             if final_result is None:
                 raise RuntimeError("Adaptive resolution failed before producing any result")
 
+            if (
+                early_exit_triggered
+                and target_theta_rad is not None
+                and planned_final_segments is not None
+                and final_result.solution
+            ):
+                self._resample_result_to_target_grid(
+                    final_result,
+                    planned_final_segments,
+                    target_theta_rad,
+                    problem.duration_angle_deg,
+                    source_segments=early_exit_source_segments,
+                )
+
             if final_result.successful:
                 self._attach_thermal_metrics(final_result)
+                if early_exit_triggered:
+                    final_result.metadata.setdefault("adaptive_resolution_notes", {})
+                    final_result.metadata["adaptive_resolution_notes"]["early_exit"] = {
+                        "source_segments": early_exit_source_segments,
+                        "planned_final_segments": planned_final_segments,
+                        "threshold": self.settings.refinement_improvement_threshold,
+                    }
 
             total_wall = time.time() - start_time
             final_result.metadata.setdefault("resolution_levels", ladder_history)
@@ -326,6 +367,72 @@ class CasADiUnifiedFlow:
             "solve_time": result.solve_time,
             "retry": retried,
         }
+
+    def _relative_objective_improvement(
+        self,
+        previous_result: OptimizationResult | None,
+        current_result: OptimizationResult,
+    ) -> float | None:
+        """Compute normalized change in objective between ladder levels."""
+        if previous_result is None:
+            return None
+        prev_obj = previous_result.objective_value
+        curr_obj = current_result.objective_value
+        if prev_obj is None or curr_obj is None:
+            return None
+        baseline = max(1.0, abs(prev_obj))
+        return abs(curr_obj - prev_obj) / baseline
+
+    def _resample_result_to_target_grid(
+        self,
+        result: OptimizationResult,
+        target_segments: int,
+        target_theta_rad: np.ndarray,
+        duration_angle_deg: float,
+        *,
+        source_segments: int | None,
+    ) -> None:
+        """Upsample a coarse solution onto the requested theta grid."""
+        try:
+            interpolated = self._interpolate_solution_to_seed(
+                result,
+                target_segments,
+                duration_angle_deg,
+            )
+        except Exception as exc:  # pragma: no cover - defensive guard
+            log.warning("Unable to interpolate coarse solution to universal grid: %s", exc)
+            return
+
+        if not interpolated:
+            log.warning("Interpolation returned empty data; retaining coarse grid result")
+            return
+
+        theta_array = np.asarray(target_theta_rad, dtype=float)
+        expected_points = target_segments + 1
+        if theta_array.shape[0] != expected_points:
+            log.warning(
+                "Target theta grid mismatch (expected %d points, got %d); using uniform grid fallback",
+                expected_points,
+                theta_array.shape[0],
+            )
+            theta_array = np.linspace(0.0, math.radians(duration_angle_deg), expected_points)
+        theta_deg = np.degrees(theta_array)
+
+        solution = result.solution or {}
+        solution["position"] = np.asarray(interpolated["x"], dtype=float)
+        solution["velocity"] = np.asarray(interpolated["v"], dtype=float)
+        solution["acceleration"] = np.asarray(interpolated["a"], dtype=float)
+        solution["jerk"] = np.asarray(interpolated["j"], dtype=float)
+        solution["theta_deg"] = theta_deg
+        solution["theta_rad"] = theta_array
+        solution["cam_angle"] = theta_array
+
+        result.solution = solution
+        result.metadata["n_segments"] = target_segments
+        result.metadata["finest_success_segments"] = target_segments
+        result.metadata["resampled_to_universal_grid"] = True
+        if source_segments is not None:
+            result.metadata["resampled_from_segments"] = source_segments
 
     def _run_resolution_level(
         self,

@@ -451,16 +451,23 @@ conda env remove -n larrak
 rm -rf /path/to/Larrak
 ```
 
-## Optional HSL Solver (MA27)
+## Optional HSL Solvers (MA27, MA57, MA77, MA86, MA97)
 
 HSL (Harwell Subroutine Library) solvers are optional but significantly improve optimization performance for large problems. These are not included in GitHub clones due to licensing requirements.
 
 ### About HSL Solvers
 
-- **MA27**: Sparse linear algebra solver used by IPOPT
+The framework supports multiple HSL solvers that are automatically detected and selected:
+- **MA27**: Classic sparse solver for small problems (< 5,000 variables)
+- **MA57**: Modern solver for medium problems (5,000-50,000 variables)
+- **MA77**: Out-of-core solver for very large problems (> 50,000 variables)
+- **MA86**: Parallel solver for large problems on multi-core systems
+- **MA97**: Advanced parallel solver for very large problems (not available on macOS)
+
 - **Performance**: Can provide 2-10x speedup for large optimization problems
 - **Licensing**: Commercial license required from STFC
 - **Optional**: IPOPT works without HSL but with reduced performance
+- **Auto-detection**: The framework automatically detects available solvers and selects the optimal one
 
 ### Obtaining HSL Solvers
 
@@ -474,14 +481,24 @@ HSL (Harwell Subroutine Library) solvers are optional but significantly improve 
 After obtaining the HSL license and package:
 
 ```bash
-# Extract the HSL package to your project directory
-# (This will create casadi/, coinhsl-archive-2023.11.17/, or ThirdParty-HSL/)
+# Extract the CoinHSL package to your project directory
+# The directory should be named: CoinHSL.v<VERSION>.<PLATFORM>
+# Examples:
+#   - CoinHSL.v2024.5.15.x86_64-w64-mingw32-libgfortran5 (Windows)
+#   - CoinHSL.v2024.5.15.x86_64-apple-darwin-libgfortran5 (macOS)
 
-# Rebuild CasADi with HSL support (if needed)
-# See Method B in this guide for building from source
+# The framework will automatically detect the correct directory for your platform
+# No manual configuration needed!
 
-# Verify HSL availability
-python scripts/check_environment.py
+# Verify HSL availability and detected solvers
+python scripts/verify_hsl_installation.py
+
+# Or check programmatically
+python -c "
+from campro.environment.hsl_detector import detect_available_solvers, find_coinhsl_directory
+print(f'CoinHSL directory: {find_coinhsl_directory()}')
+print(f'Available solvers: {detect_available_solvers()}')
+"
 ```
 
 ### GitHub Clones and HSL

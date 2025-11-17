@@ -43,7 +43,7 @@ DEFAULT_DISCHARGE_COEFFICIENT: float = 0.7
 
 # IPOPT / HSL integration constants
 # Resolve platform-appropriate HSL library path at import time.
-# Falls back to empty string if not found (Ipopt will use non-HSL linear solver).
+# Raises RuntimeError if HSL library cannot be detected (all detection methods failed).
 import os as _os  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
 import sys as _sys  # noqa: E402
@@ -54,11 +54,18 @@ def _detect_hsl_path() -> str:
     1. Local conda environment (OS-specific)
     2. Active conda environment
     3. Environment variable HSLLIB_PATH
-    4. Project CoinHSL archive (OS-specific)
+    4. Project CoinHSL archive (OS-specific) - auto-detected
+    
+    Raises:
+        RuntimeError: If all detection methods fail
     """
+    from campro.logging import get_logger
+    
+    log = get_logger(__name__)
+    detection_attempts = []
+    last_error = None
+    
     try:
-        from campro.environment.platform_detector import IS_MACOS, IS_WINDOWS  # noqa: E402
-        
         project_root = _Path(__file__).resolve().parents[1]
         
         # Priority 1: Check local conda environment using env_manager
@@ -67,62 +74,58 @@ def _detect_hsl_path() -> str:
             
             hsl_path = find_hsl_library()
             if hsl_path and hsl_path.exists():
+                log.debug(f"HSL library found via Priority 1 (conda env): {hsl_path}")
                 return str(hsl_path)
+            detection_attempts.append("Priority 1: HSL library not found in conda env")
         except ImportError:
-            # If env_manager not available, skip this check
-            pass
-        except Exception:
-            # If any error occurs, continue to fallback methods
-            pass
+            detection_attempts.append("Priority 1: env_manager not available (skipped)")
+        except Exception as e:
+            detection_attempts.append(f"Priority 1: Error - {e}")
+            last_error = e
+            log.debug(f"Priority 1 detection failed: {e}")
         
         # Priority 2: Check environment variable
         hsl_env = _os.environ.get("HSLLIB_PATH", "")
         if hsl_env:
             env_path = _Path(hsl_env)
             if env_path.exists():
+                log.debug(f"HSL library found via Priority 2 (env var): {env_path}")
                 return str(env_path)
+            detection_attempts.append(f"Priority 2: HSLLIB_PATH set but file not found: {hsl_env}")
+        else:
+            detection_attempts.append("Priority 2: HSLLIB_PATH not set")
         
-        # Priority 3: Look for OS-specific CoinHSL archive folder shipped with the repo
-        if IS_WINDOWS:
-            # Windows: Check for Windows-specific CoinHSL archive
-            hsl_folder = project_root / "CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5"
-            if hsl_folder.exists():
-                bin_dir = hsl_folder / "bin"
-                dll = bin_dir / "libcoinhsl.dll"
-                if dll.exists():
-                    return str(dll)
+        # Priority 3: Auto-detect CoinHSL directory using hsl_detector
+        try:
+            from campro.environment.hsl_detector import get_hsl_library_path  # noqa: E402
             
-            # Fallback: search for any Windows CoinHSL-archive.* folder
-            candidates = list(project_root.glob("CoinHSL-archive.*"))
-            for candidate in candidates:
-                # Check if it's a Windows archive (contains w64-mingw32 or similar)
-                if "w64" in candidate.name.lower() or "mingw" in candidate.name.lower():
-                    bin_dir = candidate / "bin"
-                    dll = bin_dir / "libcoinhsl.dll"
-                    if dll.exists():
-                        return str(dll)
-        elif IS_MACOS:
-            # macOS: Check for macOS-specific CoinHSL archive
-            candidates = list(project_root.glob("CoinHSL-archive.*"))
-            for candidate in candidates:
-                # Check if it's a macOS archive (contains darwin or apple)
-                if "darwin" in candidate.name.lower() or "apple" in candidate.name.lower():
-                    # Try lib directory first (standard macOS location)
-                    lib_dir = candidate / "lib"
-                    dylib = lib_dir / "libcoinhsl.dylib"
-                    if dylib.exists():
-                        return str(dylib)
-                    # Also check bin directory (some archives use bin/)
-                    bin_dir = candidate / "bin"
-                    dylib = bin_dir / "libcoinhsl.dylib"
-                    if dylib.exists():
-                        return str(dylib)
+            hsl_lib_path = get_hsl_library_path()
+            if hsl_lib_path and hsl_lib_path.exists():
+                log.debug(f"HSL library found via Priority 3 (auto-detect): {hsl_lib_path}")
+                return str(hsl_lib_path)
+            detection_attempts.append("Priority 3: HSL library not found in project directory")
+        except ImportError:
+            detection_attempts.append("Priority 3: hsl_detector not available (skipped)")
+        except Exception as e:
+            detection_attempts.append(f"Priority 3: Error - {e}")
+            last_error = e
+            log.debug(f"Priority 3 detection failed: {e}")
         
         # Priority 4: Platform-specific common locations (if env var not set)
         # These are typically handled by conda environments, so we skip here
-    except Exception:
-        pass
-    return ""
+    except Exception as e:
+        detection_attempts.append(f"Outer exception: {e}")
+        last_error = e
+        log.debug(f"Outer detection exception: {e}")
+    
+    # All detection methods failed - raise exception with details
+    error_msg = "HSL library path detection failed. Attempted methods:\n"
+    error_msg += "\n".join(f"  - {attempt}" for attempt in detection_attempts)
+    if last_error:
+        error_msg += f"\nLast error: {last_error}"
+    
+    log.error(error_msg)
+    raise RuntimeError(error_msg)
 
 HSLLIB_PATH: str = _detect_hsl_path()
 

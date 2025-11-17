@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "initialized": false,
+  "description": "Placeholder golden data for Phase 1 IPOPT integration. Run 'python tests/heavy/phase1_ipopt_integration.py --update' after obtaining a valid IPOPT/HSL environment to regenerate this file.",
+  "metadata": {
+    "motion_type": "minimum_jerk",
+    "stroke_mm": 20.0,
+    "samples": 360
+  },
+  "arrays": {
+    "primary_theta": [],
+    "primary_position": [],
+    "primary_velocity": [],
+    "primary_load_profile": []
+  }
+}

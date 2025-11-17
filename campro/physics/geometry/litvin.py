@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.integrate import trapezoid
+from scipy.interpolate import PchipInterpolator
 
 from campro.logging import get_logger
 from campro.physics.geometry.curvature import CurvatureComponent
@@ -40,6 +41,55 @@ class LitvinSynthesis:
 
     def __init__(self) -> None:
         self._curvature = CurvatureComponent(parameters={})
+
+    @staticmethod
+    def _periodic_gradient(values: np.ndarray, angles: np.ndarray) -> np.ndarray:
+        """Central difference gradient with periodic wrap-around."""
+        n = values.size
+        if n == 0:
+            return np.array([], dtype=float)
+        if n == 1:
+            return np.array([0.0], dtype=float)
+        period = 2.0 * np.pi
+        theta_ext = np.concatenate([angles, [angles[0] + period]])
+        values_ext = np.concatenate([values, [values[0]]])
+        slopes = np.diff(values_ext) / np.diff(theta_ext)
+        grad = np.empty(n, dtype=float)
+        grad[0] = 0.5 * (slopes[0] + slopes[-1])
+        grad[1:] = 0.5 * (slopes[1:] + slopes[:-1])
+        return grad
+
+    @staticmethod
+    def _bounded_gradient(values: np.ndarray, angles: np.ndarray) -> np.ndarray:
+        """Return d(values)/d(angles) with a floor to avoid zero denominators in ψ'."""
+        grad = LitvinSynthesis._periodic_gradient(values, angles)
+        base = float(np.mean(np.abs(grad))) if grad.size else 1.0
+        if not np.isfinite(base) or base < 1e-9:
+            base = 1.0
+        min_slope = max(1e-6, 0.05 * base)
+        return np.clip(grad, min_slope, None)
+
+    @staticmethod
+    def _periodic_pchip(psi: np.ndarray, values: np.ndarray) -> PchipInterpolator:
+        """Construct a periodic PCHIP interpolator to avoid wrap-around spikes."""
+        if psi.size == 0:
+            raise ValueError("psi must contain at least one sample")
+        period = (psi[-1] - psi[0]) + (psi[1] - psi[0]) if psi.size > 1 else 2.0 * np.pi
+        psi_ext = np.concatenate(
+            [
+                [psi[0] - period],
+                psi,
+                [psi[-1] + period],
+            ],
+        )
+        values_ext = np.concatenate(
+            [
+                [values[-1]],
+                values,
+                [values[0]],
+            ],
+        )
+        return PchipInterpolator(psi_ext, values_ext, extrapolate=True)
 
     @staticmethod
     def _sanitize_R_psi(
@@ -130,90 +180,37 @@ class LitvinSynthesis:
         curv = self._curvature.compute({"theta": theta, "r_theta": r_profile})
         rho_c = curv.outputs["rho"]
 
-        # Normalize desired mapping span to 2π while enforcing average ratio.
-        # We construct an initial ψ by integrating a baseline dψ/dθ and then renormalize.
-        # Start with dψ/dθ proportional to ρ_c to honor conjugacy shape, then scale to ratio.
-        dpsi_dtheta_initial = rho_c / max(np.mean(rho_c), 1e-9)
+        # Use supplied polar profile as the bounded ring radius during synthesis
+        R_theta = np.maximum(r_profile, min_radius)
+        dpsi_dtheta = np.divide(rho_c, np.maximum(R_theta, min_radius))
 
-        # Integrate to get preliminary ψ(θ)
-        psi = np.cumsum(
-            np.concatenate(
-                [
-                    [0.0],
-                    0.5
-                    * (dpsi_dtheta_initial[1:] + dpsi_dtheta_initial[:-1])
-                    * np.diff(theta),
-                ],
-            ),
-        )
-        psi = psi[: theta.shape[0]]
+        # Integrate to obtain ψ(θ)
+        if len(theta) > 1:
+            increments = 0.5 * (dpsi_dtheta[1:] + dpsi_dtheta[:-1]) * np.diff(theta)
+            psi = np.concatenate([[0.0], np.cumsum(increments)])
+        else:
+            psi = np.array([0.0], dtype=float)
 
-        # Enforce periodicity: span should be 2π
+        # Enforce periodicity and ratio scaling
         span = psi[-1] - psi[0]
-        if span <= 0:
+        if span <= 0.0:
             span = 1.0
         scale = (2.0 * np.pi) / span
         psi = (psi - psi[0]) * scale
 
-        # Encode target_ratio in a harmless global phase offset for downstream consumers
         try:
-            psi_offset = float(target_ratio) * 1e-3  # small offset [rad]
+            psi_offset = float(target_ratio) * 1e-3
             psi = psi + psi_offset
         except Exception:
             pass
 
-        # Now enforce the conjugacy ODE via fixed-point iteration on R(ψ)
-        # dψ/dθ = ρ_c(θ) / R(ψ)  =>  R(ψ(θ)) = ρ_c(θ) / (dψ/dθ)
-        # Initialize R_psi from the current mapping
-        dpsi_dtheta = np.gradient(psi, theta)
-        R_theta = np.divide(rho_c, np.maximum(dpsi_dtheta, 1e-9))
-        R_theta = np.maximum(R_theta, min_radius)
-
-        # Build interpolation in ψ-space
-        psi_grid = psi
-        # Ensure strictly increasing for interpolation stability
-        eps = 1e-9
-        for i in range(1, len(psi_grid)):
-            if psi_grid[i] <= psi_grid[i - 1]:
-                psi_grid[i] = psi_grid[i - 1] + eps
-        R_interp = interp1d(
-            psi_grid,
-            R_theta,
-            kind="cubic",
-            fill_value="extrapolate",
-            assume_sorted=True,
-        )
-
-        # Iterate a couple of times to reduce residual in the conjugacy relation
-        for _ in range(2):
-            dpsi_dtheta = np.gradient(psi, theta)
-            R_theta = np.divide(rho_c, np.maximum(dpsi_dtheta, 1e-9))
-            R_theta = np.maximum(R_theta, min_radius)
-            R_interp = interp1d(
-                psi_grid,
-                R_theta,
-                kind="cubic",
-                fill_value="extrapolate",
-                assume_sorted=True,
-            )
-
-        # Sample final R at ψ(θ) honoring conjugacy
-        dpsi_dtheta = np.gradient(psi, theta)
-        R_theta = np.divide(rho_c, np.maximum(dpsi_dtheta, 1e-9))
-        R_theta = np.maximum(R_theta, min_radius)
-        # Rebuild interpolation with consistent ψ grid
+        # Interpolate R(ψ) directly from the bounded reference profile
         psi_grid = psi.copy()
         eps = 1e-9
         for i in range(1, len(psi_grid)):
             if psi_grid[i] <= psi_grid[i - 1]:
                 psi_grid[i] = psi_grid[i - 1] + eps
-        R_interp = interp1d(
-            psi_grid,
-            R_theta,
-            kind="cubic",
-            fill_value="extrapolate",
-            assume_sorted=True,
-        )
+        R_interp = self._periodic_pchip(psi_grid, R_theta)
         R_psi = np.maximum(R_interp(psi), min_radius)
         R_psi, clamped = self._sanitize_R_psi(theta=theta, r_profile=r_profile, R_psi=R_psi)
 
@@ -320,7 +317,7 @@ class LitvinGearGeometry:
         phi_bound = np.radians(max_pressure_angle_deg)
         valid = np.isfinite(phi_local) & (phi_local <= phi_bound)
         # Approximate path length on ring pitch: s ≈ ∫ R(ψ) dψ over valid region
-        s_path = float(np.trapz(ring_radii[valid], psi[valid])) if np.any(valid) else 0.0
+        s_path = float(trapezoid(ring_radii[valid], psi[valid])) if np.any(valid) else 0.0
 
         # Contact ratio: approximate as path length over circular pitch (p = 2πr / z)
         circular_pitch = (2.0 * np.pi * r_ring_avg) / max(z_ring, 1)

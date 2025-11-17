@@ -27,6 +27,20 @@ log = get_logger(__name__)
 # Validate environment on module import
 def _validate_environment():
     """Validate that the environment is properly set up."""
+    import os
+    import sys
+    
+    # Skip validation during pytest collection to avoid segmentation faults
+    # caused by HSL solver validation creating multiple CasADi solvers
+    # Check both environment variable and pytest mode flag set by conftest.py
+    if (
+        os.getenv("CAMPRO_SKIP_VALIDATION") == "1"
+        or getattr(sys, "_pytest_mode", False)
+        or "pytest" in sys.modules
+    ):
+        log.debug("Environment validation skipped (pytest or CAMPRO_SKIP_VALIDATION=1)")
+        return
+    
     try:
         from campro.environment.validator import validate_environment
 

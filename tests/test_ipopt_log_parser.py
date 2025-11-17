@@ -1,4 +1,13 @@
+from __future__ import annotations
+
+import sys
 import textwrap
+from pathlib import Path
+
+# Add project root to Python path for direct execution
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from campro.optimization.ipopt_log_parser import parse_ipopt_log_text
 

@@ -105,5 +105,15 @@ If `p_cyl` values are reasonable (e.g., 100-500 kPa), PR should be ~1-5. But we'
    - Initial pressure conditions in combustion model
 
 
+## IPOPT Regression Harness
+
+- Heavy-weight scripts (`tests/heavy/phase1_ipopt_integration.py` and `tests/heavy/phase2_ipopt_integration.py`) run the complete IPOPT/HSL flow and compare outputs against JSON baselines in `tests/golden`.
+- Set `CAMPRO_RUN_HEAVY_TESTS=1` to enable these tests. Use the `--update` flag to regenerate the golden references after validating a known-good environment.
+- Pytest markers `ipopt_phase1` and `ipopt_phase2` are available for selective execution (e.g., `pytest tests/heavy -m ipopt_phase1`).
+- This keeps the lightweight unit tests fast while providing a reproducible harness for the expensive solvers.
+
+
+
+
 
 

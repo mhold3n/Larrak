@@ -17,6 +17,7 @@ import sys
 import threading
 import tkinter as tk
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from tkinter import filedialog, messagebox, ttk
 
@@ -320,12 +321,16 @@ class CamMotionGUI:
         # Set initial guesses based on default stroke
         self._on_stroke_changed()
 
-        log.info("Cam-Ring System Designer GUI initialized")
-
-        # Animation assembly state (initialized later after optimization)
+        # Animation assembly state placeholders
         self.animation_state = None
         self._anim_rmax = None
-        
+        self._total_frames = 0
+
+        # Populate demo data for an immediate, meaningful visualization
+        self._load_demo_result()
+
+        log.info("Cam-Ring System Designer GUI initialized")
+
         # Implied RPM from cycle_time and duration_angle_deg
         self._implied_rpm = None
 
@@ -1340,7 +1345,7 @@ class CamMotionGUI:
             transform=ax.transAxes,
         )
         ax.set_title("Linear Follower Motion Law")
-        self.motion_law_canvas.draw()
+        self.motion_law_canvas.draw_idle()
 
         # Cam/Ring Motion tab
         self.motion_fig.clear()
@@ -1355,7 +1360,7 @@ class CamMotionGUI:
             transform=ax.transAxes,
         )
         ax.set_title("Cam and Ring Motion Relationships")
-        self.motion_canvas.draw()
+        self.motion_canvas.draw_idle()
 
         # 2D Profiles tab
         self.profiles_fig.clear()
@@ -1370,7 +1375,7 @@ class CamMotionGUI:
             transform=ax.transAxes,
         )
         ax.set_title("Cam and Ring 2D Profiles")
-        self.profiles_canvas.draw()
+        self.profiles_canvas.draw_idle()
 
         # Animation tab - Two subplots
         self.animation_fig.clear()
@@ -1404,7 +1409,7 @@ class CamMotionGUI:
         self.animation_fig.suptitle(
             "Collocation-Based Animation", fontsize=14, fontweight="bold",
         )
-        self.animation_canvas.draw()
+        self.animation_canvas.draw_idle()
 
         # Crank Center Optimization tab
         self.tertiary_fig.clear()
@@ -1419,7 +1424,7 @@ class CamMotionGUI:
             transform=ax.transAxes,
         )
         ax.set_title("Torque and Side-Loading Analysis")
-        self.tertiary_canvas.draw()
+        self.tertiary_canvas.draw_idle()
 
     def _validate_inputs(self):
         """Validate input parameters."""
@@ -2241,41 +2246,52 @@ class CamMotionGUI:
             ax.set_title("Linear Follower Motion Law")
 
         self.motion_law_fig.tight_layout()
-        self.motion_law_canvas.draw()
+        self.motion_law_canvas.draw_idle()
 
     def _update_motion_plot(self, result_data):
         """Update the cam/ring motion plot (Tab 2)."""
         self.motion_fig.clear()
 
         ring_profile = getattr(result_data, "secondary_ring_profile", None)
-        ring_theta = None
+        ring_psi = None
         ring_radius = None
         theta_planet = None
+        ring_theta = None  # Keep for planet spin synchronization
         if isinstance(ring_profile, dict):
-            ring_theta = ring_profile.get("theta")
-            ring_radius = ring_profile.get("R_psi_ring")
+            # Use psi (ring angle) for ring profile, not theta (cam angle)
+            ring_psi = ring_profile.get("psi")
+            # Prefer R_psi (ring radius as function of psi) over R_ring (synchronized to theta)
+            ring_radius = ring_profile.get("R_psi")
+            if ring_radius is None:
+                ring_radius = ring_profile.get("R_psi_ring")
             if ring_radius is None:
                 ring_radius = ring_profile.get("R_ring")
             theta_planet = ring_profile.get("theta_planet")
+            ring_theta = ring_profile.get("theta")  # Keep for planet spin plot synchronization
 
-        if ring_theta is not None and ring_radius is not None:
-            theta_arr = np.asarray(ring_theta)
-            ring_arr = np.asarray(ring_radius)
+        if ring_psi is not None and ring_radius is not None:
+            psi_arr, ring_arr = self._prepare_ring_profile_data(ring_psi, ring_radius)
+            if psi_arr is None:
+                psi_arr = np.asarray(ring_psi)
+                ring_arr = np.asarray(ring_radius)
             ax1 = self.motion_fig.add_subplot(211)
             ax2 = self.motion_fig.add_subplot(212)
 
             ax1.plot(
-                theta_arr,
+                psi_arr,
                 ring_arr,
                 "purple",
                 linewidth=2,
-                label="R_psi_ring",
+                label="R(ψ)",
             )
             ax1.set_ylabel("Ring Radius (mm)")
-            ax1.set_xlabel("Ring Angle θ (deg)")
+            ax1.set_xlabel("Ring Angle ψ (rad)")
             ax1.grid(True, alpha=0.3)
             ax1.legend()
             ax1.set_title("Ring Radius vs. Ring Angle")
+            ax1.set_xlim(0, 2 * np.pi)
+            ax1.set_xticks(np.linspace(0, 2 * np.pi, 5))
+            ax1.set_xticklabels(["0°", "90°", "180°", "270°", "360°"])
 
             # Plot cam motion (if available)
             if result_data.secondary_cam_curves is not None:
@@ -2295,8 +2311,9 @@ class CamMotionGUI:
             ax2.set_xlabel("Cam Angle θ (deg)")
             ax2.grid(True, alpha=0.3)
             planet_axis = None
-            if theta_planet is not None:
+            if theta_planet is not None and ring_theta is not None:
                 planet_spin = np.asarray(theta_planet)
+                theta_arr = np.asarray(ring_theta)
                 if planet_spin.size == theta_arr.size:
                     planet_axis = ax2.twinx()
                     planet_axis.plot(
@@ -2374,28 +2391,32 @@ class CamMotionGUI:
             ax.set_title("Cam and Ring Motion Relationships")
 
         self.motion_fig.tight_layout()
-        self.motion_canvas.draw()
+        self.motion_canvas.draw_idle()
 
     def _update_profiles_plot(self, result_data):
         """Update the 2D profiles plot (Tab 3)."""
         self.profiles_fig.clear()
 
         ring_profile = getattr(result_data, "secondary_ring_profile", None)
-        ring_theta = None
+        ring_psi = None
         ring_radius = None
         if isinstance(ring_profile, dict):
-            ring_theta = ring_profile.get("theta")
-            ring_radius = ring_profile.get("R_psi_ring")
+            # Use psi (ring angle) for ring profile, not theta (cam angle)
+            ring_psi = ring_profile.get("psi")
+            # Prefer R_psi (ring radius as function of psi) over synchronized to theta
+            ring_radius = ring_profile.get("R_psi")
+            if ring_radius is None:
+                ring_radius = ring_profile.get("R_psi_ring")
             if ring_radius is None:
                 ring_radius = ring_profile.get("R_ring")
 
         if (
             result_data.secondary_cam_curves is not None
-            and ring_theta is not None
+            and ring_psi is not None
             and ring_radius is not None
         ):
             print(
-                f"DEBUG: Profiles plot: plotting {len(ring_theta)} synchronized ring points",
+                f"DEBUG: Profiles plot: plotting {len(ring_psi)} ring profile points",
             )
             ax1 = self.profiles_fig.add_subplot(121, projection="polar")
             ax2 = self.profiles_fig.add_subplot(122, projection="polar")
@@ -2425,17 +2446,24 @@ class CamMotionGUI:
                 ax1.text(0.5, 0.5, "Cam profile data not available", ha="center", va="center", transform=ax1.transAxes)
                 ax1.set_title("Cam Profile (Polar)", pad=20)
 
-            ring_theta_rad = np.radians(ring_theta)
-            ax2.plot(
-                ring_theta_rad,
+            # Use psi (ring angle) for ring profile plot, not theta (cam angle)
+            ring_psi_arr, ring_radius_arr = self._prepare_ring_profile_data(
+                ring_psi,
                 ring_radius,
+            )
+            if ring_psi_arr is None:
+                ring_psi_arr = np.asarray(ring_psi)
+                ring_radius_arr = np.asarray(ring_radius)
+            ax2.plot(
+                ring_psi_arr,
+                ring_radius_arr,
                 "purple",
                 linewidth=2,
-                label="Ring Profile (R_psi_ring)",
+                label="Ring Profile R(ψ)",
             )
-            ax2.set_title("Ring Profile (Polar, ?-aligned)", pad=20)
+            ax2.set_title("Ring Profile (Polar, ψ-aligned)", pad=20)
             ax2.grid(True)
-            ax2.set_ylim(0, max(ring_radius) * 1.1)
+            ax2.set_ylim(0, float(np.max(ring_radius_arr)) * 1.1)
 
             self.profiles_fig.suptitle(
                 "Cam and Ring 2D Profiles", fontsize=14, fontweight="bold",
@@ -2456,7 +2484,7 @@ class CamMotionGUI:
             ax.set_title("Cam and Ring 2D Profiles")
 
         self.profiles_fig.tight_layout()
-        self.profiles_canvas.draw()
+        self.profiles_canvas.draw_idle()
 
 
     def _update_animation_plot(self, result_data):
@@ -2466,9 +2494,10 @@ class CamMotionGUI:
         ring_profile = getattr(result_data, "secondary_ring_profile", None)
         has_ring_profile = (
             isinstance(ring_profile, dict)
-            and ring_profile.get("theta") is not None
+            and ring_profile.get("psi") is not None
             and (
-                ring_profile.get("R_psi_ring") is not None
+                ring_profile.get("R_psi") is not None
+                or ring_profile.get("R_psi_ring") is not None
                 or ring_profile.get("R_ring") is not None
             )
         )
@@ -2479,39 +2508,41 @@ class CamMotionGUI:
 
             # Deterministic Phase-2 relationships: no solving at runtime
             contact_type = getattr(self, "_contact_type_cache", "external")
-            try:
-                bundle = self.unified_framework.get_phase2_animation_inputs()
-                rel_inputs = Phase2AnimationInputs(
-                    theta_deg=np.asarray(bundle["theta_deg"]),
-                    x_theta_mm=np.asarray(bundle["x_theta_mm"]),
-                    base_radius_mm=float(bundle["base_radius_mm"]),
-                    psi_rad=np.asarray(bundle["psi_rad"])
-                    if bundle.get("psi_rad") is not None
-                    else None,
-                    R_psi_mm=np.asarray(bundle["R_psi_mm"])
-                    if bundle.get("R_psi_mm") is not None
-                    else None,
-                    gear_geometry=bundle.get("gear_geometry", {}) or {},
-                    theta_ring_rad=np.asarray(bundle["theta_ring_rad"])
-                    if bundle.get("theta_ring_rad") is not None
-                    else None,
-                    R_psi_ring_mm=np.asarray(bundle["R_psi_ring_mm"])
-                    if bundle.get("R_psi_ring_mm") is not None
-                    else None,
-                    R_psi_planet_mm=np.asarray(bundle["R_psi_planet_mm"])
-                    if bundle.get("R_psi_planet_mm") is not None
-                    else None,
-                    theta_planet_rad=np.asarray(bundle["theta_planet_rad"])
-                    if bundle.get("theta_planet_rad") is not None
-                    else None,
-                    static_radii=bundle.get("static_radii"),
-                    contact_type=contact_type,
-                    constrain_center_to_x_axis=True,
-                    align_tdc_at_theta0=True,
-                )
-                self.animation_state = build_phase2_relationships(rel_inputs)
-            except Exception:
-                # Fallback to legacy assembly if framework bundle is unavailable
+            if not getattr(result_data, "is_demo_result", False):
+                try:
+                    bundle = self.unified_framework.get_phase2_animation_inputs()
+                    rel_inputs = Phase2AnimationInputs(
+                        theta_deg=np.asarray(bundle["theta_deg"]),
+                        x_theta_mm=np.asarray(bundle["x_theta_mm"]),
+                        base_radius_mm=float(bundle["base_radius_mm"]),
+                        psi_rad=np.asarray(bundle["psi_rad"])
+                        if bundle.get("psi_rad") is not None
+                        else None,
+                        R_psi_mm=np.asarray(bundle["R_psi_mm"])
+                        if bundle.get("R_psi_mm") is not None
+                        else None,
+                        gear_geometry=bundle.get("gear_geometry", {}) or {},
+                        theta_ring_rad=np.asarray(bundle["theta_ring_rad"])
+                        if bundle.get("theta_ring_rad") is not None
+                        else None,
+                        R_psi_ring_mm=np.asarray(bundle["R_psi_ring_mm"])
+                        if bundle.get("R_psi_ring_mm") is not None
+                        else None,
+                        R_psi_planet_mm=np.asarray(bundle["R_psi_planet_mm"])
+                        if bundle.get("R_psi_planet_mm") is not None
+                        else None,
+                        theta_planet_rad=np.asarray(bundle["theta_planet_rad"])
+                        if bundle.get("theta_planet_rad") is not None
+                        else None,
+                        static_radii=bundle.get("static_radii"),
+                        contact_type=contact_type,
+                        constrain_center_to_x_axis=True,
+                        align_tdc_at_theta0=True,
+                    )
+                    self.animation_state = build_phase2_relationships(rel_inputs)
+                except Exception:
+                    self.animation_state = None
+            if self.animation_state is None:
                 gear = getattr(result_data, "secondary_gear_geometry", None) or {}
                 base_circle_cam = float(
                     gear.get(
@@ -2529,8 +2560,9 @@ class CamMotionGUI:
                 if isinstance(result_data.secondary_cam_curves, dict):
                     theta_cam_deg = result_data.secondary_cam_curves.get("theta")
                 psi_series = result_data.secondary_psi
-                if psi_series is None and isinstance(ring_profile, dict) and ring_profile.get("theta") is not None:
-                    psi_series = np.radians(ring_profile.get("theta"))
+                if psi_series is None and isinstance(ring_profile, dict):
+                    # Use psi (ring angle) directly, not theta (cam angle)
+                    psi_series = ring_profile.get("psi")
                 if psi_series is None:
                     psi_series = np.linspace(0.0, 2.0 * np.pi, 360)
                 theta_cam_rad = (
@@ -2540,9 +2572,11 @@ class CamMotionGUI:
                 )
                 ring_radius_series = getattr(result_data, "secondary_R_psi_ring", None)
                 if ring_radius_series is None and isinstance(ring_profile, dict):
-                    ring_radius_series = ring_profile.get("R_psi_ring")
-                    if ring_radius_series is None:
-                        ring_radius_series = ring_profile.get("R_ring")
+                    ring_radius_series = (
+                        ring_profile.get("R_psi")
+                        or ring_profile.get("R_psi_ring")
+                        or ring_profile.get("R_ring")
+                    )
                 if ring_radius_series is None:
                     ring_radius_series = result_data.secondary_R_psi
                 inputs = AssemblyInputs(
@@ -2598,7 +2632,7 @@ class CamMotionGUI:
             )
 
         self.animation_fig.tight_layout()
-        self.animation_canvas.draw()
+        self.animation_canvas.draw_idle()
 
     def _draw_animation_frame(self, frame_index):
         """Draw a single animation frame using collocation point data."""
@@ -2643,7 +2677,7 @@ class CamMotionGUI:
         self._draw_tooth_contact_detail(ax2, frame_index, current_theta, total_frames)
 
         # Update the canvas
-        self.animation_canvas.draw()
+        self.animation_canvas.draw_idle()
 
     def _draw_full_assembly_view(self, ax, frame_index, current_theta, total_frames):
         """Draw the full assembly view showing cam-ring contact at current collocation point."""
@@ -2993,7 +3027,152 @@ Side-Loading:
             ax.set_title("Crank Center Optimization")
 
         self.tertiary_fig.tight_layout()
-        self.tertiary_canvas.draw()
+        self.tertiary_canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    # Demo and helper utilities
+    # ------------------------------------------------------------------
+    def _load_demo_result(self) -> None:
+        """Populate the GUI with a rich demo dataset on launch."""
+        if getattr(self, "_demo_loaded", False):
+            return
+        try:
+            demo_result = self._create_demo_result()
+            demo_result.is_demo_result = True
+            self._demo_loaded = True
+            self.demo_result = demo_result
+            self.status_var.set(
+                "Loaded demo dataset. Run optimization to replace with real results.",
+            )
+            self._update_all_plots(demo_result)
+        except Exception as exc:  # pragma: no cover - demo is best-effort
+            log.warning("Unable to load demo dataset: %s", exc)
+
+    def _create_demo_result(self) -> SimpleNamespace:
+        """Generate a deterministic, visually rich dataset for the GUI."""
+        theta_deg = np.linspace(0.0, 360.0, 361)
+        theta_rad = np.deg2rad(theta_deg)
+
+        # Cycloidal-style follower motion
+        stroke = 20.0
+        position = 10.0 + 0.5 * stroke * (1.0 - np.cos(theta_rad))
+        velocity = np.gradient(position, theta_deg)
+        acceleration = np.gradient(velocity, theta_deg)
+        jerk = np.gradient(acceleration, theta_deg)
+
+        base_radius = 25.0
+        cam_profile = base_radius + 0.4 * position
+
+        # Ring profile: psi advances faster than theta to make visuals interesting
+        psi_raw = np.mod(1.35 * theta_rad, 2.0 * np.pi)
+        psi_sort_idx = np.argsort(psi_raw)
+        psi = psi_raw[psi_sort_idx]
+        ring_radius = 38.0 + 4.0 * np.sin(2.0 * psi) + 1.0 * np.sin(psi)
+
+        # Synchronized R_ring on theta grid (for legacy consumers)
+        psi_ext = np.concatenate([psi, psi + 2 * np.pi])
+        ring_ext = np.concatenate([ring_radius, ring_radius])
+        R_ring_theta = np.interp(theta_rad, psi_ext, ring_ext)
+
+        theta_planet = np.mod(psi * 1.1, 2.0 * np.pi)
+
+        secondary_cam_curves = {
+            "theta": theta_deg,
+            "profile_radius": cam_profile,
+            "pitch_radius": cam_profile - 1.0,
+        }
+
+        ring_profile = {
+            "theta": theta_deg,
+            "theta_rad": theta_rad,
+            "psi": psi,
+            "R_planet": ring_radius - 1.0,
+            "R_ring": R_ring_theta,
+            "R_psi": ring_radius,
+            "R_psi_planet": ring_radius - 0.5,
+            "R_psi_ring": R_ring_theta,
+            "theta_planet": theta_planet,
+            "static_radii": {
+                "r_outer_ring_surface": float(np.max(ring_radius)),
+                "r_inner_ring_surface": float(np.min(ring_radius)),
+            },
+        }
+
+        demo_namespace = SimpleNamespace(
+            primary_theta=theta_deg,
+            primary_position=position,
+            primary_velocity=velocity,
+            primary_acceleration=acceleration,
+            primary_jerk=jerk,
+            secondary_cam_curves=secondary_cam_curves,
+            secondary_psi=psi,
+            secondary_R_psi_planet=ring_radius - 0.5,
+            secondary_R_psi_ring=R_ring_theta,
+            secondary_R_psi=ring_radius,
+            secondary_theta_planet=theta_planet,
+            secondary_base_radius=base_radius,
+            secondary_ring_profile=ring_profile,
+            secondary_gear_geometry={
+                "base_circle_cam": base_radius - 2.0,
+                "base_circle_ring": base_radius * 1.5,
+                "flanks": {
+                    "tooth": np.column_stack(
+                        [
+                            (base_radius + 2.0 + np.zeros_like(theta_rad)),
+                            theta_rad,
+                        ],
+                    ),
+                },
+            },
+            total_solve_time=0.0,
+            tertiary_crank_center_x=5.0,
+            tertiary_crank_center_y=-3.0,
+            tertiary_torque_output=85.0,
+            tertiary_max_torque=120.0,
+            tertiary_torque_ripple=12.0,
+            tertiary_side_load_penalty=15.0,
+            tertiary_max_side_load=32.0,
+            tertiary_crank_radius=45.0,
+            tertiary_rod_length=110.0,
+            tertiary_power_output=1800.0,
+            optimization_method=OptimizationMethod.LEGENDRE_COLLOCATION,
+        )
+        return demo_namespace
+
+    def _prepare_ring_profile_data(
+        self,
+        psi_values: Any,
+        radius_values: Any,
+        *,
+        min_samples: int = 360,
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
+        """Normalize, sort, and densify ring profile data for smooth plotting."""
+        if psi_values is None or radius_values is None:
+            return None, None
+        psi_arr = np.mod(np.asarray(psi_values, dtype=float), 2.0 * np.pi)
+        radius_arr = np.asarray(radius_values, dtype=float)
+        valid = np.isfinite(psi_arr) & np.isfinite(radius_arr)
+        psi_arr = psi_arr[valid]
+        radius_arr = radius_arr[valid]
+        if psi_arr.size < 2:
+            return psi_arr, radius_arr
+
+        sort_idx = np.argsort(psi_arr)
+        psi_sorted = psi_arr[sort_idx]
+        radius_sorted = radius_arr[sort_idx]
+
+        span = psi_sorted[-1] - psi_sorted[0]
+        if span < 2.0 * np.pi - 1e-3:
+            psi_ext = np.concatenate([psi_sorted, psi_sorted + 2.0 * np.pi])
+            radius_ext = np.concatenate([radius_sorted, radius_sorted])
+            sample_count = max(min_samples, psi_sorted.size)
+            psi_uniform = np.linspace(0.0, 2.0 * np.pi, sample_count, endpoint=False)
+            radius_uniform = np.interp(psi_uniform, psi_ext, radius_ext)
+        else:
+            psi_uniform = psi_sorted
+            radius_uniform = radius_sorted
+
+        return psi_uniform, radius_uniform
 
     def _play_animation(self):
         """Start animation playback."""
@@ -3188,6 +3367,13 @@ Side-Loading:
             print("DETAILED OPTIMIZATION ANALYSIS")
             print("=" * 60)
 
+            demo_dataset = bool(getattr(result_data, "is_demo_result", False))
+
+            def _missing(message: str) -> str:
+                if demo_dataset:
+                    return f"{message} (demo dataset placeholder)"
+                return message
+
             # Phase 1 Analysis
             p1_analysis = getattr(result_data, "primary_ipopt_analysis", None)
             print("\nPhase 1 (Thermal Efficiency):")
@@ -3198,13 +3384,13 @@ Side-Loading:
                 if "iterations" in p1_analysis.stats:
                     print(f"  Iterations: {p1_analysis.stats['iterations']}")
                 if "solve_time" in p1_analysis.stats:
-                    # Handle None values before formatting
-                    solve_time = p1_analysis.stats['solve_time']
-                    if solve_time is None:
-                        solve_time = 0.0
+                    solve_time = p1_analysis.stats.get("solve_time") or 0.0
                     print(f"  Solve Time: {solve_time:.3f}s")
             else:
-                print("  Analysis: Not available (thermal efficiency adapter)")
+                print(
+                    "  Analysis: "
+                    + _missing("Deferred until the thermal-efficiency adapter runs.")
+                )
 
             # Phase 2 Analysis
             p2_analysis = getattr(result_data, "secondary_ipopt_analysis", None)
@@ -3216,13 +3402,15 @@ Side-Loading:
                 if "iterations" in p2_analysis.stats:
                     print(f"  Iterations: {p2_analysis.stats['iterations']}")
                 if "solve_time" in p2_analysis.stats:
-                    # Handle None values before formatting
-                    solve_time = p2_analysis.stats['solve_time']
-                    if solve_time is None:
-                        solve_time = 0.0
+                    solve_time = p2_analysis.stats.get("solve_time") or 0.0
                     print(f"  Solve Time: {solve_time:.3f}s")
             else:
-                print("  Analysis: Not available")
+                print(
+                    "  Analysis: "
+                    + _missing(
+                        "Run the cam-ring optimizer to produce Litvin/IPOPT diagnostics."
+                    )
+                )
 
             # Phase 3 Analysis
             p3_analysis = getattr(result_data, "tertiary_ipopt_analysis", None)
@@ -3234,18 +3422,31 @@ Side-Loading:
                 if "iterations" in p3_analysis.stats:
                     print(f"  Iterations: {p3_analysis.stats['iterations']}")
                 if "solve_time" in p3_analysis.stats:
-                    # Handle None values before formatting
-                    solve_time = p3_analysis.stats['solve_time']
-                    if solve_time is None:
-                        solve_time = 0.0
+                    solve_time = p3_analysis.stats.get("solve_time") or 0.0
                     print(f"  Solve Time: {solve_time:.3f}s")
             else:
-                print("  Analysis: Not available")
+                print(
+                    "  Analysis: "
+                    + _missing("Crank-center optimization has not run yet.")
+                )
 
             # Overall Summary
             print("\nOverall Summary:")
-            print(f"  Total Solve Time: {result_data.total_solve_time:.3f}s")
-            print(f"  Optimization Method: {result_data.optimization_method}")
+            total_time = getattr(result_data, "total_solve_time", None)
+            if total_time is None:
+                total_time = getattr(result_data, "solve_time", 0.0)
+            try:
+                total_time_val = float(total_time)
+            except (TypeError, ValueError):
+                total_time_val = 0.0
+            print(f"  Total Solve Time: {total_time_val:.3f}s")
+
+            method_value = getattr(result_data, "optimization_method", None)
+            if isinstance(method_value, OptimizationMethod):
+                method_label = method_value.value
+            else:
+                method_label = method_value or "unknown"
+            print(f"  Optimization Method: {method_label}")
 
             # Count phases with analysis
             analysis_count = sum(

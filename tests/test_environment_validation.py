@@ -1,13 +1,14 @@
-"""
-Tests for environment validation functionality.
-
-This module tests the environment validation system including dependency
-checking, ipopt availability, and validation reporting.
-"""
+from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from unittest.mock import Mock, patch
+
+# Add project root to Python path for direct execution
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from campro.environment.validator import (
     ValidationResult,
@@ -18,6 +19,9 @@ from campro.environment.validator import (
     validate_python_version,
     validate_required_packages,
 )
+
+# NOTE: This file uses class-based tests. Consider refactoring to function-based
+# tests to match the main test file style (see test_gear_profile_generation.py)
 
 
 class TestValidationResult:

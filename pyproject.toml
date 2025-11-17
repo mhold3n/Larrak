@@ -2,6 +2,10 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["campro*"]
+exclude = ["tests*", "scripts*", "docs*", "examples*"]
+
 [project]
 name = "larrak"
 version = "0.1.0"
@@ -293,6 +297,9 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 markers = [
     "performance: marks tests as performance benchmarks (deselect with '-m \"not performance\"')",
+    "deprecated: marks tests as deprecated (deselect with '-m \"not deprecated\"')",
+    "ipopt_phase1: runs IPOPT/HSL heavy Phase 1 integration tests (requires CAMPRO_RUN_HEAVY_TESTS=1)",
+    "ipopt_phase2: runs IPOPT/HSL heavy Phase 2 integration tests (requires CAMPRO_RUN_HEAVY_TESTS=1)",
 ]
 
 

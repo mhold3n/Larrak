@@ -1,6 +1,9 @@
 """
 Tests for CasADi Phase 3: Litvin Gear Metrics.
 
+NOTE: This file is OUT OF SCOPE for current refactoring.
+Phase 3 functionality is not in scope of the project right now.
+
 This module tests the CasADi Litvin implementation against Python baselines
 to ensure numeric parity and proper automatic differentiation.
 """

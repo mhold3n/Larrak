@@ -1,0 +1,115 @@
+{
+  "geometry": {
+    "bore": 0.1,
+    "stroke": 0.1,
+    "compression_ratio": 10.0,
+    "mass": 1.0,
+    "rod_mass": 0.5,
+    "rod_length": 0.15,
+    "rod_cg_offset": 0.075,
+    "clearance_volume": 0.0001,
+    "clearance_min": 0.001,
+    "friction_coefficient": 0.1,
+    "damping_coefficient": 100.0,
+    "ring_count": 3,
+    "ring_tension": 100.0,
+    "ring_width": 0.002,
+    "ring_friction_coefficient": 0.1,
+    "T_wall": 400.0,
+    "p_intake": 100000.0,
+    "T_intake": 300.0,
+    "p_exhaust": 100000.0
+  },
+  "thermodynamics": {
+    "gamma": 1.4,
+    "R": 287.0,
+    "cp": 1005.0,
+    "cv": 717.5
+  },
+  "bounds": {
+    "xL_min": -0.1,
+    "xL_max": 0.1,
+    "xR_min": 0.0,
+    "xR_max": 0.2,
+    "vL_min": -50.0,
+    "vL_max": 50.0,
+    "vR_min": -50.0,
+    "vR_max": 50.0,
+    "rho_min": 0.1,
+    "rho_max": 10.0,
+    "T_min": 200.0,
+    "T_max": 2000.0,
+    "p_min": 0.01,
+    "p_max": 10.0,
+    "Ain_max": 0.01,
+    "Aex_max": 0.01,
+    "Q_comb_max": 10.0,
+    "dA_dt_max": 0.02,
+    "a_max": 1000.0,
+    "x_gap_min": 0.0008
+  },
+  "constraints": {
+    "short_circuit_max": 0.1,
+    "scavenging_min": 0.8,
+    "trapping_min": 0.9
+  },
+  "num": {
+    "K": 20,
+    "C": 1
+  },
+  "solver": {
+    "ipopt": {
+      "max_iter": 5000,
+      "tol": 1e-06,
+      "hessian_approximation": "limited-memory"
+    }
+  },
+  "obj": {
+    "method": "indicated_work",
+    "w": {
+      "smooth": 0.01,
+      "short_circuit": 1.0,
+      "eta_th": 0.1
+    }
+  },
+  "model_type": "0d",
+  "combustion": {
+    "use_integrated_model": false,
+    "fuel_type": "diesel",
+    "afr": 18.0,
+    "cycle_time_s": 0.02,
+    "initial_temperature_K": 900.0,
+    "initial_pressure_Pa": 100000.0,
+    "fuel_mass_kg": 0.0005,
+    "target_mfb": 0.99,
+    "m_wiebe": 2.0,
+    "k_turb": 0.3,
+    "c_burn": 3.0,
+    "turbulence_exponent": 0.7,
+    "min_flame_speed": 0.2,
+    "ignition_initial_s": 0.005,
+    "ignition_bounds_s": [
+      0.001,
+      0.015
+    ],
+    "w_ca50": 0.0,
+    "ca50_target_deg": 0.0,
+    "w_ca_duration": 0.0,
+    "ca_duration_target_deg": 0.0,
+    "ca_softening": 200.0
+  },
+  "flow": {
+    "use_1d_gas": false,
+    "mesh_cells": 50
+  },
+  "validation": {
+    "check_convergence": true,
+    "check_physics": true,
+    "check_constraints": true
+  },
+  "output": {
+    "save_solution": true,
+    "save_metrics": true,
+    "generate_report": true
+  }
+}

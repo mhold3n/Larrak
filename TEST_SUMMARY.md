@@ -12,6 +12,21 @@ All planned features have been implemented:
 6. ✅ **FreePistonPhase1Adapter updated** - Fuel/load sweeps with workload-aligned denominators
 7. ✅ **PR template implementation** - Geometry-informed, efficiency-optimized template
 
+## Phase-Specific Collocation Validation
+
+Golden tests for the GUI workflow now run each collocation solver directly:
+
+- `tests/test_phase1_collocation_targets.py` exercises minimum-jerk/time, efficiency-focused `pcurve_te`, and acceleration-limited cases.
+- `tests/test_phase2_profile_generator.py` feeds the cam-ring mapper with cycloidal motion and Litvin-style base radius changes to emulate crank center offsets.
+
+Run them with:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/test_phase1_collocation_targets.py tests/test_phase2_profile_generator.py
+```
+
+These tests keep the phase boundaries verifiable without capturing GUI output data.
+
 ## Test Instructions
 
 ### 1. Run Validation Script
@@ -129,6 +144,5 @@ If optimization doesn't converge:
 1. Try disabling PR template (`pr_template_use_template: False`) to use seed-derived
 2. Check that combustion inputs are valid
 3. Verify workload target is reasonable for engine geometry
-
 
 

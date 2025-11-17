@@ -1,6 +1,9 @@
 """
 Integration tests for Phase 3 unified framework integration.
 
+NOTE: This file is OUT OF SCOPE for current refactoring.
+Phase 3 functionality is not in scope of the project right now.
+
 Tests the integration of CrankCenterOptimizer into the unified optimization framework,
 ensuring proper data flow between all three optimization stages and correct handling
 of crank center optimization results.

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -31,6 +34,63 @@ from campro.utils.structured_reporter import StructuredReporter
 log = get_logger(__name__)
 
 _FALSEY = {"0", "false", "no", "off"}
+
+
+def _get_available_hsl_solvers() -> set[str]:
+    """Return the set of available HSL solvers (best-effort detection)."""
+    try:
+        from campro.environment.hsl_detector import detect_available_solvers, clear_cache
+    except Exception:
+        return set()
+
+    try:
+        # Clear cache to ensure we get fresh detection results
+        # This is important because the library path (from ipopt.opt) might have changed
+        clear_cache()
+        # Use runtime detection to verify symbols actually exist in the HSL library
+        # This prevents selecting solvers (like MA57) that aren't in the library
+        solvers = detect_available_solvers(test_runtime=True) or []
+    except Exception as exc:
+        log.debug("HSL solver detection failed: %s", exc)
+        return set()
+
+    return {solver.lower() for solver in solvers}
+
+
+def _configure_ma27_memory(
+    options: IPOPTOptions,
+    n_vars: int,
+    n_constraints: int,
+) -> None:
+    """
+    Configure MA27 memory using supported IPOPT options.
+
+    IPOPT exposes memory controls via *_init_factor and meminc_factor knobs
+    rather than absolute liw/la values. We estimate a scale factor based on
+    problem size and apply it consistently.
+    """
+    baseline_vars = 1906
+    baseline_constraints = 3154
+
+    var_scale = n_vars / baseline_vars if baseline_vars else 1.0
+    cons_scale = n_constraints / baseline_constraints if baseline_constraints else 1.0
+    combined_scale = max(1.0, max(var_scale, cons_scale ** 0.5))
+    safety = 1.5  # ensure extra headroom
+    init_factor = max(2.0, combined_scale * safety)
+
+    options.linear_solver_options["ma27_liw_init_factor"] = init_factor
+    options.linear_solver_options["ma27_la_init_factor"] = init_factor
+    options.linear_solver_options["ma27_meminc_factor"] = max(init_factor, 2.0)
+
+    log.info(
+        "Configured MA27 memory factors (n_vars=%d, n_constraints=%d): "
+        "liw_init_factor=%.2f, la_init_factor=%.2f, meminc_factor=%.2f",
+        n_vars,
+        n_constraints,
+        init_factor,
+        init_factor,
+        max(init_factor, 2.0),
+    )
 
 
 def _to_numpy_array(data: Any) -> np.ndarray:
@@ -211,7 +271,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         reporter.info("Creating IPOPT solver with options...")
         solver_create_start = time.time()
         ipopt_options = _create_ipopt_options(solver_opts, P)
-        solver = IPOPTSolver(ipopt_options)
+        solver_wrapper = IPOPTSolver(ipopt_options)
         solver_create_elapsed = time.time() - solver_create_start
         reporter.info(
             f"IPOPT solver created in {solver_create_elapsed:.3f}s: "
@@ -228,11 +288,14 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         if x0 is None or lbx is None or ubx is None:
             raise ValueError("Failed to set up optimization bounds and initial guess")
         
-        # Compute variable scaling factors (using group-based scaling with initial guess)
-        reporter.info("Computing variable scaling factors (group-based)...")
         # Get variable groups from metadata if available
         variable_groups = meta.get("variable_groups", {}) if meta else {}
-        scale = _compute_variable_scaling(lbx, ubx, x0=x0, variable_groups=variable_groups)
+        
+        # Iteratively refine scaling to achieve target condition number
+        reporter.info("Computing and refining scaling factors (iterative)...")
+        scale, scale_g, scaling_quality = _refine_scaling_iteratively(
+            nlp, x0, lbx, ubx, lbg, ubg, variable_groups, meta=meta, reporter=reporter
+        )
         
         # Log scaling statistics
         scale_min = scale.min()
@@ -263,24 +326,22 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
                                 f"Consider adjusting unit references or bounds."
                             )
         
-        # Compute constraint scaling factors (using evaluation-based scaling)
-        reporter.info("Computing constraint scaling factors (evaluation-based with Jacobian)...")
-        try:
-            scale_g = _compute_constraint_scaling_from_evaluation(nlp, x0, lbg, ubg, scale=scale)
-            scaling_method = "evaluation-based with Jacobian"
-        except Exception as e:
-            reporter.warning(f"Constraint evaluation-based scaling failed: {e}, falling back to bounds-based")
-            scale_g = _compute_constraint_scaling(lbg, ubg)
-            scaling_method = "bounds-based"
-        
         if len(scale_g) > 0:
             scale_g_min = scale_g.min()
             scale_g_max = scale_g.max()
             scale_g_mean = scale_g.mean()
             reporter.info(
-                f"Constraint scaling factors ({scaling_method}): "
+                f"Constraint scaling factors: "
                 f"min={scale_g_min:.3e}, max={scale_g_max:.3e}, mean={scale_g_mean:.3e}"
             )
+        
+        # Log final scaling quality
+        condition_number = scaling_quality.get("condition_number", np.inf)
+        quality_score = scaling_quality.get("quality_score", 0.0)
+        reporter.info(
+            f"Final scaling quality: condition_number={condition_number:.3e}, "
+            f"quality_score={quality_score:.3f}"
+        )
         
         # Compute objective scaling factor
         scale_f = 1.0  # Initialize default (no scaling)
@@ -339,9 +400,6 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             reporter.info(
                 f"Bounded variables: {bounded_vars}/{len(lbx_scaled) if lbx_scaled is not None else 0}"
             )
-
-        # Verify scaling quality (diagnostics)
-        _verify_scaling_quality(nlp, x0, scale, scale_g, lbg, ubg, reporter=reporter)
         
         # Solve optimization problem with scaled NLP
         reporter.info("Starting IPOPT optimization (with comprehensive scaling)...")
@@ -350,10 +408,36 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             f"n_constraints={len(lbg_scaled) if lbg_scaled is not None else 0}"
         )
         solve_start = time.time()
-        result = solver.solve(nlp_scaled, x0_scaled, lbx_scaled, ubx_scaled, lbg_scaled, ubg_scaled, p)
+        
+        # Try to solve with selected solver, fall back to MA27 if MA57 symbols not found
+        selected_solver = ipopt_options.linear_solver.lower()
+        result = solver_wrapper.solve(nlp_scaled, x0_scaled, lbx_scaled, ubx_scaled, lbg_scaled, ubg_scaled, p)
+        
+        # Check if solve failed immediately (0 iterations) with MA57 - likely symbol loading failure
+        # If MA57 was selected and solve fails immediately without any iterations, fall back to MA27
+        if (selected_solver == "ma57" and not result.success and result.iterations == 0):
+            reporter.warning(
+                f"MA57 solver failed immediately (status={result.status}, message={result.message}). "
+                "Likely symbols not found in HSL library. Falling back to MA27..."
+            )
+            # Recreate solver with MA27 - modify options and recreate solver
+            ipopt_options.linear_solver = "ma27"
+            n_vars_actual = len(x0_scaled) if x0_scaled is not None else 0
+            n_constraints_actual = len(lbg_scaled) if lbg_scaled is not None else 0
+            _configure_ma27_memory(ipopt_options, n_vars_actual, n_constraints_actual)
+            solver_wrapper = IPOPTSolver(ipopt_options)
+            result = solver_wrapper.solve(nlp_scaled, x0_scaled, lbx_scaled, ubx_scaled, lbg_scaled, ubg_scaled, p)
+        
         solve_elapsed = time.time() - solve_start
         reporter.info(f"IPOPT solve completed in {solve_elapsed:.3f}s")
-        stats = solver.stats()
+        # Access stats through the result object (IPOPTSolver.solve() already extracted stats)
+        # Create a stats dict compatible with _summarize_ipopt_iterations
+        stats = {
+            "iterations": {
+                "k": np.array([result.iterations]) if result.iterations > 0 else np.array([]),
+                "obj": np.array([result.f_opt]) if result.success else np.array([]),
+            } if result.iterations > 0 else {}
+        }
         iteration_summary = _summarize_ipopt_iterations(stats, reporter) or {}
 
         # Unscale solution
@@ -470,19 +554,88 @@ def _create_ipopt_options(
             f"Large problem detected ({n_vars} vars, {n_constraints} constraints), using robust settings",
         )
     
+    # Use adaptive barrier strategy for better convergence with improved scaling
+    # Adaptive strategy works better with well-scaled problems
+    if not hasattr(options, "mu_strategy") or options.mu_strategy == "monotone":
+        # Only override if not already set by user or if still using monotone
+        options.mu_strategy = "adaptive"
+    
     # Tune barrier parameter initialization based on problem scale
     # Increased mu_init values for better initial convergence
     if n_vars > 500:
-        options.mu_init = 1e-2  # Increased from 1e-3 for large problems
+        options.mu_init = max(options.mu_init, 1e-1)  # Increased from 1e-2 for large problems
     elif n_vars > 100:
-        options.mu_init = 5e-2  # Increased from 5e-3 for medium problems
+        options.mu_init = max(options.mu_init, 5e-2)  # Increased from 5e-2 for medium problems
     else:
-        options.mu_init = 1e-1  # Increased from 1e-2 for small problems
+        options.mu_init = max(options.mu_init, 1e-1)  # Use higher default for small problems too
+    
+    # Increase mu_max to allow more barrier parameter growth
+    options.mu_max = max(options.mu_max, 1e4)
     
     log.debug(
         f"Barrier parameter tuning: mu_init={options.mu_init:.2e}, mu_max={options.mu_max:.2e}, "
         f"mu_strategy={options.mu_strategy}"
     )
+
+    available_solvers = _get_available_hsl_solvers()
+    available_display = ", ".join(sorted(available_solvers)) if available_solvers else "unknown"
+    options.linear_solver_options = dict(options.linear_solver_options or {})
+    
+    # Prefer MA57 when available (better performance and memory efficiency)
+    # Fall back to MA27 with memory configuration if MA57 unavailable
+    solver_choice = "ma27"
+    if "ma57" in available_solvers:
+        solver_choice = "ma57"
+        log.info(
+            "Using MA57 (n_vars=%d, n_constraints=%d, available=%s)",
+            n_vars,
+            n_constraints,
+            available_display,
+        )
+    else:
+        log.info(
+            "Using MA27 (MA57 unavailable, available=%s, n_vars=%d, n_constraints=%d)",
+            available_display,
+            n_vars,
+            n_constraints,
+        )
+        _configure_ma27_memory(options, n_vars, n_constraints)
+
+    options.linear_solver = solver_choice
+
+    log.info(
+        "Selected IPOPT linear solver '%s' (n_vars=%d, n_constraints=%d, available=%s)",
+        solver_choice,
+        n_vars,
+        n_constraints,
+        available_display,
+    )
+
+    env_print_level = os.getenv("CAMPRO_IPOPT_PRINT_LEVEL")
+    if env_print_level:
+        try:
+            options.print_level = max(0, min(12, int(env_print_level)))
+            log.info(
+                "Overriding IPOPT print_level via CAMPRO_IPOPT_PRINT_LEVEL=%s",
+                env_print_level,
+            )
+        except ValueError:
+            log.warning(
+                "Invalid CAMPRO_IPOPT_PRINT_LEVEL=%s (expected integer). Using default.",
+                env_print_level,
+            )
+    
+    # Ensure minimum verbosity for convergence monitoring (unless explicitly set lower via env var)
+    # print_level 8+ shows detailed iteration info including convergence metrics
+    # Only enforce if not explicitly set via environment variable (allows test overrides)
+    if env_print_level is None and options.print_level < 8:
+        options.print_level = 8
+        log.debug(f"Increased print_level to {options.print_level} for verbose convergence monitoring")
+    
+    # Ensure print_frequency_iter is 1 to show every iteration
+    if options.print_frequency_iter > 1:
+        options.print_frequency_iter = 1
+        log.debug(f"Set print_frequency_iter to 1 to show every iteration")
 
     return options
 
@@ -880,13 +1033,13 @@ def _compute_variable_scaling(
 ) -> np.ndarray:
     """
     Compute variable scaling factors with standardized per-group references
-    and clamped ratios to keep scales within 10² range.
+    and clamped ratios to keep scales within 10¹ range.
     
     Uses group-based per-unit scales combined with value-based scaling:
     1. Apply per-unit reference scales based on variable groups (positions, velocities, etc.)
-    2. Normalize each group to cap ratio ≤ 10²
+    2. Normalize each group to cap ratio ≤ 10¹
     3. Apply value-based scaling with clamped adjustments
-    4. Final global normalization to ensure all scales within 10² range
+    4. Final global normalization to ensure all scales within 10¹ range
     
     This ensures scaling accounts for both physical units and typical operating values
     while preventing extreme ratios that lead to poor Jacobian conditioning.
@@ -938,7 +1091,7 @@ def _compute_variable_scaling(
             else:
                 scale[i] = 1.0 / ref
     
-    # Normalize each group to cap ratio ≤ 10²
+    # Normalize each group to cap ratio ≤ 10¹
     if variable_groups:
         for group_name, indices in variable_groups.items():
             if indices and len(indices) > 0:
@@ -948,13 +1101,15 @@ def _compute_variable_scaling(
                     group_min = group_scales.min()
                     group_max = group_scales.max()
                     
-                    # Cap ratio to 10²
-                    if group_min > 1e-10 and group_max / group_min > 1e2:
-                        # Normalize to median, then clamp to ±1 log unit
+                    # Cap ratio to 10¹ (tighter than before)
+                    if group_min > 1e-10 and group_max / group_min > 1e1:
+                        # Normalize to median, then clamp to tighter range: [0.316 * median, 3.16 * median]
+                        # This gives ratio of 10¹ (sqrt(10) ≈ 3.16)
                         group_median = np.median(group_scales)
+                        sqrt_10 = np.sqrt(10.0)
                         for idx in group_indices:
-                            # Clamp to [0.1 * median, 10 * median]
-                            scale[idx] = np.clip(scale[idx], 0.1 * group_median, 10.0 * group_median)
+                            # Clamp to [median/sqrt(10), median*sqrt(10)] ≈ [0.316*median, 3.16*median]
+                            scale[idx] = np.clip(scale[idx], group_median / sqrt_10, group_median * sqrt_10)
     
     # Second pass: apply value-based scaling with clamped adjustments
     for i in range(n_vars):
@@ -980,18 +1135,21 @@ def _compute_variable_scaling(
         # Apply value-based adjustment with clamping
         if magnitude > 1e-6:
             adjustment = scale[i] / magnitude
-            # Clamp adjustment to [0.1, 10] to prevent extreme ratios
-            adjustment = np.clip(adjustment, 0.1, 10.0)
+            # Clamp adjustment to tighter range [0.316, 3.16] to prevent extreme ratios (10¹ ratio)
+            sqrt_10 = np.sqrt(10.0)
+            adjustment = np.clip(adjustment, 1.0 / sqrt_10, sqrt_10)
             scale[i] = adjustment
     
-    # Final normalization: ensure all scales are within 10² range globally
+    # Final normalization: ensure all scales are within 10¹ range globally
     scale_min = scale[scale > 1e-10].min() if (scale > 1e-10).any() else 1e-10
     scale_max = scale.max()
-    if scale_min > 1e-10 and scale_max / scale_min > 1e2:
+    if scale_min > 1e-10 and scale_max / scale_min > 1e1:
         scale_median = np.median(scale[scale > 1e-10])
+        sqrt_10 = np.sqrt(10.0)
         for i in range(n_vars):
             if scale[i] > 1e-10:
-                scale[i] = np.clip(scale[i], 0.1 * scale_median, 10.0 * scale_median)
+                # Clamp to [median/sqrt(10), median*sqrt(10)] for 10¹ ratio
+                scale[i] = np.clip(scale[i], scale_median / sqrt_10, scale_median * sqrt_10)
     
     return scale
 
@@ -1065,7 +1223,8 @@ def _verify_scaling_quality(
     lbg: np.ndarray | None,
     ubg: np.ndarray | None,
     reporter: StructuredReporter | None = None,
-) -> None:
+    meta: dict[str, Any] | None = None,
+) -> dict[str, float]:
     """
     Verify scaling quality by checking constraint Jacobian at initial guess.
     
@@ -1079,18 +1238,36 @@ def _verify_scaling_quality(
         scale_g: Constraint scaling factors
         lbg: Lower constraint bounds
         ubg: Upper constraint bounds
+        reporter: Optional reporter for logging
+        
+    Returns:
+        Dictionary with quality metrics:
+        - condition_number: max/min ratio of scaled Jacobian (target < 1e6)
+        - jac_max: Maximum absolute value in scaled Jacobian
+        - jac_mean: Mean absolute value in scaled Jacobian
+        - jac_min: Minimum non-zero absolute value in scaled Jacobian
+        - quality_score: Normalized quality score (0-1, higher is better)
     """
+    # Default return values if verification fails
+    default_metrics = {
+        "condition_number": np.inf,
+        "jac_max": np.inf,
+        "jac_mean": 0.0,
+        "jac_min": 0.0,
+        "quality_score": 0.0,
+    }
+    
     try:
         import casadi as ca
         
         if not isinstance(nlp, dict) or "g" not in nlp or "x" not in nlp:
-            return
+            return default_metrics
         
         g_expr = nlp["g"]
         x_sym = nlp["x"]
         
         if g_expr is None or g_expr.numel() == 0:
-            return
+            return default_metrics
         
         # Create Jacobian function
         try:
@@ -1103,7 +1280,7 @@ def _verify_scaling_quality(
                 reporter.debug(f"Could not evaluate constraint Jacobian for scaling verification: {e}")
             else:
                 log.debug(f"Could not evaluate constraint Jacobian for scaling verification: {e}")
-            return
+            return default_metrics
         
         # Apply scaling to Jacobian: J_scaled = scale_g * J * (1/scale)
         # Check if scaled Jacobian elements are O(1)
@@ -1126,32 +1303,102 @@ def _verify_scaling_quality(
             jac_mean = jac_mag.mean()
             jac_min = jac_mag[jac_mag > 0].min() if (jac_mag > 0).any() else 0.0
             
-            # Log diagnostics
-            msg = f"Scaled Jacobian statistics: min={jac_min:.3e}, mean={jac_mean:.3e}, max={jac_max:.3e}"
-            if reporter:
-                reporter.debug(msg)
-            else:
-                log.debug(msg)
+            # Compute condition number (max/min ratio)
+            condition_number = jac_max / jac_min if jac_min > 0 else np.inf
             
-            # Warn if scaling appears insufficient
-            if jac_max > 1e3:
+            # Compute quality score: normalized measure of scaling quality
+            # Score is based on:
+            # 1. Condition number (target < 1e6, penalty if > 1e6)
+            # 2. Maximum Jacobian element (target < 1e2, penalty if > 1e2)
+            # Score ranges from 0 (poor) to 1 (excellent)
+            condition_score = 1.0 / (1.0 + np.log10(max(condition_number / 1e6, 1.0)))
+            max_score = 1.0 / (1.0 + np.log10(max(jac_max / 1e2, 1.0)))
+            quality_score = 0.5 * condition_score + 0.5 * max_score
+            
+            # Compute percentile statistics for detailed diagnostics
+            jac_mag_nonzero = jac_mag[jac_mag > 0]
+            if len(jac_mag_nonzero) > 0:
+                p25 = np.percentile(jac_mag_nonzero, 25)
+                p50 = np.percentile(jac_mag_nonzero, 50)
+                p75 = np.percentile(jac_mag_nonzero, 75)
+                p95 = np.percentile(jac_mag_nonzero, 95)
+                p99 = np.percentile(jac_mag_nonzero, 99)
+            else:
+                p25 = p50 = p75 = p95 = p99 = 0.0
+            
+            # Log diagnostics with percentile statistics
+            msg = (
+                f"Scaled Jacobian statistics: min={jac_min:.3e}, p25={p25:.3e}, "
+                f"p50={p50:.3e}, p75={p75:.3e}, p95={p95:.3e}, p99={p99:.3e}, "
+                f"max={jac_max:.3e}, mean={jac_mean:.3e}, condition_number={condition_number:.3e}, "
+                f"quality_score={quality_score:.3f}"
+            )
+            if reporter:
+                reporter.info(msg)
+            else:
+                log.info(msg)
+            
+            # Report statistics per constraint type if available
+            if meta and "constraint_groups" in meta:
+                constraint_groups = meta["constraint_groups"]
+                if reporter:
+                    with reporter.section("Scaled Jacobian statistics by constraint type"):
+                        for con_type, indices in constraint_groups.items():
+                            if len(indices) == 0:
+                                continue
+                            # Get Jacobian entries for this constraint type
+                            type_jac_mag = []
+                            for idx in indices:
+                                if idx < jac_mag.shape[0]:
+                                    type_jac_mag.extend(jac_mag[idx, :].flatten())
+                            
+                            if len(type_jac_mag) > 0:
+                                type_jac_mag = np.array(type_jac_mag)
+                                type_jac_mag_nonzero = type_jac_mag[type_jac_mag > 0]
+                                if len(type_jac_mag_nonzero) > 0:
+                                    type_max = type_jac_mag_nonzero.max()
+                                    type_mean = type_jac_mag_nonzero.mean()
+                                    type_p95 = np.percentile(type_jac_mag_nonzero, 95)
+                                    type_p99 = np.percentile(type_jac_mag_nonzero, 99)
+                                    reporter.info(
+                                        f"  {con_type} ({len(indices)} constraints): "
+                                        f"max={type_max:.3e}, mean={type_mean:.3e}, "
+                                        f"p95={type_p95:.3e}, p99={type_p99:.3e}"
+                                    )
+                                    # Warn if this type has extreme entries
+                                    if type_max > 1e2:
+                                        reporter.debug(
+                                            f"    Warning: {con_type} has large max entry ({type_max:.3e} > 1e2)"
+                                        )
+            
+            # Lower warning thresholds (more sensitive)
+            if jac_max > 1e2:  # Lowered from 1e3
                 warn_msg = (
-                    f"Scaled Jacobian has large elements (max={jac_max:.3e}). "
+                    f"Scaled Jacobian has large elements (max={jac_max:.3e} > 1e2). "
                     f"Scaling may be insufficient. Consider adjusting scale factors."
                 )
                 if reporter:
                     reporter.warning(warn_msg)
                 else:
                     log.warning(warn_msg)
-            if jac_min > 0 and jac_max / jac_min > 1e6:
+            if condition_number > 1e6:  # Target condition number
                 warn_msg = (
-                    f"Scaled Jacobian has large condition number (max/min={jac_max/jac_min:.3e}). "
+                    f"Scaled Jacobian has large condition number (max/min={condition_number:.3e} > 1e6). "
                     f"Consider more uniform scaling."
                 )
                 if reporter:
                     reporter.warning(warn_msg)
                 else:
                     log.warning(warn_msg)
+            elif condition_number > 1e4:  # Lower threshold for warning
+                warn_msg = (
+                    f"Scaled Jacobian condition number is elevated (max/min={condition_number:.3e} > 1e4). "
+                    f"May benefit from tighter scaling."
+                )
+                if reporter:
+                    reporter.debug(warn_msg)
+                else:
+                    log.debug(warn_msg)
             
             # Check for very small elements that might cause numerical issues
             very_small = (jac_mag > 0) & (jac_mag < 1e-10)
@@ -1164,12 +1411,1381 @@ def _verify_scaling_quality(
                     reporter.debug(debug_msg)
                 else:
                     log.debug(debug_msg)
+            
+            return {
+                "condition_number": condition_number,
+                "jac_max": jac_max,
+                "jac_mean": jac_mean,
+                "jac_min": jac_min,
+                "quality_score": quality_score,
+                "p25": p25,
+                "p50": p50,
+                "p75": p75,
+                "p95": p95,
+                "p99": p99,
+            }
+        else:
+            # No constraint scaling available
+            return default_metrics
         
     except Exception as e:
         if reporter:
             reporter.debug(f"Scaling verification failed: {e}")
         else:
             log.debug(f"Scaling verification failed: {e}")
+    
+    return default_metrics
+
+
+def _identify_constraint_types(
+    meta: dict[str, Any] | None,
+    lbg: np.ndarray | None,
+    ubg: np.ndarray | None,
+    jac_g0_arr: np.ndarray | None = None,
+    g0_arr: np.ndarray | None = None,
+) -> dict[int, str]:
+    """
+    Identify constraint types from metadata or heuristics.
+    
+    Args:
+        meta: NLP metadata dict (may contain constraint_groups)
+        lbg: Lower constraint bounds
+        ubg: Upper constraint bounds
+        jac_g0_arr: Constraint Jacobian at initial guess (optional, for heuristics)
+        g0_arr: Constraint values at initial guess (optional, for heuristics)
+        
+    Returns:
+        Dict mapping constraint index to constraint type string
+    """
+    constraint_types: dict[int, str] = {}
+    
+    # Try to use metadata constraint groups first (explicit identification)
+    if meta and "constraint_groups" in meta:
+        constraint_groups = meta["constraint_groups"]
+        for con_type, indices in constraint_groups.items():
+            for idx in indices:
+                constraint_types[idx] = con_type
+        return constraint_types
+    
+    # Fall back to heuristic identification if metadata unavailable
+    if lbg is None or ubg is None:
+        return constraint_types
+    
+    n_cons = len(lbg)
+    
+    # Heuristic: Identify constraint types based on bounds patterns
+    for i in range(n_cons):
+        lb = lbg[i]
+        ub = ubg[i]
+        
+        # Equality constraints (lb == ub)
+        if lb == ub and np.isfinite(lb):
+            # Check if it's a periodicity constraint (typically 0.0)
+            if abs(lb) < 1e-6:
+                constraint_types[i] = "periodicity"
+            else:
+                constraint_types[i] = "continuity"  # Default for equality
+        # Inequality constraints
+        elif lb == -np.inf and ub == np.inf:
+            constraint_types[i] = "collocation_residuals"  # Unbounded = residuals
+        elif lb > 0 and np.isfinite(lb) and ub == np.inf:
+            # Lower bound only, positive
+            if lb > 1e3:  # Large lower bound suggests pressure (Pa)
+                constraint_types[i] = "path_pressure"
+            elif lb > 1e2:  # Medium lower bound suggests combustion (J)
+                constraint_types[i] = "combustion"
+            else:
+                constraint_types[i] = "path_clearance"  # Small positive = clearance
+        elif abs(lb) < 1e-6 and ub > 1e5:
+            # Near-zero lower bound, large upper bound suggests pressure
+            constraint_types[i] = "path_pressure"
+        elif abs(lb) < 1e-6 and ub > 1e3:
+            # Near-zero lower bound, medium upper bound suggests combustion
+            constraint_types[i] = "combustion"
+        elif abs(lb) < 50 and abs(ub) < 50:
+            # Small bounds suggest velocity/acceleration
+            constraint_types[i] = "path_velocity"
+        else:
+            # Default to path constraint
+            constraint_types[i] = "path_constraint"
+    
+    # Refine using Jacobian row norms if available
+    if jac_g0_arr is not None and jac_g0_arr.size > 0:
+        jac_row_norms = np.linalg.norm(jac_g0_arr, axis=1)
+        if len(jac_row_norms) == n_cons:
+            # Penalty constraints have very large row norms
+            penalty_threshold = np.percentile(jac_row_norms[jac_row_norms > 0], 95) * 10
+            for i in range(n_cons):
+                if jac_row_norms[i] > penalty_threshold:
+                    constraint_types[i] = "path_clearance"  # Likely penalty constraint
+    
+    return constraint_types
+
+
+def _compute_scaled_jacobian(
+    nlp: Any,
+    x0: np.ndarray,
+    scale: np.ndarray,
+    scale_g: np.ndarray,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """
+    Compute scaled Jacobian to identify problematic rows/columns.
+    
+    Returns:
+        Tuple of (jac_g0_arr, jac_g0_scaled) or (None, None) if computation fails
+    """
+    try:
+        import casadi as ca
+        
+        if not isinstance(nlp, dict) or "g" not in nlp or "x" not in nlp:
+            return None, None
+        
+        g_expr = nlp["g"]
+        x_sym = nlp["x"]
+        
+        if g_expr is None or g_expr.numel() == 0:
+            return None, None
+        
+        # Compute Jacobian
+        jac_g_expr = ca.jacobian(g_expr, x_sym)
+        jac_g_func = ca.Function("jac_g_func", [x_sym], [jac_g_expr])
+        jac_g0 = jac_g_func(x0)
+        jac_g0_arr = np.array(jac_g0)
+        
+        # Compute scaled Jacobian: J_scaled[i,j] = scale_g[i] * J[i,j] / scale[j]
+        jac_g0_scaled = jac_g0_arr.copy()
+        for i in range(min(jac_g0_arr.shape[0], len(scale_g))):
+            for j in range(min(jac_g0_arr.shape[1], len(scale))):
+                if scale[j] > 1e-10:
+                    jac_g0_scaled[i, j] = scale_g[i] * jac_g0_arr[i, j] / scale[j]
+        
+        return jac_g0_arr, jac_g0_scaled
+    except Exception:
+        return None, None
+
+
+def _compute_constraint_scaling_by_type(
+    constraint_types: dict[int, str],
+    nlp: Any,
+    x0: np.ndarray,
+    lbg: np.ndarray | None,
+    ubg: np.ndarray | None,
+    scale: np.ndarray,
+    jac_g0_arr: np.ndarray | None = None,
+    g0_arr: np.ndarray | None = None,
+    current_scale_g: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    Compute constraint scaling factors using constraint-type-aware strategies.
+    
+    Applies specialized scaling per constraint type:
+    - Penalty/Clearance: Aggressive scaling (target max entry < 1e1)
+    - Pressure: Account for 1e6 unit conversion, normalize to O(1)
+    - Combustion: Account for 1e3 unit conversion, normalize to O(1)
+    - Collocation residuals: Standard scaling
+    - Path constraints: Standard scaling based on bounds and Jacobian sensitivity
+    - Periodicity: Equality constraints, scale based on typical violation magnitude
+    
+    Args:
+        constraint_types: Dict mapping constraint index to type string
+        nlp: CasADi NLP dict
+        x0: Initial guess
+        lbg: Lower constraint bounds
+        ubg: Upper constraint bounds
+        scale: Variable scaling factors
+        jac_g0_arr: Unscaled Jacobian (optional)
+        g0_arr: Constraint values at initial guess (optional)
+        
+    Returns:
+        Array of constraint scaling factors
+    """
+    if lbg is None or ubg is None:
+        return np.array([])
+    
+    n_cons = len(lbg)
+    # Start with current constraint scales (if available from previous iteration)
+    # This allows constraint-type-aware to refine existing scaling rather than starting from scratch
+    # If no current scales provided, start with ones
+    if current_scale_g is not None and len(current_scale_g) == n_cons:
+        scale_g = current_scale_g.copy()
+    else:
+        scale_g = np.ones(n_cons)
+    
+    # Group constraints by type for batch processing
+    type_to_indices: dict[str, list[int]] = {}
+    for idx, con_type in constraint_types.items():
+        if con_type not in type_to_indices:
+            type_to_indices[con_type] = []
+        type_to_indices[con_type].append(idx)
+    
+    # Compute Jacobian row norms and max entries if available
+    # IMPORTANT: Use scaled row norms AND max entries (accounting for variable scaling) to properly
+    # assess constraint sensitivity. Max entries are more important than norms for extreme cases.
+    jac_row_norms = None
+    jac_row_max_entries = None  # Max absolute entry per row (after variable scaling, before constraint scaling)
+    if jac_g0_arr is not None and jac_g0_arr.size > 0:
+        if scale is not None and len(scale) > 0:
+            # Compute scaled row norms: sqrt(sum_j (J[i,j] / scale[j])^2)
+            # Also compute max absolute entry per row: max_j |J[i,j] / scale[j]|
+            # This represents the sensitivity of constraint i to scaled variables
+            jac_row_norms = np.zeros(jac_g0_arr.shape[0])
+            jac_row_max_entries = np.zeros(jac_g0_arr.shape[0])
+            for i in range(jac_g0_arr.shape[0]):
+                row_norm_sq = 0.0
+                row_max = 0.0
+                for j in range(min(jac_g0_arr.shape[1], len(scale))):
+                    if scale[j] > 1e-10:
+                        scaled_entry = abs(jac_g0_arr[i, j] / scale[j])
+                        row_norm_sq += scaled_entry ** 2
+                        row_max = max(row_max, scaled_entry)
+                jac_row_norms[i] = np.sqrt(row_norm_sq)
+                jac_row_max_entries[i] = row_max
+        else:
+            # Without variable scales, use unscaled row norms and max entries
+            jac_row_norms = np.linalg.norm(jac_g0_arr, axis=1)
+            jac_row_max_entries = np.abs(jac_g0_arr).max(axis=1)
+    
+    # Process each constraint type with specialized scaling
+    import logging
+    log = logging.getLogger(__name__)
+    
+    # Store jac_sensitivity values for verification step
+    stored_jac_sensitivity = {}
+    
+    # Check if we need to force recalculation due to poor current scaling
+    if current_scale_g is not None and len(current_scale_g) == n_cons and jac_g0_arr is not None and scale is not None:
+        # Quick check: compute a few scaled entries to see if they're too large
+        max_scaled_entry_estimate = 0.0
+        for i in range(min(100, n_cons)):  # Sample first 100 constraints
+            if i < len(scale_g) and i < jac_g0_arr.shape[0]:
+                row_max = 0.0
+                for j in range(min(jac_g0_arr.shape[1], len(scale))):
+                    if scale[j] > 1e-10:
+                        scaled_entry = abs(scale_g[i] * jac_g0_arr[i, j] / scale[j])
+                        row_max = max(row_max, scaled_entry)
+                max_scaled_entry_estimate = max(max_scaled_entry_estimate, row_max)
+        # If estimated max entry is very large (>1e2), force recalculation by starting from ones
+        if max_scaled_entry_estimate > 1e2:
+            log.debug(f"Current scaling produces large entries (est. max={max_scaled_entry_estimate:.3e} > 1e2), forcing recalculation")
+            scale_g = np.ones(n_cons)
+    
+    for con_type, indices in type_to_indices.items():
+        log.debug(f"Processing constraint type '{con_type}' with {len(indices)} constraints")
+        for i in indices:
+            if i >= n_cons:
+                log.debug(f"  Skipping constraint {i}: index >= n_cons ({n_cons})")
+                continue
+            
+            lb = lbg[i]
+            ub = ubg[i]
+            
+            # Get constraint value magnitude
+            g0_mag = 0.0
+            if g0_arr is not None and i < len(g0_arr):
+                g0_mag = abs(g0_arr[i])
+            
+            # Get Jacobian row norm and max entry if available
+            jac_norm = 0.0
+            jac_max_entry = 0.0
+            if jac_row_norms is not None and i < len(jac_row_norms):
+                jac_norm = jac_row_norms[i]
+            if jac_row_max_entries is not None and i < len(jac_row_max_entries):
+                jac_max_entry = jac_row_max_entries[i]
+            # Use max entry for aggressive scaling decisions (more accurate than norm)
+            # Fall back to norm if max entry not available
+            jac_sensitivity = max(jac_max_entry, jac_norm) if jac_max_entry > 0 else jac_norm
+            # Store for verification step
+            stored_jac_sensitivity[i] = jac_sensitivity
+            
+            # Compute magnitude from bounds
+            if lb == -np.inf and ub == np.inf:
+                magnitude = max(g0_mag, jac_norm) if jac_norm > 0 else g0_mag
+            elif lb == -np.inf:
+                magnitude = max(abs(ub), g0_mag, jac_norm)
+            elif ub == np.inf:
+                magnitude = max(abs(lb), g0_mag, jac_norm)
+            else:
+                magnitude = max(abs(lb), abs(ub), g0_mag, jac_norm)
+            
+            # Apply type-specific scaling strategies
+            if con_type == "path_clearance":
+                # Penalty constraints: most aggressive scaling
+                # Target max scaled Jacobian entry < 1e1
+                if jac_norm > 1e6:
+                    # Very large Jacobian norm indicates penalty stiffness
+                    # Scale aggressively to bring max entry to O(1)
+                    scale_g[i] = 1e1 / max(jac_norm, 1e-10)
+                    scale_g[i] = np.clip(scale_g[i], 1e-8, 1e2)
+                elif magnitude > 1e-6:
+                    scale_g[i] = 1.0 / magnitude
+                    scale_g[i] = np.clip(scale_g[i], 1e-6, 1e2)
+                else:
+                    scale_g[i] = 1.0
+            
+            elif con_type == "path_pressure":
+                # Pressure constraints: account for 1e6 unit conversion (MPa → Pa)
+                # Normalize to O(1) by accounting for unit conversion
+                if magnitude > 1e6:
+                    # Large magnitude suggests Pa units, normalize to MPa scale
+                    scale_g[i] = 1e-6 / max(magnitude / 1e6, 1e-10)
+                elif magnitude > 1e-6:
+                    scale_g[i] = 1.0 / magnitude
+                else:
+                    scale_g[i] = 1.0
+                scale_g[i] = np.clip(scale_g[i], 1e-4, 1e2)
+            
+            elif con_type == "combustion":
+                # Combustion constraints: account for 1e3 unit conversion (kJ → J)
+                # Normalize to O(1) by accounting for unit conversion
+                if magnitude > 1e3:
+                    # Large magnitude suggests J units, normalize to kJ scale
+                    scale_g[i] = 1e-3 / max(magnitude / 1e3, 1e-10)
+                elif magnitude > 1e-6:
+                    scale_g[i] = 1.0 / magnitude
+                else:
+                    scale_g[i] = 1.0
+                scale_g[i] = np.clip(scale_g[i], 1e-4, 1e2)
+            
+            elif con_type == "collocation_residuals":
+                # Collocation residuals: should be ~0, scale based on Jacobian sensitivity
+                # These can have extreme Jacobian entries due to force calculations with penalty terms
+                # Use max entry (not norm) for more accurate scaling decisions
+                old_scale = scale_g[i]
+                if jac_sensitivity > 1e6:
+                    # Very extreme Jacobian entries - need very aggressive scaling
+                    # Target O(1) max entry for extreme cases
+                    target_max_entry = 1e0
+                    scale_g[i] = target_max_entry / max(jac_sensitivity, 1e-10)
+                    if i < 5:  # Log first few for debugging
+                        log.debug(f"  collocation_residuals[{i}]: jac_sensitivity={jac_sensitivity:.3e}, old_scale={old_scale:.3e}, new_scale={scale_g[i]:.3e}, expected_scaled_max={scale_g[i] * jac_sensitivity:.3e}")
+                    # Allow very small scales for extreme cases, but prevent overscaling (< 1e-10)
+                    # Compute minimum scale needed: if jac_sensitivity is huge, we need tiny scale
+                    min_scale_needed = target_max_entry / jac_sensitivity
+                    scale_g[i] = np.clip(scale_g[i], max(min_scale_needed * 0.1, 1e-10), 1e2)
+                elif jac_sensitivity > 1e2:
+                    # Large scaled Jacobian max entry - need aggressive scaling
+                    # Target O(1) max entry
+                    target_max_entry = 1e0
+                    scale_g[i] = target_max_entry / max(jac_sensitivity, 1e-10)
+                    if i < 5:  # Log first few for debugging
+                        log.debug(f"  collocation_residuals[{i}]: jac_sensitivity={jac_sensitivity:.3e}, old_scale={old_scale:.3e}, new_scale={scale_g[i]:.3e}, expected_scaled_max={scale_g[i] * jac_sensitivity:.3e}")
+                    scale_g[i] = np.clip(scale_g[i], 1e-8, 1e2)  # Much wider range for extreme cases
+                elif jac_sensitivity > 1e-10:
+                    # Moderate Jacobian sensitivity - scale to normalize max entry to O(1)
+                    target_entry = 1e0
+                    scale_g[i] = target_entry / max(jac_sensitivity, 1e-10)
+                    scale_g[i] = np.clip(scale_g[i], 1e-3, 1e3)
+                else:
+                    # Small Jacobian sensitivity - keep existing scaling or use default
+                    if scale_g[i] <= 1e-10:
+                        scale_g[i] = 1.0
+            
+            elif con_type == "periodicity":
+                # Periodicity constraints: equality constraints, scale based on violation
+                if g0_mag > 1e-10:
+                    scale_g[i] = 1.0 / max(g0_mag, 1e-10)
+                elif jac_norm > 1e-10:
+                    scale_g[i] = 1.0 / max(jac_norm, 1e-10)
+                else:
+                    scale_g[i] = 1.0
+                scale_g[i] = np.clip(scale_g[i], 1e-3, 1e3)
+            
+            elif con_type == "continuity":
+                # Continuity constraints: equality constraints
+                # These can also have extreme Jacobian entries
+                if jac_sensitivity > 1e6:
+                    # Very extreme Jacobian entries - need very aggressive scaling
+                    target_max_entry = 1e0
+                    scale_g[i] = target_max_entry / max(jac_sensitivity, 1e-10)
+                    # Allow very small scales for extreme cases, but prevent overscaling (< 1e-10)
+                    min_scale_needed = target_max_entry / jac_sensitivity
+                    scale_g[i] = np.clip(scale_g[i], max(min_scale_needed * 0.1, 1e-10), 1e2)
+                elif jac_sensitivity > 1e2:
+                    # Large scaled Jacobian max entry - need aggressive scaling
+                    # Target O(1) max entry
+                    target_max_entry = 1e0
+                    scale_g[i] = target_max_entry / max(jac_sensitivity, 1e-10)
+                    scale_g[i] = np.clip(scale_g[i], 1e-8, 1e2)  # Much wider range
+                elif g0_mag > 1e-10:
+                    # Scale based on constraint violation magnitude
+                    # For equality constraints: scale_g[i] * g0_mag should be O(1)
+                    scale_g[i] = 1.0 / max(g0_mag, 1e-10)
+                    scale_g[i] = np.clip(scale_g[i], 1e-3, 1e3)
+                elif jac_sensitivity > 1e-10:
+                    # Moderate Jacobian sensitivity - scale to normalize max entry to O(1)
+                    target_entry = 1e0
+                    scale_g[i] = target_entry / max(jac_sensitivity, 1e-10)
+                    scale_g[i] = np.clip(scale_g[i], 1e-3, 1e3)
+                else:
+                    # Small Jacobian sensitivity - keep existing scaling or use default
+                    if scale_g[i] <= 1e-10:
+                        scale_g[i] = 1.0
+            
+            else:
+                # Default path constraints: standard scaling
+                if magnitude > 1e-6:
+                    scale_g[i] = 1.0 / magnitude
+                else:
+                    scale_g[i] = 1.0
+                scale_g[i] = np.clip(scale_g[i], 1e-3, 1e2)
+    
+    # Verification step: Check actual scaled max entries for collocation_residuals and continuity
+    # Use stored jac_sensitivity values to verify scaling is correct
+    for i in range(n_cons):
+        con_type = constraint_types.get(i, "path_constraint")
+        if con_type in {"collocation_residuals", "continuity"}:
+            jac_sens = stored_jac_sensitivity.get(i, 0.0)
+            if jac_sens > 1e-10 and scale_g[i] > 1e-10:
+                # Compute expected scaled max entry using stored jac_sensitivity
+                expected_scaled_max = scale_g[i] * jac_sens
+                # Target max entry: O(1) for all cases now
+                target_max = 1e0
+                # If expected scaled max is still above target, apply additional reduction
+                if expected_scaled_max > target_max * 1.1:  # 10% tolerance
+                    safety_factor = target_max / expected_scaled_max
+                    scale_g[i] = scale_g[i] * safety_factor
+                    if i < 5:  # Log first few for debugging
+                        log.debug(
+                            f"  Verification[{i}]: {con_type}, jac_sens={jac_sens:.3e}, "
+                            f"expected_scaled_max={expected_scaled_max:.3e}, target={target_max:.3e}, "
+                            f"applied_safety_factor={safety_factor:.3e}, final_scale={scale_g[i]:.3e}"
+                        )
+    
+    # Overscaling detection and correction: Prevent very small scaled Jacobian entries
+    # Very small entries (<1e-8) can cause numerical precision issues
+    # Balance: target max entry O(1-10), min entry >= 1e-8
+    min_scaled_entry_threshold = 1e-8  # Minimum acceptable scaled Jacobian entry
+    max_scaled_entry_target = 1e1      # Target max entry (O(10))
+    
+    if jac_g0_arr is not None and jac_g0_arr.size > 0:
+        # Compute current scaled Jacobian to detect overscaling
+        _, jac_g0_scaled_check = _compute_scaled_jacobian(nlp, x0, scale, scale_g)
+        
+        if jac_g0_scaled_check is not None:
+            jac_mag_check = np.abs(jac_g0_scaled_check)
+            n_corrected = 0
+            
+            for i in range(min(jac_g0_scaled_check.shape[0], len(scale_g))):
+                # Get row's scaled entries
+                row_entries = jac_mag_check[i, :]
+                row_nonzero = row_entries[row_entries > 0]
+                
+                if len(row_nonzero) > 0:
+                    row_min = row_nonzero.min()
+                    row_max = row_nonzero.max()
+                    
+                    # Check if row has overscaling (min entry too small)
+                    if row_min < min_scaled_entry_threshold:
+                        # Compute adjustment to bring min entry to threshold
+                        # But don't increase max entry too much
+                        adjustment_factor = min_scaled_entry_threshold / max(row_min, 1e-12)
+                        
+                        # Check if adjustment would create too large max entry
+                        new_max = row_max * adjustment_factor
+                        if new_max <= max_scaled_entry_target * 10:  # Allow up to 10x target
+                            # Apply adjustment
+                            old_scale = scale_g[i]
+                            scale_g[i] = scale_g[i] * adjustment_factor
+                            n_corrected += 1
+                            
+                            if i < 5:  # Log first few for debugging
+                                con_type = constraint_types.get(i, "path_constraint")
+                                log.debug(
+                                    f"  Overscaling correction[{i}]: {con_type}, "
+                                    f"row_min={row_min:.3e}, row_max={row_max:.3e}, "
+                                    f"adjustment={adjustment_factor:.3e}, "
+                                    f"old_scale={old_scale:.3e}, new_scale={scale_g[i]:.3e}, "
+                                    f"new_max={new_max:.3e}"
+                                )
+                        else:
+                            # Compromise: adjust less aggressively to balance min and max
+                            # Target: bring min to threshold while keeping max reasonable
+                            compromise_factor = (min_scaled_entry_threshold / row_min) ** 0.5
+                            if compromise_factor > 1.0:
+                                old_scale = scale_g[i]
+                                scale_g[i] = scale_g[i] * compromise_factor
+                                n_corrected += 1
+                                
+                                if i < 5:  # Log first few for debugging
+                                    con_type = constraint_types.get(i, "path_constraint")
+                                    log.debug(
+                                        f"  Overscaling compromise[{i}]: {con_type}, "
+                                        f"row_min={row_min:.3e}, row_max={row_max:.3e}, "
+                                        f"compromise_factor={compromise_factor:.3e}, "
+                                        f"old_scale={old_scale:.3e}, new_scale={scale_g[i]:.3e}"
+                                    )
+            
+            if n_corrected > 0:
+                log.debug(f"Overscaling correction: adjusted {n_corrected} constraints to prevent very small entries")
+    
+    # Normalize constraint scales to maintain reasonable range
+    # BUT: Preserve aggressive scaling for extreme constraint types (collocation_residuals, continuity)
+    # These constraint types need very small scale factors to normalize large Jacobian entries
+    scale_g_log = np.log10(np.maximum(scale_g, 1e-10))
+    median_log = np.median(scale_g_log)
+    sqrt_10_log = np.log10(np.sqrt(10.0))
+    
+    # Identify extreme constraint types that need aggressive scaling preserved
+    extreme_types = {"collocation_residuals", "continuity", "path_clearance"}
+    
+    # Clip outliers with constraint-type-aware bounds
+    # For extreme constraint types, allow wider range (1e-8 to 1e2)
+    # For other types, use tighter range (1e-3 to 1e2)
+    for i in range(n_cons):
+        con_type = constraint_types.get(i, "path_constraint")
+        is_extreme = con_type in extreme_types
+        
+        if is_extreme:
+            # Preserve aggressive scaling for extreme constraint types
+            # Allow very small scales (down to 1e-10) for extreme cases, but prevent overscaling
+            lower_bound_extreme = -10.0  # 1e-10 (allow very small scales for extreme cases)
+            upper_bound_extreme = 2.0    # 1e2
+            if scale_g_log[i] < lower_bound_extreme:
+                scale_g[i] = 10.0 ** lower_bound_extreme
+            elif scale_g_log[i] > upper_bound_extreme:
+                scale_g[i] = 10.0 ** upper_bound_extreme
+            # Otherwise, preserve the aggressive scaling (don't clip)
+        else:
+            # For normal constraint types, use percentile-based clipping
+            lower_bound = max(median_log - 2.0 * sqrt_10_log, -3.0)  # Allow down to 1e-3
+            upper_bound = min(median_log + 2.0 * sqrt_10_log, 2.0)   # Allow up to 1e2
+            if scale_g_log[i] < lower_bound:
+                scale_g[i] = max(10.0 ** lower_bound, scale_g[i] * 0.1)
+            elif scale_g_log[i] > upper_bound:
+                scale_g[i] = min(10.0 ** upper_bound, scale_g[i] * 10.0)
+    
+    return scale_g
+
+
+def _try_scaling_strategy(
+    strategy_name: str,
+    nlp: Any,
+    x0: np.ndarray,
+    lbx: np.ndarray,
+    ubx: np.ndarray,
+    lbg: np.ndarray | None,
+    ubg: np.ndarray | None,
+    scale: np.ndarray,
+    scale_g: np.ndarray,
+    jac_g0_arr: np.ndarray,
+    jac_g0_scaled: np.ndarray,
+    variable_groups: dict[str, list[int]] | None,
+    constraint_types: dict[int, str] | None = None,
+    meta: dict[str, Any] | None = None,
+    g0_arr: np.ndarray | None = None,
+    target_max_entry: float = 1e2,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Try a specific scaling strategy and return refined scales.
+    
+    Args:
+        strategy_name: Name of strategy to try
+        nlp: CasADi NLP dict
+        x0: Initial guess
+        lbx, ubx: Variable bounds
+        lbg, ubg: Constraint bounds
+        scale: Current variable scales
+        scale_g: Current constraint scales
+        jac_g0_arr: Unscaled Jacobian
+        jac_g0_scaled: Current scaled Jacobian
+        variable_groups: Variable group mapping
+        target_max_entry: Target maximum scaled Jacobian entry
+        
+    Returns:
+        Tuple of (new_scale, new_scale_g)
+    """
+    new_scale = scale.copy()
+    new_scale_g = scale_g.copy()
+    
+    jac_mag = np.abs(jac_g0_scaled)
+    
+    if strategy_name == "tighten_ratios":
+        # Strategy 1: Tighten variable and constraint scaling ratios
+        scale_median = np.median(new_scale[new_scale > 1e-10])
+        tight_factor = np.sqrt(np.sqrt(10.0))
+        for i in range(len(new_scale)):
+            if new_scale[i] > 1e-10:
+                new_scale[i] = np.clip(new_scale[i], scale_median / tight_factor, scale_median * tight_factor)
+        
+        if len(new_scale_g) > 0:
+            scale_g_median = np.median(new_scale_g[new_scale_g > 1e-10])
+            for i in range(len(new_scale_g)):
+                if new_scale_g[i] > 1e-10:
+                    new_scale_g[i] = np.clip(new_scale_g[i], scale_g_median / tight_factor, scale_g_median * tight_factor)
+    
+    elif strategy_name == "row_max_scaling":
+        # Strategy 2: Scale constraint rows based on max entry per row
+        # Target: max scaled entry per row should be <= target_max_entry
+        for i in range(min(jac_g0_scaled.shape[0], len(new_scale_g))):
+            row_max = jac_mag[i, :].max() if jac_g0_scaled.shape[1] > 0 else 0.0
+            if row_max > target_max_entry:
+                # Reduce scale_g[i] to bring max entry down to target
+                reduction_factor = target_max_entry / row_max
+                new_scale_g[i] = new_scale_g[i] * reduction_factor
+                # Allow more aggressive scaling for very large entries
+                if row_max > 1e10:
+                    # Extra aggressive for extreme entries
+                    new_scale_g[i] = np.clip(new_scale_g[i], 1e-6, 1e3)
+                else:
+                    new_scale_g[i] = np.clip(new_scale_g[i], 1e-3, 1e3)
+    
+    elif strategy_name == "column_max_scaling":
+        # Strategy 3: Scale variable columns based on max entry per column
+        # Target: max scaled entry per column should be <= target_max_entry
+        # Use more conservative scaling to avoid over-scaling variables
+        for j in range(min(jac_g0_scaled.shape[1], len(new_scale))):
+            col_max = jac_mag[:, j].max() if jac_g0_scaled.shape[0] > 0 else 0.0
+            if col_max > target_max_entry:
+                # Increase scale[j] to bring max entry down to target
+                # But be conservative - don't increase too much at once
+                increase_factor = min(col_max / target_max_entry, 10.0)  # Cap at 10x increase
+                new_scale[j] = new_scale[j] * increase_factor
+                # More conservative clamping to prevent extreme variable scaling
+                if col_max > 1e10:
+                    # Extra aggressive for extreme entries, but still bounded
+                    new_scale[j] = np.clip(new_scale[j], 1e-2, 1e3)  # Tighter range
+                else:
+                    new_scale[j] = np.clip(new_scale[j], 1e-2, 1e2)
+        
+        # Re-normalize variable scales to maintain 10¹ ratio constraint
+        scale_min = new_scale[new_scale > 1e-10].min() if (new_scale > 1e-10).any() else 1e-10
+        scale_max = new_scale.max()
+        if scale_min > 1e-10 and scale_max / scale_min > 1e1:
+            scale_median = np.median(new_scale[new_scale > 1e-10])
+            sqrt_10 = np.sqrt(10.0)
+            for j in range(len(new_scale)):
+                if new_scale[j] > 1e-10:
+                    new_scale[j] = np.clip(new_scale[j], scale_median / sqrt_10, scale_median * sqrt_10)
+    
+    elif strategy_name == "extreme_entry_targeting":
+        # Strategy 4: Aggressively target extreme entries (>1e2)
+        # Find rows and columns with extreme entries and scale them down aggressively
+        # Use adaptive threshold based on current max entry
+        global_max = jac_mag.max() if jac_g0_scaled.size > 0 else 0.0
+        if global_max > 1e10:
+            # For very extreme entries, use more aggressive threshold
+            extreme_threshold = 1e1  # Target O(10) for extreme cases
+        else:
+            extreme_threshold = 1e2  # Target O(100) for moderate cases
+        
+        for i in range(min(jac_g0_scaled.shape[0], len(new_scale_g))):
+            row_max = jac_mag[i, :].max() if jac_g0_scaled.shape[1] > 0 else 0.0
+            if row_max > extreme_threshold:
+                # Aggressively reduce scale_g[i] to bring max entry to threshold
+                reduction_factor = extreme_threshold / row_max
+                new_scale_g[i] = new_scale_g[i] * reduction_factor
+                # Allow very aggressive scaling for extreme entries
+                if row_max > 1e10:
+                    new_scale_g[i] = np.clip(new_scale_g[i], 1e-8, 1e3)
+                else:
+                    new_scale_g[i] = np.clip(new_scale_g[i], 1e-6, 1e3)
+        
+        for j in range(min(jac_g0_scaled.shape[1], len(new_scale))):
+            col_max = jac_mag[:, j].max() if jac_g0_scaled.shape[0] > 0 else 0.0
+            if col_max > extreme_threshold:
+                # Aggressively increase scale[j] to bring max entry to threshold
+                # But cap the increase to prevent over-scaling variables
+                increase_factor = min(col_max / extreme_threshold, 100.0)  # Cap at 100x
+                new_scale[j] = new_scale[j] * increase_factor
+                # Allow aggressive scaling but with tighter bounds
+                if col_max > 1e10:
+                    new_scale[j] = np.clip(new_scale[j], 1e-2, 1e3)  # Tighter range
+                else:
+                    new_scale[j] = np.clip(new_scale[j], 1e-2, 1e2)
+        
+        # Re-normalize variable scales to maintain 10¹ ratio constraint
+        scale_min = new_scale[new_scale > 1e-10].min() if (new_scale > 1e-10).any() else 1e-10
+        scale_max = new_scale.max()
+        if scale_min > 1e-10 and scale_max / scale_min > 1e1:
+            scale_median = np.median(new_scale[new_scale > 1e-10])
+            sqrt_10 = np.sqrt(10.0)
+            for j in range(len(new_scale)):
+                if new_scale[j] > 1e-10:
+                    new_scale[j] = np.clip(new_scale[j], scale_median / sqrt_10, scale_median * sqrt_10)
+    
+    elif strategy_name == "percentile_based":
+        # Strategy 5: Scale based on percentiles - target p95 entries
+        # Bring p95 entries down to target_max_entry
+        if jac_g0_scaled.size > 0:
+            jac_mag_nonzero = jac_mag[jac_mag > 0]
+            if len(jac_mag_nonzero) > 0:
+                p95_value = np.percentile(jac_mag_nonzero, 95)
+                if p95_value > target_max_entry:
+                    global_reduction = target_max_entry / p95_value
+                    # Apply reduction to constraint scales
+                    for i in range(len(new_scale_g)):
+                        new_scale_g[i] = new_scale_g[i] * global_reduction
+                        # Allow more aggressive scaling for high percentiles
+                        new_scale_g[i] = np.clip(new_scale_g[i], 1e-5, 1e3)
+    
+    elif strategy_name == "combined_row_column":
+        # Strategy 6: Combined aggressive row and column scaling
+        # Apply both row and column scaling together for maximum effect
+        # First apply row scaling
+        for i in range(min(jac_g0_scaled.shape[0], len(new_scale_g))):
+            row_max = jac_mag[i, :].max() if jac_g0_scaled.shape[1] > 0 else 0.0
+            if row_max > target_max_entry:
+                reduction_factor = target_max_entry / row_max
+                new_scale_g[i] = new_scale_g[i] * reduction_factor
+                if row_max > 1e10:
+                    new_scale_g[i] = np.clip(new_scale_g[i], 1e-8, 1e3)
+                else:
+                    new_scale_g[i] = np.clip(new_scale_g[i], 1e-5, 1e3)
+        
+        # Then apply column scaling (more conservative to avoid over-scaling)
+        for j in range(min(jac_g0_scaled.shape[1], len(new_scale))):
+            col_max = jac_mag[:, j].max() if jac_g0_scaled.shape[0] > 0 else 0.0
+            if col_max > target_max_entry:
+                # Cap increase factor to prevent extreme variable scaling
+                increase_factor = min(col_max / target_max_entry, 10.0)  # Cap at 10x
+                new_scale[j] = new_scale[j] * increase_factor
+                if col_max > 1e10:
+                    new_scale[j] = np.clip(new_scale[j], 1e-2, 1e3)  # Tighter range
+                else:
+                    new_scale[j] = np.clip(new_scale[j], 1e-2, 1e2)
+        
+        # Re-normalize variable scales to maintain 10¹ ratio constraint
+        scale_min = new_scale[new_scale > 1e-10].min() if (new_scale > 1e-10).any() else 1e-10
+        scale_max = new_scale.max()
+        if scale_min > 1e-10 and scale_max / scale_min > 1e1:
+            scale_median = np.median(new_scale[new_scale > 1e-10])
+            sqrt_10 = np.sqrt(10.0)
+            for j in range(len(new_scale)):
+                if new_scale[j] > 1e-10:
+                    new_scale[j] = np.clip(new_scale[j], scale_median / sqrt_10, scale_median * sqrt_10)
+    
+    elif strategy_name == "constraint_type_aware":
+        # Strategy: Constraint-type-aware scaling
+        # Use specialized scaling strategies per constraint type
+        import logging
+        log = logging.getLogger(__name__)
+        
+        if constraint_types is None or len(constraint_types) == 0:
+            # Fall back to standard scaling if types unavailable
+            log.debug("Constraint-type-aware: No constraint types available, falling back to standard scaling")
+            return new_scale, new_scale_g
+        
+        log.debug(f"Constraint-type-aware: Processing {len(constraint_types)} constraint types")
+        
+        # Compute constraint values if not provided
+        if g0_arr is None:
+            try:
+                import casadi as ca
+                if isinstance(nlp, dict) and "g" in nlp and "x" in nlp:
+                    g_expr = nlp["g"]
+                    x_sym = nlp["x"]
+                    g_func = ca.Function("g_func", [x_sym], [g_expr])
+                    g0 = g_func(x0)
+                    g0_arr = np.array(g0)
+                    log.debug(f"Constraint-type-aware: Computed constraint values, shape={g0_arr.shape}")
+            except Exception as e:
+                log.debug(f"Constraint-type-aware: Failed to compute constraint values: {e}")
+                g0_arr = None
+        
+        # Apply constraint-type-aware scaling
+        # Pass current scale_g so it can refine existing scaling rather than starting from scratch
+        log.debug(f"Constraint-type-aware: Computing scaling with current scale_g range=[{scale_g.min():.3e}, {scale_g.max():.3e}]")
+        try:
+            new_scale_g = _compute_constraint_scaling_by_type(
+                constraint_types, nlp, x0, lbg, ubg, new_scale,
+                jac_g0_arr=jac_g0_arr, g0_arr=g0_arr, current_scale_g=scale_g
+            )
+            log.debug(f"Constraint-type-aware: Computed new scale_g, range=[{new_scale_g.min():.3e}, {new_scale_g.max():.3e}]")
+        except Exception as e:
+            import traceback
+            log.error(f"Constraint-type-aware: Failed in _compute_constraint_scaling_by_type: {e}")
+            log.error(f"Exception traceback:\n{traceback.format_exc()}")
+            raise
+        
+        # Debug: Check if constraint-type-aware actually modified scales
+        if not np.allclose(new_scale_g, scale_g, rtol=1e-6):
+            # Log which constraint types were modified
+            modified_types = {}
+            n_modified = 0
+            for idx, con_type in constraint_types.items():
+                if idx < len(scale_g) and idx < len(new_scale_g):
+                    if abs(new_scale_g[idx] - scale_g[idx]) > 1e-6 * max(abs(scale_g[idx]), 1.0):
+                        n_modified += 1
+                        if con_type not in modified_types:
+                            modified_types[con_type] = {"count": 0, "max_change": 0.0}
+                        modified_types[con_type]["count"] += 1
+                        change_ratio = abs(new_scale_g[idx] / (scale_g[idx] + 1e-10))
+                        modified_types[con_type]["max_change"] = max(modified_types[con_type]["max_change"], change_ratio)
+            
+            log.debug(f"Constraint-type-aware: Modified {n_modified} constraints")
+            for con_type, stats in modified_types.items():
+                log.debug(f"  {con_type}: {stats['count']} constraints, max_change_ratio={stats['max_change']:.3e}")
+        else:
+            log.debug("Constraint-type-aware: No constraints were modified (scales unchanged)")
+    
+    elif strategy_name == "percentile_based":
+        # Strategy 5: Scale based on percentiles - target p95 entries
+        # Bring p95 entries down to target_max_entry
+        if jac_g0_scaled.size > 0:
+            jac_mag_nonzero = jac_mag[jac_mag > 0]
+            if len(jac_mag_nonzero) > 0:
+                p95_value = np.percentile(jac_mag_nonzero, 95)
+                if p95_value > target_max_entry:
+                    global_reduction = target_max_entry / p95_value
+                    # Apply reduction to constraint scales
+                    for i in range(len(new_scale_g)):
+                        new_scale_g[i] = new_scale_g[i] * global_reduction
+                        # Allow more aggressive scaling for high percentiles
+                        new_scale_g[i] = np.clip(new_scale_g[i], 1e-5, 1e3)
+    
+    return new_scale, new_scale_g
+
+
+def _get_scaling_cache_path() -> Path:
+    """Get the path to the scaling cache file."""
+    cache_dir = Path.home() / ".campro" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / "scaling_cache.json"
+
+
+def _generate_scaling_cache_key(
+    n_vars: int,
+    n_constraints: int,
+    variable_groups: dict[str, list[int]] | None = None,
+    meta: dict[str, Any] | None = None,
+) -> str:
+    """
+    Generate a cache key from problem characteristics.
+    
+    Args:
+        n_vars: Number of variables
+        n_constraints: Number of constraints
+        variable_groups: Variable group mapping
+        meta: Problem metadata
+        
+    Returns:
+        Cache key string (hash)
+    """
+    # Create a dictionary of problem characteristics
+    key_data = {
+        "n_vars": n_vars,
+        "n_constraints": n_constraints,
+    }
+    
+    # Add variable group info if available
+    if variable_groups:
+        key_data["variable_groups"] = {
+            group: len(indices) for group, indices in variable_groups.items()
+        }
+    
+    # Add constraint type info if available
+    if meta and "constraint_groups" in meta:
+        constraint_groups = meta["constraint_groups"]
+        key_data["constraint_groups"] = {
+            group: len(indices) for group, indices in constraint_groups.items()
+        }
+    
+    # Create hash from key data
+    key_str = json.dumps(key_data, sort_keys=True)
+    return hashlib.sha256(key_str.encode()).hexdigest()[:16]
+
+
+def _load_scaling_cache(
+    cache_key: str,
+    n_vars: int,
+    n_constraints: int,
+) -> tuple[np.ndarray | None, np.ndarray | None, dict[str, float] | None]:
+    """
+    Load scaling factors from cache if available.
+    
+    Args:
+        cache_key: Cache key for this problem
+        n_vars: Expected number of variables
+        n_constraints: Expected number of constraints
+        
+    Returns:
+        Tuple of (scale, scale_g, quality) or (None, None, None) if not found
+    """
+    cache_path = _get_scaling_cache_path()
+    
+    if not cache_path.exists():
+        return None, None, None
+    
+    try:
+        with open(cache_path, "r") as f:
+            cache = json.load(f)
+        
+        if cache_key not in cache:
+            return None, None, None
+        
+        entry = cache[cache_key]
+        
+        # Verify dimensions match
+        cached_scale = np.array(entry["scale"])
+        cached_scale_g = np.array(entry["scale_g"])
+        
+        if len(cached_scale) != n_vars or len(cached_scale_g) != n_constraints:
+            return None, None, None
+        
+        quality = entry.get("quality", {})
+        
+        return cached_scale, cached_scale_g, quality
+        
+    except Exception as e:
+        log.debug(f"Failed to load scaling cache: {e}")
+        return None, None, None
+
+
+def _save_scaling_cache(
+    cache_key: str,
+    scale: np.ndarray,
+    scale_g: np.ndarray,
+    quality: dict[str, float],
+) -> None:
+    """
+    Save scaling factors to cache.
+    
+    Args:
+        cache_key: Cache key for this problem
+        scale: Variable scaling factors
+        scale_g: Constraint scaling factors
+        quality: Quality metrics
+    """
+    cache_path = _get_scaling_cache_path()
+    
+    try:
+        # Load existing cache
+        cache = {}
+        if cache_path.exists():
+            with open(cache_path, "r") as f:
+                cache = json.load(f)
+        
+        # Update cache entry
+        cache[cache_key] = {
+            "scale": scale.tolist(),
+            "scale_g": scale_g.tolist(),
+            "quality": quality,
+            "timestamp": time.time(),
+        }
+        
+        # Limit cache size (keep only most recent 10 entries)
+        if len(cache) > 10:
+            # Sort by timestamp and keep most recent
+            entries = list(cache.items())
+            entries.sort(key=lambda x: x[1].get("timestamp", 0), reverse=True)
+            cache = dict(entries[:10])
+        
+        # Save cache
+        with open(cache_path, "w") as f:
+            json.dump(cache, f, indent=2)
+            
+    except Exception as e:
+        log.debug(f"Failed to save scaling cache: {e}")
+
+
+def _refine_scaling_iteratively(
+    nlp: Any,
+    x0: np.ndarray,
+    lbx: np.ndarray,
+    ubx: np.ndarray,
+    lbg: np.ndarray | None,
+    ubg: np.ndarray | None,
+    variable_groups: dict[str, list[int]] | None,
+    meta: dict[str, Any] | None = None,
+    reporter: StructuredReporter | None = None,
+    max_iterations: int = 5,
+    target_condition_number: float = 1e6,
+) -> tuple[np.ndarray, np.ndarray, dict[str, float]]:
+    """
+    Iteratively refine scaling factors to achieve target condition number.
+    
+    Tries multiple scaling strategies per iteration and selects the best one.
+    
+    Args:
+        nlp: CasADi NLP dict
+        x0: Initial guess (unscaled)
+        lbx: Lower variable bounds
+        ubx: Upper variable bounds
+        lbg: Lower constraint bounds
+        ubg: Upper constraint bounds
+        variable_groups: Variable group mapping
+        reporter: Optional reporter for logging
+        max_iterations: Maximum refinement iterations
+        target_condition_number: Target condition number (default 1e6)
+        
+    Returns:
+        Tuple of (refined_scale, refined_scale_g, quality_metrics)
+    """
+    # Generate cache key for this problem
+    n_vars = len(x0) if x0 is not None else len(lbx)
+    n_constraints = len(lbg) if lbg is not None else 0
+    cache_key = _generate_scaling_cache_key(n_vars, n_constraints, variable_groups, meta)
+    
+    # Track whether we're starting from cached scaling
+    skip_initial_scaling = False
+    
+    # Try to load cached scaling
+    cached_scale, cached_scale_g, cached_quality = _load_scaling_cache(cache_key, n_vars, n_constraints)
+    
+    if cached_scale is not None and cached_scale_g is not None:
+        # Verify cached scaling quality
+        cached_quality_check = _verify_scaling_quality(
+            nlp, x0, cached_scale, cached_scale_g, lbg, ubg, reporter=None, meta=meta
+        )
+        cached_condition = cached_quality_check.get("condition_number", np.inf)
+        cached_score = cached_quality_check.get("quality_score", 0.0)
+        
+        # Minimum quality_score threshold
+        min_quality_score = 0.7
+        
+        # Use cached scaling as starting point if it meets both targets, otherwise iterate to improve
+        if cached_condition <= target_condition_number and cached_score >= min_quality_score:
+            if reporter:
+                reporter.info(
+                    f"Using cached scaling (meets targets): condition_number={cached_condition:.3e}, "
+                    f"quality_score={cached_score:.3f} >= {min_quality_score:.3f}"
+                )
+            return cached_scale, cached_scale_g, cached_quality_check
+        else:
+            # Use cached scaling as starting point for iteration
+            if reporter:
+                condition_msg = f"condition_number={cached_condition:.3e} > {target_condition_number:.3e}" if cached_condition > target_condition_number else ""
+                quality_msg = f"quality_score={cached_score:.3f} < {min_quality_score:.3f}" if cached_score < min_quality_score else ""
+                reason = " or ".join(filter(None, [condition_msg, quality_msg]))
+                reporter.info(
+                    f"Using cached scaling as starting point: condition_number={cached_condition:.3e}, "
+                    f"quality_score={cached_score:.3f} ({reason}), will iterate to improve"
+                )
+            # Start with cached scaling instead of computing initial scaling
+            scale = cached_scale.copy()
+            scale_g = cached_scale_g.copy()
+            quality = cached_quality_check
+            condition_number = cached_condition
+            initial_condition_number = condition_number
+            # Skip initial scaling computation and go straight to iteration
+            skip_initial_scaling = True
+    
+    if not skip_initial_scaling:
+        # Compute initial scaling
+        scale = _compute_variable_scaling(lbx, ubx, x0=x0, variable_groups=variable_groups)
+        try:
+            scale_g = _compute_constraint_scaling_from_evaluation(nlp, x0, lbg, ubg, scale=scale)
+        except Exception:
+            scale_g = _compute_constraint_scaling(lbg, ubg)
+        
+        # Check initial quality
+        quality = _verify_scaling_quality(nlp, x0, scale, scale_g, lbg, ubg, reporter=reporter, meta=meta)
+        condition_number = quality.get("condition_number", np.inf)
+        initial_condition_number = condition_number  # Save for comparison at end
+        
+        if reporter:
+            reporter.info(f"Initial scaling quality: condition_number={condition_number:.3e}, quality_score={quality.get('quality_score', 0.0):.3f}")
+        
+        # If condition number is acceptable, save and return initial scaling
+        if condition_number <= target_condition_number:
+            _save_scaling_cache(cache_key, scale, scale_g, quality)
+            return scale, scale_g, quality
+    
+    # Get unscaled and scaled Jacobian for strategy evaluation
+    jac_g0_arr, jac_g0_scaled = _compute_scaled_jacobian(nlp, x0, scale, scale_g)
+    if jac_g0_arr is None or jac_g0_scaled is None:
+        # Can't compute Jacobian, fall back to simple tightening
+        if reporter:
+            reporter.warning("Cannot compute Jacobian for refinement, using simple ratio tightening")
+        return scale, scale_g, quality
+    
+    # Identify constraint types once at the start
+    constraint_types = _identify_constraint_types(meta, lbg, ubg, jac_g0_arr=jac_g0_arr)
+    
+    # Get constraint values for type-aware scaling
+    g0_arr = None
+    try:
+        import casadi as ca
+        if isinstance(nlp, dict) and "g" in nlp and "x" in nlp:
+            g_expr = nlp["g"]
+            x_sym = nlp["x"]
+            g_func = ca.Function("g_func", [x_sym], [g_expr])
+            g0 = g_func(x0)
+            g0_arr = np.array(g0)
+    except Exception:
+        pass
+    
+    # Define strategies to try (in order of preference)
+    # Prioritize constraint-type-aware if constraint groups are available
+    has_constraint_groups = meta and "constraint_groups" in meta and len(constraint_types) > 0
+    
+    if condition_number > 1e20:
+        # For extremely ill-conditioned problems, prioritize aggressive strategies
+        if has_constraint_groups:
+            strategies = [
+                "constraint_type_aware",  # Most targeted - use constraint type information
+                "combined_row_column",      # Combine row and column scaling
+                "extreme_entry_targeting",  # Aggressively target extreme entries
+                "row_max_scaling",          # Scale rows with large max entries
+                "column_max_scaling",       # Scale columns with large max entries
+                "percentile_based",         # Scale based on percentiles
+            ]
+        else:
+            strategies = [
+                "combined_row_column",      # Most aggressive - combine row and column scaling
+                "extreme_entry_targeting",  # Aggressively target extreme entries
+                "row_max_scaling",          # Scale rows with large max entries
+                "column_max_scaling",       # Scale columns with large max entries
+                "percentile_based",         # Scale based on percentiles
+            ]
+    else:
+        # For moderately ill-conditioned problems, include conservative strategies
+        if has_constraint_groups:
+            strategies = [
+                "constraint_type_aware",  # Most targeted - use constraint type information
+                "combined_row_column",      # Combine row and column scaling
+                "extreme_entry_targeting",  # Aggressively target extreme entries
+                "row_max_scaling",          # Scale rows with large max entries
+                "column_max_scaling",       # Scale columns with large max entries
+                "percentile_based",         # Scale based on percentiles
+                "tighten_ratios",           # Conservative - tighten ratios
+            ]
+        else:
+            strategies = [
+                "combined_row_column",      # Most aggressive - combine row and column scaling
+                "extreme_entry_targeting",  # Aggressively target extreme entries
+                "row_max_scaling",          # Scale rows with large max entries
+                "column_max_scaling",       # Scale columns with large max entries
+                "percentile_based",         # Scale based on percentiles
+                "tighten_ratios",           # Conservative - tighten ratios
+            ]
+    
+    # Track previous iteration's condition number for improvement detection
+    prev_condition_number = condition_number
+    
+    # Iteratively refine scaling
+    for iteration in range(max_iterations):
+        if reporter:
+            reporter.info(f"Scaling refinement iteration {iteration + 1}/{max_iterations}")
+        
+        best_scale = scale.copy()
+        best_scale_g = scale_g.copy()
+        best_condition_number = condition_number  # Start with current condition number
+        best_quality_score = quality.get("quality_score", 0.0)
+        best_strategy = None
+        
+        # Try each strategy and pick the best one
+        for strategy in strategies:
+            if reporter:
+                reporter.debug(f"Trying strategy: {strategy}")
+            try:
+                # Try this strategy
+                if reporter:
+                    reporter.debug(f"  Input scales: scale range=[{scale.min():.3e}, {scale.max():.3e}], scale_g range=[{scale_g.min():.3e}, {scale_g.max():.3e}]")
+                test_scale, test_scale_g = _try_scaling_strategy(
+                    strategy, nlp, x0, lbx, ubx, lbg, ubg,
+                    scale, scale_g, jac_g0_arr, jac_g0_scaled,
+                    variable_groups,
+                    constraint_types=constraint_types if has_constraint_groups else None,
+                    meta=meta,
+                    g0_arr=g0_arr,
+                    target_max_entry=1e2
+                )
+                if reporter:
+                    reporter.debug(f"  Output scales: scale range=[{test_scale.min():.3e}, {test_scale.max():.3e}], scale_g range=[{test_scale_g.min():.3e}, {test_scale_g.max():.3e}]")
+                    scale_changed = not np.allclose(test_scale, scale, rtol=1e-6)
+                    scale_g_changed = not np.allclose(test_scale_g, scale_g, rtol=1e-6)
+                    reporter.debug(f"  Strategy modified scales: scale={scale_changed}, scale_g={scale_g_changed}")
+                
+                # Recompute constraint scaling with new variable scales if needed
+                # (some strategies modify variable scales, which affects constraint scaling)
+                # BUT: preserve aggressive constraint scaling from strategies that modified scale_g
+                scale_g_was_modified = not np.allclose(test_scale_g, scale_g, rtol=1e-6)
+                scale_was_modified = not np.allclose(test_scale, scale, rtol=1e-6)
+                
+                # Special handling for constraint-type-aware strategy: don't recompute, it already
+                # computed optimal scaling based on constraint types
+                if strategy == "constraint_type_aware" and scale_g_was_modified:
+                    # Constraint-type-aware already computed optimal scaling, keep it
+                    # Even if variable scales changed, the constraint-type-aware scaling
+                    # is based on constraint types and Jacobian norms, not variable scales
+                    pass  # Keep test_scale_g as computed by constraint-type-aware
+                elif scale_was_modified and not scale_g_was_modified:
+                    # Variable scales changed but constraint scales weren't modified by strategy
+                    # Need to recompute constraint scaling with new variable scales
+                    try:
+                        test_scale_g = _compute_constraint_scaling_from_evaluation(
+                            nlp, x0, lbg, ubg, scale=test_scale
+                        )
+                    except Exception:
+                        test_scale_g = _compute_constraint_scaling(lbg, ubg)
+                elif scale_was_modified and scale_g_was_modified:
+                    # Both were modified - need to recompute constraint scaling but preserve
+                    # the aggressive adjustments from the strategy
+                    old_scale_g = scale_g.copy()
+                    try:
+                        new_base_scale_g = _compute_constraint_scaling_from_evaluation(
+                            nlp, x0, lbg, ubg, scale=test_scale
+                        )
+                        # Preserve relative adjustments: apply the ratio of old strategy-modified
+                        # scale_g to the new base scale_g
+                        if len(old_scale_g) > 0 and len(new_base_scale_g) > 0 and len(test_scale_g) > 0:
+                            # Compute what the strategy adjustment was
+                            strategy_adjustment = test_scale_g / (old_scale_g + 1e-10)
+                            # Apply that adjustment to the new base scaling
+                            test_scale_g = new_base_scale_g * strategy_adjustment
+                            # Re-clamp to reasonable ranges
+                            test_scale_g = np.clip(test_scale_g, 1e-6, 1e3)
+                        else:
+                            test_scale_g = new_base_scale_g
+                    except Exception:
+                        # Keep the strategy-modified scale_g
+                        pass
+                
+                # IMPORTANT: Recompute scaled Jacobian with NEW scales to properly evaluate quality
+                # The old jac_g0_scaled was computed with old scales, so it's not accurate for evaluation
+                test_jac_g0_arr, test_jac_g0_scaled = _compute_scaled_jacobian(
+                    nlp, x0, test_scale, test_scale_g
+                )
+                if test_jac_g0_scaled is not None:
+                    # Use the new scaled Jacobian for quality evaluation
+                    test_jac_mag = np.abs(test_jac_g0_scaled)
+                    test_jac_max = test_jac_mag.max()
+                    test_jac_min = test_jac_mag[test_jac_mag > 0].min() if (test_jac_mag > 0).any() else 1e-10
+                    test_condition_number = test_jac_max / test_jac_min if test_jac_min > 0 else np.inf
+                    # Compute quality score
+                    condition_score = 1.0 / (1.0 + np.log10(max(test_condition_number / 1e6, 1.0)))
+                    max_score = 1.0 / (1.0 + np.log10(max(test_jac_max / 1e2, 1.0)))
+                    test_quality_score = 0.5 * condition_score + 0.5 * max_score
+                else:
+                    # Fallback to full quality evaluation
+                    test_quality = _verify_scaling_quality(
+                        nlp, x0, test_scale, test_scale_g, lbg, ubg, reporter=None, meta=meta
+                    )
+                    test_condition_number = test_quality.get("condition_number", np.inf)
+                    test_quality_score = test_quality.get("quality_score", 0.0)
+                
+                # Log evaluation for all strategies
+                if reporter:
+                    # Format values safely (handle inf/nan)
+                    jac_max_str = f"{test_jac_max:.3e}" if (test_jac_g0_scaled is not None and np.isfinite(test_jac_max)) else ("N/A" if test_jac_g0_scaled is None else str(test_jac_max))
+                    jac_min_str = f"{test_jac_min:.3e}" if (test_jac_g0_scaled is not None and np.isfinite(test_jac_min)) else ("N/A" if test_jac_g0_scaled is None else str(test_jac_min))
+                    condition_str = f"{test_condition_number:.3e}" if np.isfinite(test_condition_number) else str(test_condition_number)
+                    reporter.debug(
+                        f"Strategy '{strategy}' evaluation: condition_number={condition_str}, "
+                        f"quality_score={test_quality_score:.3f}, "
+                        f"jac_max={jac_max_str}, "
+                        f"jac_min={jac_min_str}"
+                    )
+                    # Log per-constraint-type statistics for constraint-type-aware
+                    if strategy == "constraint_type_aware" and meta and "constraint_groups" in meta and test_jac_g0_scaled is not None:
+                        constraint_groups = meta["constraint_groups"]
+                        test_jac_mag = np.abs(test_jac_g0_scaled)
+                        for con_type, indices in constraint_groups.items():
+                            if len(indices) == 0:
+                                continue
+                            type_max_entries = []
+                            for idx in indices:
+                                if idx < test_jac_mag.shape[0]:
+                                    type_max_entries.append(test_jac_mag[idx, :].max())
+                            if len(type_max_entries) > 0:
+                                type_max = max(type_max_entries)
+                                type_mean = np.mean(type_max_entries)
+                                type_max_str = f"{type_max:.3e}" if np.isfinite(type_max) else str(type_max)
+                                type_mean_str = f"{type_mean:.3e}" if np.isfinite(type_mean) else str(type_mean)
+                                reporter.debug(
+                                    f"  {con_type} ({len(indices)} constraints): "
+                                    f"max_entry={type_max_str}, mean_max_entry={type_mean_str}"
+                                )
+                
+                # Check if this is better (lower condition number or higher quality score)
+                # Handle inf/nan comparisons safely
+                condition_better = (np.isfinite(test_condition_number) and np.isfinite(best_condition_number) and 
+                                   test_condition_number < best_condition_number) or \
+                                  (np.isfinite(test_condition_number) and not np.isfinite(best_condition_number))
+                quality_better = (np.isfinite(test_condition_number) and np.isfinite(best_condition_number) and
+                                 test_condition_number == best_condition_number and 
+                                 test_quality_score > best_quality_score)
+                is_better = condition_better or quality_better
+                
+                if reporter:
+                    reporter.debug(
+                        f"Strategy '{strategy}' comparison: "
+                        f"condition_better={condition_better}, "
+                        f"quality_better={quality_better}, "
+                        f"is_best={is_better}"
+                    )
+                if is_better:
+                    best_scale = test_scale
+                    best_scale_g = test_scale_g
+                    best_condition_number = test_condition_number
+                    best_quality_score = test_quality_score
+                    best_strategy = strategy
+                    if reporter:
+                        reporter.debug(f"Strategy '{strategy}' is now the best strategy")
+                    
+            except Exception as e:
+                import traceback
+                if reporter:
+                    reporter.debug(f"Strategy '{strategy}' failed with exception: {e}")
+                    reporter.debug(f"Exception traceback:\n{traceback.format_exc()}")
+                else:
+                    import logging
+                    log = logging.getLogger(__name__)
+                    log.error(f"Strategy '{strategy}' failed: {e}")
+                    log.error(f"Exception traceback:\n{traceback.format_exc()}")
+                continue
+        
+        # Update scales with best strategy
+        scale = best_scale
+        scale_g = best_scale_g
+        
+        # Recompute Jacobian with new scales
+        jac_g0_arr, jac_g0_scaled = _compute_scaled_jacobian(nlp, x0, scale, scale_g)
+        if jac_g0_arr is None or jac_g0_scaled is None:
+            break
+        
+        # Check quality again
+        quality = _verify_scaling_quality(nlp, x0, scale, scale_g, lbg, ubg, reporter=reporter, meta=meta)
+        condition_number = quality.get("condition_number", np.inf)
+        
+        if reporter:
+            strategy_msg = f" (best: {best_strategy})" if best_strategy else ""
+            improvement = prev_condition_number / condition_number if condition_number > 0 else 1.0
+            reporter.info(
+                f"Iteration {iteration + 1} quality: condition_number={condition_number:.3e}, "
+                f"quality_score={quality.get('quality_score', 0.0):.3f}, "
+                f"improvement={improvement:.2f}x{strategy_msg}"
+            )
+        
+        # If condition number is acceptable, save and return refined scaling
+        if condition_number <= target_condition_number:
+            if reporter:
+                reporter.info(f"Scaling refinement converged after {iteration + 1} iterations")
+            _save_scaling_cache(cache_key, scale, scale_g, quality)
+            return scale, scale_g, quality
+        
+        # Check if we made significant improvement
+        # For very high condition numbers, require at least 10x improvement
+        # For moderate condition numbers, require at least 1.01x improvement
+        improvement_ratio = prev_condition_number / condition_number if condition_number > 0 else 1.0
+        required_improvement = 10.0 if prev_condition_number > 1e20 else 1.01
+        
+        if improvement_ratio < required_improvement:
+            # No significant improvement
+            if best_strategy is None:
+                if reporter:
+                    reporter.debug("No strategy improved scaling, stopping refinement")
+                break
+            # If we improved but not enough, continue to next iteration
+            # (might need multiple iterations to reach target)
+        else:
+            # We improved significantly, update previous condition number
+            prev_condition_number = condition_number
+    
+    # Max iterations reached
+    if reporter:
+        reporter.warning(
+            f"Scaling refinement reached max iterations ({max_iterations}). "
+            f"Final condition_number={condition_number:.3e} (target < {target_condition_number:.3e})"
+        )
+    
+    # Save best scaling found (even if not perfect)
+    # Only save if it's better than what we started with
+    if condition_number < initial_condition_number:
+        _save_scaling_cache(cache_key, scale, scale_g, quality)
+    
+    return scale, scale_g, quality
 
 
 def _compute_objective_scaling(
@@ -1390,29 +3006,30 @@ def _compute_constraint_scaling_from_evaluation(
             if jac_row_norms is not None and i < len(jac_row_norms):
                 jac_norm_i = jac_row_norms[i]
                 if jac_norm_i > 1e-10:
+                    # Normalize scaled Jacobian row to O(1): scale_g[i] should be 1.0 / jac_norm_i
+                    # But we also need to account for constraint value magnitude
+                    # Use max of constraint value magnitude and Jacobian row norm
+                    magnitude = max(magnitude, jac_norm_i)
+                    
                     # Identify penalty constraints (rows with very large Jacobian norms)
                     # These are likely clearance penalties with 1e6 stiffness
                     penalty_threshold = ref_jac_norm * 1e3  # 1000x larger than typical
                     if jac_norm_i > penalty_threshold:
-                        # For penalty constraints, use a more conservative scale
-                        # Scale down the penalty contribution to keep Jacobian entries O(1)
-                        magnitude = magnitude * 1e3  # Scale down penalty contributions
-                    else:
-                        # Use geometric mean of constraint magnitude and Jacobian norm
-                        # This balances constraint value scaling with sensitivity scaling
-                        magnitude = np.sqrt(magnitude * jac_norm_i) if magnitude > 1e-10 else jac_norm_i
-                        # But don't let Jacobian dominate if constraint value is much larger
-                        magnitude = max(magnitude, jac_norm_i * 0.1)
+                        # For penalty constraints, aggressively normalize Jacobian entries
+                        # Target: scaled Jacobian elements should be O(1)
+                        magnitude = max(magnitude, jac_norm_i / 1e3)  # More aggressive normalization
             
-            # Compute scale factor with capping to prevent extreme ratios
+            # Compute scale factor: scale_g[i] = 1.0 / max(|g0[i]|, ||J_scaled_row[i]||)
+            # This ensures scaled Jacobian elements are O(1)
             if magnitude > 1e-6:
                 scale_g[i] = 1.0 / magnitude
             else:
                 scale_g[i] = 1.0
             
             # Cap scale factors to tighter range to limit condition number
-            # Range 1e-3 to 1e3 gives max condition number of 1e6
-            scale_g[i] = np.clip(scale_g[i], 1e-3, 1e3)
+            # Range 1e-2 to 1e2 gives max condition number of 1e4 (tighter than before)
+            # This helps achieve target condition number < 1e6
+            scale_g[i] = np.clip(scale_g[i], 1e-2, 1e2)
         
         # Log scaling statistics before normalization
         scale_g_pre = scale_g.copy()
@@ -1433,9 +3050,10 @@ def _compute_constraint_scaling_from_evaluation(
             scale_g_median = np.median(scale_g[scale_g > 1e-10])
             if scale_g_median > 1e-10 and scale_median > 1e-10:
                 # Adjust constraint scales to be comparable to variable scales
-                # Limit adjustment to prevent extreme changes that break feasibility
+                # Limit adjustment to tighter range: [0.316, 3.16] for 10¹ ratio
                 scale_ratio = scale_median / scale_g_median
-                scale_ratio = np.clip(scale_ratio, 0.1, 10.0)
+                sqrt_10 = np.sqrt(10.0)
+                scale_ratio = np.clip(scale_ratio, 1.0 / sqrt_10, sqrt_10)
                 scale_g = scale_g * scale_ratio
         
         # Normalize scale factors to reduce extreme ratios
@@ -1445,15 +3063,11 @@ def _compute_constraint_scaling_from_evaluation(
         p75 = np.percentile(scale_g_log, 75)
         iqr = p75 - p25
         
-        # Clip outliers (more than 2 IQRs from median for tighter range)
+        # Clip outliers with tighter bounds: cap to ±1 log unit from median (10¹ ratio)
         median_log = np.median(scale_g_log)
-        # Use tighter bounds: 2 IQRs instead of 3, and cap to ±2 log units from median
-        lower_bound = max(median_log - 2 * iqr if iqr > 0 else median_log - 2, median_log - 2.0)
-        upper_bound = min(median_log + 2 * iqr if iqr > 0 else median_log + 2, median_log + 2.0)
-        
-        # Ensure bounds stay within reasonable range (log10 scale: -3 to 3, i.e., 1e-3 to 1e3)
-        lower_bound = max(lower_bound, -3.0)  # 1e-3
-        upper_bound = min(upper_bound, 3.0)   # 1e3
+        sqrt_10_log = np.log10(np.sqrt(10.0))  # ≈ 0.5 log units
+        lower_bound = max(median_log - sqrt_10_log, -2.0)  # At least 1e-2
+        upper_bound = min(median_log + sqrt_10_log, 2.0)   # At most 1e2
         
         n_clipped = 0
         for i in range(n_cons):
@@ -1464,12 +3078,14 @@ def _compute_constraint_scaling_from_evaluation(
                 scale_g[i] = 10.0 ** upper_bound
                 n_clipped += 1
         
-        # Apply clamping strategy similar to variables: ensure constraint scales stay within [0.1×median, 10×median]
+        # Apply clamping strategy similar to variables: ensure constraint scales stay within [median/sqrt(10), median*sqrt(10)]
+        # This gives 10¹ ratio (tighter than before)
         scale_g_median = np.median(scale_g[scale_g > 1e-10])
         if scale_g_median > 1e-10:
+            sqrt_10 = np.sqrt(10.0)
             for i in range(n_cons):
                 if scale_g[i] > 1e-10:
-                    scale_g[i] = np.clip(scale_g[i], 0.1 * scale_g_median, 10.0 * scale_g_median)
+                    scale_g[i] = np.clip(scale_g[i], scale_g_median / sqrt_10, scale_g_median * sqrt_10)
         
         log.info(
             f"Constraint scaling (post-normalization): range=[{scale_g.min():.3e}, {scale_g.max():.3e}], "

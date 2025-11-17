@@ -646,10 +646,16 @@ class UnifiedOptimizationFramework:
             # Clear completion summary for Phase 1
             phase1_elapsed = time.time() - primary_start
             main_logger.step_complete("Phase 1: Primary Optimization", phase1_elapsed)
-            main_logger.info(
-                f"✓ Phase 1 COMPLETE: Primary optimization finished successfully "
-                f"(status={status_str}, time={phase1_elapsed:.3f}s)"
-            )
+            if is_successful:
+                main_logger.info(
+                    f"✓ Phase 1 COMPLETE: Primary optimization finished successfully "
+                    f"(status={status_str}, time={phase1_elapsed:.3f}s)"
+                )
+            else:
+                main_logger.warning(
+                    f"✗ Phase 1 FAILED: Primary optimization did not converge "
+                    f"(status={status_str}, time={phase1_elapsed:.3f}s)"
+                )
 
             # Phase 2: Secondary optimization (cam-ring)
             main_logger.separator()
@@ -768,19 +774,25 @@ class UnifiedOptimizationFramework:
             # Clear completion summary for Phase 3
             phase3_elapsed = time.time() - tertiary_start
             main_logger.step_complete("Phase 3: Tertiary Optimization", phase3_elapsed)
-            tertiary_success = tertiary_result.is_successful() if hasattr(tertiary_result, 'is_successful') else True
+            tertiary_success = tertiary_result.is_successful() if hasattr(tertiary_result, 'is_successful') else False
             tertiary_status_str = str(tertiary_result.status) if hasattr(tertiary_result, 'status') else 'unknown'
-            main_logger.info(
-                f"✓ Phase 3 COMPLETE: Tertiary optimization finished "
-                f"(status={tertiary_status_str}, time={phase3_elapsed:.3f}s)"
-            )
+            if tertiary_success:
+                main_logger.info(
+                    f"✓ Phase 3 COMPLETE: Tertiary optimization finished successfully "
+                    f"(status={tertiary_status_str}, time={phase3_elapsed:.3f}s)"
+                )
+            else:
+                main_logger.warning(
+                    f"✗ Phase 3 FAILED: Tertiary optimization did not converge "
+                    f"(status={tertiary_status_str}, time={phase3_elapsed:.3f}s)"
+                )
 
             # Finalize results
             self.data.total_solve_time = time.time() - start_time
             self.data.optimization_method = self.settings.method
 
             main_logger.separator()
-            main_logger.complete_phase(success=True)
+            main_logger.complete_phase(success=tertiary_success)
             main_logger.info(f"Total optimization time: {self.data.total_solve_time:.3f}s")
 
         except Exception as e:
@@ -1238,7 +1250,7 @@ class UnifiedOptimizationFramework:
                     c_mid__,
                     geom,
                     thermo,
-                    combustion=combustion_payload,
+                    combustion=comb_inputs_tune__,
                     cycle_time_s=self.data.cycle_time,
                 )
                 cycle_work_tune__ = float(out_tune__.get("cycle_work_j", 0.0))
@@ -1412,6 +1424,10 @@ class UnifiedOptimizationFramework:
                 p_load_kpa_ref__ = p_load_pa_ref / 1000.0
             elif workload_target_j__ and area_m2__ > 0.0:
                 # Fallback to workload target if cycle work not available
+                log.debug(
+                    f"Using workload target fallback for load pressure calculation "
+                    f"(cycle work unavailable, workload_target={workload_target_j__}J)"
+                )
                 p_load_pa_ref = workload_target_j__ / max(area_m2__ * stroke_m__, 1e-12)
                 p_load_kpa_ref__ = p_load_pa_ref / 1000.0
             
@@ -1460,6 +1476,11 @@ class UnifiedOptimizationFramework:
                 p_bounce_seed__ = np.asarray(out0__.get("p_bounce"), dtype=float)
             else:
                 # Fallback to seed-derived PR (legacy behavior)
+                log.warning(
+                    "Using legacy seed-derived PR calculation. "
+                    "This method is deprecated and will be removed in a future version. "
+                    "Enable pr_template_use_template=True to use the modern template-based method."
+                )
                 p_cyl_seed_raw__ = out0__.get("p_cyl")
                 if p_cyl_seed_raw__ is None:
                     p_cyl_seed_raw__ = out0__.get("p_comb")
@@ -1990,11 +2011,17 @@ class UnifiedOptimizationFramework:
                     import traceback
                     traceback.print_exc(file=sys.stderr)
                     primary_logger.info("Returning Stage A result")
-                    primary_logger.complete_phase(success=True)
+                    stage_a_success = result_stage_a__.is_successful() if hasattr(result_stage_a__, 'is_successful') else False
+                    primary_logger.complete_phase(success=stage_a_success)
+                    if not stage_a_success:
+                        primary_logger.warning("Stage A result is not successful; phase marked as failed")
                     return result_stage_a__
             else:
                 primary_logger.step(4, None, "Stage B: Thermal efficiency refinement (disabled)")
-                primary_logger.complete_phase(success=True)
+                stage_a_success = result_stage_a__.is_successful() if hasattr(result_stage_a__, 'is_successful') else False
+                primary_logger.complete_phase(success=stage_a_success)
+                if not stage_a_success:
+                    primary_logger.warning("Stage A result is not successful; phase marked as failed")
                 return result_stage_a__
 
         except Exception as exc:
@@ -2624,7 +2651,7 @@ class UnifiedOptimizationFramework:
         )
 
         # Extract and store secondary analysis from cam ring optimizer
-        secondary_logger.complete_phase(success=result.is_successful() if hasattr(result, 'is_successful') else True)
+        secondary_logger.complete_phase(success=result.is_successful() if hasattr(result, 'is_successful') else False)
         # The cam ring optimizer uses litvin optimization which now provides analysis
         if hasattr(result, "metadata") and "ipopt_analysis" in result.metadata:
             self.data.secondary_ipopt_analysis = result.metadata["ipopt_analysis"]

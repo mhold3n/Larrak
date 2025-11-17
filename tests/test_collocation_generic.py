@@ -1,6 +1,12 @@
-"""
-Tests for generic collocation support and objective computation.
-"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Add project root to Python path for direct execution
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 import numpy as np
 

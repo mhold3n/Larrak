@@ -1,13 +1,14 @@
-"""
-Tests for thermal efficiency adapter analysis integration.
+from __future__ import annotations
 
-This module tests the extraction and integration of Ipopt analysis
-from the thermal efficiency adapter into the unified framework.
-"""
-
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+# Add project root to Python path for direct execution
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 import pytest
 
@@ -21,6 +22,9 @@ from campro.optimization.unified_framework import (
     UnifiedOptimizationFramework,
     UnifiedOptimizationSettings,
 )
+
+# NOTE: This file uses class-based tests. Consider refactoring to function-based
+# tests to match the main test file style (see test_gear_profile_generation.py)
 
 
 class TestThermalEfficiencyAnalysis:

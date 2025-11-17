@@ -29,8 +29,6 @@ solver = ca.nlpsol('solver', 'ipopt', nlp, {'ipopt.linear_solver': 'ma27'})
 
 ### MA57 - Modern Sparse Symmetric Solver
 
-> **Note:** MA57 is no longer supported in the project builds. The remaining guidance is provided for historical context only.
-
 **Best for:** Medium to large problems
 - **Problem size:** 5,000-50,000 variables
 - **Characteristics:** Better performance than MA27, more memory efficient
@@ -45,7 +43,7 @@ solver = ca.nlpsol('solver', 'ipopt', nlp, {'ipopt.linear_solver': 'ma27'})
 
 **Example usage:**
 ```python
-solver = ca.nlpsol('solver', 'ipopt', nlp, {'ipopt.linear_solver': 'ma27'})
+solver = ca.nlpsol('solver', 'ipopt', nlp, {'ipopt.linear_solver': 'ma57'})
 ```
 
 ### MA77 - Out-of-Core Solver
@@ -116,30 +114,52 @@ The Larrak framework automatically selects the optimal solver based on:
 
 ### Selection Logic
 
+The framework automatically detects available solvers and selects the optimal one based on problem size:
+
 ```python
 if problem_size < 5,000:
-    # Prefer MA27
+    # Small problems: prefer MA27
     solver = "ma27"
 elif problem_size < 50,000:
-    # Legacy: MA57 has been removed; MA27 is always used
-    solver = "ma27"
+    # Medium problems: prefer MA57 if available, else MA27
+    solver = "ma57" if ma57_available else "ma27"
 else:
-    # Prefer MA97 or MA77 for very large problems
-    if multi_core_available:
-        solver = "ma97"  # or "ma86"
-    else:
+    # Large problems: prefer parallel solvers (MA97/MA86) or MA77
+    if ma97_available:
+        solver = "ma97"
+    elif ma86_available:
+        solver = "ma86"
+    elif ma77_available:
         solver = "ma77"
+    else:
+        solver = "ma27"  # Fallback
 ```
+
+### Platform-Specific Considerations
+
+- **macOS**: MA97 is automatically excluded due to a known segmentation fault bug
+- **Windows/macOS**: CoinHSL directories are automatically detected based on platform
+- **Auto-detection**: The framework automatically finds the correct CoinHSL library for your platform
 
 ## Performance Comparison
 
 | Solver | Problem Size | Memory Usage | Speed | Parallel | Best Use Case |
 |--------|-------------|--------------|-------|----------|---------------|
 | MA27   | < 5,000     | Low          | Good  | No       | Small problems, reliability |
-| MA57   | 5,000-50,000| Moderate     | Better| No       | (Deprecated; MA27 used instead) |
+| MA57   | 5,000-50,000| Moderate     | Better| No       | Medium problems, general-purpose |
 | MA77   | > 50,000    | Low (disk)   | Good  | No       | Very large problems, limited RAM |
 | MA86   | 10,000+     | Moderate-High| Excellent| Yes    | Large problems, multi-core |
-| MA97   | 50,000+     | High         | Best  | Yes      | Very large problems, multi-core |
+| MA97   | 50,000+     | High         | Best  | Yes      | Very large problems, multi-core (not on macOS) |
+
+## Auto-Detection
+
+The framework automatically detects:
+1. **CoinHSL directory**: Searches for `CoinHSL.v*` directories matching your platform
+   - Windows: directories containing `w64-mingw32` or `mingw`
+   - macOS: directories containing `darwin` or `apple`
+   - Selects the most recent version if multiple are found
+2. **HSL library path**: Automatically locates `libcoinhsl.dll` (Windows) or `libcoinhsl.dylib` (macOS)
+3. **Available solvers**: Reads `CoinHslConfig.h` and tests runtime availability
 
 ## Verification
 
@@ -150,10 +170,15 @@ To verify which HSL solvers are available on your system:
 python scripts/verify_hsl_installation.py
 
 # Or check programmatically
+from campro.environment.hsl_detector import detect_available_solvers
+available = detect_available_solvers()
+print(f"Available solvers: {available}")
+
+# Or use the solver selector
 from campro.optimization.solver_selection import AdaptiveSolverSelector
 selector = AdaptiveSolverSelector()
-available = selector._get_available_solvers()
-print(f"Available solvers: {[s.value for s in available]}")
+available = selector.get_available_solvers()
+print(f"Available solvers: {available}")
 ```
 
 ## Troubleshooting

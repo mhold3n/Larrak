@@ -1,6 +1,9 @@
 """
 Tests for CasADi Phase 4: Unified Physics & Optimizer Integration.
 
+NOTE: This file is OUT OF SCOPE for current refactoring.
+Phase 3 functionality is not in scope of the project right now.
+
 This module tests the unified physics function and its integration into
 optimization problems, including toy NLP and performance benchmarks.
 """

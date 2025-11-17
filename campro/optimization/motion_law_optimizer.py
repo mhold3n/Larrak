@@ -355,7 +355,17 @@ class MotionLawOptimizer(BaseOptimizer):
 
         theta = collocation_points
         n = len(theta)
-        dtheta = float(2.0 * np.pi / max(n - 1, 1)) if n > 1 else 2.0 * np.pi
+        theta_up = float(constraints.upstroke_angle)
+        use_closed_form = (
+            constraints.max_velocity is None
+            and constraints.max_acceleration is None
+            and constraints.max_jerk is None
+            and abs(constraints.zero_accel_duration_percent) < 1e-9
+        )
+        if use_closed_form:
+            return self._solve_minimum_jerk_closed_form(theta, constraints)
+        # Compute actual spacing between collocation points (non-uniform for LGL points)
+        dtheta_array = np.diff(theta)
 
         opti = Opti()
         x = opti.variable(n)
@@ -370,8 +380,35 @@ class MotionLawOptimizer(BaseOptimizer):
         opti.subject_to(v[-1] == 0.0)
         opti.subject_to(a[0] == 0.0)
         opti.subject_to(a[-1] == 0.0)
-        up_idx = int(np.argmin(np.abs(theta - float(constraints.upstroke_angle)))) if n > 0 else 0
-        opti.subject_to(x[up_idx] == float(constraints.stroke))
+        def _enforce_value_at(var: MX, angle: float, target: float) -> None:
+            """Enforce var(angle) == target by interpolating between neighboring nodes."""
+            if n == 0:
+                return
+            idx = int(np.searchsorted(theta, angle))
+            if idx < n and abs(theta[idx] - angle) < 1e-9:
+                opti.subject_to(var[idx] == target)
+                return
+            if idx <= 0:
+                left, right = 0, min(1, n - 1)
+            elif idx >= n:
+                left, right = max(n - 2, 0), n - 1
+            else:
+                left, right = idx - 1, idx
+            if left == right:
+                opti.subject_to(var[right] == target)
+                return
+            theta_left = float(theta[left])
+            theta_right = float(theta[right])
+            span = theta_right - theta_left
+            if span <= 0:
+                opti.subject_to(var[left] == target)
+                return
+            t = (angle - theta_left) / span
+            opti.subject_to((1.0 - t) * var[left] + t * var[right] == target)
+
+        _enforce_value_at(x, theta_up, float(constraints.stroke))
+        _enforce_value_at(v, theta_up, 0.0)
+        _enforce_value_at(a, theta_up, 0.0)
 
         # Global stroke bound: position must never exceed stroke (hard constraint)
         # Use tiny tolerance (0.01mm) to account for numerical precision while preventing significant overshoot
@@ -380,11 +417,12 @@ class MotionLawOptimizer(BaseOptimizer):
         for k in range(n):
             opti.subject_to(opti.bounded(0.0, x[k], stroke_val + stroke_tolerance))
 
-        # Kinematics
+        # Kinematics: use actual spacing between collocation points
         for k in range(n - 1):
-            opti.subject_to(v[k + 1] == v[k] + a[k] * dtheta)
-            opti.subject_to(x[k + 1] == x[k] + v[k] * dtheta)
-            opti.subject_to(a[k + 1] == a[k] + j[k] * dtheta)
+            dtheta_k = float(dtheta_array[k])
+            opti.subject_to(v[k + 1] == v[k] + a[k] * dtheta_k)
+            opti.subject_to(x[k + 1] == x[k] + v[k] * dtheta_k)
+            opti.subject_to(a[k + 1] == a[k] + j[k] * dtheta_k)
 
         # Optional physical limits
         if constraints.max_velocity is not None:
@@ -400,8 +438,17 @@ class MotionLawOptimizer(BaseOptimizer):
             for k in range(n):
                 opti.subject_to(opti.bounded(-jmax, j[k], jmax))
 
-        # Objective: jerk squared integral
-        J = ca.sum1(j * j) * dtheta
+        # Objective: jerk squared integral using trapezoidal rule for non-uniform spacing
+        # For non-uniform grid: ∫ f(θ) dθ ≈ Σ (f[k] + f[k+1])/2 * dtheta[k]
+        if n > 1:
+            J_terms = []
+            for k in range(n - 1):
+                j_sq_k = j[k] * j[k]
+                j_sq_kp1 = j[k+1] * j[k+1]
+                J_terms.append(0.5 * (j_sq_k + j_sq_kp1) * float(dtheta_array[k]))
+            J = ca.sum1(ca.vertcat(*J_terms))
+        else:
+            J = MX(0.0)
         opti.minimize(J)
 
         # Initial guess (S-curve)
@@ -444,6 +491,84 @@ class MotionLawOptimizer(BaseOptimizer):
             objective_value=J_opt,
             convergence_status="converged",
             solve_time=time.time(),
+            iterations=0,
+            stroke=constraints.stroke,
+            upstroke_duration_percent=constraints.upstroke_duration_percent,
+            zero_accel_duration_percent=constraints.zero_accel_duration_percent,
+            motion_type=MotionType.MINIMUM_JERK,
+        )
+
+    def _solve_minimum_jerk_closed_form(
+        self,
+        collocation_points: np.ndarray,
+        constraints: MotionLawConstraints,
+    ) -> MotionLawResult:
+        """Return the analytical quintic S-curve solution for unconstrained minimum jerk."""
+        theta = np.asarray(collocation_points, dtype=float)
+        stroke = float(constraints.stroke)
+        theta_up = float(constraints.upstroke_angle)
+        theta_down = float(2.0 * np.pi - theta_up)
+        eps = 1e-9
+
+        def s_curve(tau: np.ndarray) -> np.ndarray:
+            return 6 * tau**5 - 15 * tau**4 + 10 * tau**3
+
+        def s_curve_d1(tau: np.ndarray) -> np.ndarray:
+            return 30 * tau**4 - 60 * tau**3 + 30 * tau**2
+
+        def s_curve_d2(tau: np.ndarray) -> np.ndarray:
+            return 120 * tau**3 - 180 * tau**2 + 60 * tau
+
+        def s_curve_d3(tau: np.ndarray) -> np.ndarray:
+            return 360 * tau**2 - 360 * tau + 60
+
+        x = np.zeros_like(theta)
+        v = np.zeros_like(theta)
+        a = np.zeros_like(theta)
+        j = np.zeros_like(theta)
+
+        if theta_up > eps:
+            mask_up = theta <= theta_up + 1e-12
+            tau_up = np.clip(theta[mask_up] / theta_up, 0.0, 1.0)
+            scale_up = 1.0 / theta_up
+            x[mask_up] = stroke * s_curve(tau_up)
+            v[mask_up] = stroke * s_curve_d1(tau_up) * scale_up
+            a[mask_up] = stroke * s_curve_d2(tau_up) * (scale_up**2)
+            j[mask_up] = stroke * s_curve_d3(tau_up) * (scale_up**3)
+        else:
+            mask_up = np.zeros_like(theta, dtype=bool)
+
+        if theta_down > eps:
+            mask_down = ~mask_up
+            tau_down = np.clip(
+                (theta[mask_down] - theta_up) / theta_down,
+                0.0,
+                1.0,
+            )
+            scale_down = 1.0 / theta_down
+            x[mask_down] = stroke * (1.0 - s_curve(tau_down))
+            v[mask_down] = -stroke * s_curve_d1(tau_down) * scale_down
+            a[mask_down] = -stroke * s_curve_d2(tau_down) * (scale_down**2)
+            j[mask_down] = -stroke * s_curve_d3(tau_down) * (scale_down**3)
+
+        if theta.size > 0:
+            up_idx = int(np.argmin(np.abs(theta - theta_up)))
+            x[up_idx] = stroke
+            v[up_idx] = 0.0
+            a[up_idx] = 0.0
+            j[up_idx] = 0.0 if theta_up > eps else j[up_idx]
+
+        objective = float(np.trapz(j**2, theta)) if theta.size > 1 else 0.0
+
+        return MotionLawResult(
+            cam_angle=theta,
+            position=x,
+            velocity=v,
+            acceleration=a,
+            jerk=j,
+            objective_value=objective,
+            convergence_status="closed_form",
+            solve_time=0.0,
             iterations=0,
             stroke=constraints.stroke,
             upstroke_duration_percent=constraints.upstroke_duration_percent,
@@ -573,7 +698,8 @@ class MotionLawOptimizer(BaseOptimizer):
 
         theta = collocation_points
         n = len(theta)
-        dtheta = float(2.0 * np.pi / max(n - 1, 1)) if n > 1 else 2.0 * np.pi
+        # Compute actual spacing between collocation points (non-uniform for LGL points)
+        dtheta_array = np.diff(theta)
 
         opti = Opti()
         x = opti.variable(n)
@@ -591,11 +717,12 @@ class MotionLawOptimizer(BaseOptimizer):
         up_idx = int(np.argmin(np.abs(theta - float(constraints.upstroke_angle)))) if n > 0 else 0
         opti.subject_to(x[up_idx] == float(constraints.stroke))
 
-        # Kinematics
+        # Kinematics: use actual spacing between collocation points
         for k in range(n - 1):
-            opti.subject_to(v[k + 1] == v[k] + a[k] * dtheta)
-            opti.subject_to(x[k + 1] == x[k] + v[k] * dtheta)
-            opti.subject_to(a[k + 1] == a[k] + j[k] * dtheta)
+            dtheta_k = float(dtheta_array[k])
+            opti.subject_to(v[k + 1] == v[k] + a[k] * dtheta_k)
+            opti.subject_to(x[k + 1] == x[k] + v[k] * dtheta_k)
+            opti.subject_to(a[k + 1] == a[k] + j[k] * dtheta_k)
 
         # Optional limits
         if constraints.max_velocity is not None:
@@ -611,8 +738,17 @@ class MotionLawOptimizer(BaseOptimizer):
             for k in range(n):
                 opti.subject_to(opti.bounded(-jmax, j[k], jmax))
 
-        # Objective: acceleration squared
-        J = ca.sum1(a * a) * dtheta
+        # Objective: acceleration squared integral using trapezoidal rule for non-uniform spacing
+        # For non-uniform grid: ∫ f(θ) dθ ≈ Σ (f[k] + f[k+1])/2 * dtheta[k]
+        if n > 1:
+            J_terms = []
+            for k in range(n - 1):
+                a_sq_k = a[k] * a[k]
+                a_sq_kp1 = a[k+1] * a[k+1]
+                J_terms.append(0.5 * (a_sq_k + a_sq_kp1) * float(dtheta_array[k]))
+            J = ca.sum1(ca.vertcat(*J_terms))
+        else:
+            J = MX(0.0)
         opti.minimize(J)
 
         # Initial guess (S-curve)
@@ -678,7 +814,11 @@ class MotionLawOptimizer(BaseOptimizer):
         # Grid
         theta = collocation_points
         n = len(theta)
-        dtheta = float(2.0 * np.pi / max(n - 1, 1)) if n > 1 else 2.0 * np.pi
+        # Compute actual spacing between collocation points (non-uniform for LGL points)
+        dtheta_array = np.diff(theta)
+        # For periodic boundary conditions, also compute spacing at boundaries
+        # Wrap-around spacing: from last to first point (for periodic)
+        dtheta_wrap = float(2.0 * np.pi - theta[-1] + theta[0]) if n > 1 else 2.0 * np.pi
 
         # Weights and sweeps from configuration
         wj = float(self.weight_jerk)
@@ -723,11 +863,12 @@ class MotionLawOptimizer(BaseOptimizer):
         for k in range(n):
             opti.subject_to(opti.bounded(0.0, x[k], stroke_val + stroke_tolerance))
 
-        # Kinematics constraints via finite differences
+        # Kinematics constraints: use actual spacing between collocation points
         for k in range(n - 1):
-            opti.subject_to(v[k + 1] == v[k] + a[k] * dtheta)
-            opti.subject_to(x[k + 1] == x[k] + v[k] * dtheta)
-            opti.subject_to(a[k + 1] == a[k] + j[k] * dtheta)
+            dtheta_k = float(dtheta_array[k])
+            opti.subject_to(v[k + 1] == v[k] + a[k] * dtheta_k)
+            opti.subject_to(x[k + 1] == x[k] + v[k] * dtheta_k)
+            opti.subject_to(a[k + 1] == a[k] + j[k] * dtheta_k)
 
         # Optional limits if provided
         if constraints.max_velocity is not None:
@@ -767,17 +908,43 @@ class MotionLawOptimizer(BaseOptimizer):
         p_bounce = p0_bounce * ca.power(V0 / V, gamma_bounce)
         p = p_comb - p_bounce
 
-        # Periodic derivative dp/dθ with central differencing
+        # Periodic derivative dp/dθ with central differencing on non-uniform grid
         dp = opti.variable(n)
         for k in range(n):
             kp = (k + 1) % n
             km = (k - 1) % n
-            opti.subject_to(dp[k] == (p[kp] - p[km]) / (2.0 * dtheta))
+            # Compute actual spacing for central differencing
+            if k == 0:
+                # Wrap-around: forward spacing from n-1 to 0, backward from n-1 to 0
+                dtheta_forward = dtheta_wrap
+                dtheta_backward = float(dtheta_array[n-2]) if n > 2 else dtheta_wrap
+            elif k == n - 1:
+                # Wrap-around: forward spacing from n-1 to 0, backward from n-2 to n-1
+                dtheta_forward = dtheta_wrap
+                dtheta_backward = float(dtheta_array[n-2]) if n > 2 else dtheta_wrap
+            else:
+                # Regular interior points
+                dtheta_forward = float(dtheta_array[k])
+                dtheta_backward = float(dtheta_array[k-1])
+            # Central difference: (p[kp] - p[km]) / (dtheta_forward + dtheta_backward)
+            dtheta_total = dtheta_forward + dtheta_backward
+            opti.subject_to(dp[k] == (p[kp] - p[km]) / dtheta_total)
 
         # Normalized slope: zero-mean, unit L2
         mean_dp = (1.0 / n) * ca.sum1(dp)
         s = dp - mean_dp
-        norm_s = ca.sqrt(ca.sum1(s * s) * dtheta + 1e-12)
+        # L2 norm using trapezoidal rule for non-uniform spacing with periodic boundary
+        if n > 1:
+            s_sq = s * s
+            # Regular segments
+            s_sq_mid = 0.5 * (s_sq[:-1] + s_sq[1:])
+            dtheta_ca = ca.DM(dtheta_array)
+            norm_s_regular = ca.sum1(s_sq_mid * dtheta_ca)
+            # Wrap-around segment for periodic boundary
+            norm_s_wrap = 0.5 * (s_sq[-1] + s_sq[0]) * dtheta_wrap
+            norm_s = ca.sqrt(norm_s_regular + norm_s_wrap + 1e-12)
+        else:
+            norm_s = ca.sqrt(s[0]**2 + 1e-12)
         s_norm = s / norm_s
 
         # Reference slope: compute once from a seed profile (flat x), unit vector
@@ -790,14 +957,44 @@ class MotionLawOptimizer(BaseOptimizer):
         for fm in fuel_sweep:
             for _c in load_sweep:
                 # reuse same p model: slope aligned to reference
-                loss_p += ca.sum1((s_norm - s_ref) * (s_norm - s_ref)) * dtheta
+                # Trapezoidal rule for non-uniform spacing with periodic boundary
+                if n > 1:
+                    diff = s_norm - s_ref
+                    diff_sq = diff * diff
+                    # Regular segments
+                    diff_sq_mid = 0.5 * (diff_sq[:-1] + diff_sq[1:])
+                    loss_regular = ca.sum1(diff_sq_mid * dtheta_ca)
+                    # Wrap-around segment
+                    loss_wrap = 0.5 * (diff_sq[-1] + diff_sq[0]) * dtheta_wrap
+                    loss_p += loss_regular + loss_wrap
+                else:
+                    loss_p += (s_norm[0] - s_ref[0])**2
         loss_p = loss_p / max(K, 1)
 
         # iMEP approximation: ∮ p dV = ∮ p * A * v dθ (since dV = A dx = A v dθ)
-        imep = (area_mm2) * ca.sum1(p * v) * dtheta
+        # Trapezoidal rule for non-uniform spacing with periodic boundary
+        if n > 1:
+            pv = p * v
+            # Regular segments
+            pv_mid = 0.5 * (pv[:-1] + pv[1:])
+            imep_regular = ca.sum1(pv_mid * dtheta_ca)
+            # Wrap-around segment
+            imep_wrap = 0.5 * (pv[-1] + pv[0]) * dtheta_wrap
+            imep = (area_mm2) * (imep_regular + imep_wrap)
+        else:
+            imep = (area_mm2) * p[0] * v[0] * dtheta_wrap
 
-        # Jerk integral
-        jerk_cost = ca.sum1(j * j) * dtheta
+        # Jerk integral using trapezoidal rule for non-uniform spacing with periodic boundary
+        if n > 1:
+            j_sq = j * j
+            # Regular segments
+            j_sq_mid = 0.5 * (j_sq[:-1] + j_sq[1:])
+            jerk_regular = ca.sum1(j_sq_mid * dtheta_ca)
+            # Wrap-around segment
+            jerk_wrap = 0.5 * (j_sq[-1] + j_sq[0]) * dtheta_wrap
+            jerk_cost = jerk_regular + jerk_wrap
+        else:
+            jerk_cost = j[0]**2 * dtheta_wrap
 
         # Optional guardrail penalty on pressure slope mismatch
         penalty = MX(0)

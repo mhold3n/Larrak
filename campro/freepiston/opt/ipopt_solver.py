@@ -44,7 +44,7 @@ class IPOPTOptions:
     acceptable_iter: int = 15
 
     # Linear solver options (unused when option_file_name is provided)
-    linear_solver: str = "ma27"  # kept for backward compatibility
+    linear_solver: str = "ma57"  # Prefer MA57 for better performance; falls back to MA27 if unavailable
     linear_solver_options: dict[str, Any] = None
 
     # Barrier parameter options
@@ -64,7 +64,7 @@ class IPOPTOptions:
     constr_viol_tol: float = 1e-4
 
     # Output options
-    print_level: int = 5  # 0=silent, 5=normal (iteration summary), 8+ includes detailed constraint residuals
+    print_level: int = 8  # 0=silent, 5=normal (iteration summary), 8+ includes detailed constraint residuals and convergence info
     print_frequency_iter: int = 1
     print_frequency_time: float = 5.0
     output_file: str | None = None
@@ -203,7 +203,8 @@ class IPOPTIterationCallback(ca.Callback):
                 float(np.max(np.abs(lam_g))) if lam_g is not None and lam_g.size else 0.0
             )
 
-            self._reporter.debug(
+            # Use info level for iteration output so it's always visible
+            self._reporter.info(
                 "[iter] "
                 f"k={self._iteration:04d} "
                 f"obj={obj_val: .3e} "
@@ -352,14 +353,16 @@ class IPOPTSolver:
             # Infer problem dimensions up-front so diagnostic hooks can be configured
             n_vars, n_constraints, n_params = self._infer_dimensions(nlp)
 
-            # Optional iteration streaming (disabled unless explicitly requested)
+            # Iteration streaming: enabled by default for verbose output (every iteration)
+            # Can be disabled via FREE_PISTON_IPOPT_TRACE=false or controlled via FREE_PISTON_IPOPT_TRACE_STEP
             iteration_callback: IPOPTIterationCallback | None = None
-            if _env_flag("FREE_PISTON_IPOPT_TRACE", default=False):
-                step_raw = os.environ.get("FREE_PISTON_IPOPT_TRACE_STEP", "5")
+            trace_enabled = _env_flag("FREE_PISTON_IPOPT_TRACE", default=True)  # Default to True for verbose output
+            if trace_enabled:
+                step_raw = os.environ.get("FREE_PISTON_IPOPT_TRACE_STEP", "1")  # Default to every iteration
                 try:
                     callback_step = max(1, int(step_raw))
                 except Exception:
-                    callback_step = 5
+                    callback_step = 1
                 iteration_callback = IPOPTIterationCallback(
                     reporter=reporter,
                     n_vars=n_vars,
@@ -558,7 +561,12 @@ class IPOPTSolver:
         # Use centralized factory with explicit linear solver
         from campro.optimization.ipopt_factory import create_ipopt_solver
 
-        solver = create_ipopt_solver("solver", nlp, opts, linear_solver="ma27")
+        solver = create_ipopt_solver(
+            "solver",
+            nlp,
+            opts,
+            linear_solver=self.options.linear_solver,
+        )
 
         return solver
 
@@ -644,7 +652,8 @@ class IPOPTSolver:
             )
 
         # Add linear solver options if provided
-        for key, value in self.options.linear_solver_options.items():
+        solver_specific_options = self.options.linear_solver_options or {}
+        for key, value in solver_specific_options.items():
             opts[f"ipopt.{key}"] = value
 
         # Log configuration for debugging
@@ -819,11 +828,11 @@ def get_default_ipopt_options() -> IPOPTOptions:
     options.tol = 1e-6
     options.acceptable_tol = 1e-4
     # Linear solver is configured via ipopt.opt
-    options.mu_strategy = "monotone"  # Use monotone for better barrier parameter control
-    options.mu_init = 1e-2  # Start with smaller barrier parameter
-    options.mu_max = 1e3  # Reduced maximum to prevent getting stuck
+    options.mu_strategy = "adaptive"  # Use adaptive for better convergence with improved scaling
+    options.mu_init = 1e-1  # Increased from 1e-2 for better initial stability
+    options.mu_max = 1e4  # Increased from 1e3 to allow more barrier parameter growth
     options.line_search_method = "filter"
-    options.print_level = 5  # Normal output: iteration summary without detailed constraint residuals
+    options.print_level = 8  # Verbose output: includes detailed iteration info and convergence diagnostics
     options.hessian_approximation = "limited-memory"
     # Disable restoration phase (scaling should make problems more feasible)
     options.expect_infeasible_problem = "no"
@@ -841,11 +850,11 @@ def get_robust_ipopt_options() -> IPOPTOptions:
     options.tol = 1e-5
     options.acceptable_tol = 1e-3
     # Linear solver is configured via ipopt.opt
-    options.mu_strategy = "monotone"
-    options.mu_init = 1e-2  # Start with smaller barrier parameter
-    options.mu_max = 1e3  # Reduced maximum to prevent getting stuck
+    options.mu_strategy = "adaptive"  # Use adaptive for better convergence with improved scaling
+    options.mu_init = 1e-1  # Increased from 1e-2 for better initial stability
+    options.mu_max = 1e4  # Increased from 1e3 to allow more barrier parameter growth
     options.line_search_method = "cg-penalty"
-    options.print_level = 5  # Normal output: iteration summary without detailed constraint residuals
+    options.print_level = 8  # Verbose output: includes detailed iteration info and convergence diagnostics
     options.hessian_approximation = "exact"
     # Disable restoration phase (scaling should make problems more feasible)
     options.expect_infeasible_problem = "no"

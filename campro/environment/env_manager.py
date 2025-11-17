@@ -221,53 +221,23 @@ def find_hsl_library(env_path: Path | None = None) -> Optional[Path]:
             log.info(f"Found HSL library at: {search_path}")
             return search_path
     
-    # Fallback: Check project CoinHSL archive folder (OS-specific)
+    # Fallback: Check project CoinHSL directory using hsl_detector
     try:
-        # Try to detect project root
-        import campro
-        project_root = Path(campro.__file__).parent.parent
-    except ImportError:
-        # Fallback: assume current working directory
-        project_root = Path.cwd()
-    
-    if IS_WINDOWS:
-        # Windows: Check for Windows-specific CoinHSL archive
-        hsl_folder = project_root / "CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5"
-        if hsl_folder.exists():
-            bin_dir = hsl_folder / "bin"
-            dll = bin_dir / lib_name
-            if dll.exists():
-                log.info(f"Found HSL library in project CoinHSL archive (Windows): {dll}")
-                return dll
+        from campro.environment.hsl_detector import get_hsl_library_path
         
-        # Fallback: search for any Windows CoinHSL-archive.* folder
-        candidates = list(project_root.glob("CoinHSL-archive.*"))
-        for candidate in candidates:
-            # Check if it's a Windows archive (contains w64-mingw32 or similar)
-            if "w64" in candidate.name.lower() or "mingw" in candidate.name.lower():
-                bin_dir = candidate / "bin"
-                dll = bin_dir / lib_name
-                if dll.exists():
-                    log.info(f"Found HSL library in project CoinHSL archive (Windows): {dll}")
-                    return dll
-    elif IS_MACOS:
-        # macOS: Check for macOS-specific CoinHSL archive
-        # Look for darwin or apple in the folder name
-        candidates = list(project_root.glob("CoinHSL-archive.*"))
-        for candidate in candidates:
-            # Check if it's a macOS archive (contains darwin or apple)
-            if "darwin" in candidate.name.lower() or "apple" in candidate.name.lower():
-                lib_dir = candidate / "lib"
-                dylib = lib_dir / lib_name
-                if dylib.exists():
-                    log.info(f"Found HSL library in project CoinHSL archive (macOS): {dylib}")
-                    return dylib
-                # Also check bin directory (some archives use bin/)
-                bin_dir = candidate / "bin"
-                dylib = bin_dir / lib_name
-                if dylib.exists():
-                    log.info(f"Found HSL library in project CoinHSL archive (macOS): {dylib}")
-                    return dylib
+        hsl_lib_path = get_hsl_library_path()
+        if hsl_lib_path and hsl_lib_path.exists():
+            log.info(f"Found HSL library in project CoinHSL directory: {hsl_lib_path}")
+            return hsl_lib_path
+    except ImportError:
+        # If hsl_detector not available, skip this check
+        log.debug("hsl_detector not available; skipping project directory check")
+        pass
+    except Exception as e:
+        # Log error but continue (this is a fallback path)
+        log.warning(f"Error checking project CoinHSL directory: {e}")
+        # Continue to return None (not found)
+        pass
     
     log.debug("HSL library not found in conda environment or project folder")
     return None

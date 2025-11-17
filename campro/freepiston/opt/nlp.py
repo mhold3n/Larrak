@@ -1268,6 +1268,22 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         "penalties": [],  # Scavenging/timing states
     }
     var_idx = 0  # Track current variable index
+    
+    # Track constraint groups for metadata
+    constraint_groups: dict[str, list[int]] = {
+        "collocation_residuals": [],
+        "continuity": [],
+        "path_pressure": [],
+        "path_temperature": [],
+        "path_clearance": [],
+        "path_valve_rate": [],
+        "path_velocity": [],
+        "path_acceleration": [],
+        "combustion": [],
+        "periodicity": [],
+        "scavenging": [],
+    }
+    con_idx = 0  # Track current constraint index
 
     # Initial states
     xL0 = ca.SX.sym("xL0")
@@ -1684,6 +1700,9 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             g += colloc_res
             lbg += [0.0] * len(colloc_res)
             ubg += [0.0] * len(colloc_res)
+            # Track collocation residual constraints
+            constraint_groups["collocation_residuals"].extend(range(con_idx, con_idx + len(colloc_res)))
+            con_idx += len(colloc_res)
 
             # Accumulate indicated work and Q_in
             W_ind_accum += h * grid.weights[c] * p_c * dV_dt
@@ -1823,12 +1842,18 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         g += cont
         lbg += [0.0] * len(cont)
         ubg += [0.0] * len(cont)
+        # Track continuity constraints
+        constraint_groups["continuity"].extend(range(con_idx, con_idx + len(cont)))
+        con_idx += len(cont)
 
     # Enhanced path constraints
     gap_min = bounds.get("x_gap_min", 0.0008)
     g += [xR_k - xL_k]  # Clearance constraint
     lbg += [gap_min]
     ubg += [ca.inf]
+    # Track clearance/penalty constraint
+    constraint_groups["path_clearance"].append(con_idx)
+    con_idx += 1
 
     # Comprehensive path constraints for all time steps
     for k in range(K):
@@ -1841,12 +1866,18 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             p_max_pa = bounds.get("p_max", 10.0) * 1e6  # Default 10.0 MPa = 1e7 Pa
             lbg += [p_min_pa]
             ubg += [p_max_pa]
+            # Track pressure path constraints
+            constraint_groups["path_pressure"].append(con_idx)
+            con_idx += 1
 
             # Temperature constraints
             T_kj = T_colloc[j]
             g += [T_kj]  # Temperature constraint
             lbg += [bounds.get("T_min", 200.0)]
             ubg += [bounds.get("T_max", 2000.0)]
+            # Track temperature path constraints
+            constraint_groups["path_temperature"].append(con_idx)
+            con_idx += 1
 
             # Valve rate constraints (if valve areas are available)
             if k > 0:
@@ -1864,6 +1895,9 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 g += [Ain_rate, Aex_rate]  # Valve rate constraints
                 lbg += [-bounds.get("dA_dt_max", 0.02), -bounds.get("dA_dt_max", 0.02)]
                 ubg += [bounds.get("dA_dt_max", 0.02), bounds.get("dA_dt_max", 0.02)]
+                # Track valve rate constraints
+                constraint_groups["path_valve_rate"].extend([con_idx, con_idx + 1])
+                con_idx += 2
 
             # Piston velocity constraints
             vL_kj = vL_colloc[j]
@@ -1871,6 +1905,9 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             g += [vL_kj, vR_kj]  # Piston velocity constraints
             lbg += [-bounds.get("v_max", 50.0), -bounds.get("v_max", 50.0)]
             ubg += [bounds.get("v_max", 50.0), bounds.get("v_max", 50.0)]
+            # Track velocity path constraints
+            constraint_groups["path_velocity"].extend([con_idx, con_idx + 1])
+            con_idx += 2
 
             # Piston acceleration constraints (simplified)
             if k > 0:
@@ -1879,6 +1916,9 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 g += [aL_kj, aR_kj]  # Piston acceleration constraints
                 lbg += [-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)]
                 ubg += [bounds.get("a_max", 1000.0), bounds.get("a_max", 1000.0)]
+                # Track acceleration path constraints
+                constraint_groups["path_acceleration"].extend([con_idx, con_idx + 1])
+                con_idx += 2
 
     # Combustion timing constraints (optional placeholders)
     for k in range(K):
@@ -1891,11 +1931,17 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             # Convert normalized bounds from kJ to J (multiply by 1e3)
             q_comb_max_j = bounds.get("Q_comb_max", 10.0) * 1e3  # Default 10.0 kJ = 10000.0 J
             ubg += [q_comb_max_j]
+            # Track combustion constraints
+            constraint_groups["combustion"].append(con_idx)
+            con_idx += 1
 
     # Cycle periodicity constraints
     g += [xL_k - xL0, xR_k - xR0, vL_k - vL0, vR_k - vR0]
     lbg += [0.0, 0.0, 0.0, 0.0]
     ubg += [0.0, 0.0, 0.0, 0.0]
+    # Track periodicity constraints
+    constraint_groups["periodicity"].extend(range(con_idx, con_idx + 4))
+    con_idx += 4
 
     # Scavenging metrics and timing targets at cycle end
     V_end = chamber_volume_from_pistons(
@@ -1914,15 +1960,21 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         g += [short_circuit_fraction]
         lbg += [0.0]
         ubg += [float(cons_cfg["short_circuit_max"])]
+        constraint_groups["scavenging"].append(con_idx)
+        con_idx += 1
     if "scavenging_min" in cons_cfg:
         g += [yF_k]
         lbg += [float(cons_cfg["scavenging_min"])]
         ubg += [1.0]
+        constraint_groups["scavenging"].append(con_idx)
+        con_idx += 1
     if "trapping_min" in cons_cfg:
         trap_eff = total_trapped / (Mdel_k + 1e-9)
         g += [trap_eff]
         lbg += [float(cons_cfg["trapping_min"])]
         ubg += [ca.inf]
+        constraint_groups["scavenging"].append(con_idx)
+        con_idx += 1
 
     timing_cfg = P.get("timing", {})
     if timing_cfg:
@@ -1935,11 +1987,15 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             g += [t_cm_in]
             lbg += [t_target - tol]
             ubg += [t_target + tol]
+            constraint_groups["scavenging"].append(con_idx)
+            con_idx += 1
         if "Aex_t_cm" in timing_cfg:
             t_target = float(timing_cfg["Aex_t_cm"])
             g += [t_cm_ex]
             lbg += [t_target - tol]
             ubg += [t_target + tol]
+            constraint_groups["scavenging"].append(con_idx)
+            con_idx += 1
 
     # Objective: weighted multi-term
     w_dict = obj_cfg.get("w", {})
@@ -2048,6 +2104,7 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         "scavenging_states": True,
         "timing_states": True,
         "variable_groups": var_groups,  # Add variable group metadata
+        "constraint_groups": constraint_groups,  # Add constraint group metadata
     }
     if combustion_meta is not None:
         meta["combustion_model"] = combustion_meta
