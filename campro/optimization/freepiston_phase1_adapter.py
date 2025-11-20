@@ -27,6 +27,7 @@ from campro.freepiston.opt.config_factory import ConfigFactory
 from campro.freepiston.opt.driver import solve_cycle
 from campro.logging import get_logger
 from campro.optimization.base import BaseOptimizer, OptimizationResult, OptimizationStatus
+from campro.utils import format_duration
 from campro.utils.structured_reporter import StructuredReporter
 
 log = get_logger(__name__)
@@ -292,7 +293,7 @@ class FreePistonPhase1Adapter(BaseOptimizer):
             # Estimate variable count: K * C * 6 (states) + initial states + controls
             estimated_vars = K * C * 6 + 6 + K * C * 2  # Rough estimate
             reporter.info(
-                f"Problem dictionary built in {build_elapsed:.3f}s: "
+                f"Problem dictionary built in {format_duration(build_elapsed)}: "
                 f"K={K}, C={C}, estimated_vars≈{estimated_vars}"
             )
 
@@ -304,7 +305,7 @@ class FreePistonPhase1Adapter(BaseOptimizer):
             solve_start = time.time()
             solution = solve_cycle(P)
             solve_elapsed = time.time() - solve_start
-            reporter.info(f"Free-piston IPOPT solve_cycle() completed in {solve_elapsed:.3f}s")
+            reporter.info(f"Free-piston IPOPT solve_cycle() completed in {format_duration(solve_elapsed)}")
 
             # Convert solution to OptimizationResult
             result = self._convert_solution_to_result(
@@ -566,7 +567,8 @@ class FreePistonPhase1Adapter(BaseOptimizer):
 
         # Extract solution variables
         x_opt = opt_meta.get("x_opt")
-        if x_opt is None:
+        # Handle both None and empty arrays (IPOPT may return empty array on failure)
+        if x_opt is None or (isinstance(x_opt, np.ndarray) and x_opt.size == 0):
             log.warning("No solution variables found in free-piston result")
             return OptimizationResult(
                 status=status,

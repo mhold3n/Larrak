@@ -19,6 +19,7 @@ from campro.optimization.unified_framework import (  # noqa: E402
     UnifiedOptimizationFramework,
     UnifiedOptimizationSettings,
 )
+from campro.utils import format_duration  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -130,7 +131,7 @@ def test_primary_optimization_simple():
         result = framework._optimize_primary()
         end_time = time.time()
 
-        print(f"Primary optimization completed in {end_time - start_time:.3f} seconds")
+        print(f"Primary optimization completed in {format_duration(end_time - start_time)}")
 
         # Print result details
         print_result_details(result, "Simple Path")
@@ -223,7 +224,7 @@ def test_primary_optimization_thermal_efficiency():
         result = framework._optimize_primary()
         end_time = time.time()
 
-        print(f"Primary optimization completed in {end_time - start_time:.3f} seconds")
+        print(f"Primary optimization completed in {format_duration(end_time - start_time)}")
 
         # Print result details
         print_result_details(result, "Thermal Efficiency Path")

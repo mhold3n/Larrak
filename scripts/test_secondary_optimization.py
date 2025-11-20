@@ -22,6 +22,7 @@ from campro.optimization.unified_framework import (  # noqa: E402
     UnifiedOptimizationFramework,
     UnifiedOptimizationSettings,
 )
+from campro.utils import format_duration  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -134,7 +135,7 @@ def test_secondary_optimization_isolated():
         end_time = time.time()
 
         print(
-            f"Secondary optimization completed in {end_time - start_time:.3f} seconds",
+            f"Secondary optimization completed in {format_duration(end_time - start_time)}",
         )
 
         # Print result details
@@ -215,7 +216,7 @@ def test_secondary_optimization_with_framework():
         end_time = time.time()
 
         print(
-            f"Secondary optimization completed in {end_time - start_time:.3f} seconds",
+            f"Secondary optimization completed in {format_duration(end_time - start_time)}",
         )
 
         # Print result details
@@ -289,7 +290,7 @@ def test_secondary_optimization_direct_call():
         end_time = time.time()
 
         print(
-            f"Secondary optimization completed in {end_time - start_time:.3f} seconds",
+            f"Secondary optimization completed in {format_duration(end_time - start_time)}",
         )
 
         # Print result details

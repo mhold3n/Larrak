@@ -6,6 +6,8 @@ and coordinate systems used in motion law problems.
 """
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from campro.logging import get_logger
@@ -14,8 +16,8 @@ log = get_logger(__name__)
 
 
 def convert_units(
-    value: float | np.ndarray, from_unit: str, to_unit: str,
-) -> float | np.ndarray:
+    value: float | np.ndarray[Any, Any], from_unit: str, to_unit: str,
+) -> float | np.ndarray[Any, Any]:
     """
     Convert values between different units.
 
@@ -73,8 +75,8 @@ def convert_units(
 
 
 def time_to_cam_angle(
-    time_array: np.ndarray, cycle_time: float = 1.0, start_angle: float = 0.0,
-) -> np.ndarray:
+    time_array: np.ndarray[Any, Any], cycle_time: float = 1.0, start_angle: float = 0.0,
+) -> np.ndarray[Any, Any]:
     """
     Convert time array to cam angle array.
 
@@ -99,8 +101,8 @@ def time_to_cam_angle(
 
 
 def cam_angle_to_time(
-    cam_angle_array: np.ndarray, cycle_time: float = 1.0, start_angle: float = 0.0,
-) -> np.ndarray:
+    cam_angle_array: np.ndarray[Any, Any], cycle_time: float = 1.0, start_angle: float = 0.0,
+) -> np.ndarray[Any, Any]:
     """
     Convert cam angle array to time array.
 
@@ -121,7 +123,7 @@ def cam_angle_to_time(
     return time_array
 
 
-def rpm_to_angular_velocity(rpm: float | np.ndarray) -> float | np.ndarray:
+def rpm_to_angular_velocity(rpm: float | np.ndarray[Any, Any]) -> float | np.ndarray[Any, Any]:
     """
     Convert RPM to angular velocity in rad/s.
 
@@ -135,11 +137,11 @@ def rpm_to_angular_velocity(rpm: float | np.ndarray) -> float | np.ndarray:
 
 
 def convert_per_degree_to_per_second(
-    value_per_deg: float | np.ndarray,
+    value_per_deg: float | np.ndarray[Any, Any],
     duration_angle_deg: float,
     cycle_time: float,
     derivative_order: int = 1,
-) -> float | np.ndarray:
+) -> float | np.ndarray[Any, Any]:
     """
     Convert per-degree derivatives to per-second derivatives.
     
@@ -201,11 +203,11 @@ def convert_per_degree_to_per_second(
 
 
 def convert_per_second_to_per_degree(
-    value_per_s: float | np.ndarray,
+    value_per_s: float | np.ndarray[Any, Any],
     duration_angle_deg: float,
     cycle_time: float,
     derivative_order: int = 1,
-) -> float | np.ndarray:
+) -> float | np.ndarray[Any, Any]:
     """
     Convert per-second derivatives to per-degree derivatives.
     
@@ -267,8 +269,8 @@ def convert_per_second_to_per_degree(
 
 
 def angular_velocity_to_rpm(
-    angular_velocity: float | np.ndarray,
-) -> float | np.ndarray:
+    angular_velocity: float | np.ndarray[Any, Any],
+) -> float | np.ndarray[Any, Any]:
     """
     Convert angular velocity in rad/s to RPM.
 
@@ -281,7 +283,7 @@ def angular_velocity_to_rpm(
     return angular_velocity * 60 / (2 * np.pi)
 
 
-def frequency_to_rpm(frequency: float | np.ndarray) -> float | np.ndarray:
+def frequency_to_rpm(frequency: float | np.ndarray[Any, Any]) -> float | np.ndarray[Any, Any]:
     """
     Convert frequency in Hz to RPM.
 
@@ -294,7 +296,7 @@ def frequency_to_rpm(frequency: float | np.ndarray) -> float | np.ndarray:
     return frequency * 60
 
 
-def rpm_to_frequency(rpm: float | np.ndarray) -> float | np.ndarray:
+def rpm_to_frequency(rpm: float | np.ndarray[Any, Any]) -> float | np.ndarray[Any, Any]:
     """
     Convert RPM to frequency in Hz.
 
@@ -308,8 +310,8 @@ def rpm_to_frequency(rpm: float | np.ndarray) -> float | np.ndarray:
 
 
 def pressure_to_stress(
-    pressure: float | np.ndarray, area: float | np.ndarray,
-) -> float | np.ndarray:
+    pressure: float | np.ndarray[Any, Any], area: float | np.ndarray[Any, Any],
+) -> float | np.ndarray[Any, Any]:
     """
     Convert pressure to stress (force per unit area).
 

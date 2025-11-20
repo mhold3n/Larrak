@@ -12,6 +12,7 @@ import numpy as np
 from campro.diagnostics.scaling import build_scaled_nlp, scale_bounds, scale_value
 from campro.freepiston.opt.ipopt_solver import IPOPTOptions, IPOPTSolver
 from campro.logging import get_logger
+from campro.utils import format_duration
 
 from .config import GeometrySearchConfig, OptimizationOrder, PlanetSynthesisConfig
 from .involute_internal import InternalGearParams, sample_internal_flank
@@ -977,11 +978,11 @@ def _optimize_sections_parallel(
         logger.info("Parallel Optimization Utilization Summary")
         logger.info("=" * 70)
         logger.info(
-            f"Wall-clock time: {parallel_elapsed:.3f}s "
-            f"(sum of work item times: {total_work_time:.3f}s)"
+            f"Wall-clock time: {format_duration(parallel_elapsed)} "
+            f"(sum of work item times: {format_duration(total_work_time)})"
         )
         logger.info(f"Work items: {total_work_items}, Threads used: {n_threads}")
-        logger.info(f"Speedup: {speedup:.2f}x (sequential: {sequential_time:.3f}s / parallel: {parallel_elapsed:.3f}s)")
+        logger.info(f"Speedup: {speedup:.2f}x (sequential: {format_duration(sequential_time)} / parallel: {format_duration(parallel_elapsed)})")
         logger.info(f"Parallel efficiency: {efficiency:.2%} (speedup / threads)")
         logger.info(
             f"Thread utilization: {utilization:.2%} "
@@ -1005,7 +1006,7 @@ def _optimize_sections_parallel(
                 f"Consider using ProcessPoolExecutor for CPU-bound work."
             )
     else:
-        logger.info(f"Parallel optimization completed in {parallel_elapsed:.3f}s")
+        logger.info(f"Parallel optimization completed in {format_duration(parallel_elapsed)}")
     
     logger.step_complete("Parallel section optimization", parallel_elapsed)
     return section_results
@@ -1419,7 +1420,7 @@ def _order2_ipopt_optimization(config: GeometrySearchConfig) -> OptimResult:
         solve_elapsed = time.time() - solve_start
         order2_logger.info(f"  Ipopt solve completed: success={result.success}, "
                           f"iterations={result.iterations if hasattr(result, 'iterations') else 'unknown'}, "
-                          f"time={solve_elapsed:.3f}s")
+                          f"time={format_duration(solve_elapsed)}")
 
         if result.success:
             order2_logger.step_complete("Ipopt optimization", solve_elapsed)

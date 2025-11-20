@@ -4,7 +4,7 @@ import os
 import sys
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from typing import Iterable, Optional, Tuple, TextIO
+from typing import Iterable, Iterator, Optional, Tuple, TextIO
 
 import logging
 
@@ -142,7 +142,7 @@ class StructuredReporter:
         *,
         level: str = "INFO",
         context: Optional[str] = None,
-    ):
+    ) -> Iterator["StructuredReporter"]:
         reporter = self if context is None else self.child(context)
         current_contexts = reporter._contexts if context is not None else None
         should_emit = level != "DEBUG" or self._state.show_debug
@@ -155,7 +155,7 @@ class StructuredReporter:
             if should_emit:
                 self._state.indent = max(0, self._state.indent - 1)
 
-    def optional_debug_section(self, title: str, *, context: Optional[str] = None):
+    def optional_debug_section(self, title: str, *, context: Optional[str] = None) -> Iterator["StructuredReporter"]:
         if not self._state.show_debug:
-            return nullcontext(self if context is None else self.child(context))
+            return nullcontext(self if context is None else self.child(context))  # type: ignore[return-value]
         return self.section(title, level="DEBUG", context=context)

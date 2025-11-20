@@ -27,6 +27,7 @@ from campro.optimization.solver_selection import (
     AdaptiveSolverSelector,
     ProblemCharacteristics,
 )
+from campro.utils import format_duration
 from campro.utils.progress_logger import ProgressLogger
 
 from .base import OptimizationResult, OptimizationStatus
@@ -649,12 +650,12 @@ class UnifiedOptimizationFramework:
             if is_successful:
                 main_logger.info(
                     f"✓ Phase 1 COMPLETE: Primary optimization finished successfully "
-                    f"(status={status_str}, time={phase1_elapsed:.3f}s)"
+                    f"(status={status_str}, time={format_duration(phase1_elapsed)})"
                 )
             else:
                 main_logger.warning(
                     f"✗ Phase 1 FAILED: Primary optimization did not converge "
-                    f"(status={status_str}, time={phase1_elapsed:.3f}s)"
+                    f"(status={status_str}, time={format_duration(phase1_elapsed)})"
                 )
 
             # Phase 2: Secondary optimization (cam-ring)
@@ -714,12 +715,12 @@ class UnifiedOptimizationFramework:
             if secondary_success:
                 main_logger.info(
                     f"✓ Phase 2 COMPLETE: Secondary optimization finished successfully "
-                    f"(status={secondary_status_str}, time={phase2_elapsed:.3f}s)"
+                    f"(status={secondary_status_str}, time={format_duration(phase2_elapsed)})"
                 )
             else:
                 main_logger.warning(
                     f"✗ Phase 2 FAILED: Secondary optimization did not converge "
-                    f"(status={secondary_status_str}, time={phase2_elapsed:.3f}s)"
+                    f"(status={secondary_status_str}, time={format_duration(phase2_elapsed)})"
                 )
 
             # Phase 3: Tertiary optimization (sun gear) - only if secondary succeeded
@@ -779,12 +780,12 @@ class UnifiedOptimizationFramework:
             if tertiary_success:
                 main_logger.info(
                     f"✓ Phase 3 COMPLETE: Tertiary optimization finished successfully "
-                    f"(status={tertiary_status_str}, time={phase3_elapsed:.3f}s)"
+                    f"(status={tertiary_status_str}, time={format_duration(phase3_elapsed)})"
                 )
             else:
                 main_logger.warning(
                     f"✗ Phase 3 FAILED: Tertiary optimization did not converge "
-                    f"(status={tertiary_status_str}, time={phase3_elapsed:.3f}s)"
+                    f"(status={tertiary_status_str}, time={format_duration(phase3_elapsed)})"
                 )
 
             # Finalize results
@@ -793,7 +794,7 @@ class UnifiedOptimizationFramework:
 
             main_logger.separator()
             main_logger.complete_phase(success=tertiary_success)
-            main_logger.info(f"Total optimization time: {self.data.total_solve_time:.3f}s")
+            main_logger.info(f"Total optimization time: {format_duration(self.data.total_solve_time)}")
 
         except Exception as e:
             main_logger.error(f"Cascaded optimization failed: {e}")
@@ -1081,7 +1082,7 @@ class UnifiedOptimizationFramework:
             seed_elapsed = time.time() - seed_start
             primary_logger.step_complete("Base motion law solve", seed_elapsed)
             primary_logger.info(
-                f"Base solve completed in {seed_elapsed:.3f}s: "
+                f"Base solve completed in {format_duration(seed_elapsed)}: "
                 f"status={base_result_seed.status if hasattr(base_result_seed, 'status') else 'unknown'}"
             )
             base_sol = base_result_seed.solution or {}
@@ -1718,7 +1719,7 @@ class UnifiedOptimizationFramework:
                     )
                 iter_elapsed = time.time() - iter_start
                 status_str = result_stage_a__.status if hasattr(result_stage_a__, 'status') else 'unknown'
-                primary_logger.info(f"EMA iteration {_iter + 1} completed (status={status_str}, time={iter_elapsed:.3f}s)")
+                primary_logger.info(f"EMA iteration {_iter + 1} completed (status={status_str}, time={format_duration(iter_elapsed)})")
                 sol__ = result_stage_a__.solution or {}
                 t_arr__ = sol__.get("time")
                 x_arr__ = sol__.get("position")
@@ -2639,7 +2640,7 @@ class UnifiedOptimizationFramework:
             opt_elapsed = time.time() - opt_start
             status_str = result.status if hasattr(result, 'status') else 'unknown'
             success_str = result.is_successful() if hasattr(result, 'is_successful') else 'unknown'
-            secondary_logger.info(f"Optimization completed: status={status_str}, success={success_str}, time={opt_elapsed:.3f}s")
+            secondary_logger.info(f"Optimization completed: status={status_str}, success={success_str}, time={format_duration(opt_elapsed)}")
             secondary_logger.step_complete("Secondary optimization", time.time() - opt_start)
         except Exception as e:
             import traceback

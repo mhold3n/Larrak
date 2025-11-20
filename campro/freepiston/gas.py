@@ -63,8 +63,20 @@ def _mdot_orifice() -> MassFlowFunction:
         R: float,
     ) -> Any:
         # Compressible orifice with choked flow handling (symbolic-friendly)
+        # Protect pressures to prevent extreme pressure ratios
+        p_min = 1e3  # Minimum pressure [Pa] to prevent extreme ratios
+        p_up_safe = ca.fmax(p_up, p_min)
+        p_down_safe = ca.fmax(p_down, p_min)
+        
         eps = 1e-12
-        pr = (p_down + eps) / (p_up + eps)
+        pr = (p_down_safe + eps) / (p_up_safe + eps)
+        
+        # Clamp pressure ratio to reasonable range to prevent Inf from fractional powers
+        # pr_min = 1e-6 prevents extremely small ratios, pr_max = 1e6 prevents extremely large ratios
+        pr_min = 1e-6
+        pr_max = 1e6
+        pr = ca.fmax(ca.fmin(pr, pr_max), pr_min)
+        
         pr_crit = (2.0 / (gamma + 1.0)) ** (gamma / (gamma - 1.0))
         c_up = ca.sqrt(ca.fmax(gamma * R * T_up, CASADI_PHYSICS_EPSILON))
         # Choked branch
@@ -85,7 +97,18 @@ def _mdot_orifice() -> MassFlowFunction:
         mdot_sub = A_eff * rho_throat * u
         # Select based on critical pressure ratio
         use_choked = ca.if_else(pr <= pr_crit, 1.0, 0.0)
-        return use_choked * mdot_choked + (1.0 - use_choked) * mdot_sub
+        mdot_result = use_choked * mdot_choked + (1.0 - use_choked) * mdot_sub
+        
+        # Final protection: ensure result is never NaN/Inf before returning
+        # Clamp to reasonable physical range [0, mdot_max]
+        mdot_max = 1e3  # Reasonable maximum mass flow rate [kg/s]
+        # Use conditional to handle Inf: if fabs > mdot_max, clamp to mdot_max with correct sign
+        mdot_safe = ca.if_else(
+            ca.fabs(mdot_result) > mdot_max,
+            ca.sign(mdot_result) * mdot_max,  # Preserve sign but clamp magnitude
+            ca.fmax(mdot_result, 0.0)  # Ensure non-negative for normal values
+        )
+        return ca.fmin(mdot_safe, mdot_max)  # Final clamp to [0, mdot_max]
 
     return fn
 

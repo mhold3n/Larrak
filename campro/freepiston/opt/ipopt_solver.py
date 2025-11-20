@@ -27,6 +27,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 from campro.constants import IPOPT_LOG_DIR
 from campro.logging import get_logger
+from campro.utils import format_duration
 from campro.utils.structured_reporter import StructuredReporter
 
 log = get_logger(__name__)
@@ -99,10 +100,10 @@ class IPOPTResult:
     """Result of IPOPT optimization."""
 
     success: bool
-    x_opt: np.ndarray
+    x_opt: np.ndarray | None
     f_opt: float
-    g_opt: np.ndarray
-    lambda_opt: np.ndarray
+    g_opt: np.ndarray | None
+    lambda_opt: np.ndarray | None
     iterations: int
     cpu_time: float
     message: str
@@ -328,10 +329,12 @@ class IPOPTSolver:
             lbg: Lower bounds on constraints
             ubg: Upper bounds on constraints
             p: Parameters
-
+        
         Returns:
-            IPOPT result
+            IPOPTResult with solution and statistics
         """
+        # Store NLP for diagnostic error reporting
+        self._nlp_for_diagnostics = nlp
         if not self.ipopt_available:
             raise RuntimeError(
                 "IPOPT solver is not available in this environment. "
@@ -377,7 +380,7 @@ class IPOPTSolver:
             # Create IPOPT solver
             solver = self._create_solver(nlp, iteration_callback=iteration_callback)
             solver_create_elapsed = time.time() - solver_create_start
-            reporter.info(f"Solver created in {solver_create_elapsed:.3f}s")
+            reporter.info(f"Solver created in {format_duration(solver_create_elapsed)}")
 
             reporter.info(
                 f"Beginning solve: max_iter={self.options.max_iter}, tol={self.options.tol:.2e}, "
@@ -450,13 +453,94 @@ class IPOPTSolver:
                 # Flush after return
                 sys.stderr.flush()
                 sys.stdout.flush()
-                reporter.info(f"Solver call returned after {solve_call_elapsed:.3f}s")
+                reporter.info(f"Solver call returned after {format_duration(solve_call_elapsed)}")
             except Exception as solve_exc:
                 solve_call_elapsed = time.time() - solve_call_start
                 sys.stderr.flush()
                 sys.stdout.flush()
+                
+                # Enhanced error reporting for NaN/Inf errors
+                error_str = str(solve_exc)
+                if "Invalid_Number" in error_str or "NaN" in error_str or "Inf" in error_str:
+                    reporter.error("=" * 80)
+                    reporter.error("NUMERICAL ERROR DETECTED during optimization!")
+                    reporter.error("=" * 80)
+                    reporter.error(f"Error: {solve_exc}")
+                    reporter.error(f"Occurred after {format_duration(solve_call_elapsed)}")
+                    
+                    # Try to evaluate constraints at last known point to identify problem
+                    try:
+                        import casadi as ca
+                        import numpy as np
+                        
+                        # Get NLP from solver if available
+                        if hasattr(self, "_nlp_for_diagnostics") and self._nlp_for_diagnostics is not None:
+                            nlp_dict = self._nlp_for_diagnostics
+                            if isinstance(nlp_dict, dict) and "g" in nlp_dict and "x" in nlp_dict:
+                                reporter.error("-" * 80)
+                                reporter.error("Evaluating constraints at last known point...")
+                                
+                                g_expr = nlp_dict["g"]
+                                x_sym = nlp_dict["x"]
+                                g_func = ca.Function("g_func", [x_sym], [g_expr])
+                                
+                                # Use x0 as last known point
+                                g_current = g_func(x0)
+                                g_arr = np.array(g_current)
+                                
+                                nan_rows = np.where(np.isnan(g_arr))[0]
+                                inf_rows = np.where(np.isinf(g_arr))[0]
+                                
+                                if len(nan_rows) > 0:
+                                    reporter.error(f"NaN detected in constraints at {len(nan_rows)} row(s):")
+                                    for row_idx in nan_rows[:10]:
+                                        reporter.error(f"  Row {row_idx}: g[{row_idx}] = NaN")
+                                    if len(nan_rows) > 10:
+                                        reporter.error(f"  ... and {len(nan_rows) - 10} more rows with NaN")
+                                
+                                if len(inf_rows) > 0:
+                                    reporter.error(f"Inf detected in constraints at {len(inf_rows)} row(s):")
+                                    for row_idx in inf_rows[:10]:
+                                        g_val = g_arr[row_idx]
+                                        reporter.error(f"  Row {row_idx}: g[{row_idx}] = {g_val}")
+                                    if len(inf_rows) > 10:
+                                        reporter.error(f"  ... and {len(inf_rows) - 10} more rows with Inf")
+                                
+                                # Check Jacobian if possible
+                                try:
+                                    jac_g_expr = ca.jacobian(g_expr, x_sym)
+                                    jac_g_func = ca.Function("jac_g_func", [x_sym], [jac_g_expr])
+                                    jac_g_current = jac_g_func(x0)
+                                    jac_g_arr = np.array(jac_g_current)
+                                    
+                                    jac_nan_pairs = np.where(np.isnan(jac_g_arr))
+                                    jac_inf_pairs = np.where(np.isinf(jac_g_arr))
+                                    
+                                    if len(jac_nan_pairs[0]) > 0:
+                                        reporter.error(f"NaN detected in Jacobian at {len(jac_nan_pairs[0])} entry/entries")
+                                        for i in range(min(10, len(jac_nan_pairs[0]))):
+                                            row_idx = jac_nan_pairs[0][i]
+                                            col_idx = jac_nan_pairs[1][i]
+                                            reporter.error(f"  J[{row_idx}, {col_idx}] = NaN")
+                                    
+                                    if len(jac_inf_pairs[0]) > 0:
+                                        reporter.error(f"Inf detected in Jacobian at {len(jac_inf_pairs[0])} entry/entries")
+                                        for i in range(min(10, len(jac_inf_pairs[0]))):
+                                            row_idx = jac_inf_pairs[0][i]
+                                            col_idx = jac_inf_pairs[1][i]
+                                            jac_val = jac_g_arr[row_idx, col_idx]
+                                            reporter.error(f"  J[{row_idx}, {col_idx}] = {jac_val}")
+                                except Exception as jac_exc:
+                                    reporter.debug(f"Could not evaluate Jacobian: {jac_exc}")
+                    except Exception as diag_exc:
+                        reporter.debug(f"Could not perform diagnostic evaluation: {diag_exc}")
+                    
+                    reporter.error("=" * 80)
+                    reporter.error("Enable diagnostic mode (FREE_PISTON_DIAGNOSTIC_MODE=1) for more details")
+                    reporter.error("=" * 80)
+                
                 reporter.error(
-                    f"ERROR: Solver call raised exception after {solve_call_elapsed:.3f}s: {solve_exc}"
+                    f"ERROR: Solver call raised exception after {format_duration(solve_call_elapsed)}: {solve_exc}"
                 )
                 raise
 
@@ -464,7 +548,7 @@ class IPOPTSolver:
             status_flag = int(result.get("return_status", -1))
             elapsed = time.time() - start_time
             reporter.info(
-                f"Completed solve in {elapsed:.3f}s (solver call: {solve_call_elapsed:.3f}s): "
+                f"Completed solve in {format_duration(elapsed)} (solver call: {format_duration(solve_call_elapsed)}): "
                 f"iter={iter_count}, status={status_flag}"
             )
 
@@ -540,7 +624,7 @@ class IPOPTSolver:
 
         except Exception as e:
             elapsed = time.time() - start_time
-            reporter.error(f"ERROR: IPOPT solve failed after {elapsed:.3f}s: {e!s}")
+            reporter.error(f"ERROR: IPOPT solve failed after {format_duration(elapsed)}: {e!s}")
             log.error(f"IPOPT solve failed: {e!s}", exc_info=True)
             return self._create_error_result(str(e), elapsed)
 
@@ -750,10 +834,10 @@ class IPOPTSolver:
         """Create error result."""
         return IPOPTResult(
             success=False,
-            x_opt=np.array([]),
+            x_opt=None,
             f_opt=float("inf"),
-            g_opt=np.array([]),
-            lambda_opt=np.array([]),
+            g_opt=None,
+            lambda_opt=None,
             iterations=0,
             cpu_time=cpu_time,
             message=f"Solve failed: {error_message}",

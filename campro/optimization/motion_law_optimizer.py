@@ -25,6 +25,7 @@ from casadi import Opti, MX
 import casadi as ca
 
 from campro.logging import get_logger
+from campro.utils import format_duration
 
 from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
 from .motion_law import (
@@ -301,7 +302,7 @@ class MotionLawOptimizer(BaseOptimizer):
                 )
 
             solve_time = time.time() - start_time
-            log.info(f"Motion law optimization completed in {solve_time:.3f} seconds")
+            log.info(f"Motion law optimization completed in {format_duration(solve_time)}")
 
             return result
 

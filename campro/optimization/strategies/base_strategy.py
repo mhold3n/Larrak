@@ -9,7 +9,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, Callable, ParamSpec, TypeVar
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 from campro.logging import get_logger
 
@@ -39,7 +42,7 @@ class OptimizationStrategyResult:
     error_message: str | None = None
     warnings: list[str] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize warnings list if not provided."""
         if self.warnings is None:
             self.warnings = []
@@ -90,10 +93,10 @@ class BaseOptimizationStrategy(ABC):
     @abstractmethod
     def optimize(
         self,
-        objective_function: Callable,
+        objective_function: Callable[..., Any],
         initial_guess: dict[str, Any],
-        constraints: list[Callable] | None = None,
-        bounds: dict[str, tuple] | None = None,
+        constraints: list[Callable[..., Any]] | None = None,
+        bounds: dict[str, tuple[Any, ...]] | None = None,
         options: dict[str, Any] | None = None,
     ) -> OptimizationStrategyResult:
         """
@@ -134,7 +137,7 @@ class BaseOptimizationStrategy(ABC):
         }
 
     def validate_inputs(
-        self, objective_function: Callable, initial_guess: dict[str, Any],
+        self, objective_function: Callable[..., Any], initial_guess: dict[str, Any],
     ) -> bool:
         """
         Validate optimization inputs.

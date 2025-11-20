@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Any, cast
 
+import numpy as np
+
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.freepiston.gas import build_gas_model
 from campro.freepiston.opt.colloc import CollocationGrid, make_grid
@@ -10,6 +12,51 @@ from campro.logging import get_logger
 from campro.physics.combustion import CombustionModel
 
 log = get_logger(__name__)
+
+# Import scaling config to determine which variables should be log-transformed
+# Avoid circular import by importing only when needed
+_SCALING_GROUP_CONFIG = None
+
+
+def _get_scaling_group_config() -> dict[str, dict[str, Any]]:
+    """Get scaling group configuration, importing from driver if needed."""
+    global _SCALING_GROUP_CONFIG
+    if _SCALING_GROUP_CONFIG is None:
+        from campro.freepiston.opt.driver import SCALING_GROUP_CONFIG
+        _SCALING_GROUP_CONFIG = SCALING_GROUP_CONFIG
+    return _SCALING_GROUP_CONFIG
+
+
+def _should_use_log_scale(group_name: str) -> bool:
+    """Check if a variable group should use log-space transformation."""
+    config = _get_scaling_group_config()
+    return config.get(group_name, {}).get("use_log_scale", False)
+
+
+def _log_transform_var(ca: Any, var: Any, epsilon: float = 1e-10) -> Any:
+    """Transform variable to log space: log(var + epsilon)."""
+    return ca.log(ca.fmax(var, epsilon))
+
+
+def _exp_transform_var(ca: Any, log_var: Any, epsilon: float = 1e-3) -> Any:
+    """Transform log-space variable back to physical space with bounds enforcement.
+    
+    Ensures exp(log_var) >= epsilon to prevent numerical issues.
+    This is necessary because exp() can produce values slightly below the
+    theoretical minimum even when log_var is within bounds, due to:
+    - Numerical precision in exp() evaluation
+    - Optimizer line search trying values slightly outside bounds
+    - Accumulated numerical errors
+    
+    Args:
+        ca: CasADi module
+        log_var: Log-space variable
+        epsilon: Minimum value to enforce (default 1e-3 for density, 1e-10 for valve areas)
+    
+    Returns:
+        Physical-space variable: max(exp(log_var), epsilon)
+    """
+    return ca.fmax(ca.exp(log_var), epsilon)
 
 
 def _import_casadi() -> Any:
@@ -54,16 +101,18 @@ def chamber_volume_from_pistons(*, x_L: Any, x_R: Any, B: float, Vc: float) -> A
     B : float
         Bore diameter [m]
     Vc : float
-        Clearance volume [m^3]
+        Clearance volume [m^3] (minimum volume from CR: V_min = clearance_volume)
 
     Returns
     -------
     V : Any
-        Chamber volume [m^3] (CasADi variable)
+        Chamber volume [m^3] (CasADi variable), protected to never go below Vc
     """
     ca = _import_casadi()
     A_piston = math.pi * ca.fmax(B / 2.0, CASADI_PHYSICS_EPSILON) ** 2
-    return ca.fmax(Vc + A_piston * (x_R - x_L), CASADI_PHYSICS_EPSILON)
+    # Use clearance_volume (Vc) as minimum instead of CASADI_PHYSICS_EPSILON
+    # This is physically meaningful: CR = V_max/V_min where V_min = clearance_volume
+    return ca.fmax(Vc + A_piston * (x_R - x_L), Vc)
 
 
 def enhanced_piston_dae_constraints(
@@ -266,6 +315,8 @@ def enhanced_gas_dae_constraints(
     Q_heat_c: Any,
     geometry: dict[str, float],
     thermo: dict[str, float],
+    bounds: dict[str, float] | None = None,
+    use_log_density: bool = False,
 ) -> tuple[Any, Any]:
     """
     Complete gas DAE with all source terms.
@@ -291,8 +342,27 @@ def enhanced_gas_dae_constraints(
     # Energy balance: d(m*e)/dt = Q_comb - Q_heat + mdot_in*h_in - mdot_out*h_out - p*dV/dt
     # where m = rho*V, e = cv*T, h = cp*T, p = rho*R*T
 
+    # Compute minimum density and mass for numerical stability guards
+    if bounds is not None:
+        rho_min = bounds.get("rho_min", 0.1)
+        if use_log_density:
+            rho_min_bound = max(rho_min, 1e-3)  # Match log-space bound minimum
+        else:
+            rho_min_bound = rho_min
+        clearance_volume = geometry.get("clearance_volume", 1e-4)
+        m_total_min = rho_min_bound * clearance_volume
+    else:
+        # Fallback to defaults if bounds not provided
+        rho_min_bound = 1e-3 if use_log_density else 0.1
+        clearance_volume = geometry.get("clearance_volume", 1e-4)
+        m_total_min = rho_min_bound * clearance_volume
+
     # Total mass and internal energy
-    m_total = rho_c * V_c
+    # Protect rho_c to ensure minimum density matches bounds
+    rho_c_safe = ca.fmax(rho_c, rho_min_bound)
+    m_total = rho_c_safe * V_c
+    # Additional protection: ensure m_total never smaller than physically reasonable minimum
+    m_total_safe = ca.fmax(m_total, m_total_min)
     e_internal = cv * T_c
 
     # Enthalpy of inlet/outlet streams
@@ -301,23 +371,32 @@ def enhanced_gas_dae_constraints(
     h_in = cp * T_in
     h_out = cp * T_out
 
-    # Pressure
-    p_gas = rho_c * R * T_c
+    # Pressure (use protected density for consistency)
+    p_gas = rho_c_safe * R * T_c
 
     # Energy equation: d(m*e)/dt = Q_comb - Q_heat + mdot_in*h_in - mdot_out*h_out - p*dV/dt
     # Expanding: m*de/dt + e*dm/dt = Q_comb - Q_heat + mdot_in*h_in - mdot_out*h_out - p*dV/dt
     # Since de/dt = cv*dT/dt and dm/dt = drho_dt*V + rho*dV_dt_c:
     # m*cv*dT/dt + e*(drho_dt*V + rho*dV_dt_c) = Q_comb - Q_heat + mdot_in*h_in - mdot_out*h_out - p*dV/dt
 
-    # Solve for dT/dt
+    # Solve for dT/dt (use protected mass)
     dT_dt = (
         Q_comb_c
         - Q_heat_c
         + mdot_in_c * h_in
         - mdot_out_c * h_out
         - p_gas * dV_dt_c
-        - e_internal * (drho_dt * V_c + rho_c * dV_dt_c)
-    ) / ca.fmax(m_total * cv, CASADI_PHYSICS_EPSILON)
+        - e_internal * (drho_dt * V_c + rho_c_safe * dV_dt_c)
+    ) / ca.fmax(m_total_safe * cv, CASADI_PHYSICS_EPSILON)
+    
+    # Protect outputs from NaN/Inf (for consistency with main collocation loop)
+    drho_dt_max = 1e6  # Reasonable maximum density derivative [kg/(m^3 s)]
+    drho_dt = ca.fmin(drho_dt, drho_dt_max)
+    drho_dt = ca.fmax(drho_dt, -drho_dt_max)
+    
+    dT_dt_max = 1e6  # Reasonable maximum temperature derivative [K/s]
+    dT_dt = ca.fmin(dT_dt, dT_dt_max)
+    dT_dt = ca.fmax(dT_dt, -dT_dt_max)
 
     return drho_dt, dT_dt
 
@@ -398,8 +477,14 @@ def gas_energy_balance(
     # Mass balance: d(rho*V)/dt = mdot_in - mdot_out
     dm_dt = mdot_in - mdot_out
 
-    # Total mass in chamber
+    # Total mass in chamber - protect to prevent division by extremely small values
+    # Even if rho and V are individually protected, their product can be extremely small
+    # Use minimum mass based on minimum density (1e-3) * minimum volume (1e-4) = 1e-7 kg
+    rho_min_safe = 1e-3  # Minimum density [kg/m³] matching log-space bound
+    V_min_safe = 1e-4  # Minimum volume [m³] matching clearance volume
+    m_min = rho_min_safe * V_min_safe  # Minimum mass [kg] = 1e-7
     m = rho * V
+    m_safe = ca.fmax(m, m_min)  # Protect mass to prevent division by extremely small values
 
     # Energy balance: d(m*e)/dt = Q_combustion - Q_heat_transfer + mdot_in*h_in - mdot_out*h_out - p*dV/dt
     # where e = cv*T is specific internal energy and h = cp*T is specific enthalpy
@@ -417,7 +502,7 @@ def gas_energy_balance(
     # Since de/dt = cv*dT/dt, we get:
     # m*cv*dT/dt + e*dm/dt = Q_combustion - Q_heat_transfer + mdot_in*h_in - mdot_out*h_out - p*dV/dt
 
-    # Solve for dT/dt
+    # Solve for dT/dt - use protected mass to prevent division by extremely small values
     dT_dt = (
         Q_combustion
         - Q_heat_transfer
@@ -425,7 +510,7 @@ def gas_energy_balance(
         - mdot_out * h_out
         - p * dV_dt
         - e * dm_dt
-    ) / ca.fmax(m * cv, CASADI_PHYSICS_EPSILON)
+    ) / ca.fmax(m_safe * cv, CASADI_PHYSICS_EPSILON)
 
     return dT_dt
 
@@ -641,7 +726,13 @@ def _build_1d_collocation_nlp(
     AexInt0 = ca.SX.sym("AexInt0")
     AexTmom0 = ca.SX.sym("AexTmom0")
     w += [yF0, Mdel0, Mlost0, AinInt0, AinTmom0, AexInt0, AexTmom0]
-    w0 += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    
+    # Compute feasible initial values from problem configuration
+    num = P.get("num", {})
+    (yF0_val, Mdel0_val, Mlost0_val, AinInt0_val, AinTmom0_val, AexInt0_val, AexTmom0_val) = (
+        _compute_scavenging_initial_values(P, bounds, geometry, num)
+    )
+    w0 += [yF0_val, Mdel0_val, Mlost0_val, AinInt0_val, AinTmom0_val, AexInt0_val, AexTmom0_val]
     lbw += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     ubw += [1.0, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf]
     yF_k = yF0
@@ -1073,6 +1164,14 @@ def _build_1d_collocation_nlp(
     J = sum(J_terms)
 
     nlp = {"x": ca.vertcat(*w), "f": J, "g": ca.vertcat(*g)}
+    
+    # Convert bounds and initial guess lists to numpy arrays for driver consumption
+    w0_arr = np.array(w0, dtype=float)
+    lbw_arr = np.array(lbw, dtype=float)
+    ubw_arr = np.array(ubw, dtype=float)
+    lbg_arr = np.array(lbg, dtype=float)
+    ubg_arr = np.array(ubg, dtype=float)
+    
     meta = {
         "K": K,
         "C": C,
@@ -1083,6 +1182,12 @@ def _build_1d_collocation_nlp(
         "scavenging_states": True,
         "timing_states": True,
         "n_cells": n_cells,
+        # Include NLP-provided bounds and initial guess for driver consumption
+        "w0": w0_arr,
+        "lbw": lbw_arr,
+        "ubw": ubw_arr,
+        "lbg": lbg_arr,
+        "ubg": ubg_arr,
     }
     return nlp, meta
 
@@ -1096,13 +1201,18 @@ def _hllc_flux_symbolic(U_L: list[Any], U_R: list[Any], ca: Any) -> list[Any]:
     rho_R, rhou_R, rhoE_R = U_R
 
     # Convert to primitive variables
-    u_L = rhou_L / ca.fmax(rho_L, CASADI_PHYSICS_EPSILON)
-    u_R = rhou_R / ca.fmax(rho_R, CASADI_PHYSICS_EPSILON)
+    # Protect densities to prevent division by extremely small values
+    # Use 1e-3 as minimum (matching log-space bound minimum) instead of CASADI_PHYSICS_EPSILON
+    rho_min_bound = 1e-3  # Default minimum density for 1D gas flow
+    rho_L_safe = ca.fmax(rho_L, rho_min_bound)
+    rho_R_safe = ca.fmax(rho_R, rho_min_bound)
+    u_L = rhou_L / rho_L_safe
+    u_R = rhou_R / rho_R_safe
     p_L = (
         (1.4 - 1.0)
         * rho_L
         * (
-            rhoE_L / ca.fmax(rho_L, CASADI_PHYSICS_EPSILON)
+            rhoE_L / rho_L_safe
             - 0.5 * ca.fmax(u_L, CASADI_PHYSICS_EPSILON) ** 2
         )
     )
@@ -1110,7 +1220,7 @@ def _hllc_flux_symbolic(U_L: list[Any], U_R: list[Any], ca: Any) -> list[Any]:
         (1.4 - 1.0)
         * rho_R
         * (
-            rhoE_R / ca.fmax(rho_R, CASADI_PHYSICS_EPSILON)
+            rhoE_R / rho_R_safe
             - 0.5 * ca.fmax(u_R, CASADI_PHYSICS_EPSILON) ** 2
         )
     )
@@ -1170,6 +1280,79 @@ def _calculate_1d_source_terms(
     ) + Q_comb / ca.fmax(V_cell, CASADI_PHYSICS_EPSILON)  # Energy source
 
     return [S_rho, S_rhou, S_rhoE]
+
+
+def _compute_scavenging_initial_values(
+    P: dict[str, Any], bounds: dict[str, Any], geometry: dict[str, Any], num: dict[str, Any]
+) -> tuple[float, float, float, float, float, float, float]:
+    """Compute feasible initial values for scavenging/timing accumulator states.
+    
+    Derives initial values from problem configuration to ensure constraints are
+    satisfied at the initial guess. This prevents IPOPT from starting far outside
+    the feasible region.
+    
+    Parameters
+    ----------
+    P : dict[str, Any]
+        Full problem parameters dictionary
+    bounds : dict[str, Any]
+        Bounds configuration dictionary
+    geometry : dict[str, Any]
+        Geometry configuration dictionary
+    num : dict[str, Any]
+        Numerical parameters dictionary (contains cycle_time, etc.)
+        
+    Returns
+    -------
+    tuple[float, float, float, float, float, float, float]
+        Initial values for (yF0, Mdel0, Mlost0, AinInt0, AinTmom0, AexInt0, AexTmom0)
+        Units: yF0 [dimensionless], Mdel0/Mlost0 [kg], AinInt0/AexInt0 [m²·s],
+        AinTmom0/AexTmom0 [m²·s²]
+    """
+    import math
+    
+    cons_cfg = P.get("constraints", {})
+    timing_cfg = P.get("timing", {})
+    
+    # yF0: Fresh-fuel fraction - use constraint lower bound
+    yF0 = float(cons_cfg.get("scavenging_min", 0.8))
+    yF0 = min(max(yF0, 0.0), 1.0)  # Clamp to [0, 1]
+    
+    # Mdel0: Delivered mass - estimate from steady-state flow
+    rho_initial = float(bounds.get("rho_min", 0.1))  # kg/m³
+    bore = float(geometry.get("bore", 0.05))  # m
+    stroke = float(geometry.get("stroke", 0.02))  # m
+    cycle_time = float(num.get("cycle_time", 1.0))  # s
+    
+    # Initial volume: π × (bore/2)² × stroke
+    V_initial = math.pi * (bore / 2.0) ** 2 * stroke  # m³
+    flow_fraction = 0.2  # Typical scavenging efficiency (20% of volume per cycle)
+    Mdel0 = rho_initial * V_initial * flow_fraction  # kg
+    Mdel0 = max(Mdel0, 1e-6)  # Ensure non-zero minimum
+    
+    # Mlost0: Lost mass - fraction of delivered mass
+    short_circuit_max = float(cons_cfg.get("short_circuit_max", 0.1))
+    Mlost0 = Mdel0 * short_circuit_max
+    Mlost0 = min(Mlost0, Mdel0)  # Ensure ≤ Mdel0
+    
+    # AinInt0, AexInt0: Area-time integrals - estimate from valve area × time × duty cycle
+    Ain_max = float(bounds.get("Ain_max", 0.01))  # m²
+    Aex_max = float(bounds.get("Aex_max", 0.01))  # m²
+    duty_cycle = 0.4  # Typical valve open fraction (40%)
+    
+    AinInt0 = Ain_max * cycle_time * duty_cycle  # m²·s
+    AexInt0 = Aex_max * cycle_time * duty_cycle  # m²·s
+    AinInt0 = max(AinInt0, 1e-6)  # Ensure non-zero minimum
+    AexInt0 = max(AexInt0, 1e-6)  # Ensure non-zero minimum
+    
+    # AinTmom0, AexTmom0: Area-time moments - estimate from integrals × typical timing
+    Ain_t_cm = float(timing_cfg.get("Ain_t_cm", 0.5))  # s (center of mass timing)
+    Aex_t_cm = float(timing_cfg.get("Aex_t_cm", 0.5))  # s
+    
+    AinTmom0 = AinInt0 * Ain_t_cm  # m²·s²
+    AexTmom0 = AexInt0 * Aex_t_cm  # m²·s²
+    
+    return (yF0, Mdel0, Mlost0, AinInt0, AinTmom0, AexInt0, AexTmom0)
 
 
 def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
@@ -1265,7 +1448,10 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         "temperatures": [],
         "valve_areas": [],
         "ignition": [],
-        "penalties": [],  # Scavenging/timing states
+        "scavenging_fractions": [],  # yF (dimensionless)
+        "scavenging_masses": [],  # Mdel, Mlost (kg)
+        "scavenging_area_integrals": [],  # AinInt, AexInt (m²·s)
+        "scavenging_time_moments": [],  # AinTmom, AexTmom (m²·s²)
     }
     var_idx = 0  # Track current variable index
     
@@ -1290,33 +1476,74 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     xR0 = ca.SX.sym("xR0")
     vL0 = ca.SX.sym("vL0")
     vR0 = ca.SX.sym("vR0")
-    rho0 = ca.SX.sym("rho0")
+    
+    # Density: use log-space if configured
+    use_log_density = _should_use_log_scale("densities")
+    if use_log_density:
+        rho0_log = ca.SX.sym("rho0_log")
+        rho0 = _exp_transform_var(ca, rho0_log, epsilon=1e-3)  # Physical-space variable for use in constraints
+    else:
+        rho0_log = None
+        rho0 = ca.SX.sym("rho0")
+    
     T0 = ca.SX.sym("T0")
 
-    w += [xL0, xR0, vL0, vR0, rho0, T0]
-    w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
+    # Add variables to optimization vector (use log-space variable if applicable)
+    if use_log_density:
+        w += [xL0, xR0, vL0, vR0, rho0_log, T0]
+        # Initial guess in log space: log(rho0_physical)
+        rho0_initial = bounds.get("rho_min", 0.1) + 0.5 * (bounds.get("rho_max", 10.0) - bounds.get("rho_min", 0.1))
+        # Use same minimum as bounds (1e-3) for consistency
+        w0 += [0.0, 0.1, 0.0, 0.0, math.log(max(rho0_initial, 1e-3)), 300.0]
+    else:
+        w += [xL0, xR0, vL0, vR0, rho0, T0]
+        w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
+    
     # Track initial state groups
     var_groups["positions"].extend([var_idx, var_idx + 1])  # xL0, xR0
     var_groups["velocities"].extend([var_idx + 2, var_idx + 3])  # vL0, vR0
-    var_groups["densities"].append(var_idx + 4)  # rho0
+    var_groups["densities"].append(var_idx + 4)  # rho0 (or rho0_log)
     var_groups["temperatures"].append(var_idx + 5)  # T0
     var_idx += 6
+    
+    # Bounds: transform to log-space for densities if using log scale
     lbw += [
         bounds.get("xL_min", -0.1),
         bounds.get("xR_min", 0.0),
         bounds.get("vL_min", -10.0),
         bounds.get("vR_min", -10.0),
-        bounds.get("rho_min", 0.1),
-        bounds.get("T_min", 200.0),
     ]
     ubw += [
         bounds.get("xL_max", 0.1),
         bounds.get("xR_max", 0.2),
         bounds.get("vL_max", 10.0),
         bounds.get("vR_max", 10.0),
-        bounds.get("rho_max", 10.0),
-        bounds.get("T_max", 2000.0),
     ]
+    
+    # Density bounds: transform to log-space if using log scale
+    rho_min = bounds.get("rho_min", 0.1)
+    rho_max = bounds.get("rho_max", 10.0)
+    if use_log_density:
+        # Use 1e-3 instead of 1e-10 to prevent extremely negative log values
+        # log(1e-3) ≈ -6.9, which is much more reasonable than log(1e-10) ≈ -23
+        rho_min_safe = max(rho_min, 1e-3)
+        lbw += [math.log(rho_min_safe)]
+        ubw += [math.log(max(rho_max, 1e-3))]
+        # Store rho_min_bound for use in numerical guards (matching log-space minimum)
+        rho_min_bound = rho_min_safe
+    else:
+        lbw += [rho_min]
+        ubw += [rho_max]
+        rho_min_bound = rho_min
+    
+    # Compute minimum mass for numerical stability guards
+    # m_c_min = rho_min_bound * clearance_volume ensures mass never smaller than physically reasonable minimum
+    clearance_volume = geometry.get("clearance_volume", 1e-4)
+    m_c_min = rho_min_bound * clearance_volume
+    
+    # Temperature bounds
+    lbw += [bounds.get("T_min", 200.0)]
+    ubw += [bounds.get("T_max", 2000.0)]
 
     if use_combustion_model:
         ignition_bounds = combustion_cfg.get(
@@ -1339,15 +1566,41 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     else:
         t_ign = None
 
-    # Valve controls
-    Ain0 = ca.SX.sym("Ain0")
-    Aex0 = ca.SX.sym("Aex0")
-    w += [Ain0, Aex0]
-    w0 += [0.0, 0.0]
-    var_groups["valve_areas"].extend([var_idx, var_idx + 1])  # Ain0, Aex0
+    # Valve controls: use log-space if configured
+    use_log_valve_areas = _should_use_log_scale("valve_areas")
+    if use_log_valve_areas:
+        Ain0_log = ca.SX.sym("Ain0_log")
+        Aex0_log = ca.SX.sym("Aex0_log")
+        Ain0 = _exp_transform_var(ca, Ain0_log, epsilon=1e-10)  # Physical-space variable for use in constraints
+        Aex0 = _exp_transform_var(ca, Aex0_log, epsilon=1e-10)
+    else:
+        Ain0_log = None
+        Aex0_log = None
+        Ain0 = ca.SX.sym("Ain0")
+        Aex0 = ca.SX.sym("Aex0")
+    
+    if use_log_valve_areas:
+        w += [Ain0_log, Aex0_log]
+        # Initial guess in log space: log(small positive value to avoid log(0))
+        epsilon_valve = 1e-10
+        w0 += [math.log(epsilon_valve), math.log(epsilon_valve)]
+    else:
+        w += [Ain0, Aex0]
+        w0 += [0.0, 0.0]
+    
+    var_groups["valve_areas"].extend([var_idx, var_idx + 1])  # Ain0, Aex0 (or log versions)
     var_idx += 2
-    lbw += [0.0, 0.0]
-    ubw += [bounds.get("Ain_max", 0.01), bounds.get("Aex_max", 0.01)]
+    
+    # Valve area bounds: transform to log-space if using log scale
+    Ain_max = bounds.get("Ain_max", 0.01)
+    Aex_max = bounds.get("Aex_max", 0.01)
+    if use_log_valve_areas:
+        epsilon_valve = 1e-10
+        lbw += [math.log(epsilon_valve), math.log(epsilon_valve)]
+        ubw += [math.log(max(Ain_max, epsilon_valve)), math.log(max(Aex_max, epsilon_valve))]
+    else:
+        lbw += [0.0, 0.0]
+        ubw += [Ain_max, Aex_max]
 
     # State variables for each time step
     xL_k = xL0
@@ -1355,6 +1608,14 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     vL_k = vL0
     vR_k = vR0
     rho_k = rho0
+    # Track log-space density variable for continuity constraints
+    if use_log_density:
+        # rho0_log is bounded to [log(1e-3), log(rho_max)] and initialized to log(max(rho0_initial, 1e-3))
+        # This ensures rho_k_log_prev is finite at k=0 and remains finite throughout iterations
+        # The bounds are set in the variable creation section (lines 1432-1433) to ensure finite values
+        rho_k_log_prev = rho0_log  # Track log-space variable across iterations
+    else:
+        rho_k_log_prev = None
     T_k = T0
     Ain_k = Ain0
     Aex_k = Aex0
@@ -1397,10 +1658,18 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     AexInt0 = ca.SX.sym("AexInt0")
     AexTmom0 = ca.SX.sym("AexTmom0")
     w += [yF0, Mdel0, Mlost0, AinInt0, AinTmom0, AexInt0, AexTmom0]
-    w0 += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    # Track penalty/scavenging states
+    
+    # Compute feasible initial values from problem configuration
+    (yF0_val, Mdel0_val, Mlost0_val, AinInt0_val, AinTmom0_val, AexInt0_val, AexTmom0_val) = (
+        _compute_scavenging_initial_values(P, bounds, geometry, num)
+    )
+    w0 += [yF0_val, Mdel0_val, Mlost0_val, AinInt0_val, AinTmom0_val, AexInt0_val, AexTmom0_val]
+    # Track scavenging states in separate groups by unit type
     penalty_start_idx = var_idx
-    var_groups["penalties"].extend(range(var_idx, var_idx + 7))
+    var_groups["scavenging_fractions"].append(var_idx)  # yF0
+    var_groups["scavenging_masses"].extend([var_idx + 1, var_idx + 2])  # Mdel0, Mlost0
+    var_groups["scavenging_area_integrals"].extend([var_idx + 3, var_idx + 5])  # AinInt0, AexInt0
+    var_groups["scavenging_time_moments"].extend([var_idx + 4, var_idx + 6])  # AinTmom0, AexTmom0
     var_idx += 7
     lbw += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     ubw += [1.0, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf, ca.inf]
@@ -1419,17 +1688,35 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         Q_comb_stage: list[Any] = []
 
         for j in range(C):
-            ain_sym = ca.SX.sym(f"Ain_{k}_{j}")
-            aex_sym = ca.SX.sym(f"Aex_{k}_{j}")
-            Ain_stage.append(ain_sym)
-            Aex_stage.append(aex_sym)
-            w += [ain_sym, aex_sym]
-            w0 += [0.0, 0.0]
-            lbw += [0.0, 0.0]
-            ubw += [
-                bounds.get("Ain_max", 0.01),
-                bounds.get("Aex_max", 0.01),
-            ]
+            # Valve areas: use log-space if configured
+            if use_log_valve_areas:
+                ain_sym_log = ca.SX.sym(f"Ain_{k}_{j}_log")
+                aex_sym_log = ca.SX.sym(f"Aex_{k}_{j}_log")
+                ain_sym = _exp_transform_var(ca, ain_sym_log, epsilon=1e-10)  # Physical-space for constraints
+                aex_sym = _exp_transform_var(ca, aex_sym_log, epsilon=1e-10)
+                Ain_stage.append(ain_sym)
+                Aex_stage.append(aex_sym)
+                w += [ain_sym_log, aex_sym_log]
+                # Initial guess in log space
+                epsilon_valve = 1e-10
+                w0 += [math.log(epsilon_valve), math.log(epsilon_valve)]
+                # Bounds in log space
+                Ain_max = bounds.get("Ain_max", 0.01)
+                Aex_max = bounds.get("Aex_max", 0.01)
+                lbw += [math.log(epsilon_valve), math.log(epsilon_valve)]
+                ubw += [math.log(max(Ain_max, epsilon_valve)), math.log(max(Aex_max, epsilon_valve))]
+            else:
+                ain_sym = ca.SX.sym(f"Ain_{k}_{j}")
+                aex_sym = ca.SX.sym(f"Aex_{k}_{j}")
+                Ain_stage.append(ain_sym)
+                Aex_stage.append(aex_sym)
+                w += [ain_sym, aex_sym]
+                w0 += [0.0, 0.0]
+                lbw += [0.0, 0.0]
+                ubw += [
+                    bounds.get("Ain_max", 0.01),
+                    bounds.get("Aex_max", 0.01),
+                ]
             var_groups["valve_areas"].extend([var_idx, var_idx + 1])
             var_idx += 2
 
@@ -1452,41 +1739,85 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         xR_colloc = [ca.SX.sym(f"xR_{k}_{j}") for j in range(C)]
         vL_colloc = [ca.SX.sym(f"vL_{k}_{j}") for j in range(C)]
         vR_colloc = [ca.SX.sym(f"vR_{k}_{j}") for j in range(C)]
-        rho_colloc = [ca.SX.sym(f"rho_{k}_{j}") for j in range(C)]
+        
+        # Density collocation states: use log-space if configured
+        if use_log_density:
+            rho_colloc_log = [ca.SX.sym(f"rho_{k}_{j}_log") for j in range(C)]
+            rho_colloc = [_exp_transform_var(ca, rho_log, epsilon=1e-3) for rho_log in rho_colloc_log]  # Physical-space for constraints
+        else:
+            rho_colloc_log = None
+            rho_colloc = [ca.SX.sym(f"rho_{k}_{j}") for j in range(C)]
+        
         T_colloc = [ca.SX.sym(f"T_{k}_{j}") for j in range(C)]
 
         for j in range(C):
-            w += [
-                xL_colloc[j],
-                xR_colloc[j],
-                vL_colloc[j],
-                vR_colloc[j],
-                rho_colloc[j],
-                T_colloc[j],
-            ]
-            w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
+            if use_log_density:
+                w += [
+                    xL_colloc[j],
+                    xR_colloc[j],
+                    vL_colloc[j],
+                    vR_colloc[j],
+                    rho_colloc_log[j],
+                    T_colloc[j],
+                ]
+                # Initial guess in log space
+                rho_initial = bounds.get("rho_min", 0.1) + 0.5 * (bounds.get("rho_max", 10.0) - bounds.get("rho_min", 0.1))
+                # Use same minimum as bounds (1e-3) for consistency
+                w0 += [0.0, 0.1, 0.0, 0.0, math.log(max(rho_initial, 1e-3)), 300.0]
+            else:
+                w += [
+                    xL_colloc[j],
+                    xR_colloc[j],
+                    vL_colloc[j],
+                    vR_colloc[j],
+                    rho_colloc[j],
+                    T_colloc[j],
+                ]
+                w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0]
+            
             # Track collocation state groups
             var_groups["positions"].extend([var_idx, var_idx + 1])  # xL, xR
             var_groups["velocities"].extend([var_idx + 2, var_idx + 3])  # vL, vR
-            var_groups["densities"].append(var_idx + 4)  # rho
+            var_groups["densities"].append(var_idx + 4)  # rho (or rho_log)
             var_groups["temperatures"].append(var_idx + 5)  # T
             var_idx += 6
+            
             lbw += [
                 bounds.get("xL_min", -0.1),
                 bounds.get("xR_min", 0.0),
                 bounds.get("vL_min", -10.0),
                 bounds.get("vR_min", -10.0),
-                bounds.get("rho_min", 0.1),
-                bounds.get("T_min", 200.0),
             ]
             ubw += [
                 bounds.get("xL_max", 0.1),
                 bounds.get("xR_max", 0.2),
                 bounds.get("vL_max", 10.0),
                 bounds.get("vR_max", 10.0),
-                bounds.get("rho_max", 10.0),
-                bounds.get("T_max", 2000.0),
             ]
+            
+            # Density bounds: transform to log-space if using log scale
+            rho_min = bounds.get("rho_min", 0.1)
+            rho_max = bounds.get("rho_max", 10.0)
+            if use_log_density:
+                # Use 1e-3 instead of 1e-10 to prevent extremely negative log values
+                # log(1e-3) ≈ -6.9, which is much more reasonable than log(1e-10) ≈ -23
+                rho_min_safe = max(rho_min, 1e-3)
+                lbw += [math.log(rho_min_safe)]
+                ubw += [math.log(max(rho_max, 1e-3))]
+                # Store rho_min_bound for use in numerical guards (matching log-space minimum)
+                rho_min_bound = rho_min_safe
+            else:
+                lbw += [rho_min]
+                ubw += [rho_max]
+                rho_min_bound = rho_min
+            
+            # Compute minimum mass for numerical stability guards (per collocation point)
+            clearance_volume = geometry.get("clearance_volume", 1e-4)
+            m_c_min = rho_min_bound * clearance_volume
+            
+            # Temperature bounds
+            lbw += [bounds.get("T_min", 200.0)]
+            ubw += [bounds.get("T_max", 2000.0)]
 
         # Collocation equations
         for c in range(C):
@@ -1496,9 +1827,20 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             vL_c = vL_colloc[c]
             vR_c = vR_colloc[c]
             rho_c = rho_colloc[c]
+            # Protect rho_c immediately for all uses to prevent numerical instability
+            # This ensures consistent density protection throughout the collocation loop
+            rho_c_safe = ca.fmax(rho_c, rho_min_bound)
             T_c = T_colloc[c]
             Ain_c = Ain_stage[c]
             Aex_c = Aex_stage[c]
+            
+            # Protect valve areas: ensure non-negative and bounded before gas model calls
+            # Negative or extremely large valve areas can cause Inf in mass flow calculations
+            Ain_max = bounds.get("Ain_max", 0.01)  # Maximum inlet valve area [m²]
+            Aex_max = bounds.get("Aex_max", 0.01)  # Maximum exhaust valve area [m²]
+            Ain_c_safe = ca.fmax(ca.fmin(Ain_c, Ain_max), 0.0)  # Clamp to [0, Ain_max]
+            Aex_c_safe = ca.fmax(ca.fmin(Aex_c, Aex_max), 0.0)  # Clamp to [0, Aex_max]
+            
             if use_combustion_model and combustion_model is not None:
                 time_val = (k + grid.nodes[c]) * float(dt_real or 0.0)
                 time_dm = ca.DM(time_val)
@@ -1517,20 +1859,30 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 Q_comb_c = Q_comb_stage[c]
 
             # Chamber volume and its rate of change
+            # V_c is already protected by clearance_volume minimum in chamber_volume_from_pistons
+            clearance_volume = geometry.get("clearance_volume", 1e-4)
             V_c = chamber_volume_from_pistons(
                 x_L=xL_c,
                 x_R=xR_c,
                 B=geometry.get("bore", 0.1),
-                Vc=geometry.get("clearance_volume", 1e-4),
+                Vc=clearance_volume,
             )
+            # For explicit use, ensure V_c_safe uses clearance_volume (CR-derived minimum)
+            # This is redundant since chamber_volume_from_pistons already protects, but makes intent clear
+            V_c_safe = ca.fmax(V_c, clearance_volume)
             dV_dt = (
                 math.pi
                 * ca.fmax(geometry.get("bore", 0.1) / 2.0, CASADI_PHYSICS_EPSILON) ** 2
                 * (vR_c - vL_c)
             )
 
-            # Gas pressure
-            p_c = gas_pressure_from_state(rho=rho_c, T=T_c)
+            # Gas pressure (use protected density for numerical stability)
+            p_c = gas_pressure_from_state(rho=rho_c_safe, T=T_c)
+            
+            # Protect pressure with minimum value to prevent extreme pressure ratios in gas model
+            # Very small p_c (e.g., from rho_c_safe at minimum and low T_c) causes pr to become very large
+            p_c_min = 1e3  # Reasonable minimum pressure [Pa] to prevent extreme pressure ratios
+            p_c_safe = ca.fmax(p_c, p_c_min)
 
             # Enhanced piston forces with proper acceleration coupling
             # Compute accelerations from velocity differences (simplified)
@@ -1538,7 +1890,7 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             aR_c = (vR_c - vR_k) / ca.fmax(h, CASADI_PHYSICS_EPSILON)
 
             F_L_c, F_R_c = piston_force_balance(
-                p_gas=p_c,
+                p_gas=p_c_safe,
                 x_L=xL_c,
                 x_R=xR_c,
                 v_L=vL_c,
@@ -1562,29 +1914,48 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 p_up=p_in,
                 T_up=T_in,
                 rho_up=rho_in,
-                p_down=p_c,
+                p_down=p_c_safe,  # Use protected pressure to prevent extreme pressure ratios
                 T_down=T_c,
-                A_eff=Ain_c,
+                A_eff=Ain_c_safe,  # Use protected valve area
                 gamma=gamma,
                 R=R,
             )
             mdot_out = gas_model.mdot_out(
                 ca=ca,
-                p_up=p_c,
+                p_up=p_c_safe,  # Use protected pressure to prevent extreme pressure ratios
                 T_up=T_c,
-                rho_up=rho_c,
+                rho_up=rho_c_safe,  # Use protected density for numerical stability
                 p_down=p_ex,
                 T_down=T_ex,
-                A_eff=Aex_c,
+                A_eff=Aex_c_safe,  # Use protected valve area
                 gamma=gamma,
                 R=R,
             )
+            
+            # Protect mass flow rates from NaN/Inf (could come from extreme pressure ratios or valve areas)
+            # This prevents NaN propagation through dm_dt, drho_dt, dT_dt, and dyF_dt
+            mdot_max = 1e3  # Reasonable maximum mass flow rate [kg/s]
+            # CasADi fmin/fmax don't handle NaN - if input is NaN, output is NaN
+            # Use conditional logic to replace Inf/NaN BEFORE clipping
+            # Replace Inf/NaN with safe defaults: if |mdot| > mdot_max, clamp to mdot_max with correct sign
+            mdot_in_safe = ca.if_else(
+                ca.fabs(mdot_in) > mdot_max,
+                ca.sign(mdot_in) * mdot_max,  # Preserve sign but clamp magnitude
+                ca.fmax(mdot_in, 0.0)  # Ensure non-negative for normal values
+            )
+            mdot_in = ca.fmin(mdot_in_safe, mdot_max)  # Final clamp to [0, mdot_max]
+            mdot_out_safe = ca.if_else(
+                ca.fabs(mdot_out) > mdot_max,
+                ca.sign(mdot_out) * mdot_max,  # Preserve sign but clamp magnitude
+                ca.fmax(mdot_out, 0.0)  # Ensure non-negative for normal values
+            )
+            mdot_out = ca.fmin(mdot_out_safe, mdot_max)  # Final clamp to [0, mdot_max]
 
             # Wall heat transfer
             T_wall_c = Tw_k if dynamic_wall else T_wall_const
             Q_heat_transfer = gas_model.qdot_wall(
                 ca=ca,
-                p_gas=p_c,
+                p_gas=p_c_safe,  # Use protected pressure for consistency
                 T_gas=T_c,
                 T_wall=T_wall_c,
                 B=geometry.get("bore", 0.1),
@@ -1592,11 +1963,11 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 x_R=xR_c,
             )
 
-            # Enhanced gas energy balance
+            # Enhanced gas energy balance (use protected density and volume for numerical stability)
             dT_dt = gas_energy_balance(
-                rho=rho_c,
+                rho=rho_c_safe,
                 T=T_c,
-                V=V_c,
+                V=V_c_safe,  # Use protected volume
                 dV_dt=dV_dt,
                 Q_combustion=Q_comb_c,
                 Q_heat_transfer=Q_heat_transfer,
@@ -1606,22 +1977,79 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 T_out=T_ex,
                 gamma=gamma,
             )
+            
+            # Protect dT_dt from NaN/Inf (could come from extreme heat transfer or mass flow rates)
+            dT_dt_max = 1e6  # Reasonable maximum temperature derivative [K/s]
+            dT_dt = ca.fmin(dT_dt, dT_dt_max)
+            dT_dt = ca.fmax(dT_dt, -dT_dt_max)
 
-            # Mass balance
+            # Mass balance (use protected density and volume for numerical stability)
             dm_dt = mdot_in - mdot_out
-            drho_dt = (dm_dt - rho_c * dV_dt) / ca.fmax(V_c, CASADI_PHYSICS_EPSILON)
+            # Protect dm_dt from NaN/Inf (mdot_in and mdot_out already protected, but ensure safety)
+            dm_dt_max = 1e3  # Reasonable maximum mass rate change [kg/s]
+            dm_dt = ca.fmin(dm_dt, dm_dt_max)
+            dm_dt = ca.fmax(dm_dt, -dm_dt_max)
+            
+            # Use V_c_safe (protected by clearance_volume minimum) instead of raw V_c
+            drho_dt = (dm_dt - rho_c_safe * dV_dt) / V_c_safe
+            
+            # For log-space density: convert physical-space derivative to log-space derivative
+            # If rho = exp(rho_log), then d(rho_log)/dt = (1/rho) * drho_dt = drho_dt / rho
+            # CRITICAL: Clamp drho_dt BEFORE division to prevent Inf in drho_log_dt
+            # When rho_c_safe is at minimum (1e-3), drho_dt must be clamped to ensure
+            # drho_log_dt = drho_dt / rho_c_safe doesn't exceed drho_log_dt_max (1e6)
+            # Maximum drho_dt = drho_log_dt_max * rho_min_bound = 1e6 * 1e-3 = 1e3
+            if use_log_density:
+                # Clamp drho_dt conservatively to prevent Inf in drho_log_dt
+                # Use rho_min_bound (1e-3) to compute safe maximum for drho_dt
+                drho_log_dt_max = 1e6  # Reasonable maximum for log-space density derivative [1/s]
+                drho_dt_max_for_log = drho_log_dt_max * rho_min_bound  # 1e6 * 1e-3 = 1e3
+                # Clamp drho_dt to prevent Inf in drho_log_dt when rho_c_safe is at minimum
+                drho_dt = ca.fmin(drho_dt, drho_dt_max_for_log)
+                drho_dt = ca.fmax(drho_dt, -drho_dt_max_for_log)
+                
+                # Now compute drho_log_dt safely (division cannot produce Inf)
+                drho_log_dt = drho_dt / rho_c_safe
+                # Additional protection: clamp drho_log_dt to ensure it's within bounds
+                # This handles cases where rho_c_safe > rho_min_bound (allowing larger drho_dt)
+                drho_log_dt = ca.fmin(drho_log_dt, drho_log_dt_max)
+                drho_log_dt = ca.fmax(drho_log_dt, -drho_log_dt_max)
+            else:
+                # For non-log density: use standard clamping
+                drho_dt_max = 1e6  # Reasonable maximum density derivative [kg/(m^3 s)]
+                drho_dt = ca.fmin(drho_dt, drho_dt_max)
+                drho_dt = ca.fmax(drho_dt, -drho_dt_max)
+                drho_log_dt = None
+            
             # Fresh fraction dynamics
-            m_c = rho_c * V_c
-            dyF_dt = (mdot_in - mdot_out * yF_k - yF_k * dm_dt) / ca.fmax(
-                m_c, CASADI_PHYSICS_EPSILON,
-            )
+            # rho_c_safe already computed at start of loop
+            # Compute mass with protected density and volume
+            m_c = rho_c_safe * V_c_safe
+            # Additional protection: ensure m_c never smaller than physically reasonable minimum
+            # m_c_min = rho_min_bound * clearance_volume ensures mass never smaller than minimum density * minimum volume
+            m_c_safe = ca.fmax(m_c, m_c_min)
+            dyF_dt = (mdot_in - mdot_out * yF_k - yF_k * dm_dt) / m_c_safe
+            
+            # Protect dyF_dt from NaN/Inf (could come from extreme mass flow rates or small m_c_safe)
+            dyF_dt_max = 1e3  # Reasonable maximum fresh fraction derivative [1/s]
+            dyF_dt = ca.fmin(dyF_dt, dyF_dt_max)
+            dyF_dt = ca.fmax(dyF_dt, -dyF_dt_max)
 
             # Collocation equations (state updates using A matrix)
             rhs_xL = xL_k
             rhs_xR = xR_k
             rhs_vL = vL_k
             rhs_vR = vR_k
-            rhs_rho = rho_k
+            
+            # For density: use log-space variable if configured
+            if use_log_density:
+                # Use log-space variable from previous iteration (rho_k_log_prev) for RHS initialization
+                # rho_k is physical-space (from _exp_transform_var), but rhs_rho_log must be log-space
+                # to match rho_colloc_log[c] in the constraint comparison
+                rhs_rho_log = rho_k_log_prev  # Use log-space variable, not physical-space rho_k
+            else:
+                rhs_rho = rho_k
+            
             rhs_T = T_k
             if dynamic_wall:
                 rhs_Tw = Tw_k
@@ -1662,7 +2090,13 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                     * grid.a[c][j]
                     * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
                 )
-                rhs_rho += h * grid.a[c][j] * drho_dt
+                
+                # Density update: use log-space derivative if configured
+                if use_log_density:
+                    rhs_rho_log += h * grid.a[c][j] * drho_log_dt
+                else:
+                    rhs_rho += h * grid.a[c][j] * drho_dt
+                
                 rhs_T += h * grid.a[c][j] * dT_dt
                 if dynamic_wall:
                     # Cw * dTw/dt = -Q_heat_transfer
@@ -1678,14 +2112,49 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 rhs_AexInt += h * grid.a[c][j] * Aex_c
                 rhs_AexTmom += h * grid.a[c][j] * (t_c * Aex_c)
 
-            colloc_res = [
-                xL_c - rhs_xL,
-                xR_c - rhs_xR,
-                vL_c - rhs_vL,
-                vR_c - rhs_vR,
-                rho_c - rhs_rho,
-                T_c - rhs_T,
-            ]
+            # Protect accumulated RHS values from Inf/NaN after accumulation loops
+            # Even with derivative clipping, Inf can accumulate if derivatives were Inf before clipping
+            if use_log_density:
+                # Protect rhs_rho_log: reasonable range for log-space density is [-10, 10] (exp(-10) to exp(10))
+                rhs_rho_log_min = -10.0
+                rhs_rho_log_max = 10.0
+                rhs_rho_log = ca.fmax(ca.fmin(rhs_rho_log, rhs_rho_log_max), rhs_rho_log_min)
+            else:
+                # Protect rhs_rho: reasonable range for density is [0.01, 100] kg/m³
+                rhs_rho_min = 0.01
+                rhs_rho_max = 100.0
+                rhs_rho = ca.fmax(ca.fmin(rhs_rho, rhs_rho_max), rhs_rho_min)
+            
+            # Protect rhs_T: reasonable range for temperature is [100, 5000] K
+            rhs_T_min = 100.0
+            rhs_T_max = 5000.0
+            rhs_T = ca.fmax(ca.fmin(rhs_T, rhs_T_max), rhs_T_min)
+            
+            # Protect rhs_yF: fresh fraction should be in [0, 1]
+            rhs_yF_min = 0.0
+            rhs_yF_max = 1.0
+            rhs_yF = ca.fmax(ca.fmin(rhs_yF, rhs_yF_max), rhs_yF_min)
+
+            # Collocation residuals: handle log-space density
+            if use_log_density:
+                # Compare log-space variables: rho_colloc_log[c] - rhs_rho_log
+                colloc_res = [
+                    xL_c - rhs_xL,
+                    xR_c - rhs_xR,
+                    vL_c - rhs_vL,
+                    vR_c - rhs_vR,
+                    rho_colloc_log[c] - rhs_rho_log,
+                    T_c - rhs_T,
+                ]
+            else:
+                colloc_res = [
+                    xL_c - rhs_xL,
+                    xR_c - rhs_xR,
+                    vL_c - rhs_vL,
+                    vR_c - rhs_vR,
+                    rho_c - rhs_rho,
+                    T_c - rhs_T,
+                ]
             if dynamic_wall:
                 colloc_res.append(T_wall_c - rhs_Tw)
             colloc_res += [
@@ -1705,7 +2174,7 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             con_idx += len(colloc_res)
 
             # Accumulate indicated work and Q_in
-            W_ind_accum += h * grid.weights[c] * p_c * dV_dt
+            W_ind_accum += h * grid.weights[c] * p_c_safe * dV_dt  # Use protected pressure for consistency
             Q_in_accum += h * grid.weights[c] * Q_comb_c
             # Scavenging short-circuit penalty surrogate
             eps = 1e-9
@@ -1717,7 +2186,12 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         xR_k1 = xR_k
         vL_k1 = vL_k
         vR_k1 = vR_k
-        rho_k1 = rho_k
+        # For density: initialize rho_k1 from log-space variable if configured
+        if use_log_density:
+            # Use tracked log-space variable from previous iteration
+            rho_k1 = rho_k_log_prev
+        else:
+            rho_k1 = rho_k
         T_k1 = T_k
 
         for j in range(C):
@@ -1744,7 +2218,11 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                 * grid.weights[j]
                 * (F_R_c / ca.fmax(m_total_R, CASADI_PHYSICS_EPSILON))
             )
-            rho_k1 += h * grid.weights[j] * drho_dt
+            # Density update: use log-space derivative if configured
+            if use_log_density:
+                rho_k1 += h * grid.weights[j] * drho_log_dt
+            else:
+                rho_k1 += h * grid.weights[j] * drho_dt
             T_k1 += h * grid.weights[j] * dT_dt
             if dynamic_wall:
                 dTw_dt_bar = (-Q_heat_transfer / max(Cw, 1e-6)) if Cw > 0.0 else 0.0
@@ -1765,7 +2243,17 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         xR_k = ca.SX.sym(f"xR_{k + 1}")
         vL_k = ca.SX.sym(f"vL_{k + 1}")
         vR_k = ca.SX.sym(f"vR_{k + 1}")
-        rho_k = ca.SX.sym(f"rho_{k + 1}")
+        
+        # Density: use log-space if configured
+        if use_log_density:
+            rho_k_log = ca.SX.sym(f"rho_{k + 1}_log")
+            rho_k = _exp_transform_var(ca, rho_k_log, epsilon=1e-3)  # Physical-space for use in constraints
+            # Update tracked log-space variable for next iteration
+            rho_k_log_prev = rho_k_log
+        else:
+            rho_k_log = None
+            rho_k = ca.SX.sym(f"rho_{k + 1}")
+        
         T_k = ca.SX.sym(f"T_{k + 1}")
 
         yF_k = ca.SX.sym(f"yF_{k + 1}")
@@ -1776,28 +2264,79 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         AexInt_k = ca.SX.sym(f"AexInt_{k + 1}")
         AexTmom_k = ca.SX.sym(f"AexTmom_{k + 1}")
 
-        w += [
-            xL_k,
-            xR_k,
-            vL_k,
-            vR_k,
-            rho_k,
-            T_k,
-            yF_k,
-            Mdel_k,
-            Mlost_k,
-            AinInt_k,
-            AinTmom_k,
-            AexInt_k,
-            AexTmom_k,
-        ]
-        w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        if use_log_density:
+            w += [
+                xL_k,
+                xR_k,
+                vL_k,
+                vR_k,
+                rho_k_log,
+                T_k,
+                yF_k,
+                Mdel_k,
+                Mlost_k,
+                AinInt_k,
+                AinTmom_k,
+                AexInt_k,
+                AexTmom_k,
+            ]
+            # Initial guess in log space
+            rho_initial = bounds.get("rho_min", 0.1) + 0.5 * (bounds.get("rho_max", 10.0) - bounds.get("rho_min", 0.1))
+            # Use same minimum as bounds (1e-3) for consistency
+            w0 += [0.0, 0.1, 0.0, 0.0, math.log(max(rho_initial, 1e-3)), 300.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        else:
+            w += [
+                xL_k,
+                xR_k,
+                vL_k,
+                vR_k,
+                rho_k,
+                T_k,
+                yF_k,
+                Mdel_k,
+                Mlost_k,
+                AinInt_k,
+                AinTmom_k,
+                AexInt_k,
+                AexTmom_k,
+            ]
+            w0 += [0.0, 0.1, 0.0, 0.0, 1.0, 300.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        
         lbw += [
             bounds.get("xL_min", -0.1),
             bounds.get("xR_min", 0.0),
             bounds.get("vL_min", -10.0),
             bounds.get("vR_min", -10.0),
-            bounds.get("rho_min", 0.1),
+        ]
+        ubw += [
+            bounds.get("xL_max", 0.1),
+            bounds.get("xR_max", 0.2),
+            bounds.get("vL_max", 10.0),
+            bounds.get("vR_max", 10.0),
+        ]
+        
+        # Density bounds: transform to log-space if using log scale
+        rho_min = bounds.get("rho_min", 0.1)
+        rho_max = bounds.get("rho_max", 10.0)
+        if use_log_density:
+            # Use 1e-3 instead of 1e-10 to prevent extremely negative log values
+            # log(1e-3) ≈ -6.9, which is much more reasonable than log(1e-10) ≈ -23
+            rho_min_safe = max(rho_min, 1e-3)
+            lbw += [math.log(rho_min_safe)]
+            ubw += [math.log(max(rho_max, 1e-3))]
+            # Store rho_min_bound for use in numerical guards (matching log-space minimum)
+            rho_min_bound = rho_min_safe
+        else:
+            lbw += [rho_min]
+            ubw += [rho_max]
+            rho_min_bound = rho_min
+        
+        # Compute minimum mass for numerical stability guards (per time step)
+        clearance_volume = geometry.get("clearance_volume", 1e-4)
+        m_c_min = rho_min_bound * clearance_volume
+        
+        # Temperature and other bounds
+        lbw += [
             bounds.get("T_min", 200.0),
             0.0,
             0.0,
@@ -1808,11 +2347,6 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             0.0,
         ]
         ubw += [
-            bounds.get("xL_max", 0.1),
-            bounds.get("xR_max", 0.2),
-            bounds.get("vL_max", 10.0),
-            bounds.get("vR_max", 10.0),
-            bounds.get("rho_max", 10.0),
             bounds.get("T_max", 2000.0),
             1.0,
             ca.inf,
@@ -1822,29 +2356,28 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             ca.inf,
             ca.inf,
         ]
+        
+        # Track time-step state groups
+        var_groups["positions"].extend([var_idx, var_idx + 1])  # xL_k, xR_k
+        var_groups["velocities"].extend([var_idx + 2, var_idx + 3])  # vL_k, vR_k
+        var_groups["densities"].append(var_idx + 4)  # rho_k (or rho_k_log)
+        var_groups["temperatures"].append(var_idx + 5)  # T_k
+        var_idx += 13  # Update var_idx: 13 variables per time step (xL, xR, vL, vR, rho, T, yF, Mdel, Mlost, AinInt, AinTmom, AexInt, AexTmom)
 
-        # Continuity constraints
-        cont = [
-            xL_k - xL_k1,
-            xR_k - xR_k1,
-            vL_k - vL_k1,
-            vR_k - vR_k1,
-            rho_k - rho_k1,
-            T_k - T_k1,
-            yF_k - yF_k1,
-            Mdel_k - Mdel_k1,
-            Mlost_k - Mlost_k1,
-            AinInt_k - AinInt_k1,
-            AinTmom_k - AinTmom_k1,
-            AexInt_k - AexInt_k1,
-            AexTmom_k - AexTmom_k1,
-        ]
-        g += cont
-        lbg += [0.0] * len(cont)
-        ubg += [0.0] * len(cont)
-        # Track continuity constraints
-        constraint_groups["continuity"].extend(range(con_idx, con_idx + len(cont)))
-        con_idx += len(cont)
+        # Continuity constraints: REMOVED - redundant with collocation residuals
+        # The collocation residuals already enforce state continuity between stages
+        # through the integration scheme. Adding explicit continuity constraints
+        # makes the problem overconstrained (1170 redundant equality constraints).
+        # 
+        # Original code (lines 2270-2310) removed:
+        # - Continuity constraints enforced: state[k+1] = state[k1] where state[k1]
+        #   is computed from integration at stage k
+        # - This is redundant because collocation residuals already enforce:
+        #   state_colloc = state_prev + h * integral(derivative)
+        #   and state[k+1] ≈ state_colloc[C-1] (last collocation point)
+        #
+        # Removing these constraints increases DOF from -438 to 732, making the
+        # problem well-posed. See NLP_STRUCTURE_ANALYSIS.md for details.
 
     # Enhanced path constraints
     gap_min = bounds.get("x_gap_min", 0.0008)
@@ -1855,17 +2388,24 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     constraint_groups["path_clearance"].append(con_idx)
     con_idx += 1
 
+    # Compute acceleration normalization factor (targeting fixed normalized bounds ±10)
+    a_max = bounds.get("a_max", 1000.0)
+    desired_norm = 10.0  # Target normalized bound ±10
+    min_norm = 1.0  # Minimum normalization factor
+    a_norm_factor = max(a_max / desired_norm, min_norm)
+    
     # Comprehensive path constraints for all time steps
     for k in range(K):
         for j in range(C):
-            # Pressure constraints
+            # Pressure constraints (normalized to MPa to reduce Jacobian entries)
             p_kj = gas_pressure_from_state(rho=rho_colloc[j], T=T_colloc[j])
-            g += [p_kj]  # Pressure constraint
-            # Convert normalized bounds from MPa to Pa (multiply by 1e6)
-            p_min_pa = bounds.get("p_min", 0.01) * 1e6  # Default 0.01 MPa = 1e4 Pa
-            p_max_pa = bounds.get("p_max", 10.0) * 1e6  # Default 10.0 MPa = 1e7 Pa
-            lbg += [p_min_pa]
-            ubg += [p_max_pa]
+            p_kj_mpa = p_kj / 1e6  # Convert Pa → MPa
+            g += [p_kj_mpa]  # Pressure constraint in MPa
+            # Bounds are already in MPa (no conversion needed)
+            p_min_mpa = bounds.get("p_min", 0.01)  # Default 0.01 MPa
+            p_max_mpa = bounds.get("p_max", 10.0)  # Default 10.0 MPa
+            lbg += [p_min_mpa]
+            ubg += [p_max_mpa]
             # Track pressure path constraints
             constraint_groups["path_pressure"].append(con_idx)
             con_idx += 1
@@ -1909,13 +2449,18 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
             constraint_groups["path_velocity"].extend([con_idx, con_idx + 1])
             con_idx += 2
 
-            # Piston acceleration constraints (simplified)
+            # Piston acceleration constraints (normalized to fixed bounds)
             if k > 0:
                 aL_kj = (vL_colloc[j] - vL_k) / h
                 aR_kj = (vR_colloc[j] - vR_k) / h
-                g += [aL_kj, aR_kj]  # Piston acceleration constraints
-                lbg += [-bounds.get("a_max", 1000.0), -bounds.get("a_max", 1000.0)]
-                ubg += [bounds.get("a_max", 1000.0), bounds.get("a_max", 1000.0)]
+                
+                # Normalize acceleration constraints using precomputed factor
+                aL_kj_norm = aL_kj / a_norm_factor
+                aR_kj_norm = aR_kj / a_norm_factor
+                
+                g += [aL_kj_norm, aR_kj_norm]  # Normalized piston acceleration constraints
+                lbg += [-a_max / a_norm_factor, -a_max / a_norm_factor]
+                ubg += [a_max / a_norm_factor, a_max / a_norm_factor]
                 # Track acceleration path constraints
                 constraint_groups["path_acceleration"].extend([con_idx, con_idx + 1])
                 con_idx += 2
@@ -1953,13 +2498,17 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     m_end = rho_k * V_end
     fresh_trapped = yF_k * m_end
     total_trapped = m_end
-    short_circuit_fraction = Mlost_k / (Mdel_k + 1e-9)
+    
+    # Use consistent epsilon matching seeded lower bounds (1e-6 from _compute_scavenging_initial_values)
+    eps = 1e-6
 
     cons_cfg = P.get("constraints", {})
     if "short_circuit_max" in cons_cfg:
-        g += [short_circuit_fraction]
-        lbg += [0.0]
-        ubg += [float(cons_cfg["short_circuit_max"])]
+        # Cross-multiplied form to avoid division by near-zero: Mlost_k ≤ short_circuit_max * (Mdel_k + eps)
+        short_circuit_max_val = float(cons_cfg["short_circuit_max"])
+        g += [Mlost_k - short_circuit_max_val * (Mdel_k + eps)]
+        lbg += [-ca.inf]
+        ubg += [0.0]
         constraint_groups["scavenging"].append(con_idx)
         con_idx += 1
     if "scavenging_min" in cons_cfg:
@@ -1969,31 +2518,49 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         constraint_groups["scavenging"].append(con_idx)
         con_idx += 1
     if "trapping_min" in cons_cfg:
-        trap_eff = total_trapped / (Mdel_k + 1e-9)
-        g += [trap_eff]
-        lbg += [float(cons_cfg["trapping_min"])]
+        # Cross-multiplied form to avoid division by near-zero: total_trapped / (Mdel_k + eps) ≥ trapping_min
+        trapping_min_val = float(cons_cfg["trapping_min"])
+        g += [total_trapped - trapping_min_val * (Mdel_k + eps)]
+        lbg += [0.0]
         ubg += [ca.inf]
         constraint_groups["scavenging"].append(con_idx)
         con_idx += 1
 
     timing_cfg = P.get("timing", {})
     if timing_cfg:
-        eps = 1e-9
-        t_cm_in = AinTmom_k / (AinInt_k + eps)
-        t_cm_ex = AexTmom_k / (AexInt_k + eps)
-        tol = float(timing_cfg.get("tol", 1e-3))
+        # Use consistent epsilon with seeded lower bounds (1e-6 for area integrals)
+        eps = 1e-6
+        tol = float(timing_cfg.get("tol", 1e-3))  # Ensure tol is purely numeric
+        
         if "Ain_t_cm" in timing_cfg:
             t_target = float(timing_cfg["Ain_t_cm"])
-            g += [t_cm_in]
-            lbg += [t_target - tol]
-            ubg += [t_target + tol]
+            # Cross-multiplied form to avoid division by near-zero: |AinTmom_k - t_target * (AinInt_k + eps)| ≤ tol * (AinInt_k + eps)
+            # Upper bound: AinTmom_k - t_target * (AinInt_k + eps) ≤ tol * (AinInt_k + eps)
+            g += [AinTmom_k - t_target * (AinInt_k + eps)]
+            lbg += [-ca.inf]
+            ubg += [tol * (AinInt_k + eps)]
             constraint_groups["scavenging"].append(con_idx)
             con_idx += 1
+            # Lower bound: AinTmom_k - t_target * (AinInt_k + eps) ≥ -tol * (AinInt_k + eps)
+            g += [AinTmom_k - t_target * (AinInt_k + eps)]
+            lbg += [-tol * (AinInt_k + eps)]
+            ubg += [ca.inf]
+            constraint_groups["scavenging"].append(con_idx)
+            con_idx += 1
+            
         if "Aex_t_cm" in timing_cfg:
             t_target = float(timing_cfg["Aex_t_cm"])
-            g += [t_cm_ex]
-            lbg += [t_target - tol]
-            ubg += [t_target + tol]
+            # Cross-multiplied form: |AexTmom_k - t_target * (AexInt_k + eps)| ≤ tol * (AexInt_k + eps)
+            # Upper bound: AexTmom_k - t_target * (AexInt_k + eps) ≤ tol * (AexInt_k + eps)
+            g += [AexTmom_k - t_target * (AexInt_k + eps)]
+            lbg += [-ca.inf]
+            ubg += [tol * (AexInt_k + eps)]
+            constraint_groups["scavenging"].append(con_idx)
+            con_idx += 1
+            # Lower bound: AexTmom_k - t_target * (AexInt_k + eps) ≥ -tol * (AexInt_k + eps)
+            g += [AexTmom_k - t_target * (AexInt_k + eps)]
+            lbg += [-tol * (AexInt_k + eps)]
+            ubg += [ca.inf]
             constraint_groups["scavenging"].append(con_idx)
             con_idx += 1
 
@@ -2094,6 +2661,15 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     J = sum(J_terms)
 
     nlp = {"x": ca.vertcat(*w), "f": J, "g": ca.vertcat(*g)}
+    
+    # Convert bounds and initial guess lists to numpy arrays for driver consumption
+    # These arrays match the exact variable ordering in w and constraint ordering in g
+    w0_arr = np.array(w0, dtype=float)
+    lbw_arr = np.array(lbw, dtype=float)
+    ubw_arr = np.array(ubw, dtype=float)
+    lbg_arr = np.array(lbg, dtype=float)
+    ubg_arr = np.array(ubg, dtype=float)
+    
     meta = {
         "K": K,
         "C": C,
@@ -2105,6 +2681,13 @@ def build_collocation_nlp(P: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         "timing_states": True,
         "variable_groups": var_groups,  # Add variable group metadata
         "constraint_groups": constraint_groups,  # Add constraint group metadata
+        "acceleration_normalization_factor": a_norm_factor,  # Store normalization factor for downstream use
+        # Include NLP-provided bounds and initial guess for driver consumption
+        "w0": w0_arr,
+        "lbw": lbw_arr,
+        "ubw": ubw_arr,
+        "lbg": lbg_arr,
+        "ubg": ubg_arr,
     }
     if combustion_meta is not None:
         meta["combustion_model"] = combustion_meta

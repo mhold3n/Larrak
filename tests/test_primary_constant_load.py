@@ -128,7 +128,8 @@ def _run_primary_flow(flow_name: str, flow_overrides: dict[str, bool]) -> None:
             },
         )
         elapsed = time.perf_counter() - start_time
-        print(f"[{flow_name}] Cascaded optimization completed in {elapsed:.3f}s")
+        from campro.utils import format_duration
+        print(f"[{flow_name}] Cascaded optimization completed in {format_duration(elapsed)}")
 
     assert executed_flows == [flow_name], f"{flow_name} flow was not executed"
     assert data.primary_theta is not None

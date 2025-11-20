@@ -11,6 +11,38 @@ from campro.logging import get_logger
 log = get_logger(__name__)
 
 
+def format_duration(elapsed: float) -> str:
+    """Format elapsed time with engineering-style units so tiny values stay visible.
+    
+    Formats durations using appropriate units:
+    - >= 1.0s: seconds with 3 decimal places
+    - >= 1e-3s: milliseconds with 3 decimal places
+    - >= 1e-6s: microseconds with 3 decimal places
+    - >= 1e-9s: nanoseconds with 3 decimal places
+    - < 1e-9s: scientific notation fallback
+    
+    Parameters
+    ----------
+    elapsed : float
+        Elapsed time in seconds
+        
+    Returns
+    -------
+    str
+        Formatted duration string with appropriate unit suffix
+    """
+    if elapsed >= 1.0:
+        return f"{elapsed:.3f}s"
+    elif elapsed >= 1e-3:
+        return f"{elapsed * 1e3:.3f}ms"
+    elif elapsed >= 1e-6:
+        return f"{elapsed * 1e6:.3f}us"
+    elif elapsed >= 1e-9:
+        return f"{elapsed * 1e9:.3f}ns"
+    else:
+        return f"{elapsed:.3e}s"
+
+
 class ProgressLogger:
     """Structured progress logger for optimization phases."""
 
@@ -44,7 +76,7 @@ class ProgressLogger:
                 prefix = f"{prefix} {status_symbol}"
         return f"{prefix} {step}: {message}"
 
-    def _output(self, message: str, level: str = "info"):
+    def _output(self, message: str, level: str = "info") -> None:
         """Output message with optional immediate flush."""
         formatted_msg = message
         if level == "info":
@@ -97,7 +129,7 @@ class ProgressLogger:
         if elapsed is not None:
             msg = self._format_message(
                 "Complete",
-                f"{description} completed in {elapsed:.3f}s",
+                f"{description} completed in {format_duration(elapsed)}",
                 "success",
             )
         else:
@@ -127,13 +159,13 @@ class ProgressLogger:
         if success:
             msg = self._format_message(
                 "Phase Complete",
-                f"Optimization completed successfully in {elapsed:.3f}s",
+                f"Optimization completed successfully in {format_duration(elapsed)}",
                 "success",
             )
         else:
             msg = self._format_message(
                 "Phase Complete",
-                f"Optimization failed after {elapsed:.3f}s",
+                f"Optimization failed after {format_duration(elapsed)}",
                 "error",
             )
         self._output(msg)

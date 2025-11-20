@@ -25,6 +25,7 @@ from campro.litvin.motion import RadialSlotMotion
 from campro.litvin.optimization import OptimizationOrder, optimize_geometry
 from campro.logging import get_logger
 from campro.physics.geometry.litvin import LitvinGearGeometry, LitvinSynthesis
+from campro.utils import format_duration
 
 from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
 from .collocation import CollocationSettings
@@ -359,7 +360,7 @@ class CamRingOptimizer(BaseOptimizer):
                 geometry_config, OptimizationOrder.ORDER0_EVALUATE,
             )
             order0_elapsed = time.time() - order0_start
-            order_logger.info(f"ORDER0 completed: feasible={order0_result.feasible}, time={order0_elapsed:.3f}s")
+            order_logger.info(f"ORDER0 completed: feasible={order0_result.feasible}, time={format_duration(order0_elapsed)}")
             order_logger.step_complete("ORDER0_EVALUATE", order0_elapsed)
 
             order_logger.step(2, 3, "ORDER1_GEOMETRY: Basic geometry optimization")
@@ -372,7 +373,7 @@ class CamRingOptimizer(BaseOptimizer):
             obj_str = f"{order1_result.objective_value:.6f}" if order1_result.objective_value is not None else "N/A"
             order_logger.info(f"ORDER1 completed: feasible={order1_result.feasible}, "
                             f"objective={obj_str}, "
-                            f"time={order1_elapsed:.3f}s")
+                            f"time={format_duration(order1_elapsed)}")
             
             order_logger.step_complete("ORDER1_GEOMETRY", order1_elapsed)
 
@@ -388,7 +389,7 @@ class CamRingOptimizer(BaseOptimizer):
                     obj_str = f"{order2_result.objective_value:.6f}" if order2_result.objective_value is not None else "N/A"
                     order_logger.info(f"ORDER2 completed: feasible={order2_result.feasible}, "
                                     f"objective={obj_str}, "
-                                    f"time={order2_elapsed:.3f}s")
+                                    f"time={format_duration(order2_elapsed)}")
                     order_logger.step_complete("ORDER2_MICRO", order2_elapsed)
                 except Exception as e:
                     order2_elapsed = time.time() - order2_start
