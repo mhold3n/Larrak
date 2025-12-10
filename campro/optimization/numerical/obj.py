@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, Optional
 
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.logging import get_logger
@@ -102,7 +102,7 @@ def indicated_work_simpson(*, p_series: list[float], V_series: list[float]) -> f
         Indicated work [J]
     """
     if len(p_series) != len(V_series) or len(p_series) < 3:
-        return indicated_work_trapezoidal(p_series, V_series)
+        return indicated_work_trapezoidal(p_series=p_series, V_series=V_series)
 
     W_ind = 0.0
     n = len(p_series) - 1
@@ -166,7 +166,7 @@ def indicated_work_gauss(
         points = [-math.sqrt(3.0 / 5.0), 0.0, math.sqrt(3.0 / 5.0)]
     else:
         # Fallback to Simpson's rule for other point counts
-        return indicated_work_simpson(p_series, V_series)
+        return indicated_work_simpson(p_series=p_series, V_series=V_series)
 
     W_ind = 0.0
     for i in range(len(p_series) - 1):
@@ -205,11 +205,11 @@ def indicated_work(
         Indicated work [J]
     """
     if method == "trapezoidal":
-        return indicated_work_trapezoidal(p_series, V_series)
+        return indicated_work_trapezoidal(p_series=p_series, V_series=V_series)
     if method == "simpson":
-        return indicated_work_simpson(p_series, V_series)
+        return indicated_work_simpson(p_series=p_series, V_series=V_series)
     if method == "gauss":
-        return indicated_work_gauss(p_series, V_series)
+        return indicated_work_gauss(p_series=p_series, V_series=V_series)
     raise ValueError(f"Unknown integration method: {method}")
 
 
@@ -661,7 +661,7 @@ def blowdown_efficiency(
 
 def scavenging_quality_index(
     fresh_charge_distribution: list[float],
-    target_distribution: list[float] = None,
+    target_distribution: Optional[list[float]] = None,
 ) -> float:
     """
     Scavenging quality index based on fresh charge distribution uniformity.
@@ -706,7 +706,7 @@ def scavenging_quality_index(
     return quality_index
 
 
-def get_objective_function(method: str = "indicated_work"):
+def get_objective_function(method: str = "indicated_work") -> Callable:
     """Get objective function by name.
 
     Parameters

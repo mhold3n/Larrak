@@ -173,16 +173,16 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     z = ca.vertcat(x, s_eq, s_v, s_a, s_j)
 
     # Helper for periodic indices
-    def ip(i):
+    def ip(i: int) -> int:
         return (i + 1) % N
 
-    def im(i):
+    def im(i: int) -> int:
         return (i - 1) % N
 
-    def ipp(i):
+    def ipp(i: int) -> int:
         return (i + 2) % N
 
-    def imm(i):
+    def imm(i: int) -> int:
         return (i - 2) % N
 
     # Finite differences in per-degree units (periodic)
@@ -399,7 +399,7 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
         recs: list[str] = []
         # Basic recommendation based on dominant violation
         if not feasible:
-            dominant = max(violations, key=violations.get)
+            dominant = max(violations, key=lambda k: violations[k])
             if dominant in ("v_max",):
                 recs.append("Increase max_velocity or upstroke duration/duration_angle_deg")
             elif dominant in ("a_max",):

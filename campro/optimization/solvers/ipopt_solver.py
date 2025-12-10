@@ -92,6 +92,8 @@ class IPOPTOptions:
     dependency_detector: str = "none"
     dependency_detection_with_rhs: str = "no"
     output_file: str | None = None
+    print_frequency_iter: int = 1
+    print_frequency_time: float = 0.0
     print_timing_statistics: bool = False
 
     # Warm start options

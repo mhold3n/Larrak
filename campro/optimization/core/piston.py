@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from campro.logging import get_logger
 
@@ -340,7 +340,7 @@ def piston_energy_balance(
     }
 
 
-def get_piston_force_function(method: str = "full"):
+def get_piston_force_function(method: str = "full") -> Callable:
     """Get piston force function by name.
 
     Parameters
@@ -368,9 +368,9 @@ def get_piston_force_function(method: str = "full"):
         return lambda geometry, state, p_gas, T_gas, V_chamber, omega=0.0: (
             p_gas * math.pi * (geometry.bore / 2.0) ** 2
             + clearance_penalty(
-                geometry.clearance_nominal - abs(state.x),
-                geometry.clearance_min,
-                1e6,
+                gap=geometry.clearance_nominal - abs(state.x),
+                gap_min=geometry.clearance_min,
+                k=1e6,
             ),
             p_gas * math.pi * (geometry.bore / 2.0) ** 2,
             0.0,
