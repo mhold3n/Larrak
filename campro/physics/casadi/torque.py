@@ -6,10 +6,11 @@ ported to CasADi MX for use in symbolic optimization.
 """
 
 import casadi as ca
+
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.logging import get_logger
 
-from .kinematics import create_crank_piston_kinematics, create_crank_piston_kinematics_vectorized
+from .kinematics import create_crank_piston_kinematics_vectorized
 
 log = get_logger(__name__)
 

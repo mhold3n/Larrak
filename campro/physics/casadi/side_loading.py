@@ -6,6 +6,7 @@ ported to CasADi MX for use in symbolic optimization.
 """
 
 import casadi as ca
+
 from campro.constants import CASADI_PHYSICS_ASIN_CLAMP, CASADI_PHYSICS_EPSILON
 from campro.logging import get_logger
 

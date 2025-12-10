@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from campro.optimization.ipopt_log_parser import parse_ipopt_log_file
+from campro.optimization.solvers.ipopt_log_parser import parse_ipopt_log_file
 
 from .run_metadata import RUN_ID
 

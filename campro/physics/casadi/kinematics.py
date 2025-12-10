@@ -6,10 +6,11 @@ crank center offset effects, ported to CasADi MX for use in symbolic optimizatio
 """
 
 import casadi as ca
+
 from campro.constants import (
-    CASADI_PHYSICS_ASIN_CLAMP, 
+    CASADI_PHYSICS_ASIN_CLAMP,
     CASADI_PHYSICS_EPSILON,
-    CASADI_PHYSICS_USE_EFFECTIVE_RADIUS_CORRECTION
+    CASADI_PHYSICS_USE_EFFECTIVE_RADIUS_CORRECTION,
 )
 from campro.logging import get_logger
 

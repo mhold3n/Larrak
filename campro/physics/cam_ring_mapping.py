@@ -8,6 +8,7 @@ This module implements the mathematical framework for relating:
 
 Based on the cam-ring-linear follower mapping document.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -75,7 +76,9 @@ class CamRingMapper:
         )
 
     def compute_cam_curves(
-        self, theta: np.ndarray, x_theta: np.ndarray,
+        self,
+        theta: np.ndarray,
+        x_theta: np.ndarray,
     ) -> dict[str, np.ndarray]:
         """
         Compute cam curves from linear follower motion law via connecting rod.
@@ -117,7 +120,9 @@ class CamRingMapper:
         }
 
     def compute_cam_curvature(
-        self, theta: np.ndarray, r_contact: np.ndarray,
+        self,
+        theta: np.ndarray,
+        r_contact: np.ndarray,
     ) -> np.ndarray:
         """
         Compute curvature of the contacting cam curve.
@@ -175,13 +180,19 @@ class CamRingMapper:
         """
         # Avoid division by zero
         rho_c = np.divide(
-            1.0, kappa_c, out=np.full_like(kappa_c, np.inf), where=abs(kappa_c) > 1e-12,
+            1.0,
+            kappa_c,
+            out=np.full_like(kappa_c, np.inf),
+            where=abs(kappa_c) > 1e-12,
         )
 
         return rho_c
 
     def design_ring_radius(
-        self, psi: np.ndarray, design_type: str = "constant", **kwargs,
+        self,
+        psi: np.ndarray,
+        design_type: str = "constant",
+        **kwargs,
     ) -> np.ndarray:
         """
         Design the ring's instantaneous radius R(ψ).
@@ -226,7 +237,11 @@ class CamRingMapper:
         raise ValueError(f"Unknown design type: {design_type}")
 
     def solve_meshing_law(
-        self, theta: np.ndarray, rho_c: np.ndarray, psi: np.ndarray, R_psi: np.ndarray,
+        self,
+        theta: np.ndarray,
+        rho_c: np.ndarray,
+        psi: np.ndarray,
+        R_psi: np.ndarray,
     ) -> np.ndarray:
         """
         Solve the pitch-curve meshing law to relate cam and ring angles.
@@ -255,10 +270,18 @@ class CamRingMapper:
 
         # Create interpolation functions
         rho_c_interp = interp1d(
-            theta, rho_c, kind="cubic", bounds_error=False, fill_value="extrapolate",
+            theta,
+            rho_c,
+            kind="cubic",
+            bounds_error=False,
+            fill_value="extrapolate",
         )
         R_psi_interp = interp1d(
-            psi, R_psi, kind="cubic", bounds_error=False, fill_value="extrapolate",
+            psi,
+            R_psi,
+            kind="cubic",
+            bounds_error=False,
+            fill_value="extrapolate",
         )
 
         # Define the ODE: dψ/dθ = ρ_c(θ) / R(ψ)
@@ -356,7 +379,10 @@ class CamRingMapper:
         }
 
     def map_linear_to_ring_follower(
-        self, theta: np.ndarray, x_theta: np.ndarray, ring_design: dict[str, Any],
+        self,
+        theta: np.ndarray,
+        x_theta: np.ndarray,
+        ring_design: dict[str, Any],
     ) -> dict[str, np.ndarray]:
         """
         Complete mapping from linear follower motion law to ring follower design.
@@ -395,7 +421,15 @@ class CamRingMapper:
 
         # Step 3: Design ring radius
         psi_initial = np.linspace(0, 2 * np.pi, len(theta))  # Initial guess
-        R_psi = self.design_ring_radius(psi_initial, **ring_design)
+        R_psi_initial = self.design_ring_radius(psi_initial, **ring_design)
+
+        # Step 3b: Solve meshing law to get actual psi(theta)
+        # Note: R_psi depends on psi, so we solve the ODE d(psi)/d(theta) = rho_c(theta)/R(psi)
+        # We start by using the initial guess R_psi_initial for the ODE
+        psi = self.solve_meshing_law(theta_rad, rho_c, psi_initial, R_psi_initial)
+
+        # Re-evaluate R(psi) with the solved psi
+        R_psi = self.design_ring_radius(psi, **ring_design)
 
         # Always generate complete 360° profiles with proper boundary continuity
         # This ensures the optimization always works with complete profiles
@@ -453,7 +487,10 @@ class CamRingMapper:
         return results
 
     def _create_enhanced_grid(
-        self, theta_rad: np.ndarray, x_theta: np.ndarray, base_length: int,
+        self,
+        theta_rad: np.ndarray,
+        x_theta: np.ndarray,
+        base_length: int,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Create an enhanced grid with higher resolution at critical points (TDC/BDC)
@@ -491,7 +528,9 @@ class CamRingMapper:
 
         # Add points around BDC (180°)
         bdc_region = np.linspace(
-            np.pi - np.pi / 12, np.pi + np.pi / 12, 5,
+            np.pi - np.pi / 12,
+            np.pi + np.pi / 12,
+            5,
         )  # ±15° around BDC
         extra_points.extend(bdc_region)
 
@@ -555,7 +594,10 @@ class CamRingMapper:
         return theta_enhanced, x_theta_enhanced
 
     def _create_simple_cam_extension(
-        self, theta_enhanced: np.ndarray, theta_rad: np.ndarray, x_theta: np.ndarray,
+        self,
+        theta_enhanced: np.ndarray,
+        theta_rad: np.ndarray,
+        x_theta: np.ndarray,
     ) -> np.ndarray:
         """
         Create a simple cam extension for phase 2 cam-ring optimization.
@@ -608,12 +650,10 @@ class CamRingMapper:
                 opposite_idx = len(x_theta_enhanced) - smooth_window + i
                 if opposite_idx < len(x_theta_enhanced):
                     x_theta_enhanced[i] = (
-                        weight * x_theta_enhanced[i]
-                        + (1 - weight) * x_theta_enhanced[opposite_idx]
+                        weight * x_theta_enhanced[i] + (1 - weight) * x_theta_enhanced[opposite_idx]
                     )
                     x_theta_enhanced[opposite_idx] = (
-                        weight * x_theta_enhanced[opposite_idx]
-                        + (1 - weight) * x_theta_enhanced[i]
+                        weight * x_theta_enhanced[opposite_idx] + (1 - weight) * x_theta_enhanced[i]
                     )
 
         # Ensure boundary continuity for smooth cam profile
@@ -664,7 +704,9 @@ class CamRingMapper:
         return x_theta_enhanced
 
     def _generate_complete_ring_profile(
-        self, psi: np.ndarray, R_psi: np.ndarray,
+        self,
+        psi: np.ndarray,
+        R_psi: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Generate a complete 360° ring profile from the meshing law solution.

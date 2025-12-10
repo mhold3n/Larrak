@@ -5,11 +5,12 @@ import json
 from pathlib import Path
 
 from campro.logging import get_logger
+from campro.optimization.strategies.gear_synthesis import OptimizationOrder, optimize_geometry
+
 # Import directly from submodules to avoid circular import
 # (campro.litvin.__init__ imports from .cli, so we can't import from campro.litvin here)
 from .config import GeometrySearchConfig, OptimizationOrder, PlanetSynthesisConfig
 from .motion import RadialSlotMotion
-from .optimization import optimize_geometry
 from .planetary_synthesis import synthesize_planet_from_motion
 
 
@@ -32,7 +33,8 @@ def main() -> None:
     log = get_logger(__name__)
 
     motion = RadialSlotMotion(
-        center_offset_fn=lambda th: 0.0, planet_angle_fn=lambda th: 2.0 * th,
+        center_offset_fn=lambda th: 0.0,
+        planet_angle_fn=lambda th: 2.0 * th,
     )
 
     if args.order == OptimizationOrder.ORDER0_EVALUATE:

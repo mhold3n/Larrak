@@ -1,95 +1,27 @@
 """
-Optimization routines and solvers for motion law problems.
-
-This module provides a comprehensive optimization framework for solving
-motion law problems using various methods including collocation and
-future physics-based optimization.
+Motion Law Optimization Library
 """
 
-from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
-from .cam_ring_optimizer import (
-    CamRingOptimizationConstraints,
-    CamRingOptimizationTargets,
-    CamRingOptimizer,
-)
-from .cam_ring_processing import (
-    create_constant_ring_design,
-    create_optimized_ring_design,
-    process_linear_to_ring_follower,
-    process_multi_objective_ring_design,
-    process_ring_optimization,
-)
-from .collocation import CollocationMethod, CollocationOptimizer, CollocationSettings
-from .motion import MotionObjectiveType, MotionOptimizer
-from .motion_law import (
-    MotionLawConstraints,
-    MotionLawResult,
-    MotionLawValidator,
-    MotionType,
-)
-from .motion_law_optimizer import MotionLawOptimizer
-from .secondary import SecondaryOptimizer
-from .sun_gear_optimizer import (
-    SunGearOptimizationConstraints,
-    SunGearOptimizationTargets,
-    SunGearOptimizer,
-    SunGearParameters,
-)
-from .tertiary import LinkageParameters, TertiaryOptimizer
-from .unified_framework import (
-    OptimizationLayer,
-    OptimizationMethod,
-    UnifiedOptimizationConstraints,
-    UnifiedOptimizationData,
-    UnifiedOptimizationFramework,
-    UnifiedOptimizationSettings,
-    UnifiedOptimizationTargets,
-)
+from __future__ import annotations
+
+# Active components
+from .driver import solve_cycle, solve_cycle_adaptive, solve_cycle_robust
+from .nlp import build_collocation_nlp
+
+# Solvers are still valid
+from .solvers.ipopt_solver import IPOPTOptions, IPOPTResult, IPOPTSolver
 
 __all__ = [
-    # Base classes
-    "BaseOptimizer",
-    "OptimizationResult",
-    "OptimizationStatus",
-    # Collocation
-    "CollocationSettings",
-    "CollocationMethod",
-    "CollocationOptimizer",
-    # Motion optimization
-    "MotionOptimizer",
-    "MotionObjectiveType",
-    # Secondary optimization
-    "SecondaryOptimizer",
-    # Tertiary optimization
-    "TertiaryOptimizer",
-    "LinkageParameters",
-    # Cam-ring optimization
-    "CamRingOptimizer",
-    "CamRingOptimizationConstraints",
-    "CamRingOptimizationTargets",
-    # Sun gear optimization
-    "SunGearOptimizer",
-    "SunGearParameters",
-    "SunGearOptimizationConstraints",
-    "SunGearOptimizationTargets",
-    # Unified optimization framework
-    "UnifiedOptimizationFramework",
-    "UnifiedOptimizationSettings",
-    "UnifiedOptimizationConstraints",
-    "UnifiedOptimizationTargets",
-    "UnifiedOptimizationData",
-    "OptimizationMethod",
-    "OptimizationLayer",
-    # Motion law optimization
-    "MotionLawConstraints",
-    "MotionLawResult",
-    "MotionLawValidator",
-    "MotionType",
-    "MotionLawOptimizer",
-    # Cam-ring processing
-    "process_linear_to_ring_follower",
-    "process_ring_optimization",
-    "process_multi_objective_ring_design",
-    "create_constant_ring_design",
-    "create_optimized_ring_design",
+    "IPOPTOptions",
+    "IPOPTResult",
+    "IPOPTSolver",
+    "build_collocation_nlp",
+    "solve_cycle",
+    "solve_cycle_adaptive",
+    "solve_cycle_robust",
 ]
+
+# Version information
+__version__ = "1.0.0"
+__author__ = "OP Engine Optimization Team"
+__description__ = "Motion Law Optimization Library for OP Engines"

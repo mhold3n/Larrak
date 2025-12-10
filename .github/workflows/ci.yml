@@ -65,7 +65,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest -q
+          pytest -q tests/
 
   lint-only:
     runs-on: ubuntu-latest

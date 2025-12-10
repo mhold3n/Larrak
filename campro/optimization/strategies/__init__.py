@@ -2,20 +2,14 @@
 Optimization strategies for different types of problems.
 
 This module provides a framework for implementing different optimization
-strategies, enabling easy extension and modification of optimization approaches.
+strategies.
 """
 
 from .base_strategy import BaseOptimizationStrategy, OptimizationStrategyResult
-from .geometry_strategy import GeometryOptimizationStrategy
-from .motion_strategy import MotionOptimizationStrategy
-from .multi_objective import MultiObjectiveStrategy
+
+# from .gear_synthesis import optimize_geometry  # Can export if needed, but safe to import directly
 
 __all__ = [
-    # Base strategy
     "BaseOptimizationStrategy",
     "OptimizationStrategyResult",
-    # Specific strategies
-    "MotionOptimizationStrategy",
-    "GeometryOptimizationStrategy",
-    "MultiObjectiveStrategy",
 ]

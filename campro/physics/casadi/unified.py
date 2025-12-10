@@ -6,16 +6,17 @@ side loading, Litvin metrics) into a single optimizer-facing function.
 """
 
 import casadi as ca
+
 from campro.logging import get_logger
-from .kinematics import create_crank_piston_kinematics, create_phase_masks
+
 from .forces import create_piston_force_simple
-from .torque import create_torque_pointwise, create_torque_profile
-from .side_loading import (
-    create_side_load_pointwise,
-    create_side_load_profile,
-    create_side_load_penalty,
-)
+from .kinematics import create_crank_piston_kinematics, create_phase_masks
 from .litvin import create_litvin_metrics
+from .side_loading import (
+    create_side_load_penalty,
+    create_side_load_profile,
+)
+from .torque import create_torque_profile
 
 log = get_logger(__name__)
 

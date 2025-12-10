@@ -6,6 +6,7 @@ ported to CasADi MX for use in symbolic optimization.
 """
 
 import casadi as ca
+
 from campro.logging import get_logger
 
 log = get_logger(__name__)
@@ -33,7 +34,7 @@ def create_piston_force_simple() -> ca.Function:
 
     Notes
     -----
-    - Based on `campro/freepiston/core/piston.py:93-95`
+    - Based on `campro.optimization.core/piston.py:93-95`
     - Units: pressure (Pa), bore (mm) → force (N)
     - Area conversion: mm² to m² via 1e-6 factor
 

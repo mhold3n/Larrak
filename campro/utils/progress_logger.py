@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 import time
-from typing import Any
 
 from campro.logging import get_logger
 

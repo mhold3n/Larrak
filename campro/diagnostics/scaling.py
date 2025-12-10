@@ -237,7 +237,7 @@ def solve_scaled_nlpsol(
     dict containing scaled x0/lbx/ubx/lbg/ubg suitable for passing to solver().
     """
     ca = _import_casadi()
-    from campro.optimization.ipopt_factory import create_ipopt_solver
+    from campro.optimization.solvers.ipopt_factory import create_ipopt_solver
 
     nlp_scaled = build_scaled_nlp(nlp, scale)
     solver = create_ipopt_solver(

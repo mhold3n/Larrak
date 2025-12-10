@@ -6,14 +6,21 @@ from campro.api.solve_report import SolveReport
 from campro.diagnostics import RUN_ID
 from campro.diagnostics.ipopt_logger import get_ipopt_log_stats
 from campro.diagnostics.run_metadata import log_run_metadata
+from campro.optimization.numerical.base import OptimizationResult
 
 
-def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  # type: ignore[name-defined]
+# Define Protocol for UnifiedOptimizationData to handle missing type
+class UnifiedOptimizationData:
+    convergence_info: dict[str, Any]
+    primary_ipopt_analysis: Any
+    secondary_ipopt_analysis: Any
+    tertiary_ipopt_analysis: Any
+
+
+def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:
     """Convert a Motion/OptimizationResult to a SolveReport."""
     status = getattr(result, "status", None)
-    status_str = (
-        getattr(status, "value", str(status)) if status is not None else "unknown"
-    )
+    status_str = getattr(status, "value", str(status)) if status is not None else "unknown"
 
     # Extract basic residuals if present
     residuals: dict[str, float] = {}
@@ -101,9 +108,7 @@ def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  #
         run_id=RUN_ID,
         status=public_status,
         kkt={
-            k: residuals.get(k)
-            for k in ("primal_inf", "dual_inf", "compl_inf")
-            if k in residuals
+            k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals
         },
         n_iter=n_iter,
         scaling_stats={},
@@ -132,7 +137,7 @@ def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:  #
     return report
 
 
-def unified_data_to_solve_report(data: UnifiedOptimizationData) -> SolveReport:  # type: ignore[name-defined]
+def unified_data_to_solve_report(data: UnifiedOptimizationData) -> SolveReport:
     """Convert UnifiedOptimizationData to a SolveReport summary.
 
     Aggregates convergence info to a single high-level status.
@@ -208,9 +213,7 @@ def unified_data_to_solve_report(data: UnifiedOptimizationData) -> SolveReport: 
         if status_str == "converged"
         else ("Infeasible" if status_str == "infeasible" else "Failed"),
         kkt={
-            k: residuals.get(k)
-            for k in ("primal_inf", "dual_inf", "compl_inf")
-            if k in residuals
+            k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals
         },
         n_iter=n_iter,
         scaling_stats=scaling_stats,

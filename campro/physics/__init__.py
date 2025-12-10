@@ -14,11 +14,12 @@ from .base import (
     PhysicsStatus,
 )
 from .cam_ring_mapping import CamRingMapper, CamRingParameters
+
+# from .combustion import CombustionConfig, CombustionModel, CombustionOutputs
 from .geometry.litvin import LitvinGearGeometry, LitvinSynthesis, LitvinSynthesisResult
 from .kinematics.crank_kinematics import CrankKinematics, CrankKinematicsResult
 from .mechanics.side_loading import SideLoadAnalyzer, SideLoadResult
 from .mechanics.torque_analysis import PistonTorqueCalculator, TorqueAnalysisResult
-from .combustion import CombustionModel, CombustionOutputs, CombustionConfig
 
 __all__ = [
     # Base classes

@@ -1,10 +1,18 @@
 """Larrak: Optimal motion law problems using CasADi and Ipopt collocation."""
+
 from __future__ import annotations
 
 import os
 
 from campro.diagnostics.run_metadata import set_global_seeds
 from campro.logging import get_logger
+
+# CRITICAL: Import scipy.optimize BEFORE casadi to prevent "ObjSense" registration conflict
+# and SystemError/KeyboardInterrupt crashes in the HiGHS solver bindings.
+try:
+    import scipy.optimize
+except ImportError:
+    pass  # Scipy might not be installed in minimal envs
 
 __version__ = "0.1.0"
 
@@ -45,10 +53,12 @@ def _check_ipopt_availability() -> bool:
                 x = ca.SX.sym("x")
                 f = x**2
                 # Use the centralized factory with explicit linear solver
-                from campro.optimization.ipopt_factory import create_ipopt_solver
+                from campro.optimization.solvers.ipopt_factory import create_ipopt_solver
 
                 create_ipopt_solver(
-                    "ipopt_probe", {"x": x, "f": f}, linear_solver="ma27",
+                    "ipopt_probe",
+                    {"x": x, "f": f},
+                    linear_solver="ma27",
                 )
                 _IPOPT_AVAILABLE = True
                 log.info("IPOPT availability check completed with MA27 linear solver")

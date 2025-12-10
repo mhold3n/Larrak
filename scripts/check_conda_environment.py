@@ -105,7 +105,7 @@ def check_conda_environment_status() -> dict[str, Any]:
     try:
         result = subprocess.run(
             ["conda", "--version"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=5,
         )
@@ -258,7 +258,9 @@ def check_package_versions(requirements: dict[str, str]) -> list[CheckResult]:
                     # If not found via plugins, try direct creation
                     if not ipopt_available:
                         try:
-                            from campro.optimization.ipopt_factory import create_ipopt_solver
+                            from campro.optimization.solvers.ipopt_factory import (
+                                create_ipopt_solver,
+                            )
                             x = ca.SX.sym("x")
                             f = x**2
                             nlp = {"x": x, "f": f}
@@ -373,7 +375,7 @@ def check_pip_in_conda() -> list[CheckResult]:
         # Get list of pip-installed packages
         result = subprocess.run(
             [sys.executable, "-m", "pip", "list", "--format=json"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=10,
         )
@@ -395,7 +397,7 @@ def check_pip_in_conda() -> list[CheckResult]:
             try:
                 conda_list_result = subprocess.run(
                     ["conda", "list", "--json", "--name", os.environ.get("CONDA_DEFAULT_ENV", "")],
-                    capture_output=True,
+                    check=False, capture_output=True,
                     text=True,
                     timeout=10,
                 )
@@ -513,10 +515,10 @@ def test_campro_imports() -> list[CheckResult]:
     optimization_modules = [
         "campro.optimization",
         "campro.optimization.base",
-        "campro.optimization.collocation",
+        "campro.optimization.numerical.collocation",
         "campro.optimization.motion",
         "campro.optimization.motion_law",
-        "campro.optimization.ipopt_factory",
+        "campro.optimization.solvers.ipopt_factory",
     ]
 
     # Physics modules

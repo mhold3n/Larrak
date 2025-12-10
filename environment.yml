@@ -38,4 +38,11 @@ dependencies:
   - pip:
       # Add pip-only packages here if required
       # - some-pip-only-package>=1.0.0
+      - typeguard
+      - radon
+      - xenon
+      - scalene
+      - bandit
+      - pip-audit
+      - memory_profiler
 

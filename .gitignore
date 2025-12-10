@@ -185,11 +185,12 @@ conda-bld/
 # ============================================================================
 
 # Runtime and output directories
-logs/
+# Runtime and output directories
+out/logs/
 # runs/ directory contains optimization outputs
 # Note: Some .npz warmstart files in runs/ are intentionally tracked
-runs/*.log
-runs/*-ipopt.log
+out/runs/*.log
+out/runs/*-ipopt.log
 *.log
 # Application log files (framework logs handled elsewhere)
 
@@ -203,11 +204,11 @@ test_workflow.txt
 
 # Image files (generated outputs)
 # Note: Some PNG files in plots/ are intentionally tracked as documentation
-*.png
-*.pdf
-*.svg
-*.jpg
-*.jpeg
+out/plots/*.png
+out/plots/*.pdf
+out/plots/*.svg
+out/plots/*.jpg
+out/plots/*.jpeg
 
 # Runtime data files
 *.npz
@@ -243,4 +244,10 @@ ma57_migration_data.json
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db
+PERMANENT_ARCHIVE/
+investigation_output*.txt
+
+# User-requested exclusions
+libraries/
+runs/
+

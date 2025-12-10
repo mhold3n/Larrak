@@ -8,8 +8,8 @@ from typing import Any
 import numpy as np
 from scipy.optimize import brentq
 
-from campro.freepiston.core.chem import CombustionParameters, wiebe_function
 from campro.logging import get_logger
+from campro.optimization.core.chem import CombustionParameters, wiebe_function
 from campro.utils.progress_logger import ProgressLogger
 
 log = get_logger(__name__)
@@ -17,8 +17,8 @@ log = get_logger(__name__)
 __all__ = [
     "SectionBoundaries",
     "compute_combustion_timing",
-    "identify_combustion_sections",
     "get_section_boundaries",
+    "identify_combustion_sections",
 ]
 
 

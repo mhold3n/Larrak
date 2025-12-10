@@ -6,9 +6,9 @@ planet kinematics, contact point solving, and metrics computation,
 ported to CasADi MX for use in symbolic optimization.
 """
 
+import casadi as ca
 import numpy as np
 
-import casadi as ca
 from campro.constants import CASADI_PHYSICS_EPSILON
 from campro.logging import get_logger
 
@@ -341,7 +341,7 @@ def create_contact_phi_solver() -> ca.Function:
         "contact_phi_solver",
         [phi_seed, theta_r, R0, z_r, z_p, module, alpha_deg, flank_data],
         [phi_contact],
-        ["phi_seed", "theta_r", "R0", "z_r", "z_p", "module", "alpha_deg", "flank_data"],  # noqa: E501
+        ["phi_seed", "theta_r", "R0", "z_r", "z_p", "module", "alpha_deg", "flank_data"],
         ["phi_contact"],
     )
 
@@ -455,7 +455,7 @@ def create_contact_phi_solver_newton() -> ca.Function:
         "contact_phi_solver_newton",
         [phi_seed, theta_r, R0, z_r, z_p, module, alpha_deg, flank_data],
         [phi_contact],
-        ["phi_seed", "theta_r", "R0", "z_r", "z_p", "module", "alpha_deg", "flank_data"],  # noqa: E501
+        ["phi_seed", "theta_r", "R0", "z_r", "z_p", "module", "alpha_deg", "flank_data"],
         ["phi_contact"],
     )
 

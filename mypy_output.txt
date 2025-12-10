@@ -1,0 +1,2 @@
+PERMANENT_ARCHIVE/scripts/run_optimization_cli.py:58: error: Expected 'except' or 'finally' block  [syntax]
+Found 1 error in 1 file (errors prevented further checking)

@@ -1,11 +1,12 @@
 """Litvin planetary synthesis package."""
 
 # CLI functionality
+from campro.optimization.strategies.gear_synthesis import OptimResult, optimize_geometry
+
 from .cli import main as cli_main
 from .config import GeometrySearchConfig, OptimizationOrder, PlanetSynthesisConfig
 from .metrics import Order0Metrics, evaluate_order0_metrics
 from .motion import RadialSlotMotion
-from .optimization import OptimResult, optimize_geometry
 from .planetary_synthesis import PlanetToothProfile, synthesize_planet_from_motion
 
 __all__ = [

@@ -4,8 +4,10 @@ Parameter management utilities.
 This module provides tools for managing and validating parameters
 across the modular system.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from campro.logging import get_logger
@@ -31,7 +33,10 @@ class ParameterValidator:
 
     @staticmethod
     def validate_float_range(
-        value: Any, name: str, min_val: float, max_val: float,
+        value: Any,
+        name: str,
+        min_val: float,
+        max_val: float,
     ) -> bool:
         """Validate that a value is within a float range."""
         try:
@@ -65,7 +70,10 @@ class ParameterManager:
         self.log = get_logger(__name__)
 
     def add_parameter(
-        self, name: str, value: Any, validator: callable | None = None,
+        self,
+        name: str,
+        value: Any,
+        validator: Callable | None = None,
     ) -> None:
         """Add a parameter with optional validation."""
         if validator and not validator(value):

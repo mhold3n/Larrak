@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from campro.logging import get_logger
+
+log = get_logger(__name__)
+
 
 @dataclass
 class FeasibilityReport:
@@ -107,7 +111,7 @@ def check_feasibility(constraints: dict, bounds: dict) -> FeasibilityReport:
 
 def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     """Phase-0 feasibility via slack-minimization NLP using CasADi/Ipopt.
-    
+
     All computations use per-degree units:
     - Variables: position samples x[i] on a uniform grid over θ∈[0, duration_angle_deg], plus
       nonnegative slack variables for equalities and inequalities.
@@ -132,7 +136,7 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     if duration_angle_deg <= 0:
         # Invalid duration, fall back to heuristic
         return check_feasibility(constraints, bounds)
-    
+
     up_pct = float(constraints.get("upstroke_percent", 60.0) or 0.0)
 
     # Bounds (optional) - these are already in per-degree units
@@ -287,22 +291,22 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
     # x[0] = 0, x[idx_up] = stroke, x[N-1] = 0
     theta_np = np.linspace(0.0, duration_angle_deg, N)
     x0 = np.zeros(N)
-    
+
     # Use 5th-order smoothstep S-curve (same as actual optimizer)
     # Smoothstep: 10*t³ - 15*t⁴ + 6*t⁵
     def smoothstep(t: np.ndarray) -> np.ndarray:
         """5th-order smoothstep function (0≤t≤1)."""
         t = np.clip(t, 0.0, 1.0)
         return 10 * t**3 - 15 * t**4 + 6 * t**5
-    
+
     # Normal case: upstroke then downstroke
     # Boundary conditions: x[0] = 0, x[idx_up] = stroke, x[N-1] = 0
     if idx_up > 0 and idx_up < N - 1:
         # Upstroke phase: 0 to stroke (from index 0 to idx_up)
         upstroke_indices = np.arange(idx_up + 1)
         up_phase = upstroke_indices / idx_up
-        x0[:idx_up + 1] = stroke * smoothstep(up_phase)
-        
+        x0[: idx_up + 1] = stroke * smoothstep(up_phase)
+
         # Downstroke phase: stroke to 0 (from index idx_up to N-1)
         downstroke_indices = np.arange(idx_up, N)
         down_phase = (downstroke_indices - idx_up) / (N - 1 - idx_up)
@@ -324,18 +328,18 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
         x0[:] = stroke * smoothstep(up_phase)
         x0[N - 1] = stroke  # Upstroke point
         # Note: x[N-1] = 0 requirement will be violated, but that's expected for this edge case
-    
+
     # Ensure boundary conditions
     x0[0] = 0.0  # Start at BDC
     if 0 < idx_up < N - 1:
         x0[idx_up] = stroke  # TDC at upstroke point (only if valid)
     x0[N - 1] = 0.0  # End at BDC (full cycle)
-    
+
     z0 = np.zeros(total)
     z0[:n_x] = x0
 
     # Set up solver
-    from campro.optimization.ipopt_factory import create_ipopt_solver
+    from campro.optimization.solvers.ipopt_factory import create_ipopt_solver
 
     opts = {
         "ipopt.max_iter": 400,
@@ -359,7 +363,12 @@ def check_feasibility_nlp(constraints: dict, bounds: dict) -> FeasibilityReport:
             warm_args = {}
 
         res = solver(
-            x0=z0, lbx=lbx, ubx=ubx, lbg=np.array(lbg), ubg=np.array(ubg), **warm_args,
+            x0=z0,
+            lbx=lbx,
+            ubx=ubx,
+            lbg=np.array(lbg),
+            ubg=np.array(ubg),
+            **warm_args,
         )
         z_opt = np.array(res["x"]).reshape((-1,))
         # Extract slacks

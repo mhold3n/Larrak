@@ -8,11 +8,10 @@ Also provides utilities for managing local conda environments.
 
 from __future__ import annotations
 
-import os
 import platform
 import shutil
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
 from campro.logging import get_logger
 
@@ -165,13 +164,13 @@ def is_local_conda_env_present(project_root: Path | None = None) -> bool:
 
 
 __all__ = [
+    "IS_LINUX",
+    "IS_MACOS",
+    "IS_WINDOWS",
     "PlatformInfo",
     "detect_platform",
+    "get_local_conda_env_activate_command",
     "get_local_conda_env_name",
     "get_local_conda_env_path",
-    "get_local_conda_env_activate_command",
     "is_local_conda_env_present",
-    "IS_WINDOWS",
-    "IS_MACOS",
-    "IS_LINUX",
 ]

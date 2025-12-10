@@ -10,11 +10,8 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Optional
 
 from campro.environment.platform_detector import (
-    IS_MACOS,
-    IS_WINDOWS,
     get_local_conda_env_path,
     is_local_conda_env_present,
 )
@@ -23,7 +20,7 @@ from campro.logging import get_logger
 log = get_logger(__name__)
 
 
-def get_active_conda_env_path(project_root: Path | None = None) -> Optional[Path]:
+def get_active_conda_env_path(project_root: Path | None = None) -> Path | None:
     """
     Get the path to the currently active conda environment, or the local env if available.
     
@@ -107,7 +104,7 @@ def get_active_conda_env_path(project_root: Path | None = None) -> Optional[Path
     return None
 
 
-def get_python_executable_path(project_root: Path | None = None) -> Optional[Path]:
+def get_python_executable_path(project_root: Path | None = None) -> Path | None:
     """
     Get the path to the Python executable in the active conda environment.
     
@@ -139,7 +136,7 @@ def get_python_executable_path(project_root: Path | None = None) -> Optional[Pat
     return None
 
 
-def get_lib_path(env_path: Path | None = None) -> Optional[Path]:
+def get_lib_path(env_path: Path | None = None) -> Path | None:
     """
     Get the library path for the given conda environment.
     
@@ -171,7 +168,7 @@ def get_lib_path(env_path: Path | None = None) -> Optional[Path]:
     return None
 
 
-def find_hsl_library(env_path: Path | None = None) -> Optional[Path]:
+def find_hsl_library(env_path: Path | None = None) -> Path | None:
     """
     Find the HSL library (libcoinhsl) in the given conda environment.
     
@@ -292,9 +289,9 @@ def ensure_local_env_activated(
 
 
 __all__ = [
-    "get_active_conda_env_path",
-    "get_python_executable_path",
-    "get_lib_path",
-    "find_hsl_library",
     "ensure_local_env_activated",
+    "find_hsl_library",
+    "get_active_conda_env_path",
+    "get_lib_path",
+    "get_python_executable_path",
 ]

@@ -2,6 +2,7 @@
 
 Exposes data classes and façade functions for common workflows.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict as _asdict
@@ -11,7 +12,7 @@ from campro.constraints.cam import CamMotionConstraints
 from campro.diagnostics.feasibility import check_feasibility_nlp
 from campro.diagnostics.run_metadata import RUN_ID, log_run_metadata, set_global_seeds
 from campro.logging import get_logger
-from campro.optimization.motion import MotionOptimizer
+from campro.optimization.numerical.motion import MotionOptimizer
 
 from .adapters import motion_result_to_solve_report
 from .problem_spec import ProblemSpec
@@ -102,7 +103,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
 
     # Early exit on infeasible spec
     if feas is not None and not getattr(feas, "feasible", True):
-        from campro.optimization.base import OptimizationResult, OptimizationStatus
+        from campro.optimization.framework.base import OptimizationResult, OptimizationStatus
 
         # Create a minimal failed result to flow through the adapter
         fake = OptimizationResult(
@@ -195,5 +196,5 @@ __all__ = [
     "SolveReport",
     "design_gear",
     "evaluate_tribology",
-    "solve_motion",
+    "MotionOptimizer",
 ]

@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from campro.environment.platform_detector import IS_MACOS
 from campro.logging import get_logger
 
 log = get_logger(__name__)
@@ -25,14 +24,15 @@ def _validate_ma27_usage() -> None:
     """Validate that MA27 is being used and fail hard if a non-HSL fallback is detected."""
     # Skip validation if explicitly disabled (avoids solver clobbering warnings)
     import os
+
     if os.getenv("CAMPRO_SKIP_VALIDATION") == "1":
         log.info("MA27 validation skipped (CAMPRO_SKIP_VALIDATION=1)")
         return
-    
+
     try:
         import casadi as ca
 
-        from campro.optimization.ipopt_factory import create_ipopt_solver
+        from campro.optimization.solvers.ipopt_factory import create_ipopt_solver
 
         # Create a test problem to check which linear solver is actually being used
         x = ca.SX.sym("x")
@@ -127,7 +127,7 @@ def validate_casadi_ipopt() -> ValidationResult:
 
         # Fallback for CasADi builds without nlpsol_plugins attribute
         try:
-            from campro.optimization.ipopt_factory import create_ipopt_solver
+            from campro.optimization.solvers.ipopt_factory import create_ipopt_solver
 
             x = ca.SX.sym("x")
             f = x**2
@@ -156,9 +156,7 @@ def validate_casadi_ipopt() -> ValidationResult:
             status=ValidationStatus.ERROR,
             message="CasADi is not installed",
             details=str(exc),
-            suggestion=(
-                "Install CasADi using conda: conda install -c conda-forge casadi ipopt"
-            ),
+            suggestion=("Install CasADi using conda: conda install -c conda-forge casadi ipopt"),
         )
     except Exception as exc:
         log.error("Unexpected error checking CasADi: %s", exc)
@@ -174,19 +172,20 @@ def validate_hsl_solvers() -> list[ValidationResult]:
     """Validate HSL solver availability (MA27, MA57, MA77, MA86, MA97) - optional but improves performance."""
     # Skip validation if explicitly disabled (avoids solver clobbering warnings)
     import os
+
     if os.getenv("CAMPRO_SKIP_VALIDATION") == "1":
         log.info("HSL solver validation skipped (CAMPRO_SKIP_VALIDATION=1)")
         return []
-    
+
     results: list[ValidationResult] = []
 
     # Detect available solvers using hsl_detector
     try:
         from campro.environment.hsl_detector import detect_available_solvers
-        
+
         # Get list of solvers to test (detected from CoinHSL config)
         hsl_solvers = detect_available_solvers(test_runtime=False)
-        
+
         if not hsl_solvers:
             results.append(
                 ValidationResult(
@@ -203,10 +202,10 @@ def validate_hsl_solvers() -> list[ValidationResult]:
                 ),
             )
             return results
-        
+
         # Test runtime availability through CasADi
         import casadi as ca
-        
+
         available_solvers = []
         solver_details = []
 
@@ -215,9 +214,10 @@ def validate_hsl_solvers() -> list[ValidationResult]:
         f = x**2
         g = x - 1
         nlp = {"x": x, "f": f, "g": g}
-        
+
         # Get HSL library path for solver configuration
         from campro.environment.hsl_detector import get_hsl_library_path
+
         hsl_lib_path = get_hsl_library_path()
         solver_opts = {}
         if hsl_lib_path:
@@ -229,7 +229,7 @@ def validate_hsl_solvers() -> list[ValidationResult]:
                 solver_opts["ipopt.linear_solver"] = solver_name
                 solver_opts["ipopt.print_level"] = 0
                 solver_opts["ipopt.sb"] = "yes"
-                
+
                 solver = ca.nlpsol(
                     f"hsl_test_{solver_name}",
                     "ipopt",
@@ -356,10 +356,10 @@ def validate_environment() -> dict[str, Any]:
     """Perform comprehensive environment validation and return structured results."""
     # Skip validation if explicitly disabled (avoids HSL solver clobbering warnings)
     import os
+
     if os.getenv("CAMPRO_SKIP_VALIDATION") == "1":
         log.info("Environment validation skipped (CAMPRO_SKIP_VALIDATION=1)")
         # Return minimal results to avoid breaking code that expects this structure
-        from .validator import ValidationStatus, ValidationResult
         return {
             "python_version": ValidationResult(
                 status=ValidationStatus.SKIPPED,
@@ -375,7 +375,7 @@ def validate_environment() -> dict[str, Any]:
             "hsl_solvers": [],
             "summary": {"overall_status": ValidationStatus.SKIPPED},
         }
-    
+
     log.info("Starting environment validation")
 
     # Validate MA27 usage first - fail hard if a non-HSL fallback is detected
@@ -441,7 +441,8 @@ def validate_environment() -> dict[str, Any]:
     }
 
     log.info(
-        "Environment validation complete. Overall status: %s", overall_status.value,
+        "Environment validation complete. Overall status: %s",
+        overall_status.value,
     )
     return results
 
