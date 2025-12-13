@@ -8,6 +8,7 @@ polynomial approximation, and defect constraints.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -187,13 +188,18 @@ class CollocationBuilder:
         self.parameters[name] = p
         return p
 
-    def set_dynamics(self, f: Callable[[Any, Any], Any]):
-        """Set the system dynamics x_dot = f(x, u)."""
-        self.dynamics = f
+    def set_dynamics(self, f: Callable[[Any, Any], Any]) -> None:
+        """Set the system dynamics x_dot = f(x, u) or f(x, u, t).
 
-    def add_path_constraint(
-        self, expr: Any, bounds: tuple[float, float] = (-np.inf, np.inf)
-    ):
+        The dynamics function should return a dict mapping state names to their derivatives.
+        If the function accepts 3 arguments, the third is the current time/independent variable.
+        """
+        self.dynamics = f
+        # Check if dynamics accepts time argument (3 args)
+        sig = inspect.signature(f)
+        self.dynamics_uses_time = len(sig.parameters) >= 3
+
+    def add_path_constraint(self, expr: Any, bounds: tuple[float, float] = (-np.inf, np.inf)):
         """Add a path constraint enforced at all collocation points."""
         self.path_constraints.append((expr, bounds))
 
@@ -244,9 +250,7 @@ class CollocationBuilder:
                 self.w.append(Uk)
                 self.lbw.append(var.bounds[0])
                 self.ubw.append(var.bounds[1])
-                self.w0.append(
-                    float(var.initial) if np.isscalar(var.initial) else var.initial[0]
-                )
+                self.w0.append(float(var.initial) if np.isscalar(var.initial) else var.initial[0])
                 self._U[name].append(Uk)
                 self._var_indices[name].append(len(self.w) - 1)
 
@@ -259,9 +263,7 @@ class CollocationBuilder:
                     self.lbw.append(var.bounds[0])
                     self.ubw.append(var.bounds[1])
                     self.w0.append(
-                        float(var.initial)
-                        if np.isscalar(var.initial)
-                        else var.initial[0]
+                        float(var.initial) if np.isscalar(var.initial) else var.initial[0]
                     )
                     Xc_k.append(Xkj)
                     self._var_indices[name].append(
@@ -275,28 +277,40 @@ class CollocationBuilder:
                 self.w.append(Xnext)
                 self.lbw.append(var.bounds[0])
                 self.ubw.append(var.bounds[1])
-                self.w0.append(
-                    float(var.initial) if np.isscalar(var.initial) else var.initial[0]
-                )
+                self.w0.append(float(var.initial) if np.isscalar(var.initial) else var.initial[0])
                 self._X[name].append(Xnext)
                 self._var_indices[name].append(len(self.w) - 1)
 
         # 2. Loop over intervals and apply collocation equations
+        # Get collocation points for time calculation
+        tau_coll = ca.collocation_points(self.degree, self.method)
+        tau_root = [0.0] + list(tau_coll)
+
         for k in range(self.N):
             # Gather states/controls for this interval
             X_k = {name: self._X[name][k] for name in self.states}
             U_k = {name: self._U[name][k] for name in self.controls}
             XC_k = [
-                {name: self._XC[name][k][j] for name in self.states}
-                for j in range(self.degree)
+                {name: self._XC[name][k][j] for name in self.states} for j in range(self.degree)
             ]
             X_next = {name: self._X[name][k + 1] for name in self.states}
 
+            # Time at start of interval
+            t_k = k * self.h
+
             # Loop over collocation points
             for j in range(1, self.degree + 1):
+                # Calculate time at this collocation point
+                t_j = t_k + tau_root[j] * self.h
+
                 # Evaluate dynamics once per collocation point
                 state_at_j = XC_k[j - 1]
-                dynamics_eval = self.dynamics(state_at_j, U_k)
+
+                # Pass time if dynamics function accepts it
+                if getattr(self, "dynamics_uses_time", False):
+                    dynamics_eval = self.dynamics(state_at_j, U_k, t_j)
+                else:
+                    dynamics_eval = self.dynamics(state_at_j, U_k)
 
                 # Expression for the state derivative at the collocation point
                 for name in self.states:
@@ -310,9 +324,7 @@ class CollocationBuilder:
                     self.g.append(approx_deriv - dx_dt * self.h)
                     self.lbg.append(0.0)
                     self.ubg.append(0.0)
-                    self._add_constraint_indices(
-                        f"collocation_{name}", [len(self.g) - 1]
-                    )
+                    self._add_constraint_indices(f"collocation_{name}", [len(self.g) - 1])
 
             # Continuity constraint
             for name in self.states:
@@ -325,7 +337,7 @@ class CollocationBuilder:
                 self.ubg.append(0.0)
                 self._add_constraint_indices(f"continuity_{name}", [len(self.g) - 1])
 
-        # 3. Apply Boundary Conditions
+            # 3. Apply Boundary Conditions
         for i, (expr_fn, val, loc) in enumerate(self._boundary_conditions):
             idx = 0 if loc == "initial" else -1
             X_b = {name: self._X[name][idx] for name in self.states}
@@ -337,6 +349,62 @@ class CollocationBuilder:
             self.lbg.append(0.0)
             self.ubg.append(0.0)
             self._add_constraint_indices(f"boundary_{loc}_{i}", [len(self.g) - 1])
+
+    def relax_constraints(self, penalty: float = 1.0e3) -> None:
+        """
+        Add slack variables to all constraints to ensure feasibility.
+
+        Modifies the problem in-place by:
+        1. Creating slack variables s_L, s_U >= 0 for each constraint row
+        2. Modifying constraints: L <= g(x) + s_L - s_U <= U
+        3. Adding penalty * (s_L + s_U) to the objective
+
+        This allows the solver to violate limits while minimizing the violation,
+        which helps identify conflicting constraints.
+        """
+        slack_cost = 0
+        n_slacks = 0
+
+        # Iterate over all constraints
+        # Note: We must iterate by index because we modify self.g in place
+        for i in range(len(self.g)):
+            lb = self.lbg[i]
+            ub = self.ubg[i]
+
+            modification = 0
+
+            # Lower bound (L <= g)
+            # We want L <= g + s_L  <=>  L - s_L <= g
+            if lb > -np.inf:
+                s_l = ca.SX.sym(f"s_l_{i}")
+                self.w.append(s_l)
+                self.lbw.append(0.0)
+                self.ubw.append(np.inf)
+                self.w0.append(0.0)
+
+                modification += s_l
+                slack_cost += s_l
+                n_slacks += 1
+
+            # Upper bound (g <= U)
+            # We want g - s_U <= U  <=>  g <= U + s_U
+            if ub < np.inf:
+                s_u = ca.SX.sym(f"s_u_{i}")
+                self.w.append(s_u)
+                self.lbw.append(0.0)
+                self.ubw.append(np.inf)
+                self.w0.append(0.0)
+
+                modification -= s_u
+                slack_cost += s_u
+                n_slacks += 1
+
+            if n_slacks > 0 and modification is not 0:
+                self.g[i] += modification
+
+        # Add L1 penalty to objective
+        self.J += penalty * slack_cost
+        log.info(f"Relaxed {len(self.g)} constraints with {n_slacks} slack variables.")
 
     def export_nlp(self) -> tuple[dict[str, Any], dict[str, Any]]:
         """
@@ -359,6 +427,7 @@ class CollocationBuilder:
             "K": self.N,
             "C": self.degree,  # Assuming degree corresponds to C collocation points
             "constraint_groups": self.constraint_groups,
+            "variable_groups": self._var_indices,
         }
         return nlp, meta
 

@@ -39,7 +39,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     up_pct = phases.get("upstroke_percent") or phases.get("upstroke", 60.0)
     zero_pct = phases.get("zero_accel_percent") or phases.get("zero_accel", 0.0)
 
-    def _pick(*names: str, default: float | None = None):
+    def _pick(*names: str, default: float | None = None) -> float | None:
         for n in names:
             if n in bounds and bounds[n] is not None:
                 return float(bounds[n])
@@ -103,7 +103,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
 
     # Early exit on infeasible spec
     if feas is not None and not getattr(feas, "feasible", True):
-        from campro.optimization.framework.base import OptimizationResult, OptimizationStatus
+        from campro.optimization.numerical.base import OptimizationResult, OptimizationStatus
 
         # Create a minimal failed result to flow through the adapter
         fake = OptimizationResult(
@@ -125,7 +125,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
         report.scaling_stats.update(scaling_stats)
 
         # Persist lightweight run metadata
-        meta: dict[str, Any] = {
+        meta_fail: dict[str, Any] = {
             "run_id": RUN_ID,
             "objective": motion_type,
             "stroke": spec.stroke,
@@ -136,7 +136,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
             "status": report.status,
         }
         try:
-            log_run_metadata(meta)
+            log_run_metadata(meta_fail)
         except Exception:
             pass
         return report
@@ -149,7 +149,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
     )
 
     # Persist lightweight run metadata
-    meta: dict[str, Any] = {
+    meta_success: dict[str, Any] = {
         "run_id": RUN_ID,
         "objective": motion_type,
         "stroke": spec.stroke,
@@ -160,7 +160,7 @@ def solve_motion(spec: ProblemSpec) -> SolveReport:
         "iterations": getattr(result, "iterations", 0),
     }
     try:
-        log_run_metadata(meta)
+        log_run_metadata(meta_success)
     except Exception:
         pass
 

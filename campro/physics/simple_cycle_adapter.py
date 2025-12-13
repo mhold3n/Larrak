@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
-from campro.physics.base.result import PhysicsStatus
+from .combustion_model import CombustionModel
 
 
 @dataclass
 class CycleGeometry:
     area_mm2: float  # piston crown area [mm^2]
-    Vc_mm3: float  # clearance volume [mm^3]
+    clearance_volume_mm3: float  # clearance volume [mm^3]
 
 
 @dataclass
@@ -101,7 +101,7 @@ class SimpleCycleAdapter:
         v = np.asarray(v_mm_per_theta, dtype=float)
 
         # Volumes [mm^3]
-        V = geom.Vc_mm3 + geom.area_mm2 * x
+        volume = geom.clearance_volume_mm3 + geom.area_mm2 * x
 
         combustion_data: dict[str, Any] | None = None
         if combustion is not None:
@@ -144,9 +144,11 @@ class SimpleCycleAdapter:
         alpha_scheduled, beta_scheduled = self._get_scheduled_base_pressure(phi_val, fuel_mass_val)
         p0_bounce = alpha_scheduled * float(fuel_multiplier) + beta_scheduled
         # Polytropic bounce chamber (use first-volume reference for scaling)
-        V0 = V[0]
+        volume_initial = volume[0]
         with np.errstate(divide="ignore", invalid="ignore"):
-            p_bounce = p0_bounce * (V0 / np.clip(V, 1e-9, None)) ** float(thermo.gamma_bounce)
+            p_bounce = p0_bounce * (volume_initial / np.clip(volume, 1e-9, None)) ** float(
+                thermo.gamma_bounce
+            )
 
         # Net indicated pressure at crown (kPa)
         p_net_kpa = p_cyl_abs_kpa - p_bounce
@@ -160,17 +162,17 @@ class SimpleCycleAdapter:
         # Normalize slope shape: zero-mean, unit L2 over θ
         s = self._normalize(dp_dth)
 
-        volume_m3 = np.asarray(V, dtype=float) * 1e-9
+        volume_m3 = np.asarray(volume, dtype=float) * 1e-9
         p_cyl_pa = np.asarray(p_cyl_abs_kpa, dtype=float) * 1e3
-        dV_dtheta = np.gradient(volume_m3, theta, edge_order=1)
-        cycle_work_j = float(np.trapz(p_cyl_pa * dV_dtheta, theta))
+        d_volume_d_theta = np.gradient(volume_m3, theta, edge_order=1)
+        cycle_work_j = float(np.trapz(p_cyl_pa * d_volume_d_theta, theta))
 
         # iMEP ≈ ∮ p dV; convert to kPa by dividing by stroke volume variation
         imep = 0.0
         try:
-            delta_V = float(np.ptp(V))
-            if delta_V > 0.0:
-                imep = cycle_work_j / (delta_V * 1e-9)
+            delta_volume = float(np.ptp(volume))
+            if delta_volume > 0.0:
+                imep = cycle_work_j / (delta_volume * 1e-9)
         except Exception:
             imep = 0.0
 
@@ -222,7 +224,6 @@ class SimpleCycleAdapter:
     @staticmethod
     def _circ_derivative(theta: np.ndarray, y: np.ndarray) -> np.ndarray:
         # Periodic central difference on nonuniform grid
-        n = len(y)
         y_plus = np.roll(y, -1)
         y_minus = np.roll(y, 1)
         th_plus = np.roll(theta, -1)
@@ -276,20 +277,19 @@ class SimpleCycleAdapter:
         phi0, phi1 = phi_points[phi_idx], phi_points[phi_idx + 1]
         fuel0, fuel1 = fuel_points[fuel_idx], fuel_points[fuel_idx + 1]
 
-        corners = [
-            self._gain_table.get((phi0, fuel0)),
-            self._gain_table.get((phi1, fuel0)),
-            self._gain_table.get((phi0, fuel1)),
-            self._gain_table.get((phi1, fuel1)),
-        ]
+        # Get corner values
+        c0 = self._gain_table.get((phi0, fuel0))
+        c1 = self._gain_table.get((phi1, fuel0))
+        c2 = self._gain_table.get((phi0, fuel1))
+        c3 = self._gain_table.get((phi1, fuel1))
 
         # If any corner is missing, fall back to default
-        if any(c is None for c in corners):
+        if c0 is None or c1 is None or c2 is None or c3 is None:
             return (self.alpha, self.beta)
 
         # Bilinear interpolation
-        alpha_corners = [c[0] for c in corners]
-        beta_corners = [c[1] for c in corners]
+        alpha_corners = [c0[0], c1[0], c2[0], c3[0]]
+        beta_corners = [c0[1], c1[1], c2[1], c3[1]]
 
         # Interpolation weights
         t_phi = (phi_clamped - phi0) / max(phi1 - phi0, 1e-9) if phi1 > phi0 else 0.0
@@ -320,6 +320,7 @@ class SimpleCycleAdapter:
         that window around center to reduce cost.
         """
         n = len(s)
+        shifts: Iterable[int]
         if window is None:
             shifts = range(n)
         else:
@@ -347,15 +348,95 @@ class SimpleCycleAdapter:
         cycle_time_s: float | None,
     ) -> dict[str, Any]:
         """Run the integrated combustion model and derive a cylinder pressure trace."""
-        # from campro_unaligned.physics.combustion import CombustionModel
-        raise ImportError("CombustionModel not available (restoration incomplete)")
+        if cycle_time_s is None or cycle_time_s <= 0:
+            raise ValueError("cycle_time_s must be provided and positive")
 
-        # Unreachable code intentionally left for reference/future restoration
-        """
-        afr = combustion.get("afr")
-        fuel_mass = combustion.get("fuel_mass") or combustion.get("fuel_mass_kg")
-        if afr is None or fuel_mass is None:
-            raise ValueError("Combustion inputs must provide 'afr' and 'fuel_mass'")
-        
-        # ... remainder of original method ...
-        """
+        # 1. Setup/Update CombustionModel
+        if self._combustion_model is None:
+            self._combustion_model = CombustionModel()
+
+        # Extract parameters
+        afr = float(combustion.get("afr", 14.5))
+        fuel_mass_kg = float(combustion.get("fuel_mass") or combustion.get("fuel_mass_kg") or 0.0)
+        fuel_type = str(combustion.get("fuel_type", "diesel"))
+
+        # Geometry derivation
+        bore_m = 2.0 * np.sqrt(geom.area_mm2 * 1e-6 / np.pi)
+        stroke_m = (np.max(x_mm) - np.min(x_mm)) * 1e-3
+        if stroke_m <= 0:
+            stroke_m = 0.1  # Fallback
+
+        # Config check
+        cfg_dict = {
+            "fuel_type": fuel_type,
+            "afr": afr,
+            "fuel_mass_kg": fuel_mass_kg,
+            "cycle_time_s": cycle_time_s,
+            "bore_m": bore_m,
+            "stroke_m": stroke_m,
+            "clearance_volume_m3": geom.clearance_volume_mm3 * 1e-9,
+            "initial_temperature_K": float(combustion.get("T_init", 300.0)),
+            "initial_pressure_Pa": float(thermo.p_atm_kpa * 1e3),
+            "injector_delay_deg": combustion.get("injector_delay_deg"),
+            "m_wiebe": float(combustion.get("m_wiebe", 2.0)),
+        }
+
+        # Reconfigure if needed
+        self._combustion_model.configure(**cfg_dict)
+
+        # 2. Run Combustion Model (Get MFB)
+        # Assume constant speed for simple mapping
+        omega_avg = 2 * np.pi / cycle_time_s
+        time_s = theta / omega_avg
+
+        simulation_inputs = {
+            "time_s": time_s,
+            "piston_speed_m_per_s": v_mm_per_theta * 1e-3 * omega_avg,
+            "theta_deg": np.rad2deg(theta),
+            "ignition_theta_deg": float(combustion.get("ignition_theta_deg", -10.0)),
+        }
+
+        result = self._combustion_model.simulate(simulation_inputs)
+        if not result.is_successful():
+            raise RuntimeError(f"Combustion model failed: {result.error_message}")
+
+        data = result.data
+        mfb = data["mass_fraction_burned"]
+
+        # 3. Compute Pressure Trace (Thermodynamic Integration)
+        # dQ = d(mfb) * Q_total
+        # dP = ((gamma-1) dQ - gamma P dV) / V
+        gamma = 1.35  # Approximate for combustion
+        # combustion_model.params is guaranteed to be set if configure succeeded
+        params = self._combustion_model.params
+        lhv = self._combustion_model._lhv or (params.LHV_fuel if params else 44e6)
+        total_heat_release = fuel_mass_kg * lhv
+
+        volume_m3 = (geom.clearance_volume_mm3 + geom.area_mm2 * x_mm) * 1e-9
+
+        pressure_path_pa = np.zeros_like(theta)
+        pressure_path_pa[0] = float(thermo.p_atm_kpa * 1e3)
+
+        for i in range(len(theta) - 1):
+            current_pressure = pressure_path_pa[i]
+            current_volume = volume_m3[i]
+            current_volume = max(current_volume, 1e-9)
+            delta_volume = volume_m3[i + 1] - volume_m3[i]
+            delta_heat = total_heat_release * (mfb[i + 1] - mfb[i])
+
+            delta_pressure = (
+                (gamma - 1.0) * delta_heat - gamma * current_pressure * delta_volume
+            ) / current_volume
+            pressure_path_pa[i + 1] = current_pressure + delta_pressure
+
+        return {
+            "p_cyl_kpa": pressure_path_pa * 1e-3,
+            "mass_fraction_burned": mfb,
+            "ca_markers": {
+                "CA10": data.get("CA10_deg"),
+                "CA50": data.get("CA50_deg"),
+                "CA90": data.get("CA90_deg"),
+            },
+            "heat_release_per_deg": data.get("heat_release_per_deg"),
+            "initial_pressure_pa": pressure_path_pa[0],
+        }

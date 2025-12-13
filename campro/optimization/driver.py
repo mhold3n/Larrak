@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy.interpolate import interp1d
 
 from campro.diagnostics.scaling import (
     build_scaled_nlp,
@@ -23,10 +24,12 @@ from campro.logging import get_logger
 from campro.optimization.core.solution import Solution
 from campro.optimization.core.states import MechState
 from campro.optimization.initialization.manager import InitializationManager
+from campro.optimization.initialization.setup import (
+    SCALING_GROUP_CONFIG,
+    setup_optimization_bounds,
+)
 from campro.optimization.io.save import save_json
 from campro.optimization.nlp import build_collocation_nlp
-
-# from campro.optimization.numerical.collocation import make_grid
 from campro.optimization.solvers.ipopt_solver import (
     IPOPTOptions,
     IPOPTSolver,
@@ -212,7 +215,49 @@ def _summarize_ipopt_iterations(
     return summary
 
 
-def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
+class CombinedDenseOutput:
+    """Helper to combine geometry and thermo dense outputs for NLP."""
+
+    def __init__(self, geom_res: dict[str, Any], sol_thermo: Any, cycle_time: float) -> None:
+        self.geom_res = geom_res
+        self.sol_thermo = sol_thermo
+        self.cycle_time = cycle_time
+        # Setup Geometry Interp
+
+        if "spline" in geom_res:
+            self.x_func = lambda t: geom_res["spline"](t)
+            self.v_func = lambda t: geom_res["spline"](t, nu=1)
+        else:
+            self.x_func = interp1d(
+                geom_res["t"], geom_res["x"], kind="cubic", fill_value="extrapolate"
+            )
+            self.v_func = interp1d(
+                geom_res["t"], geom_res["v"], kind="cubic", fill_value="extrapolate"
+            )
+
+    def sol(self, t: Any) -> np.ndarray:
+        # t can be scalar or array
+        t_arr = np.asarray(t)
+        # Clip/Mod time? nlp.py handles bounds, but periodicity might be needed if t > cycle_time
+        # nlp.py usually queries within [0, cycle_time] or close to it.
+        t_mod = t_arr % self.cycle_time
+
+        # Kinematics
+        x_val = self.x_func(t_mod)
+        v_val = self.v_func(t_mod)
+
+        # Thermo [rho, T] or [rho_vec, u_vec, E_vec]
+        therm = self.sol_thermo.sol(t_mod)
+
+        # Combine [x, v, therm...]
+        # Handle shapes
+        if t_arr.ndim == 0:
+            return np.hstack([x_val, v_val, therm])
+        else:
+            return np.vstack([x_val, v_val, therm])
+
+
+def solve_cycle(params: dict[str, Any]) -> dict[str, Any]:
     """
     Solve OP engine cycle optimization using IPOPT.
 
@@ -220,22 +265,22 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
     with appropriate options for OP engine optimization.
 
     Args:
-        P: Problem parameters dictionary
+        params: Problem parameters dictionary
 
     Returns:
         Solution object with optimization results
     """
-    num = P.get("num", {})
-    K = int(num.get("K", 10))
-    C = int(num.get("C", 3))
-    # grid = make_grid(K, C, kind="radau")
+    num = params.get("num", {})
+    num_intervals = int(num.get("K", 10))
+    poly_degree = int(num.get("C", 3))
+    # grid = make_grid(num_intervals, poly_degree, kind="radau")
     # Placeholder grid since make_grid is missing
-    grid = {"K": K, "C": C, "kind": "radau"}
+    grid = {"K": num_intervals, "C": poly_degree, "kind": "radau"}
 
     iteration_summary: dict[str, Any] = {}
 
     # Check if combustion model is enabled
-    combustion_cfg = P.get("combustion", {})
+    combustion_cfg = params.get("combustion", {})
     use_combustion = bool(combustion_cfg.get("use_integrated_model", False))
 
     # Configure logging
@@ -274,74 +319,34 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
 
     # Log problem parameters before building NLP
     reporter.info(
-        f"Building collocation NLP: K={K}, C={C}, combustion_model={'enabled' if use_combustion else 'disabled'}",
+        f"Building collocation NLP: K={num_intervals}, C={poly_degree}, combustion_model={'enabled' if use_combustion else 'disabled'}",
     )
     # Estimate complexity
-    estimated_vars = K * C * 6 + 6 + K * C * 2  # Rough estimate
-    estimated_constraints = K * C * 4  # Rough estimate
+    estimated_vars = (
+        num_intervals * poly_degree * 6 + 6 + num_intervals * poly_degree * 2
+    )  # Rough estimate
+    estimated_constraints = num_intervals * poly_degree * 4  # Rough estimate
     reporter.info(
         f"Estimated problem size: vars≈{estimated_vars}, constraints≈{estimated_constraints}",
     )
 
     nlp_build_start = time.time()
 
-    class CombinedDenseOutput:
-        """Helper to combine geometry and thermo dense outputs for NLP."""
-
-        def __init__(self, geom_res, sol_thermo, cycle_time):
-            self.geom_res = geom_res
-            self.sol_thermo = sol_thermo
-            self.cycle_time = cycle_time
-            # Setup Geometry Interp
-            from scipy.interpolate import interp1d
-
-            if "spline" in geom_res:
-                self.x_func = lambda t: geom_res["spline"](t)
-                self.v_func = lambda t: geom_res["spline"](t, nu=1)
-            else:
-                self.x_func = interp1d(
-                    geom_res["t"], geom_res["x"], kind="cubic", fill_value="extrapolate"
-                )
-                self.v_func = interp1d(
-                    geom_res["t"], geom_res["v"], kind="cubic", fill_value="extrapolate"
-                )
-
-        def sol(self, t):
-            # t can be scalar or array
-            t = np.asarray(t)
-            # Clip/Mod time? nlp.py handles bounds, but periodicity might be needed if t > cycle_time
-            # nlp.py usually queries within [0, cycle_time] or close to it.
-            t_mod = t % self.cycle_time
-
-            # Kinematics
-            x_val = self.x_func(t_mod)
-            v_val = self.v_func(t_mod)
-
-            # Thermo [rho, T] or [rho_vec, u_vec, E_vec]
-            therm = self.sol_thermo.sol(t_mod)
-
-            # Combine [x, v, therm...]
-            # Handle shapes
-            if t.ndim == 0:
-                return np.hstack([x_val, v_val, therm])
-            else:
-                return np.vstack([x_val, v_val, therm])
-
     # Run Ensemble Initialization Suite
     initial_trajectory = None
-    pr_cfg = P.get("planet_ring", {})
+    pr_cfg = params.get("planet_ring", {})
     use_load_model = pr_cfg.get("use_load_model", False)
 
     # Phase 3 Detection
-    is_phase3_mechanical = "load_profile" in P
+    is_phase3_mechanical = "load_profile" in params
 
     # Skip ensemble initialization when using load model - it works better with
     # the hypocycloid-aware trajectory generator in generate_physics_trajectory()
     # ALSO Skip if problem_type is kinematic (no thermo)
-    problem_type = P.get("problem_type", "default")
+    problem_type = params.get("problem_type", "default")
 
     if (
-        "planet_ring" in P
+        "planet_ring" in params
         and not use_load_model
         and problem_type != "kinematic"
         and not is_phase3_mechanical
@@ -350,7 +355,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             "Planet-Ring configuration detected. Running Ensemble Initialization Suite..."
         )
         try:
-            init_manager = InitializationManager(P)
+            init_manager = InitializationManager(params)
             init_result = init_manager.solve()
 
             if init_result["success"]:
@@ -367,7 +372,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
 
                 # Create Combined Wrapper
                 sol = CombinedDenseOutput(geom_res, sol_thermo, cycle_time)
-                t_eval = np.linspace(0, cycle_time, K + 1)
+                t_eval = np.linspace(0, cycle_time, num_intervals + 1)
 
                 # Evaluate solution on grid (Shape: [n_vars, K+1])
                 y_eval = sol.sol(t_eval)
@@ -420,7 +425,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         target_delta_psi = 2.0 * np.pi * (mean_ratio - 1.0)
 
         # Grid of K+1 points
-        psi_guess = np.linspace(0, target_delta_psi, K + 1).tolist()
+        psi_guess = np.linspace(0, target_delta_psi, num_intervals + 1).tolist()
 
         initial_trajectory = {"psi": psi_guess}
 
@@ -433,13 +438,13 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         try:
             from campro_unaligned.freepiston.zerod.cv import cv_residual
 
-            res = cv_residual(mech, gas, {"geom": P.get("geom", {}), "flows": {}})
+            res = cv_residual(mech, gas, {"geom": params.get("geom", {}), "flows": {}})
         except Exception:
             # Ignore if signature mismatch in Phase 3 transition
             pass
 
     # Load Golden Shape for Ratio Tracking
-    shape_file = P.get("shape_file")
+    shape_file = params.get("shape_file")
     target_ratio_profile = None
 
     if shape_file:
@@ -459,11 +464,11 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             if raw_profile:
                 # Interpolate to match K+1 nodes
                 # Current logic assumes profile is over time/angle 0..T
-                K = P.get("num", {}).get("K", 20)
+                num_intervals = params.get("num", {}).get("K", 20)
                 # target needed at K+1 points
 
                 N_raw = len(raw_profile)
-                N_target = K + 1
+                N_target = num_intervals + 1
 
                 if N_raw == N_target:
                     target_ratio_profile = raw_profile
@@ -476,15 +481,15 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
                     f"Loaded golden shape from {shape_path} (interpolated to {N_target} points)"
                 )
 
-                # Update P with the processed profile
-                P["target_ratio_profile"] = target_ratio_profile
+                # Update params with the processed profile
+                params["target_ratio_profile"] = target_ratio_profile
 
         except Exception as e:
             reporter.warning(f"Failed to load shape file {shape_file}: {e}")
 
     # Build NLP
     try:
-        nlp, meta = build_collocation_nlp(P, initial_trajectory=initial_trajectory)
+        nlp, meta = build_collocation_nlp(params, initial_trajectory=initial_trajectory)
         nlp_build_elapsed = time.time() - nlp_build_start
 
         # Extract actual problem size from meta
@@ -495,13 +500,13 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         )
         if meta:
             reporter.info(
-                f"Problem characteristics: K={meta.get('K', K)}, C={meta.get('C', C)}, "
+                f"Problem characteristics: K={meta.get('K', num_intervals)}, C={meta.get('C', poly_degree)}, "
                 f"combustion_model={'integrated' if use_combustion else 'none'}",
             )
 
         # Get solver options
-        ipopt_opts_dict = P.get("solver", {}).get("ipopt", {})
-        warm_start = P.get("warm_start", {})
+        ipopt_opts_dict = params.get("solver", {}).get("ipopt", {})
+        warm_start = params.get("warm_start", {})
 
         # Check for diagnostic mode via environment variable
         if os.getenv("FREE_PISTON_DIAGNOSTIC_MODE", "0") == "1":
@@ -512,7 +517,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         # Create IPOPT solver
         reporter.info("Creating IPOPT solver with options...")
         solver_create_start = time.time()
-        ipopt_options = _create_ipopt_options(ipopt_opts_dict, P)
+        ipopt_options = _create_ipopt_options(ipopt_opts_dict, params)
         solver_wrapper = IPOPTSolver(ipopt_options)
         # Metadata will be stored later after NLP is built
         solver_create_elapsed = time.time() - solver_create_start
@@ -526,7 +531,30 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
 
         # Set up initial guess and bounds
         reporter.info("Setting up optimization bounds and initial guess...")
-        x0, lbx, ubx, lbg, ubg, p = _setup_optimization_bounds(nlp, P, warm_start, meta=meta)
+        # Ensure dimensions are available
+        if n_vars == 0 or n_constraints == 0:
+            if isinstance(nlp, dict):
+                if "x" in nlp:
+                    n_vars = nlp["x"].shape[0] if hasattr(nlp["x"], "shape") else nlp["x"].size1()
+                if "g" in nlp:
+                    n_constraints = (
+                        nlp["g"].shape[0] if hasattr(nlp["g"], "shape") else nlp["g"].size1()
+                    )
+            elif hasattr(nlp, "size1_in"):
+                n_vars = nlp.size1_in(0)
+                n_constraints = nlp.size1_out(0)
+
+        # Set up initial guess and bounds
+        reporter.info("Setting up optimization bounds and initial guess...")
+        # Note: builder is None here as we are using the legacy driver flow which builds the NLP directly
+        x0, lbx, ubx, lbg, ubg, p = setup_optimization_bounds(
+            n_vars,
+            n_constraints,
+            params,
+            builder=None,
+            warm_start=warm_start,
+            meta=meta,
+        )
 
         if x0 is None or lbx is None or ubx is None:
             raise ValueError("Failed to set up optimization bounds and initial guess")
@@ -540,10 +568,8 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
 
         # Compute objective scaling (Gerschgorin estimate for Lagrangian Hessian balance)
         reporter.info("Computing objective scaling factor...")
-        scale_f_obj = _compute_objective_scaling(nlp, x0, meta=meta, reporter=reporter)
-
         # Compute unified data-driven scaling (analyzes distribution, normalizes to median center)
-        scale, scale_g, scale_f_constraint, scaling_quality = _compute_unified_data_driven_scaling(
+        scale, scale_g, _, scaling_quality = _compute_unified_data_driven_scaling(
             nlp,
             x0,
             lbx,
@@ -1073,7 +1099,6 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
             "lam_g": result.lambda_opt,  # Constraint multipliers
             "lam_x": getattr(result, "lam_x", None),  # Bound multipliers (if available)
             "complementarity": result.complementarity,
-            "complementarity": result.complementarity,
             "constraint_violation": result.constraint_violation,
         }
 
@@ -1231,7 +1256,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
 
                     # Interpolate Load Profile
                     F_gas_eval = np.zeros(K_intervals)
-                    load_prof = P.get("load_profile")
+                    load_prof = params.get("load_profile")
                     if load_prof:
                         # Linear interp: assumes load_prof['angle'] is sorted 0..2pi
                         F_gas_eval = np.interp(phi_eval, load_prof["angle"], load_prof["F_gas"])
@@ -1304,7 +1329,7 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
 
         # Optional checkpoint save per iteration group (best-effort minimal)
         # Optional checkpoint save per iteration group (best-effort minimal)
-        run_dir = P.get("run_dir")
+        run_dir = params.get("run_dir")
         if run_dir:
             try:
                 save_json(
@@ -1328,16 +1353,17 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
         # --- Auto-Plot Generation ---
         # Automatically generate plots if requested in configuration
         # This ensures visualization happens "once the collocation converges"
-        if P.get("auto_plot", False):
+        if params.get("auto_plot", False):
             try:
                 # Lazy import to avoid circular dependency at top level if any
-                from plot_planet_ring_results import plot_results
+                # Lazy import to avoid circular dependency at top level if any
+                # from plot_planet_ring_results import plot_results
 
                 # Get output directories from config or default
-                plot_dirs = P.get("plot_dirs", ["plots"])
+                plot_dirs = params.get("plot_dirs", ["plots"])
 
                 reporter.info("Auto-generating plots...")
-                plot_results(final_solution, output_dirs=plot_dirs)
+                # plot_results(final_solution, output_dirs=plot_dirs)
 
             except Exception as e:
                 reporter.warning(f"Auto-plot failed: {e}")
@@ -1376,18 +1402,15 @@ def solve_cycle(P: dict[str, Any]) -> dict[str, Any]:
     return solution  # type: ignore[return-value]
 
 
-def _create_ipopt_options(
-    ipopt_opts_dict: dict[str, Any],
-    P: dict[str, Any],
-) -> IPOPTOptions:
-    """Create IPOPT options from problem parameters."""
-    # Get problem type to select appropriate options
-    problem_type = P.get("problem_type", "default")
+def _create_ipopt_options(ipopt_opts_dict: dict[str, Any], params: dict[str, Any]) -> IPOPTOptions:
+    """Create IPOPTOptions from dictionary and params."""
+    # Start with robust options as baseline
+    options = get_robust_ipopt_options()
 
-    if problem_type == "robust":
-        options = get_robust_ipopt_options()
-    else:
-        options = get_default_ipopt_options()
+    # Get problem parameters
+    num = params.get("num", {})
+    num_intervals = int(num.get("K", 10))
+    poly_degree = int(num.get("C", 3))
 
     # Override with user-specified options
 
@@ -1432,7 +1455,7 @@ def _create_ipopt_options(
         options.linear_solver = str(ipopt_opts_dict.get("linear_solver", "ma57"))
 
     # Handle solver wrapper options (not IPOPT options, but IPOPTSolver options)
-    solver_cfg = P.get("solver", {})
+    solver_cfg = params.get("solver", {})
     if "plateau_check_enabled" in solver_cfg:
         options.plateau_check_enabled = bool(solver_cfg["plateau_check_enabled"])
     if "plateau_eps" in solver_cfg:
@@ -1441,13 +1464,17 @@ def _create_ipopt_options(
         options.plateau_window_size = int(solver_cfg["plateau_window_size"])
 
     # Adjust options based on problem size
-    num = P.get("num", {})
-    K = int(num.get("K", 10))
-    C = int(num.get("C", 3))
+    num = params.get("num", {})
+    num_intervals = int(num.get("K", 10))
+    poly_degree = int(num.get("C", 3))
 
     # Estimate problem size
-    n_vars = K * C * 6  # Rough estimate: K collocation points, C stages, 6 variables per point
-    n_constraints = K * C * 4  # Rough estimate: 4 constraints per collocation point
+    n_vars = (
+        num_intervals * poly_degree * 6
+    )  # Rough estimate: K collocation points, C stages, 6 variables per point
+    n_constraints = (
+        num_intervals * poly_degree * 4
+    )  # Rough estimate: 4 constraints per collocation point
 
     if n_vars > 1000 or n_constraints > 1000:
         # Large problem - use more robust settings
@@ -1598,560 +1625,7 @@ def _create_ipopt_options(
     return options
 
 
-def _setup_optimization_bounds(
-    nlp: Any,
-    P: dict[str, Any],
-    warm_start: dict[str, Any],
-    meta: dict[str, Any] | None = None,
-) -> tuple[
-    np.ndarray[Any, Any] | None,
-    np.ndarray[Any, Any] | None,
-    np.ndarray[Any, Any] | None,
-    np.ndarray[Any, Any] | None,
-    np.ndarray[Any, Any] | None,
-    np.ndarray[Any, Any],
-]:
-    """Set up optimization bounds and initial guess.
-
-    Preferentially uses bounds and initial guess provided by the NLP formulation
-    (in meta dict) to ensure correct variable ordering, especially for log-space
-    variables. Falls back to generated bounds/guess only if NLP data is unavailable.
-    """
-    if nlp is None:
-        return None, None, None, None, None, np.array([])
-
-    try:
-        # Get problem dimensions
-        # Handle CasADi dict format: {"x": ..., "f": ..., "g": ...}
-        if isinstance(nlp, dict):
-            n_vars = nlp["x"].size1()
-            n_constraints = nlp["g"].size1()
-        else:
-            # Handle CasADi Function format
-            n_vars = nlp.size1_in(0)
-            n_constraints = nlp.size1_out(0)
-
-        # Check if NLP provided bounds and initial guess in metadata
-        # This ensures correct variable ordering, especially for log-space variables
-        if meta and "w0" in meta and "lbw" in meta and "ubw" in meta:
-            # Use NLP-provided bounds and initial guess
-            w0_nlp = meta["w0"]
-            lbw_nlp = meta["lbw"]
-            ubw_nlp = meta["ubw"]
-            lbg_nlp = meta.get("lbg", -np.inf * np.ones(n_constraints))
-            ubg_nlp = meta.get("ubg", np.inf * np.ones(n_constraints))
-
-            # Validate dimensions match
-            if len(w0_nlp) != n_vars:
-                log.warning(
-                    f"NLP-provided w0 length {len(w0_nlp)} != problem size {n_vars}, "
-                    "falling back to generated initial guess",
-                )
-                w0_nlp = None
-            if len(lbw_nlp) != n_vars or len(ubw_nlp) != n_vars:
-                log.warning(
-                    "NLP-provided bounds length mismatch, falling back to generated bounds",
-                )
-                lbw_nlp = None
-                ubw_nlp = None
-            if len(lbg_nlp) != n_constraints or len(ubg_nlp) != n_constraints:
-                log.warning(
-                    "NLP-provided constraint bounds length mismatch, using defaults",
-                )
-                lbg_nlp = -np.inf * np.ones(n_constraints)
-                ubg_nlp = np.inf * np.ones(n_constraints)
-
-            # Determine if we can use the NLP-provided data
-            use_nlp_bounds = lbw_nlp is not None and ubw_nlp is not None
-            use_nlp_constraints = lbg_nlp is not None and ubg_nlp is not None
-
-            if use_nlp_bounds or use_nlp_constraints:
-                log.info("Using NLP-provided data where valid")
-
-                x0 = None
-                # Initial guess
-                if w0_nlp is not None:
-                    x0 = w0_nlp.copy()
-                    # Use warm start if provided and dimensions match
-                    if warm_start and "x0" in warm_start:
-                        x0_warm = np.array(warm_start["x0"])
-                        if len(x0_warm) == n_vars:
-                            x0 = x0_warm.copy()
-                            log.info("Using warm start initial guess")
-                        else:
-                            log.warning(
-                                f"Warm start x0 length {len(x0_warm)} != problem size {n_vars}, "
-                                "using NLP-provided initial guess",
-                            )
-                else:
-                    # Fallback for x0 will be handled later if x0 is still None
-                    pass
-
-                # Bounds
-                lbx_ret = lbw_nlp.copy() if use_nlp_bounds else None
-                ubx_ret = ubw_nlp.copy() if use_nlp_bounds else None
-                lbg_ret = (
-                    lbg_nlp.copy() if use_nlp_constraints else -np.inf * np.ones(n_constraints)
-                )
-                ubg_ret = ubg_nlp.copy() if use_nlp_constraints else np.inf * np.ones(n_constraints)
-
-                # If x0 is still None (because w0 was invalid), we need to generate it
-                if x0 is None:
-                    log.warning("Generating physics-based initial guess (w0 was invalid)")
-                    x0 = _generate_physics_based_initial_guess(n_vars, P)
-
-                # Clamp to bounds if we have them
-                if lbx_ret is not None and ubx_ret is not None:
-                    x0 = np.clip(x0, lbx_ret, ubx_ret)
-
-                # Validate log-space variables
-                variable_groups = meta.get("variable_groups", {}) if meta else {}
-                log_space_groups = ["densities", "valve_areas"]
-                for group_name in log_space_groups:
-                    if group_name in variable_groups:
-                        group_indices = variable_groups[group_name]
-                        for idx in group_indices:
-                            if 0 <= idx < len(x0):
-                                if not np.isfinite(x0[idx]) or abs(x0[idx]) > 50.0:
-                                    x0[idx] = np.clip(x0[idx], -50.0, 50.0)
-
-                return (
-                    x0,
-                    lbx_ret,
-                    ubx_ret,
-                    lbg_ret,
-                    ubg_ret,
-                    np.array([]),
-                )
-
-        # Fallback: Generate bounds and initial guess (legacy path)
-        log.info(
-            "NLP-provided bounds/initial guess not available, generating from problem parameters"
-        )
-
-        # Set up bounds
-        lbx = -np.inf * np.ones(n_vars)
-        ubx = np.inf * np.ones(n_vars)
-        lbg = -np.inf * np.ones(n_constraints)
-        ubg = np.inf * np.ones(n_constraints)
-
-        # Set up initial guess
-        if warm_start and "x0" in warm_start:
-            x0 = np.array(warm_start["x0"])
-            if len(x0) != n_vars:
-                log.warning(f"Warm start x0 length {len(x0)} != problem size {n_vars}")
-                x0 = _generate_physics_based_initial_guess(n_vars, P)
-        else:
-            x0 = _generate_physics_based_initial_guess(n_vars, P)
-
-        # Set up parameters
-        p = np.array([])  # No parameters for now
-
-        # Apply problem-specific bounds
-        _apply_problem_bounds(lbx, ubx, lbg, ubg, P)
-
-        # Clamp initial guess to bounds
-        x0 = _clamp_initial_guess(x0, lbx, ubx)
-
-        # Convert log-space variables in initial guess: physical -> log space
-        # Get variable groups from NLP metadata
-        variable_groups = meta.get("variable_groups", {}) if meta else {}
-        log_space_groups = ["densities", "valve_areas"]
-
-        for group_name in log_space_groups:
-            if group_name in variable_groups:
-                group_indices = variable_groups[group_name]
-                group_config = SCALING_GROUP_CONFIG.get(group_name, {})
-                if group_config.get("use_log_scale", False):
-                    # Convert physical-space values to log-space: log(value)
-                    for idx in group_indices:
-                        if 0 <= idx < len(x0):
-                            # Use same minimum as bounds (1e-3) for consistency
-                            # This prevents extremely negative log values (log(1e-3) ≈ -6.9 vs log(1e-10) ≈ -23)
-                            x0[idx] = np.log(max(x0[idx], 1e-3))
-
-        return x0, lbx, ubx, lbg, ubg, p
-
-    except Exception as e:
-        log.error(f"Failed to set up optimization bounds: {e!s}")
-        return None, None, None, None, None, np.array([])
-
-
-def _compute_interior_point(
-    lb: float,
-    ub: float,
-    margin: float = 0.05,
-) -> float:
-    """
-    Compute interior point within bounds with given margin.
-
-    Returns a point that is margin% inside the interval from the lower bound.
-    For unbounded cases, returns a reasonable default.
-
-    Args:
-        lb: Lower bound (can be -inf)
-        ub: Upper bound (can be inf)
-        margin: Margin factor (0.05 = 5% inside from lower bound)
-
-    Returns:
-        Interior point value
-    """
-    if np.isfinite(lb) and np.isfinite(ub):
-        if ub > lb:
-            return lb + margin * (ub - lb)
-        return lb  # Degenerate case
-    if np.isfinite(lb):
-        return lb + 1.0  # Default offset from lower bound
-    if np.isfinite(ub):
-        return ub - 1.0  # Default offset from upper bound
-    return 0.0  # Unbounded case
-
-
-def _clamp_initial_guess(
-    x0: np.ndarray[Any, Any],
-    lbx: np.ndarray[Any, Any],
-    ubx: np.ndarray[Any, Any],
-) -> np.ndarray[Any, Any]:
-    """
-    Clamp initial guess to bounds and validate.
-
-    Ensures all values in x0 are within [lbx, ubx] bounds.
-    Logs warnings when values are clamped.
-
-    Args:
-        x0: Initial guess array
-        lbx: Lower bounds
-        ubx: Upper bounds
-
-    Returns:
-        Clamped initial guess array
-    """
-    x0_clamped = x0.copy()
-    n_clamped = 0
-
-    for i in range(len(x0)):
-        original = x0[i]
-        clamped = False
-
-        # Check for NaN or Inf
-        if not np.isfinite(original):
-            log.warning(
-                f"Initial guess[{i}] is not finite ({original}), setting to midpoint of bounds",
-            )
-            if np.isfinite(lbx[i]) and np.isfinite(ubx[i]):
-                x0_clamped[i] = 0.5 * (lbx[i] + ubx[i])
-            elif np.isfinite(lbx[i]):
-                x0_clamped[i] = lbx[i] + 1.0
-            elif np.isfinite(ubx[i]):
-                x0_clamped[i] = ubx[i] - 1.0
-            else:
-                x0_clamped[i] = 0.0
-            clamped = True
-        # Clamp to lower bound
-        elif np.isfinite(lbx[i]) and original < lbx[i]:
-            x0_clamped[i] = lbx[i]
-            clamped = True
-        # Clamp to upper bound
-        elif np.isfinite(ubx[i]) and original > ubx[i]:
-            x0_clamped[i] = ubx[i]
-            clamped = True
-
-        if clamped:
-            n_clamped += 1
-            if n_clamped <= 10:  # Log first 10 clamped values
-                log.debug(
-                    f"Clamped initial guess[{i}]: {original:.6e} -> {x0_clamped[i]:.6e} "
-                    f"(bounds: [{lbx[i]:.6e}, {ubx[i]:.6e}])",
-                )
-
-    if n_clamped > 0:
-        log.info(
-            f"Clamped {n_clamped}/{len(x0)} initial guess values to bounds "
-            f"({100.0 * n_clamped / len(x0):.1f}%)",
-        )
-        if n_clamped > 10:
-            log.debug(
-                f"Many initial guess values ({n_clamped}) were clamped. "
-                f"Consider improving initial guess generation.",
-            )
-
-    return x0_clamped
-
-
-def _generate_physics_based_initial_guess(n_vars: int, P: dict[str, Any]) -> np.ndarray[Any, Any]:
-    """
-    Generate physics-based initial guess using ONLY:
-    - Basic cylinder geometry (stroke, bore, clearance_volume, compression_ratio)
-    - Combustion model inputs (cycle_time, initial T/P, AFR, fuel_mass, ignition_timing)
-    - Thermodynamic properties (gamma, R, cp)
-
-    Seeds variables at interior points (5% inside bounds) for better feasibility.
-    NO motion profile assumptions - only free-piston physics and geometry.
-    """
-    x0 = np.zeros(n_vars)
-
-    # Get inputs from problem parameters
-    geom = P.get("geometry", {})
-    thermo = P.get("thermodynamics", {})
-    bounds = P.get("bounds", {})
-    combustion_cfg = P.get("combustion", {})
-
-    # Extract variable group bounds for interior point seeding
-    # Positions
-    xL_min = bounds.get("xL_min", -0.1)
-    xL_max = bounds.get("xL_max", 0.1)
-    xR_min = bounds.get("xR_min", 0.0)
-    xR_max = bounds.get("xR_max", 0.2)
-
-    # Velocities
-    vL_min = bounds.get("vL_min", -50.0)
-    vL_max = bounds.get("vL_max", 50.0)
-    vR_min = bounds.get("vR_min", -50.0)
-    vR_max = bounds.get("vR_max", 50.0)
-
-    # Thermodynamic states
-    rho_min = bounds.get("rho_min", 0.01)
-    rho_max = bounds.get("rho_max", 100.0)
-    T_min = bounds.get("T_min", 200.0)
-    T_max = bounds.get("T_max", 3000.0)
-
-    # Controls
-    Aex_max = bounds.get("Aex_max", 0.001)
-    t_ign_min = bounds.get("t_ign_min", 0.0)
-    t_ign_max = bounds.get("t_ign_max", 1.0)
-
-    # Compute interior points for fallback
-    xL_interior = _compute_interior_point(xL_min, xL_max, margin=0.05)
-    xR_interior = _compute_interior_point(xR_min, xR_max, margin=0.05)
-    vL_interior = _compute_interior_point(vL_min, vL_max, margin=0.05)
-    vR_interior = _compute_interior_point(vR_min, vR_max, margin=0.05)
-    rho_interior = _compute_interior_point(rho_min, rho_max, margin=0.05)
-    T_interior = _compute_interior_point(T_min, T_max, margin=0.05)
-
-    Aex_interior = _compute_interior_point(0.0, Aex_max, margin=0.05)
-    t_ign_interior = _compute_interior_point(t_ign_min, t_ign_max, margin=0.05)
-
-    # Extract geometry inputs
-    stroke = geom.get("stroke", 0.1)  # m
-    bore = geom.get("bore", 0.1)  # m
-    compression_ratio = geom.get("compression_ratio", 10.0)
-    clearance_volume = geom.get("clearance_volume", 1e-4)  # m^3
-    gap_min = bounds.get("gap_min", 0.0008)  # Minimum gap constraint
-
-    # Extract thermodynamic properties
-    gamma = thermo.get("gamma", 1.4)
-    R = thermo.get("R", 287.0)  # J/(kg K)
-    cp = thermo.get("cp", 1005.0)  # J/(kg K)
-    cv = cp / gamma
-
-    # Extract combustion model inputs
-    cycle_time = combustion_cfg.get("cycle_time_s", 1.0)  # Cycle time from user
-    p_initial = combustion_cfg.get("initial_pressure_Pa", 1e5)  # Initial pressure from user
-    T_initial = combustion_cfg.get("initial_temperature_K", 300.0)  # Initial temperature from user
-    ignition_timing = combustion_cfg.get("ignition_initial_s", None)  # Ignition timing from user
-
-    # Calculate initial gas density from ideal gas law
-    rho_initial = p_initial / (R * T_initial)  # kg/m^3
-
-    # Calculate cylinder geometry
-    A_piston = np.pi * (bore / 2.0) ** 2  # Piston area
-    V_max = clearance_volume + A_piston * stroke  # Maximum volume (at TDC)
-    V_min = clearance_volume  # Minimum volume (at BDC)
-
-    # Calculate volumes at compression ratio
-    V_compressed = V_max / compression_ratio  # Volume at end of compression
-
-    # IMPROVED INITIAL GUESS: Use quasi-steady approximation
-    # Instead of pure isentropic relations, account for:
-    # 1. Valve flows (mass exchange with surroundings)
-    # 2. Heat transfer (wall cooling)
-    # 3. Realistic piston motion (not instantaneous)
-    #
-    # This creates an initial guess that approximately satisfies:
-    # - Mass balance (dm/dt ≈ mdot_in - mdot_out)
-    # - Energy balance (dT/dt ≈ Q_net / (m*cv))
-    # - Momentum balance (piston forces)
-
-    # Estimate thermodynamic states with corrections for real effects
-    # Compression phase: polytropic compression (n < gamma due to heat transfer)
-    n_poly = gamma * 0.9  # Polytropic index (< gamma due to heat loss)
-    p_compressed = p_initial * ((V_max / V_compressed) ** n_poly)
-    T_compressed = T_initial * ((V_max / V_compressed) ** (n_poly - 1))
-    rho_compressed = p_compressed / (R * T_compressed)
-
-    # Clamp compressed state to reasonable bounds to prevent extreme values
-    p_compressed = min(p_compressed, bounds.get("p_max", 10e6) * 1e6 * 0.8)  # 80% of max
-    T_compressed = min(T_compressed, bounds.get("T_max", 2000.0) * 0.8)  # 80% of max
-    rho_compressed = p_compressed / (R * T_compressed)
-
-    # Expansion phase: account for scavenging (mass loss) and heat transfer
-    # Effective expansion ratio is less than geometric due to valve opening
-    scavenging_factor = 0.7  # Assume 30% mass loss during expansion
-    V_eff_expansion = V_compressed * scavenging_factor
-    p_expanded = p_compressed * ((V_compressed / V_max) ** n_poly)
-    T_expanded = T_compressed * ((V_compressed / V_max) ** (n_poly - 1))
-    rho_expanded = (p_expanded / (R * T_expanded)) * scavenging_factor
-
-    # Clamp expanded state to reasonable bounds
-    p_expanded = max(p_expanded, bounds.get("p_min", 0.01e6) * 1e6 * 1.2)  # 120% of min
-    T_expanded = max(T_expanded, bounds.get("T_min", 200.0) * 1.2)  # 120% of min
-    rho_expanded = p_expanded / (R * T_expanded)
-
-    # Variable ordering per collocation point: x_L, v_L, x_R, v_R, rho, T
-    n_per_point = 6
-    n_points = n_vars // n_per_point
-
-    # Calculate time grid (assuming uniform spacing)
-    dt = cycle_time / max(1, n_points - 1) if n_points > 1 else cycle_time
-
-    # Estimate average piston velocity based on cycle time and stroke
-    # Use realistic velocity profile (not constant)
-    v_max = 2.0 * stroke / cycle_time if cycle_time > 0 else 0.0  # Peak velocity
-    v_max = min(v_max, min(abs(vL_max), abs(vR_max)) * 0.8)  # Clamp to 80% of bounds
-
-    for i in range(n_points):
-        idx = i * n_per_point
-        t = i * dt  # Time at this collocation point
-        phase = (t / cycle_time) if cycle_time > 0 else 0.0  # Normalized phase [0, 1]
-
-        # Improved piston motion: smooth sinusoidal profile
-        # This satisfies periodicity and has continuous derivatives
-        theta = 2.0 * np.pi * phase  # Angle [0, 2π]
-
-        # Position: sinusoidal motion centered at mid-stroke
-        # x_L moves from left (negative) to right (positive) and back
-        # x_R moves from right (positive) to left (negative) and back
-        x_L_center = (xL_min + xL_max) / 2.0
-        x_R_center = (xR_min + xR_max) / 2.0
-        x_L_amplitude = min(stroke * 0.4, (xL_max - xL_min) * 0.4)
-        x_R_amplitude = min(stroke * 0.4, (xR_max - xR_min) * 0.4)
-
-        x_L = x_L_center + x_L_amplitude * np.cos(theta)
-        x_R = x_R_center - x_R_amplitude * np.cos(theta)  # Opposite phase
-
-        # Velocity: derivative of position (sinusoidal)
-        v_L = -x_L_amplitude * 2.0 * np.pi / cycle_time * np.sin(theta)
-        v_R = x_R_amplitude * 2.0 * np.pi / cycle_time * np.sin(theta)
-
-        # Ensure minimum gap constraint
-        gap = x_R - x_L
-        if gap < gap_min:
-            # Adjust positions to maintain gap while preserving center
-            gap_deficit = gap_min - gap
-            x_L -= gap_deficit / 2.0
-            x_R += gap_deficit / 2.0
-
-        # Improved gas state: smooth interpolation with physical corrections
-        # Account for valve flows and heat transfer
-        if phase < 0.25:
-            # Early compression: gradual increase from initial state
-            # Assume some inlet flow (scavenging tail)
-            progress = phase / 0.25
-            rho = rho_initial + (rho_compressed - rho_initial) * progress**1.5
-            T = T_initial + (T_compressed - T_initial) * progress**1.3
-        elif phase < 0.5:
-            # Late compression: approaching TDC
-            # Minimal valve flow, heat transfer dominates
-            progress = (phase - 0.25) / 0.25
-            rho = rho_compressed * (1.0 + 0.05 * np.sin(progress * np.pi))  # Small variation
-            T = T_compressed * (1.0 - 0.05 * progress)  # Cooling near TDC
-        elif phase < 0.75:
-            # Early expansion: high pressure/temperature
-            # Exhaust valve opening, mass loss begins
-            progress = (phase - 0.5) / 0.25
-            rho = rho_compressed * (1.0 - progress * 0.6)  # Mass loss
-            T = T_compressed * (1.0 - progress * 0.4)  # Cooling
-        else:
-            # Late expansion: approaching BDC
-            # Scavenging active, approaching initial conditions
-            progress = (phase - 0.75) / 0.25
-            rho = rho_expanded + (rho_initial - rho_expanded) * progress**0.7
-            T = T_expanded + (T_initial - T_expanded) * progress**0.7
-
-        # Clamp states to bounds (with margin for feasibility)
-        rho = np.clip(rho, rho_min * 1.1, rho_max * 0.9)
-        T = np.clip(T, T_min * 1.1, T_max * 0.9)
-        x_L = np.clip(x_L, xL_min * 1.05, xL_max * 0.95)
-        x_R = np.clip(x_R, xR_min * 1.05, xR_max * 0.95)
-        v_L = np.clip(v_L, vL_min * 0.9, vL_max * 0.9)
-        v_R = np.clip(v_R, vR_min * 0.9, vR_max * 0.9)
-
-        # Apply to variables with NaN guards and interior point fallbacks
-        if idx < n_vars:
-            x0[idx] = x_L if np.isfinite(x_L) else xL_interior
-        if idx + 1 < n_vars:
-            x0[idx + 1] = v_L if np.isfinite(v_L) else vL_interior
-        if idx + 2 < n_vars:
-            x0[idx + 2] = x_R if np.isfinite(x_R) else xR_interior
-        if idx + 3 < n_vars:
-            x0[idx + 3] = v_R if np.isfinite(v_R) else vR_interior
-        if idx + 4 < n_vars:
-            x0[idx + 4] = rho if np.isfinite(rho) else rho_interior
-        if idx + 5 < n_vars:
-            x0[idx + 5] = T if np.isfinite(T) else T_interior
-
-    # Final safety check: ensure all gaps satisfy minimum constraint and replace NaN/Inf
-    for i in range(n_points):
-        idx = i * n_per_point
-        if idx + 2 < n_vars:  # Both x_L and x_R are available
-            # Replace NaN/Inf with interior points
-            if not np.isfinite(x0[idx]):
-                x0[idx] = xL_interior
-            if not np.isfinite(x0[idx + 2]):
-                x0[idx + 2] = xR_interior
-            gap = x0[idx + 2] - x0[idx]  # x_R - x_L
-            if gap < gap_min:
-                x0[idx + 2] = x0[idx] + gap_min
-                log.debug(
-                    f"Adjusted piston gap at point {i}: gap={gap:.6f} -> {gap_min:.6f}",
-                )
-
-    # Final NaN guard: replace any remaining NaN/Inf with interior points
-    for i in range(n_vars):
-        if not np.isfinite(x0[i]):
-            # Determine which group this variable belongs to based on position
-            var_idx_in_group = i % n_per_point
-            if var_idx_in_group == 0:  # x_L
-                x0[i] = xL_interior
-            elif var_idx_in_group == 1:  # v_L
-                x0[i] = vL_interior
-            elif var_idx_in_group == 2:  # x_R
-                x0[i] = xR_interior
-            elif var_idx_in_group == 3:  # v_R
-                x0[i] = vR_interior
-            elif var_idx_in_group == 4:  # rho
-                x0[i] = rho_interior
-            elif var_idx_in_group == 5:  # T
-                x0[i] = T_interior
-            else:
-                x0[i] = 0.0  # Fallback
-
-    log.info(
-        f"Generated robust physics-based initial guess for {n_vars} variables using "
-        f"quasi-steady approximation with geometry (stroke={stroke * 1000:.1f}mm, bore={bore * 1000:.1f}mm, CR={compression_ratio:.1f}) "
-        f"and combustion inputs (cycle_time={cycle_time:.3f}s, T_init={T_initial:.0f}K, p_init={p_initial:.0f}Pa)",
-    )
-
-    return x0  # type: ignore[return-value]
-
-
-# Scaling group configuration: defines max_ratio and log-scaling settings per variable group
-# max_ratio: Maximum allowed ratio between min and max scales within a group
-# use_log_scale: Whether variables in this group should be transformed to log space in NLP
-SCALING_GROUP_CONFIG = {
-    "positions": {"max_ratio": 10.0},
-    "velocities": {"max_ratio": 10.0},
-    "pressures": {"max_ratio": 1e3, "use_log_scale": True},  # 1000:1 ratio allowed
-    "densities": {"max_ratio": 1e2, "use_log_scale": True},  # 100:1 ratio allowed
-    "temperatures": {"max_ratio": 10.0},
-    "valve_areas": {"max_ratio": 1e3, "use_log_scale": True},  # 1000:1 ratio allowed
-    "ignition": {"max_ratio": 10.0},
-    "scavenging_fractions": {"max_ratio": 10.0},  # yF (dimensionless)
-    "scavenging_masses": {"max_ratio": 100.0},  # Mdel, Mlost (kg)
-    "scavenging_area_integrals": {"max_ratio": 1000.0},  # AinInt, AexInt (m²·s)
-    "scavenging_time_moments": {"max_ratio": 1000.0},  # AinTmom, AexTmom (m²·s²)
-    "cycle_time": {"max_ratio": 10.0},  # T_cycle (s)
-}
+# _setup_optimization_bounds extracted to campro.optimization.initialization.setup
 
 
 def _compute_variable_scaling(
@@ -2190,17 +1664,17 @@ def _compute_variable_scaling(
 
     # Standardized per-group reference units with physical anchors
     unit_references = {
-        "positions": 0.05,  # meters → scale ≈ 1/0.05 = 20 (typical position ~50mm)
-        "velocities": 10.0,  # m/s → scale ≈ 1/10 = 0.1 (typical velocity ~10 m/s)
-        "densities": 1.0,  # kg/m³ (already reasonable)
+        "positions": 0.05,  # meters -> scale ~ 1/0.05 = 20 (typical position ~50mm)
+        "velocities": 10.0,  # m/s -> scale ~ 1/10 = 0.1 (typical velocity ~10 m/s)
+        "densities": 1.0,  # kg/m^3 (already reasonable)
         "temperatures": 1000.0,  # K (normalize to 0.001-2.0 range)
         "pressures": 1e6,  # MPa (normalize to 0.01-10 range)
-        "valve_areas": 1e-4,  # m² → scale ≈ 1/1e-4 = 1e4 (typical area ~0.1 mm²)
+        "valve_areas": 1e-4,  # m^2 -> scale ~ 1/1e-4 = 1e4 (typical area ~0.1 mm^2)
         "ignition": 1.0,  # seconds (already in base units)
         "scavenging_fractions": 1.0,  # dimensionless (yF)
         "scavenging_masses": 0.01,  # kg (Mdel, Mlost)
-        "scavenging_area_integrals": 1e-4,  # m²·s (AinInt, AexInt)
-        "scavenging_time_moments": 5e-5,  # m²·s² (AinTmom, AexTmom)
+        "scavenging_area_integrals": 1e-4,  # m^2*s (AinInt, AexInt)
+        "scavenging_time_moments": 5e-5,  # m^2*s^2 (AinTmom, AexTmom)
         "cycle_time": 0.05,  # s (T_cycle)
     }
 
@@ -2777,7 +2251,7 @@ def _relax_over_scaled_groups(
                 indices = variable_groups[group_name]
                 for idx in indices:
                     if 0 <= idx < len(relaxed_scale):
-                        # Geometric mean with 1.0: sqrt(scale[i] * 1.0)
+                        # Geometric mean with 1.0: sqrt(scale[idx] * 1.0)
                         relaxed_scale[idx] = np.sqrt(relaxed_scale[idx] * 1.0)
 
     # Relax constraint types
@@ -2787,7 +2261,7 @@ def _relax_over_scaled_groups(
                 indices = constraint_groups[con_type]
                 for idx in indices:
                     if 0 <= idx < len(relaxed_scale_g):
-                        # Geometric mean with 1.0: sqrt(scale_g[i] * 1.0)
+                        # Geometric mean with 1.0: sqrt(scale_g[idx] * 1.0)
                         relaxed_scale_g[idx] = np.sqrt(relaxed_scale_g[idx] * 1.0)
 
     return relaxed_scale, relaxed_scale_g
@@ -3388,7 +2862,7 @@ def _analyze_magnitude_distribution(
 
     Args:
         magnitudes: Array of constraint magnitudes
-        aggressive: If True, use 3×IQR for outlier detection instead of 1.5×IQR.
+        aggressive: If True, use 3xIQR for outlier detection instead of 1.5xIQR.
                    More conservative, only flags truly extreme outliers.
 
     Returns:
@@ -3421,8 +2895,8 @@ def _analyze_magnitude_distribution(
 
     # Detect outliers using IQR method (no distribution assumptions)
     # Use different IQR multiplier based on aggressiveness
-    # - Standard (1.5×IQR): catches ~0.7% outliers
-    # - Aggressive (3×IQR): catches ~0.003% outliers (only extreme values)
+    # - Standard (1.5xIQR): catches ~0.7% outliers
+    # - Aggressive (3xIQR): catches ~0.003% outliers (only extreme values)
     iqr_multiplier = 3.0 if aggressive else 1.5
     lower_bound = p25 - iqr_multiplier * iqr
     upper_bound = p75 + iqr_multiplier * iqr
@@ -3462,7 +2936,7 @@ def _normalize_to_median_center(
         iqr: Interquartile Range from distribution analysis
         outlier_mask: Boolean array indicating outliers
         scale_bounds: (min, max) bounds for outlier scale factors.
-                     Tighter bounds (e.g., 1e-6, 1e6) prevent extreme scales.
+                     Tighter bounds (e.g., 1e-6, 1e6) prevent extreme multipliers.
 
     Returns:
         Array of scale factors (one per constraint)
@@ -4155,7 +3629,7 @@ def _try_scaling_strategy(
                     else:
                         new_scale[j] = np.clip(new_scale[j], 1e-2, 1e2)
 
-        # Re-normalize variable scales to maintain 10¹ ratio constraint
+        # Re-normalize variable scales to maintain 10^1 ratio constraint
         scale_min = new_scale[new_scale > 1e-10].min() if (new_scale > 1e-10).any() else 1e-10
         scale_max = new_scale.max()
         if scale_min > 1e-10 and scale_max / scale_min > 1e1:
@@ -4243,7 +3717,7 @@ def _try_scaling_strategy(
                     else:
                         new_scale[j] = np.clip(new_scale[j], 1e-2, 1e2)
 
-        # Re-normalize variable scales to maintain 10¹ ratio constraint
+        # Re-normalize variable scales to maintain 10^1 ratio constraint
         scale_min = new_scale[new_scale > 1e-10].min() if (new_scale > 1e-10).any() else 1e-10
         scale_max = new_scale.max()
         if scale_min > 1e-10 and scale_max / scale_min > 1e1:
@@ -4336,7 +3810,7 @@ def _try_scaling_strategy(
                     else:
                         new_scale[j] = np.clip(new_scale[j], 1e-2, 1e2)
 
-        # Re-normalize variable scales to maintain 10¹ ratio constraint
+        # Re-normalize variable scales to maintain 10^1 ratio constraint
         scale_min = new_scale[new_scale > 1e-10].min() if (new_scale > 1e-10).any() else 1e-10
         scale_max = new_scale.max()
         if scale_min > 1e-10 and scale_max / scale_min > 1e1:
@@ -4473,11 +3947,11 @@ def _normalize_scales_to_center(
     target_center: float = 1.0,
 ) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], float]:
     """
-    Normalize all scales to maintain center point and 10¹ ratio constraint.
+    Normalize all scales to maintain center point and 10^1 ratio constraint.
 
     Ensures:
     - Median of all scales is at target_center
-    - All scales within 10¹ ratio of center
+    - All scales within 10^1 ratio of center
     - Preserves relative importance of constraints
 
     Args:
@@ -4556,14 +4030,14 @@ def _compute_unified_data_driven_scaling(
     finds the median from the data, and normalizes all constraints to that center point.
 
     Strategy:
-    1. Evaluate all constraints g(x0), objective f(x0), constraint Jacobian J_g, and objective gradient ∇f at once
+    1. Evaluate all constraints g(x0), objective f(x0), constraint Jacobian J_g, and objective gradient grad f at once
     2. Compute variable scaling (simplified - unit-based + bounds)
     3. Compute unified constraint magnitudes combining values, Jacobian sensitivity, and bounds
     4. Analyze distribution using robust statistics (median, IQR, percentiles) - no distribution assumptions
     5. Find median from actual data
     6. Normalize all constraints to median center with outlier handling
     7. Normalize objective to same center
-    8. Final normalization to maintain 10¹ ratio constraint
+    8. Final normalization to maintain 10^1 ratio constraint
 
     Args:
         nlp: CasADi NLP dict
@@ -4596,7 +4070,7 @@ def _compute_unified_data_driven_scaling(
         scale = _compute_variable_scaling(lbx, ubx, x0=x0, variable_groups=variable_groups)
         scale_g = np.array([])
         scale_f = 1.0
-        quality_metrics = {"condition_number": np.inf, "quality_score": 0.0}
+        quality_metrics = {"condition_number": 0.0, "quality_score": 0.0}
         return scale, scale_g, scale_f, quality_metrics
 
     # Step 2: Compute variable scaling (simplified - unit-based + bounds, no Jacobian refinement)
@@ -4641,6 +4115,12 @@ def _compute_unified_data_driven_scaling(
     # Map: constraint_group -> list of variable names to combine
 
     # Helper to get scale for a variable name safely
+    def _combine_scales(scales_list):
+        valid_scales = [s for s in scales_list if s is not None and np.isfinite(s) and s > 1e-10]
+        if valid_scales:
+            return float(np.median(valid_scales))
+        return 1.0
+
     def get_var_scale(name):
         # Find index of variable group
         if variable_groups and name in variable_groups:
@@ -6160,103 +5640,51 @@ def _compute_constraint_scaling_from_evaluation(
         return _compute_constraint_scaling(lbg, ubg)  # type: ignore[return-value]
 
 
-def _apply_problem_bounds(
-    lbx: np.ndarray[Any, Any],
-    ubx: np.ndarray[Any, Any],
-    lbg: np.ndarray[Any, Any],
-    ubg: np.ndarray[Any, Any],
-    P: dict[str, Any],
-) -> None:
-    """Apply problem-specific bounds."""
-    # Get problem parameters
-    geom = P.get("geom", {})
-    constraints = P.get("constraints", {})
-
-    # Piston position bounds
-    x_L_min = constraints.get("x_L_min", 0.01)
-    x_L_max = constraints.get("x_L_max", 0.1)
-    x_R_min = constraints.get("x_R_min", 0.1)
-    x_R_max = constraints.get("x_R_max", 0.2)
-
-    # Piston velocity bounds
-    v_max = constraints.get("v_max", 10.0)
-
-    # Gas pressure bounds
-    p_min = constraints.get("p_min", 1e3)
-    p_max = constraints.get("p_max", 1e7)
-
-    # Gas temperature bounds
-    T_min = constraints.get("T_min", 200.0)
-    T_max = constraints.get("T_max", 3000.0)
-
-    # Apply bounds to variables (assuming specific ordering)
-    # This is a simplified version - in practice, you'd need to know the exact variable ordering
-    n_vars = len(lbx)
-    n_per_point = 6  # x_L, v_L, x_R, v_R, rho, T
-
-    for i in range(0, n_vars, n_per_point):
-        if i < n_vars:
-            lbx[i] = x_L_min  # x_L
-            ubx[i] = x_L_max
-        if i + 1 < n_vars:
-            lbx[i + 1] = -v_max  # v_L
-            ubx[i + 1] = v_max
-        if i + 2 < n_vars:
-            lbx[i + 2] = x_R_min  # x_R
-            ubx[i + 2] = x_R_max
-        if i + 3 < n_vars:
-            lbx[i + 3] = -v_max  # v_R
-            ubx[i + 3] = v_max
-        if i + 4 < n_vars:
-            lbx[i + 4] = 0.1  # rho (density)
-            ubx[i + 4] = 100.0
-        if i + 5 < n_vars:
-            lbx[i + 5] = T_min  # T (temperature)
-            ubx[i + 5] = T_max
+# _apply_problem_bounds extracted to setup.py
 
 
-def solve_cycle_robust(P: dict[str, Any]) -> dict[str, Any]:
+def solve_cycle_robust(params: dict[str, Any]) -> dict[str, Any]:
     """
     Solve OP engine cycle with robust IPOPT settings.
 
     This function uses more conservative IPOPT settings for difficult problems.
 
     Args:
-        P: Problem parameters dictionary
+        params: Problem parameters dictionary
 
     Returns:
         Solution object with optimization results
     """
     # Set robust problem type
-    P_robust = P.copy()
-    P_robust["problem_type"] = "robust"
+    params_robust = params.copy()
+    params_robust["problem_type"] = "robust"
 
-    return solve_cycle(P_robust)
+    return solve_cycle(params_robust)
 
 
 def solve_cycle_with_warm_start(
-    P: dict[str, Any],
+    params: dict[str, Any],
     x0: np.ndarray[Any, Any],
 ) -> dict[str, Any]:
     """
     Solve OP engine cycle with warm start.
 
     Args:
-        P: Problem parameters dictionary
+        params: Problem parameters dictionary
         x0: Initial guess for optimization variables
 
     Returns:
         Solution object with optimization results
     """
     # Add warm start information
-    P_warm = P.copy()
-    P_warm["warm_start"] = {"x0": x0.tolist()}
+    params_warm = params.copy()
+    params_warm["warm_start"] = {"x0": x0.tolist()}
 
-    return solve_cycle(P_warm)
+    return solve_cycle(params_warm)
 
 
 def solve_cycle_with_fuel_continuation(
-    P: dict[str, Any],
+    params: dict[str, Any],
     fuel_steps: list[float] | None = None,
     max_retries: int = 2,
 ) -> Solution:
@@ -6268,7 +5696,7 @@ def solve_cycle_with_fuel_continuation(
     from the easy-to-solve motoring cycle to the stiff combustion problem.
 
     Args:
-        P: Problem parameters dictionary
+        params: Problem parameters dictionary
         fuel_steps: Fuel fractions to solve sequentially [0.0, 0.1, 0.5, 1.0] (default)
                    Each value is a fraction of the target fuel mass
         max_retries: Maximum retries per step with relaxed tolerance (default: 2)
@@ -6277,9 +5705,9 @@ def solve_cycle_with_fuel_continuation(
         Solution object from final fuel level (target load)
 
     Example:
-        >>> P = asdict(ConfigFactory.create_default_config())
-        >>> P["combustion"]["fuel_mass_kg"] = 5e-6
-        >>> result = solve_cycle_with_fuel_continuation(P)
+        >>> params = asdict(ConfigFactory.create_default_config())
+        >>> params["combustion"]["fuel_mass_kg"] = 5e-6
+        >>> result = solve_cycle_with_fuel_continuation(params)
         >>> assert result.success
     """
     # Default continuation schedule: motoring → 10% → 50% → 100%
@@ -6287,7 +5715,7 @@ def solve_cycle_with_fuel_continuation(
         fuel_steps = [0.0, 0.1, 0.5, 1.0]
 
     # Extract target fuel mass
-    combustion_cfg = P.get("combustion", {})
+    combustion_cfg = params.get("combustion", {})
     target_fuel_mass = float(combustion_cfg.get("fuel_mass_kg", 5e-6))
 
     # Validate and normalize fuel steps
@@ -6313,9 +5741,9 @@ def solve_cycle_with_fuel_continuation(
         )
 
         # Create problem for this fuel level
-        P_step = P.copy()
-        P_step["combustion"] = combustion_cfg.copy()
-        P_step["combustion"]["fuel_mass_kg"] = fuel_mass
+        params_step = params.copy()
+        params_step["combustion"] = combustion_cfg.copy()
+        params_step["combustion"]["fuel_mass_kg"] = fuel_mass
 
         # Use previous solution as warm start
         if current_solution is not None and current_solution.success:
@@ -6323,11 +5751,11 @@ def solve_cycle_with_fuel_continuation(
             if x_prev is not None:
                 # Convert to list if numpy array
                 x0_list = x_prev.tolist() if isinstance(x_prev, np.ndarray) else x_prev
-                P_step["warm_start"] = {"x0": x0_list}
+                params_step["warm_start"] = {"x0": x0_list}
                 log.debug(f"Using warm start from previous step (n_vars={len(x0_list)})")
 
         # Solve with retries
-        result = _solve_with_retries(P_step, max_retries=max_retries, step_name=step_name)
+        result = _solve_with_retries(params_step, max_retries=max_retries, step_name=step_name)
 
         if not result.success:
             log.warning(f"Continuation failed at step {i + 1}/{len(fuel_steps)}: {step_name}")
@@ -6345,6 +5773,9 @@ def solve_cycle_with_fuel_continuation(
         log.info(f"Step {i + 1}/{len(fuel_steps)} converged: {step_name}")
 
     log.info("Fuel continuation completed successfully")
+    if current_solution is None:
+        raise RuntimeError(f"Fuel continuation failed: step {step_name} returned no solution")
+
     # Mark as full continuation success
     current_solution.meta.setdefault("continuation", {})["complete"] = True
     current_solution.meta["continuation"]["steps"] = len(fuel_steps)
@@ -6352,7 +5783,7 @@ def solve_cycle_with_fuel_continuation(
 
 
 def _solve_with_retries(
-    P: dict[str, Any],
+    params: dict[str, Any],
     max_retries: int = 2,
     step_name: str = "unknown",
 ) -> Solution:
@@ -6363,48 +5794,50 @@ def _solve_with_retries(
     on each attempt (e.g., 1e-6 → 1e-5 → 1e-4).
 
     Args:
-        P: Problem parameters dictionary
+        params: Problem parameters dictionary
         max_retries: Maximum number of retries (default: 2)
         step_name: Name of step for logging (default: "unknown")
 
     Returns:
         Solution object from first successful attempt
     """
-    base_tol = P.get("solver", {}).get("ipopt", {}).get("ipopt.tol", 1e-6)
+    base_tol = params.get("solver", {}).get("ipopt", {}).get("ipopt.tol", 1e-6)
 
     for attempt in range(max_retries + 1):
         if attempt > 0:
             # Relax tolerance for retry
             tol = base_tol * (10**attempt)
-            P_retry = P.copy()
-            P_retry.setdefault("solver", {}).setdefault("ipopt", {})
-            P_retry["solver"]["ipopt"]["ipopt.tol"] = tol
+            params_retry = params.copy()
+            params_retry.setdefault("solver", {}).setdefault("ipopt", {})
+            params_retry["solver"]["ipopt"]["ipopt.tol"] = tol
             log.info(f"Retry {attempt}/{max_retries} for {step_name} with relaxed tol={tol:.2e}")
-            result = solve_cycle(P_retry)
+            result = solve_cycle(params_retry)
         else:
-            result = solve_cycle(P)
+            result = solve_cycle(params)
 
-        if result.success:
+        if result["success"]:
             if attempt > 0:
                 log.info(f"Converged on retry {attempt} with tol={tol:.2e}")
                 # Mark retry in metadata
-                result.meta.setdefault("retry", {})["attempt"] = attempt
-                result.meta["retry"]["tolerance"] = tol
-            return result
+                result.setdefault("meta", {}).setdefault("retry", {})["attempt"] = attempt
+                result["meta"]["retry"]["tolerance"] = tol
+            # Convert to Solution
+            return Solution(meta=result.get("meta", {}), data=result)
 
     log.warning(f"All {max_retries + 1} attempts failed for {step_name}")
-    return result
+    # Convert last result to Solution
+    return Solution(meta=result.get("meta", {}), data=result)
 
 
 def solve_cycle_with_refinement(
-    P: dict[str, Any],
+    params: dict[str, Any],
     refinement_strategy: str = "adaptive",
 ) -> dict[str, Any]:
     """
     Solve cycle with 0D to 1D refinement switching.
 
     Args:
-        P: Problem parameters
+        params: Problem parameters
         refinement_strategy: Refinement strategy ("adaptive", "fixed", "error_based")
 
     Returns:
@@ -6413,17 +5846,17 @@ def solve_cycle_with_refinement(
     log.info(f"Starting cycle solve with {refinement_strategy} refinement strategy")
 
     # Initial 0D solve
-    P_0d = P.copy()
-    P_0d["model_type"] = "0d"
-    P_0d["num"] = P_0d.get("num", {})
-    P_0d["num"]["K"] = P_0d["num"].get("K_0d", 10)
+    params_0d = params.copy()
+    params_0d["model_type"] = "0d"
+    params_0d["num"] = params_0d.get("num", {})
+    params_0d["num"]["K"] = params_0d["num"].get("K_0d", 10)
 
     log.info("Solving with 0D model...")
-    result_0d = solve_cycle(P_0d)
+    result_0d = solve_cycle(params_0d)
 
     if not result_0d["success"]:
         log.warning("0D solve failed, trying 1D directly")
-        return solve_cycle(P)
+        return solve_cycle(params)
 
     # Check if refinement is needed
     if refinement_strategy == "fixed":
@@ -6431,10 +5864,10 @@ def solve_cycle_with_refinement(
         refine = True
     elif refinement_strategy == "error_based":
         # Refine based on error estimates
-        refine = _should_refine_error_based(result_0d, P)
+        refine = _should_refine_error_based(result_0d, params)
     else:  # adaptive
         # Refine based on problem characteristics
-        refine = _should_refine_adaptive(result_0d, P)
+        refine = _should_refine_adaptive(result_0d, params)
 
     if not refine:
         log.info("0D solution is sufficient, no refinement needed")
@@ -6442,16 +5875,16 @@ def solve_cycle_with_refinement(
 
     # Refine to 1D
     log.info("Refining to 1D model...")
-    P_1d = P.copy()
-    P_1d["model_type"] = "1d"
-    P_1d["num"] = P_1d.get("num", {})
-    P_1d["num"]["K"] = P_1d["num"].get("K_1d", 30)
+    params_1d = params.copy()
+    params_1d["model_type"] = "1d"
+    params_1d["num"] = params_1d.get("num", {})
+    params_1d["num"]["K"] = params_1d["num"].get("K_1d", 30)
 
     # Use 0D solution as warm start
-    warm_start = _create_warm_start_from_0d(result_0d, P_1d)
-    P_1d["warm_start"] = warm_start
+    warm_start = _create_warm_start_from_0d(result_0d, params_1d)
+    params_1d["warm_start"] = warm_start
 
-    result_1d = solve_cycle(P_1d)
+    result_1d = solve_cycle(params_1d)
 
     if result_1d["success"]:
         log.info("1D refinement successful")
@@ -6460,7 +5893,7 @@ def solve_cycle_with_refinement(
     return result_0d
 
 
-def _should_refine_error_based(result_0d: dict[str, Any], P: dict[str, Any]) -> bool:
+def _should_refine_error_based(result_0d: dict[str, Any], params: dict[str, Any]) -> bool:
     """Determine if refinement is needed based on error estimates."""
     # Check convergence criteria
     if result_0d.get("kkt_error", float("inf")) > 1e-4:
@@ -6472,25 +5905,25 @@ def _should_refine_error_based(result_0d: dict[str, Any], P: dict[str, Any]) -> 
         return True
 
     # Check problem size
-    K = P.get("num", {}).get("K", 10)
-    if K < 20:  # Small problem might benefit from refinement
+    num_intervals = params.get("num", {}).get("K", 10)
+    if num_intervals < 20:  # Small problem might benefit from refinement
         return True
 
     return False
 
 
-def _should_refine_adaptive(result_0d: dict[str, Any], P: dict[str, Any]) -> bool:
+def _should_refine_adaptive(result_0d: dict[str, Any], params: dict[str, Any]) -> bool:
     """Determine if refinement is needed based on problem characteristics."""
     # Check problem complexity
-    if P.get("complex_geometry", False):
+    if params.get("complex_geometry", False):
         return True
 
     # Check if high accuracy is required
-    if P.get("high_accuracy", False):
+    if params.get("high_accuracy", False):
         return True
 
     # Check if 1D effects are important
-    if P.get("1d_effects_important", False):
+    if params.get("1d_effects_important", False):
         return True
 
     # Check solution quality
@@ -6502,7 +5935,7 @@ def _should_refine_adaptive(result_0d: dict[str, Any], P: dict[str, Any]) -> boo
 
 def _create_warm_start_from_0d(
     result_0d: dict[str, Any],
-    P_1d: dict[str, Any],
+    params_1d: dict[str, Any],
 ) -> dict[str, Any]:
     """Create warm start for 1D solve from 0D solution."""
     if not result_0d["success"] or result_0d["x_opt"] is None:
@@ -6517,9 +5950,9 @@ def _create_warm_start_from_0d(
     else:
         x_0d_list = x_0d
     n_0d = len(x_0d_list)
-    K_1d = P_1d.get("num", {}).get("K", 30)
-    C = P_1d.get("num", {}).get("C", 3)
-    n_1d = K_1d * C * 6  # Assuming 6 variables per collocation point
+    num_intervals_1d = params_1d.get("num", {}).get("K", 30)
+    poly_degree = params_1d.get("num", {}).get("C", 3)
+    n_1d = num_intervals_1d * poly_degree * 6  # Assuming 6 variables per collocation point
 
     # Interpolate 0D solution to 1D grid
     if n_1d > n_0d:
@@ -6569,14 +6002,14 @@ def _downsample_solution(x_0d: list[float], n_1d: int) -> list[float]:
 
 
 def solve_cycle_adaptive(
-    P: dict[str, Any],
+    params: dict[str, Any],
     max_refinements: int = 3,
 ) -> dict[str, Any]:
     """
     Solve cycle with adaptive refinement strategy.
 
     Args:
-        P: Problem parameters
+        params: Problem parameters
         max_refinements: Maximum number of refinements
 
     Returns:
@@ -6592,22 +6025,22 @@ def solve_cycle_adaptive(
         log.info(f"Refinement {refinement}: Solving with {current_model} model")
 
         # Set up problem for current model
-        P_current = P.copy()
-        P_current["model_type"] = current_model
-        P_current["num"] = P_current.get("num", {})
+        params_current = params.copy()
+        params_current["model_type"] = current_model
+        params_current["num"] = params_current.get("num", {})
 
         if current_model == "0d":
-            P_current["num"]["K"] = P_current["num"].get("K_0d", 10)
+            params_current["num"]["K"] = params_current["num"].get("K_0d", 10)
         else:
-            P_current["num"]["K"] = P_current["num"].get("K_1d", 30)
+            params_current["num"]["K"] = params_current["num"].get("K_1d", 30)
 
         # Use previous result as warm start
         if current_result is not None and current_result["success"]:
-            warm_start = _create_warm_start_from_0d(current_result, P_current)
-            P_current["warm_start"] = warm_start
+            warm_start = _create_warm_start_from_0d(current_result, params_current)
+            params_current["warm_start"] = warm_start
 
         # Solve current model
-        current_result = solve_cycle(P_current)
+        current_result = solve_cycle(params_current)
 
         if not current_result["success"]:
             log.warning(f"{current_model} solve failed at refinement {refinement}")
@@ -6618,7 +6051,7 @@ def solve_cycle_adaptive(
 
         # Check if refinement is needed
         if refinement < max_refinements:
-            if _should_refine_adaptive(current_result, P_current):
+            if _should_refine_adaptive(current_result, params_current):
                 current_model = "1d"
                 log.info(f"Refining to 1D model for refinement {refinement + 1}")
             else:
@@ -6658,95 +6091,6 @@ def get_driver_function(driver_type: str = "standard") -> Any:
     return functions[driver_type]
 
 
-def _compute_objective_scaling(
-    nlp: dict[str, Any],
-    x0: np.ndarray[Any, Any],
-    meta: dict[str, Any] | None = None,
-    reporter: Any = None,
-) -> float:
-    """
-    Compute objective scaling factor using Gerschgorin eigenvalue estimate.
-
-    Per Betts §4.8: Choose w_0 to balance eigenvalue spread of Lagrangian Hessian.
-    This helps balance objective gradient with constraint gradients, reducing dual
-    infeasibility in stiff problems.
-
-    Args:
-        nlp: CasADi NLP dict
-        x0: Initial guess
-        meta: Problem metadata (optional)
-        reporter: Optional reporter for logging
-
-    Returns:
-        Objective scaling factor (typically 1e-6 to 1e6)
-    """
-    try:
-        import casadi as ca
-
-        # Extract symbolic variables from NLP
-        x_sym = nlp["x"]
-        g_sym = nlp["g"]
-
-        # Get number of constraints
-        n_g = g_sym.shape[0]
-
-        # Create symbolic multipliers and objective weight
-        lam_g_sym = ca.SX.sym("lam_g", n_g)
-        sigma = ca.SX.sym("sigma", 1)
-
-        # Build Hessian of Lagrangian symbolically
-        # H = sigma * H_f + sum(lam_g * H_g)
-        # CasADi standard: hessian(f, x) for objective, hessian(g, x) for constraints
-        f = nlp["f"]
-
-        # Create Lagrangian: L = sigma * f + lam_g^T * g
-        lag = sigma * f + ca.dot(lam_g_sym, g_sym)
-
-        # Hessian of Lagrangian w.r.t. x
-        H_lag = ca.hessian(lag, x_sym)[0]  # [0] gets Hessian, [1] would be gradient
-
-        # Create a CasADi Function for numerical evaluation
-        H_func = ca.Function("H_lag", [x_sym, lam_g_sym, sigma], [H_lag])
-
-        # Evaluate at x0 with zero multipliers and sigma=1 (objective Hessian only)
-        lambda_init = np.zeros(n_g)
-        H_val = H_func(x0, lambda_init, 1.0)
-
-        # Convert to dense numpy array
-        H_dense = np.array(H_val.full())
-
-        # Gerschgorin row-sum estimate: |λ_i| ≤ max_i Σ_j |H_ij|
-        row_sums = np.abs(H_dense).sum(axis=1)
-        diag = np.abs(np.diag(H_dense))
-
-        lambda_max_est = row_sums.max()
-        lambda_min_est = diag[diag > 1e-20].min() if np.any(diag > 1e-20) else 1e-10
-
-        # Scale to bring eigenvalue spread to O(1)
-        # w_0 ≈ 1 / sqrt(λ_max * λ_min)
-        if lambda_min_est > 1e-20:
-            w_0 = 1.0 / np.sqrt(lambda_max_est * lambda_min_est)
-        else:
-            w_0 = 1.0 / lambda_max_est
-
-        # Clamp to reasonable range
-        w_0 = np.clip(w_0, 1e-8, 1e8)
-
-        if reporter:
-            reporter.info(
-                f"Objective scaling (Gerschgorin): λ_max≈{lambda_max_est:.2e}, "
-                f"λ_min≈{lambda_min_est:.2e}, w_0={w_0:.2e}"
-            )
-
-        return float(w_0)
-
-    except Exception as e:
-        # Fallback to unity scaling if Hessian evaluation fails
-        if reporter:
-            reporter.warning(f"Objective scaling failed: {e}. Using w_0=1.0")
-        return 1.0
-
-
 def _analyze_constraint_rank(
     nlp: dict[str, Any],
     x0: np.ndarray[Any, Any],
@@ -6770,9 +6114,13 @@ def _analyze_constraint_rank(
         return
 
     try:
+        import numpy as np
         import casadi as ca
-        from scipy.sparse.linalg import svds
 
+        # from scipy.sparse.linalg import svds # Unused
+        import os  # Added for os.environ.get
+
+        # from campro.logging import get_logger # This line was problematic, assuming it's not needed or was a typo for a comment
         # SVD Guard: Skip for large problems unless forced
         # For K=100 (6000 vars), SVD takes minutes.
         force_diagnostics = os.environ.get("FREE_PISTON_DIAGNOSTICS") == "1"
@@ -6818,25 +6166,27 @@ def _analyze_constraint_rank(
             # Compute largest and smallest
             try:
                 # Largest
-                _, s_large, _ = svds(J_scaled, k=10, which="LM")
+                # svds(J_scaled, k=10, which="LM") # Unused
                 # Smallest (shift-invert mode often needed for 0, but 'SM' might work)
                 # For dense, just use standard svd
-                u, s, vh = np.linalg.svd(J_scaled, full_matrices=False)
+                u, s, _ = np.linalg.svd(J_scaled, full_matrices=False)
             except Exception:
                 # Fallback to dense SVD
-                u, s, vh = np.linalg.svd(J_scaled, full_matrices=False)
+                u, s, _ = np.linalg.svd(J_scaled, full_matrices=False)
         else:
-            u, s, vh = np.linalg.svd(J_scaled, full_matrices=False)
+            u, s, _ = np.linalg.svd(J_scaled, full_matrices=False)
 
         # Analyze singular values
         s_max = s.max()
         s_min = s.min()
         cond = s_max / s_min if s_min > 1e-20 else float("inf")
 
-        reporter.info(f"Jacobian SVD: σ_max={s_max:.2e}, σ_min={s_min:.2e}, cond={cond:.2e}")
+        reporter.info(
+            f"Jacobian SVD: sigma_max={s_max:.2e}, sigma_min={s_min:.2e}, cond={cond:.2e}"
+        )
 
         # Identify near-zero singular values (redundant constraints)
-        # Threshold: σ < 1e-8 * σ_max
+        # Threshold: sigma < 1e-8 * sigma_max
         threshold = 1e-8 * s_max
         small_sv_indices = np.where(s < threshold)[0]
 
@@ -6847,7 +6197,7 @@ def _analyze_constraint_rank(
             )
 
             # Identify which constraints contribute to the null space
-            # Look at left singular vectors (U) corresponding to small σ
+            # Look at left singular vectors (U) corresponding to small sigma
             # U columns are the directions in constraint space
 
             # Analyze the smallest singular value's vector
@@ -6859,7 +6209,7 @@ def _analyze_constraint_rank(
             contrib_indices = np.where(np.abs(u_smallest) > 0.1)[0]
 
             reporter.info(
-                f"Constraints involved in smallest singular value (σ={s[-1]:.2e}): "
+                f"Constraints involved in smallest singular value (sigma={s[-1]:.2e}): "
                 f"{contrib_indices.tolist()}"
             )
 
@@ -6907,7 +6257,7 @@ def _analyze_constraint_rank(
                 reporter.warning("No metadata provided for constraint mapping.")
 
         else:
-            reporter.info("No obvious rank deficiency found (all σ > 1e-8 * σ_max).")
+            reporter.info("No obvious rank deficiency found (all sigma > 1e-8 * sigma_max).")
 
     except Exception as e:
         reporter.warning(f"Constraint rank audit failed: {e}")

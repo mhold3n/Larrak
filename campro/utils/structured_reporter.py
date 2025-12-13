@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import TextIO
 
@@ -56,9 +56,7 @@ class StructuredReporter:
 
             # Resolve console minimum level
             if isinstance(console_min_level, str):
-                min_level_int = getattr(
-                    logging, console_min_level.upper(), logging.INFO
-                )
+                min_level_int = getattr(logging, console_min_level.upper(), logging.INFO)
             else:
                 min_level_int = int(console_min_level)
 
@@ -110,9 +108,7 @@ class StructuredReporter:
             state=self._state,
         )
 
-    def _emit(
-        self, level: str, message: str, *, contexts: Iterable[str] | None = None
-    ) -> None:
+    def _emit(self, level: str, message: str, *, contexts: Iterable[str] | None = None) -> None:
         # Determine numeric level for this message
         msg_level_int = getattr(logging, level.upper(), logging.INFO)
 
@@ -140,18 +136,12 @@ class StructuredReporter:
             msg_level_int >= self._state.console_min_level
             and msg_level_int > logging.root.manager.disable
         ):
-            stream = (
-                self._state.stream_err
-                if level in _WARNING_LEVELS
-                else self._state.stream_out
-            )
+            stream = self._state.stream_err if level in _WARNING_LEVELS else self._state.stream_out
             print(formatted, file=stream, flush=self._state.flush)
 
         # 3. Emit to Logger
         if self._state.logger:
-            log_method = getattr(
-                self._state.logger, level.lower(), self._state.logger.info
-            )
+            log_method = getattr(self._state.logger, level.lower(), self._state.logger.info)
             log_method(formatted)
 
     def debug(self, message: str) -> None:
@@ -197,7 +187,7 @@ class StructuredReporter:
 
     def optional_debug_section(
         self, title: str, *, context: str | None = None
-    ) -> Iterator[StructuredReporter]:
+    ) -> AbstractContextManager[StructuredReporter]:
         if not self._state.show_debug:
             return nullcontext(self if context is None else self.child(context))  # type: ignore[return-value]
         return self.section(title, level="DEBUG", context=context)

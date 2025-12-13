@@ -95,9 +95,7 @@ def parse_ipopt_log_text(text: str) -> IpoptLogStats:
 
     stats = IpoptLogStats()
 
-    stats.status = (
-        _RE_STATUS.search(text).group(1).strip() if _RE_STATUS.search(text) else None
-    )
+    stats.status = _RE_STATUS.search(text).group(1).strip() if _RE_STATUS.search(text) else None
     stats.n_iterations = _extract_int(_RE_ITER.search(text))
     stats.cpu_time = _extract_float(_RE_CPU.search(text))
     stats.ls_time = _extract_float(_RE_LS_TIME.search(text))
@@ -119,9 +117,7 @@ def parse_ipopt_log_text(text: str) -> IpoptLogStats:
     # Derive ls_time_ratio if missing and both components present
     if stats.ls_time_ratio is None and stats.cpu_time and stats.ls_time:
         try:
-            stats.ls_time_ratio = (
-                stats.ls_time / stats.cpu_time if stats.cpu_time > 0 else None
-            )
+            stats.ls_time_ratio = stats.ls_time / stats.cpu_time if stats.cpu_time > 0 else None
         except ZeroDivisionError:
             stats.ls_time_ratio = None
 

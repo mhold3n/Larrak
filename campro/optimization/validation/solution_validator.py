@@ -6,7 +6,7 @@ import math
 from typing import Any
 
 from campro.logging import get_logger
-from campro.optimization.framework.solution import Solution
+from campro.optimization.core.solution import Solution
 
 log = get_logger(__name__)
 
@@ -116,7 +116,9 @@ class SolutionValidator:
         return validation_results
 
     def _validate_basic_properties(
-        self, solution: Solution, results: dict[str, Any],
+        self,
+        solution: Solution,
+        results: dict[str, Any],
     ) -> None:
         """Validate basic solution properties."""
         # Check if solution has the expected structure
@@ -149,7 +151,9 @@ class SolutionValidator:
             )
 
     def _validate_convergence(
-        self, solution: Solution, results: dict[str, Any],
+        self,
+        solution: Solution,
+        results: dict[str, Any],
     ) -> None:
         """Validate solution convergence."""
         # Check both property and metadata for success
@@ -191,7 +195,8 @@ class SolutionValidator:
         if objective_value == float("inf"):
             # Fallback to metadata
             objective_value = solution.meta.get("optimization", {}).get(
-                "f_opt", float("inf"),
+                "f_opt",
+                float("inf"),
             )
 
         if math.isnan(objective_value):
@@ -200,7 +205,9 @@ class SolutionValidator:
             results["warnings"].append("Objective function value is infinite")
 
     def _validate_physical_constraints(
-        self, solution: Solution, results: dict[str, Any],
+        self,
+        solution: Solution,
+        results: dict[str, Any],
     ) -> None:
         """Validate physical constraints."""
         if not hasattr(solution, "states"):
@@ -278,7 +285,9 @@ class SolutionValidator:
             log.info("Physical constraints satisfied")
 
     def _validate_scavenging_constraints(
-        self, solution: Solution, results: dict[str, Any],
+        self,
+        solution: Solution,
+        results: dict[str, Any],
     ) -> None:
         """Validate scavenging constraints."""
         # Check if scavenging state is available
@@ -321,7 +330,9 @@ class SolutionValidator:
             log.info("No scavenging data available for validation")
 
     def _validate_performance_constraints(
-        self, solution: Solution, results: dict[str, Any],
+        self,
+        solution: Solution,
+        results: dict[str, Any],
     ) -> None:
         """Validate performance constraints."""
         # Check if performance metrics are available (use property with fallback)
@@ -356,7 +367,9 @@ class SolutionValidator:
             log.info("No performance data available for validation")
 
     def _calculate_validation_metrics(
-        self, solution: Solution, results: dict[str, Any],
+        self,
+        solution: Solution,
+        results: dict[str, Any],
     ) -> None:
         """Calculate validation metrics."""
         metrics = {}
@@ -375,8 +388,7 @@ class SolutionValidator:
             metrics["pressure_min"] = min(pressures)
             metrics["pressure_avg"] = sum(pressures) / len(pressures)
             metrics["pressure_std"] = math.sqrt(
-                sum((p - metrics["pressure_avg"]) ** 2 for p in pressures)
-                / len(pressures),
+                sum((p - metrics["pressure_avg"]) ** 2 for p in pressures) / len(pressures),
             )
 
         # Temperature metrics

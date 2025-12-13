@@ -82,8 +82,10 @@ def build_collocation_nlp(
 
     # "Breathing" Variables (Node-based, driven by Splines)
     # Bounds will be set, but also constrained by splines
-    r_min = 0.005
-    r_max = 0.100
+    bounds_cfg = P.get("bounds", {})
+    r_min = bounds_cfg.get("r_min", 0.005)
+    r_max = bounds_cfg.get("r_max", 0.100)
+
     builder.add_control("r_planet", bounds=(r_min, r_max))
     builder.add_control("R_ring", bounds=(r_min, r_max))
     builder.add_control("r_journal", bounds=(0.0, 0.05))  # Rod offset

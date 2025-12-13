@@ -7,12 +7,13 @@ configurations for different scenarios and use cases.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+import yaml  # type: ignore
 from campro.optimization.framework.optimization_lib import OptimizationConfig
+
 from campro.logging import get_logger
 
 log = get_logger(__name__)
@@ -236,7 +237,7 @@ class ConfigFactory:
         return config
 
     @staticmethod
-    def create_custom_config(**kwargs) -> OptimizationConfig:
+    def create_custom_config(**kwargs: Any) -> OptimizationConfig:
         """Create custom configuration with overrides."""
         config = ConfigFactory.create_default_config()
 
@@ -337,7 +338,7 @@ def get_preset_config(preset_name: str) -> OptimizationConfig:
     Returns:
         OptimizationConfig
     """
-    presets = {
+    presets: dict[str, Callable[[], OptimizationConfig]] = {
         "default": ConfigFactory.create_default_config,
         "high_performance": ConfigFactory.create_high_performance_config,
         "quick_test": ConfigFactory.create_quick_test_config,
@@ -352,7 +353,7 @@ def get_preset_config(preset_name: str) -> OptimizationConfig:
     return presets[preset_name]()
 
 
-def create_engine_config(engine_type: str, **kwargs) -> OptimizationConfig:
+def create_engine_config(engine_type: str, **kwargs: Any) -> OptimizationConfig:
     """
     Create configuration for specific engine types.
 
@@ -433,7 +434,7 @@ def create_engine_config(engine_type: str, **kwargs) -> OptimizationConfig:
     return base_config
 
 
-def create_optimization_scenario(scenario: str, **kwargs) -> OptimizationConfig:
+def create_optimization_scenario(scenario: str, **kwargs: Any) -> OptimizationConfig:
     """
     Create configuration for specific optimization scenarios.
 

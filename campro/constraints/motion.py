@@ -5,10 +5,12 @@ This module defines constraints for general motion law problems,
 including position, velocity, acceleration, and jerk bounds,
 as well as boundary conditions.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import numpy as np
 
@@ -149,7 +151,8 @@ class MotionConstraints(BaseConstraints):
         return is_valid
 
     def check_violations(
-        self, solution: dict[str, np.ndarray],
+        self,
+        solution: dict[str, np.ndarray],
     ) -> list[ConstraintViolation]:
         """
         Check for constraint violations in a motion law solution.
@@ -168,7 +171,7 @@ class MotionConstraints(BaseConstraints):
         self.clear_violations()
 
         # Check state bounds
-        if "position" in solution:
+        if "position" in solution and self.position_bounds is not None:
             violations = self._check_bounds(
                 solution["position"],
                 self.position_bounds,
@@ -177,7 +180,7 @@ class MotionConstraints(BaseConstraints):
             )
             self._violations.extend(violations)
 
-        if "velocity" in solution:
+        if "velocity" in solution and self.velocity_bounds is not None:
             violations = self._check_bounds(
                 solution["velocity"],
                 self.velocity_bounds,
@@ -186,7 +189,7 @@ class MotionConstraints(BaseConstraints):
             )
             self._violations.extend(violations)
 
-        if "acceleration" in solution:
+        if "acceleration" in solution and self.acceleration_bounds is not None:
             violations = self._check_bounds(
                 solution["acceleration"],
                 self.acceleration_bounds,
@@ -195,7 +198,7 @@ class MotionConstraints(BaseConstraints):
             )
             self._violations.extend(violations)
 
-        if "control" in solution:
+        if "control" in solution and self.jerk_bounds is not None:
             violations = self._check_bounds(
                 solution["control"],
                 self.jerk_bounds,
@@ -205,7 +208,7 @@ class MotionConstraints(BaseConstraints):
             self._violations.extend(violations)
 
             # Also check control bounds if different from jerk bounds
-            if self.control_bounds != self.jerk_bounds:
+            if self.control_bounds != self.jerk_bounds and self.control_bounds is not None:
                 violations = self._check_bounds(
                     solution["control"],
                     self.control_bounds,
@@ -287,7 +290,7 @@ class MotionConstraints(BaseConstraints):
         log.info(f"Found {len(self._violations)} constraint violations")
         return self._violations.copy()
 
-    def to_dict(self) -> dict[str, any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert constraints to dictionary format."""
         return {
             "position_bounds": self.position_bounds,
@@ -304,6 +307,6 @@ class MotionConstraints(BaseConstraints):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, any]) -> MotionConstraints:
+    def from_dict(cls, data: dict[str, Any]) -> MotionConstraints:
         """Create constraints from dictionary format."""
         return cls(**data)

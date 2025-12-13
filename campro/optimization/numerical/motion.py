@@ -209,7 +209,7 @@ class MotionOptimizer(BaseOptimizer):
         if time_horizon is not None:
             opt_params["time_horizon"] = time_horizon
 
-        return self.optimize(objective, constraints, **opt_params)
+        return self.optimize(objective, constraints, initial_guess=None, **opt_params)
 
     def solve_minimum_energy(
         self,
@@ -256,7 +256,7 @@ class MotionOptimizer(BaseOptimizer):
             "objective_type": MotionObjectiveType.MINIMUM_ENERGY.value,
         }
 
-        return self.optimize(objective, constraints, **opt_params)
+        return self.optimize(objective, constraints, initial_guess=None, **opt_params)
 
     def solve_minimum_jerk(
         self,
@@ -305,7 +305,7 @@ class MotionOptimizer(BaseOptimizer):
         if time_horizon is not None:
             opt_params["time_horizon"] = time_horizon
 
-        return self.optimize(objective, constraints, **opt_params)
+        return self.optimize(objective, constraints, initial_guess=None, **opt_params)
 
     def solve_custom_objective(
         self,
@@ -315,7 +315,7 @@ class MotionOptimizer(BaseOptimizer):
         constraints: MotionConstraints | CamMotionConstraints,
         distance: float,
         time_horizon: float | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> OptimizationResult:
         """
         Solve motion law problem with custom objective function.
@@ -342,7 +342,7 @@ class MotionOptimizer(BaseOptimizer):
         if time_horizon is not None:
             opt_params["time_horizon"] = time_horizon
 
-        return self.optimize(objective_function, constraints, **opt_params)
+        return self.optimize(objective_function, constraints, initial_guess=None, **opt_params)
 
     def solve_cam_motion_law(
         self,

@@ -109,9 +109,7 @@ def find_coinhsl_directory(project_root: Path | None = None) -> Path | None:
         return None
 
     # Sort by version (most recent first)
-    platform_matches.sort(
-        key=lambda p: _extract_version_from_dirname(p.name), reverse=True
-    )
+    platform_matches.sort(key=lambda p: _extract_version_from_dirname(p.name), reverse=True)
 
     selected = platform_matches[0]
     log.info(f"Found CoinHSL directory: {selected.name}")
@@ -219,7 +217,8 @@ def _check_solver_symbols_in_library(lib_path: Path, solver_name: str) -> bool:
         # MA27 symbols are prefixed with ma27a_, ma27b_, etc.
         result = subprocess.run(
             ["nm", "-gU", str(lib_path)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             timeout=5,
         )
@@ -335,7 +334,7 @@ def detect_available_solvers(
 
         # Get HSL library path for solver configuration
         # Only set hsllib if not already configured via ipopt.opt
-        solver_opts = {}
+        solver_opts: dict[str, Any] = {}
         try:
             # Check if ipopt.opt exists and has hsllib setting
             opt_file = Path("ipopt.opt")
@@ -343,9 +342,7 @@ def detect_available_solvers(
                 content = opt_file.read_text().lower()
                 if "hsllib" in content:
                     # ipopt.opt already configures hsllib; don't override
-                    log.debug(
-                        "ipopt.opt already defines hsllib; skipping programmatic override"
-                    )
+                    log.debug("ipopt.opt already defines hsllib; skipping programmatic override")
                 else:
                     # No hsllib in ipopt.opt; set it programmatically
                     hsl_lib_path = get_hsl_library_path(coinhsl_dir)
@@ -357,9 +354,7 @@ def detect_available_solvers(
                 if hsl_lib_path:
                     solver_opts["ipopt.hsllib"] = str(hsl_lib_path)
         except Exception as e:
-            log.debug(
-                f"Could not check ipopt.opt: {e}; proceeding without hsllib override"
-            )
+            log.debug(f"Could not check ipopt.opt: {e}; proceeding without hsllib override")
 
         # Check which library is actually being used
         hsl_lib_in_use = _get_hsl_library_from_ipopt_opt()
@@ -384,19 +379,12 @@ def detect_available_solvers(
                 # If creation succeeds, the solver symbols are available
                 solver = ca.nlpsol(f"test_{solver_name}", "ipopt", nlp, solver_opts)
                 available_solvers.append(solver_name)
-                log.debug(
-                    f"Solver {solver_name.upper()} is available (created successfully)"
-                )
+                log.debug(f"Solver {solver_name.upper()} is available (created successfully)")
             except Exception as e:
                 error_msg = str(e)
                 # Check if this is a symbol loading failure during solver creation
-                if (
-                    "symbol not found" in error_msg
-                    or "DYNAMIC_LIBRARY_FAILURE" in error_msg
-                ):
-                    log.debug(
-                        f"Solver {solver_name.upper()} symbols not found: {error_msg[:100]}"
-                    )
+                if "symbol not found" in error_msg or "DYNAMIC_LIBRARY_FAILURE" in error_msg:
+                    log.debug(f"Solver {solver_name.upper()} symbols not found: {error_msg[:100]}")
                 else:
                     log.debug(f"Solver {solver_name.upper()} not available: {e}")
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
 import casadi as cs
 
 
-def casadi_involute_xy(rb, phi):
+def casadi_involute_xy(rb: Any, phi: Any) -> tuple[Any, Any]:
     """
     Parametric involute of a circle of radius rb.
     Symbolic CasADi implementation.
@@ -15,7 +16,7 @@ def casadi_involute_xy(rb, phi):
     return x, y
 
 
-def casadi_involute_tangent(rb, phi):
+def casadi_involute_tangent(rb: Any, phi: Any) -> tuple[Any, Any]:
     """
     Derivative of involute curve d/dphi.
     T = [-sin(phi) + sin(phi) + phi*cos(phi), cos(phi) - cos(phi) + phi*sin(phi)] * rb
@@ -28,7 +29,7 @@ def casadi_involute_tangent(rb, phi):
     return tx, ty
 
 
-def casadi_rotate(theta, x, y):
+def casadi_rotate(theta: Any, x: Any, y: Any) -> tuple[Any, Any]:
     """Rotate point (x,y) by theta."""
     c = cs.cos(theta)
     s = cs.sin(theta)
@@ -37,7 +38,9 @@ def casadi_rotate(theta, x, y):
     return nx, ny
 
 
-def casadi_planet_transform(x_ring, y_ring, theta_r, d, theta_p):
+def casadi_planet_transform(
+    x_ring: Any, y_ring: Any, theta_r: Any, d: Any, theta_p: Any
+) -> tuple[Any, Any]:
     """
     Transform a point from Ring Frame to Planet Frame.
 
@@ -80,14 +83,14 @@ def casadi_planet_transform(x_ring, y_ring, theta_r, d, theta_p):
 
 
 def casadi_conjugacy_residual(
-    rb,  # Base radius (can be variable)
-    theta_r,  # Ring angle (driver)
-    d,  # Center distance (function of theta_r, or variable)
-    theta_p,  # Planet angle (function of theta_r, or variable)
-    phi,  # Contact roll angle (variable)
-    d_prime,  # dd/dtheta_r
-    theta_p_prime,  # dtheta_p/dtheta_r
-):
+    rb: Any,  # Base radius (can be variable)
+    theta_r: Any,  # Ring angle (driver)
+    d: Any,  # Center distance (function of theta_r, or variable)
+    theta_p: Any,  # Planet angle (function of theta_r, or variable)
+    phi: Any,  # Contact roll angle (variable)
+    d_prime: Any,  # dd/dtheta_r
+    theta_p_prime: Any,  # dtheta_p/dtheta_r
+) -> Any:
     """
     Compute the conjugacy residual (Mesh Condition).
     Condition: Relative velocity at contact point must be tangent to the surface.
@@ -210,6 +213,6 @@ def casadi_conjugacy_residual(
     return residual
 
 
-def casadi_undercut_check():
+def casadi_undercut_check() -> float:
     """Placeholder for undercut check."""
     return 0.0

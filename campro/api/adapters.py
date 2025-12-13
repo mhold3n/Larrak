@@ -107,9 +107,7 @@ def motion_result_to_solve_report(result: OptimizationResult) -> SolveReport:
     report = SolveReport(
         run_id=RUN_ID,
         status=public_status,
-        kkt={
-            k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals
-        },
+        kkt={k: residuals[k] for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals},
         n_iter=n_iter,
         scaling_stats={},
         residuals=residuals,
@@ -212,9 +210,7 @@ def unified_data_to_solve_report(data: UnifiedOptimizationData) -> SolveReport:
         status="Solve_Success"
         if status_str == "converged"
         else ("Infeasible" if status_str == "infeasible" else "Failed"),
-        kkt={
-            k: residuals.get(k) for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals
-        },
+        kkt={k: residuals[k] for k in ("primal_inf", "dual_inf", "compl_inf") if k in residuals},
         n_iter=n_iter,
         scaling_stats=scaling_stats,
         residuals=residuals,

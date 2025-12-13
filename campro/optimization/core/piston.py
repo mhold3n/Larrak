@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from campro.logging import get_logger
 
@@ -39,29 +40,29 @@ class PistonState:
     """Current state of piston system."""
 
     # Position and velocity
-    x: float  # Piston position [m] (0 = TDC)
-    v: float  # Piston velocity [m/s]
-    a: float  # Piston acceleration [m/s^2]
+    position: float  # Piston position [m] (0 = TDC)
+    velocity: float  # Piston velocity [m/s]
+    acceleration: float  # Piston acceleration [m/s^2]
 
     # Forces
-    F_gas: float  # Gas pressure force [N]
-    F_inertia: float  # Inertia force [N]
-    F_friction: float  # Friction force [N]
-    F_clearance: float  # Clearance penalty force [N]
+    force_gas: float  # Gas pressure force [N]
+    force_inertia: float  # Inertia force [N]
+    force_friction: float  # Friction force [N]
+    force_clearance: float  # Clearance penalty force [N]
 
     # Thermodynamic state
-    p_gas: float  # Gas pressure [Pa]
-    T_gas: float  # Gas temperature [K]
-    V_chamber: float  # Chamber volume [m^3]
+    gas_pressure: float  # Gas pressure [Pa]
+    gas_temperature: float  # Gas temperature [K]
+    chamber_volume: float  # Chamber volume [m^3]
 
 
 def piston_force_balance(
     *,
     geometry: PistonGeometry,
     state: PistonState,
-    p_gas: float,
-    T_gas: float,
-    V_chamber: float,
+    gas_pressure: float,
+    gas_temperature: float,
+    chamber_volume: float,
     omega: float = 0.0,
 ) -> tuple[float, float, float]:
     """Full piston force balance with gas pressure coupling.
@@ -78,11 +79,11 @@ def piston_force_balance(
         Piston geometry and mass properties
     state : PistonState
         Current piston state
-    p_gas : float
+    gas_pressure : float
         Gas pressure [Pa]
-    T_gas : float
+    gas_temperature : float
         Gas temperature [K]
-    V_chamber : float
+    chamber_volume : float
         Chamber volume [m^3]
     omega : float
         Engine angular velocity [rad/s]
@@ -97,37 +98,39 @@ def piston_force_balance(
         Inertia force [N]
     """
     # Gas pressure force
-    A_piston = math.pi * (geometry.bore / 2.0) ** 2
-    F_gas = p_gas * A_piston
+    area_piston = math.pi * (geometry.bore / 2.0) ** 2
+    force_gas = gas_pressure * area_piston
 
     # Inertia forces
     # Piston inertia (simplified - assumes constant acceleration)
-    F_piston_inertia = -geometry.mass * state.a
+    force_piston_inertia = -geometry.mass * state.acceleration
 
     # Connecting rod inertia (simplified)
     # Assumes connecting rod rotates about big end
-    F_rod_inertia = -geometry.rod_mass * state.a * (geometry.rod_cg_offset / geometry.rod_length)
+    force_rod_inertia = (
+        -geometry.rod_mass * state.acceleration * (geometry.rod_cg_offset / geometry.rod_length)
+    )
 
-    F_inertia = F_piston_inertia + F_rod_inertia
+    force_inertia = force_piston_inertia + force_rod_inertia
 
     # Friction forces (computed separately)
-    F_friction = 0.0  # Will be computed by friction model
+    force_friction = 0.0  # Will be computed by friction model
 
     # Clearance penalty force
-    gap = geometry.clearance_nominal - abs(state.x)
-    F_clearance = clearance_penalty(gap=gap, gap_min=geometry.clearance_min, k=1e6)
+    gap = geometry.clearance_nominal - abs(state.position)
+    force_clearance = clearance_penalty(gap=gap, gap_min=geometry.clearance_min, k=1e6)
 
     # Net force
-    F_net = F_gas + F_inertia + F_friction + F_clearance
+    force_net = force_gas + force_inertia + force_friction + force_clearance
 
-    return F_net, F_gas, F_inertia
+    return force_net, force_gas, force_inertia
 
 
 def connecting_rod_kinematics(
     *,
-    x: float,
-    v: float,
-    a: float,
+    position: float,
+    velocity: float,
+    acceleration: float,
     rod_length: float,
     stroke: float,
 ) -> tuple[float, float, float]:
@@ -137,11 +140,11 @@ def connecting_rod_kinematics(
 
     Parameters
     ----------
-    x : float
+    position : float
         Piston position [m]
-    v : float
+    velocity : float
         Piston velocity [m/s]
-    a : float
+    acceleration : float
         Piston acceleration [m/s^2]
     rod_length : float
         Connecting rod length [m]
@@ -162,15 +165,15 @@ def connecting_rod_kinematics(
 
     # Connecting rod angle
     # sin(theta) = (r - x) / rod_length
-    sin_theta = (r - x) / rod_length
+    sin_theta = (r - position) / rod_length
     theta = math.asin(sin_theta)
 
     # Angular velocity
     cos_theta = math.sqrt(1.0 - sin_theta**2)
-    omega = -v / (rod_length * cos_theta)
+    omega = -velocity / (rod_length * cos_theta)
 
     # Angular acceleration
-    alpha = -(a + rod_length * omega**2 * sin_theta) / (rod_length * cos_theta)
+    alpha = -(acceleration + rod_length * omega**2 * sin_theta) / (rod_length * cos_theta)
 
     return theta, omega, alpha
 
@@ -179,7 +182,7 @@ def piston_slap_force(
     *,
     geometry: PistonGeometry,
     state: PistonState,
-    v_lateral: float = 0.0,
+    lateral_velocity: float = 0.0,
 ) -> float:
     """Piston slap force due to secondary motion.
 
@@ -192,7 +195,7 @@ def piston_slap_force(
         Piston geometry
     state : PistonState
         Current piston state
-    v_lateral : float
+    lateral_velocity : float
         Lateral velocity [m/s]
 
     Returns
@@ -203,7 +206,7 @@ def piston_slap_force(
     # Simplified piston slap model
     # Based on clearance and lateral velocity
 
-    gap = geometry.clearance_nominal - abs(state.x)
+    gap = geometry.clearance_nominal - abs(state.position)
     if gap <= 0.0:
         return 0.0
 
@@ -213,17 +216,17 @@ def piston_slap_force(
     # Damping due to lateral motion
     c_damping = 1e3  # Ns/m (simplified)
 
-    F_slap = k_clearance * gap + c_damping * v_lateral
+    force_slap = k_clearance * gap + c_damping * lateral_velocity
 
-    return F_slap
+    return force_slap
 
 
 def piston_ring_dynamics(
     *,
     geometry: PistonGeometry,
     state: PistonState,
-    p_gas: float,
-    p_crankcase: float = 1e5,
+    gas_pressure: float,
+    crankcase_pressure: float = 1e5,
 ) -> tuple[float, float]:
     """Piston ring dynamics and blow-by calculation.
 
@@ -235,9 +238,9 @@ def piston_ring_dynamics(
         Piston geometry
     state : PistonState
         Current piston state
-    p_gas : float
+    gas_pressure : float
         Gas pressure [Pa]
-    p_crankcase : float
+    crankcase_pressure : float
         Crankcase pressure [Pa]
 
     Returns
@@ -249,35 +252,39 @@ def piston_ring_dynamics(
     """
     # Ring friction (simplified)
     # Based on ring tension and gas pressure
-    F_ring_tension = geometry.ring_count * geometry.ring_tension
-    F_ring_pressure = (
-        geometry.ring_count * (p_gas - p_crankcase) * geometry.ring_width * math.pi * geometry.bore
+    force_ring_tension = geometry.ring_count * geometry.ring_tension
+    force_ring_pressure = (
+        geometry.ring_count
+        * (gas_pressure - crankcase_pressure)
+        * geometry.ring_width
+        * math.pi
+        * geometry.bore
     )
 
     # Total ring force
-    F_ring_total = F_ring_tension + F_ring_pressure
+    force_ring_total = force_ring_tension + force_ring_pressure
 
     # Friction coefficient (simplified)
     mu_ring = 0.1  # Typical value for piston rings
 
-    F_ring_friction = mu_ring * F_ring_total * math.copysign(1.0, state.v)
+    force_ring_friction = mu_ring * force_ring_total * math.copysign(1.0, state.velocity)
 
     # Blow-by calculation (simplified)
     # Based on pressure difference and ring gap
-    if p_gas > p_crankcase:
+    if gas_pressure > crankcase_pressure:
         # Gas flows from chamber to crankcase
-        dp = p_gas - p_crankcase
-        A_gap = geometry.ring_count * geometry.ring_gap * geometry.ring_width
+        dp = gas_pressure - crankcase_pressure
+        area_gap = geometry.ring_count * geometry.ring_gap * geometry.ring_width
 
         # Simplified orifice flow
-        Cd = 0.6  # Discharge coefficient
+        coeff_discharge = 0.6  # Discharge coefficient
         rho_gas = 1.0  # kg/m^3 (simplified)
 
-        mdot_blowby = Cd * A_gap * math.sqrt(2.0 * rho_gas * dp)
+        mdot_blowby = coeff_discharge * area_gap * math.sqrt(2.0 * rho_gas * dp)
     else:
         mdot_blowby = 0.0
 
-    return F_ring_friction, mdot_blowby
+    return force_ring_friction, mdot_blowby
 
 
 def clearance_penalty(*, gap: float, gap_min: float, k: float) -> float:
@@ -315,32 +322,32 @@ def piston_energy_balance(
         Energy balance components
     """
     # Kinetic energy
-    E_kinetic = 0.5 * geometry.mass * state.v**2
+    energy_kinetic = 0.5 * geometry.mass * state.velocity**2
 
     # Work done by gas
-    A_piston = math.pi * (geometry.bore / 2.0) ** 2
-    dV = state.v * A_piston * dt
-    W_gas = state.p_gas * dV
+    area_piston = math.pi * (geometry.bore / 2.0) ** 2
+    d_vol = state.velocity * area_piston * dt
+    dist_work_gas = state.gas_pressure * d_vol
 
     # Work done by friction
-    W_friction = state.F_friction * state.v * dt
+    dist_work_friction = state.force_friction * state.velocity * dt
 
     # Work done by clearance penalty
-    W_clearance = state.F_clearance * state.v * dt
+    dist_work_clearance = state.force_clearance * state.velocity * dt
 
     # Energy balance
-    dE_total = W_gas - W_friction - W_clearance
+    d_energy_total = dist_work_gas - dist_work_friction - dist_work_clearance
 
     return {
-        "kinetic_energy": E_kinetic,
-        "work_gas": W_gas,
-        "work_friction": W_friction,
-        "work_clearance": W_clearance,
-        "energy_change": dE_total,
+        "kinetic_energy": energy_kinetic,
+        "work_gas": dist_work_gas,
+        "work_friction": dist_work_friction,
+        "work_clearance": dist_work_clearance,
+        "energy_change": d_energy_total,
     }
 
 
-def get_piston_force_function(method: str = "full") -> Callable:
+def get_piston_force_function(method: str = "full") -> Callable[..., tuple[float, float, float]]:
     """Get piston force function by name.
 
     Parameters
@@ -359,20 +366,20 @@ def get_piston_force_function(method: str = "full") -> Callable:
     if method == "full":
         return piston_force_balance
     if method == "simple":
-        return lambda geometry, state, p_gas, T_gas, V_chamber, omega=0.0: (
-            p_gas * math.pi * (geometry.bore / 2.0) ** 2,  # F_net
-            p_gas * math.pi * (geometry.bore / 2.0) ** 2,  # F_gas
-            0.0,  # F_inertia
+        return lambda geometry, state, gas_pressure, gas_temperature, chamber_volume, omega=0.0: (
+            gas_pressure * math.pi * (geometry.bore / 2.0) ** 2,  # force_net
+            gas_pressure * math.pi * (geometry.bore / 2.0) ** 2,  # force_gas
+            0.0,  # force_inertia
         )
     if method == "clearance":
-        return lambda geometry, state, p_gas, T_gas, V_chamber, omega=0.0: (
-            p_gas * math.pi * (geometry.bore / 2.0) ** 2
+        return lambda geometry, state, gas_pressure, gas_temperature, chamber_volume, omega=0.0: (
+            gas_pressure * math.pi * (geometry.bore / 2.0) ** 2
             + clearance_penalty(
-                gap=geometry.clearance_nominal - abs(state.x),
+                gap=geometry.clearance_nominal - abs(state.position),
                 gap_min=geometry.clearance_min,
                 k=1e6,
             ),
-            p_gas * math.pi * (geometry.bore / 2.0) ** 2,
+            gas_pressure * math.pi * (geometry.bore / 2.0) ** 2,
             0.0,
         )
     raise ValueError(f"Unknown piston force method: {method}")
@@ -382,9 +389,9 @@ def piston_dae_residual(
     *,
     geometry: PistonGeometry,
     state: PistonState,
-    p_gas: float,
-    T_gas: float,
-    V_chamber: float,
+    gas_pressure: float,
+    gas_temperature: float,
+    chamber_volume: float,
     omega: float = 0.0,
     dt: float = 1e-6,
 ) -> dict[str, float]:
@@ -400,11 +407,11 @@ def piston_dae_residual(
         Piston geometry and mass properties
     state : PistonState
         Current piston state
-    p_gas : float
+    gas_pressure : float
         Gas pressure [Pa]
-    T_gas : float
+    gas_temperature : float
         Gas temperature [K]
-    V_chamber : float
+    chamber_volume : float
         Chamber volume [m^3]
     omega : float
         Engine angular velocity [rad/s]
@@ -417,33 +424,34 @@ def piston_dae_residual(
         DAE residual components
     """
     # Force balance residual: F_net = m * a
-    F_net, F_gas, F_inertia = piston_force_balance(
+    # Force balance residual: F_net = m * a
+    force_net, force_gas, force_inertia = piston_force_balance(
         geometry=geometry,
         state=state,
-        p_gas=p_gas,
-        T_gas=T_gas,
-        V_chamber=V_chamber,
+        gas_pressure=gas_pressure,
+        gas_temperature=gas_temperature,
+        chamber_volume=chamber_volume,
         omega=omega,
     )
 
     # Mass-acceleration residual
     m_total = geometry.mass + geometry.rod_mass * (geometry.rod_cg_offset / geometry.rod_length)
-    residual_force = F_net - m_total * state.a
+    residual_force = force_net - m_total * state.acceleration
 
     # Kinematic residual: v = dx/dt
-    residual_kinematic = state.v - state.x / dt  # Simplified for now
+    residual_kinematic = state.velocity - state.position / dt  # Simplified for now
 
     # Energy residual: dE/dt = F * v
-    E_kinetic = 0.5 * m_total * state.v**2
-    residual_energy = F_net * state.v - E_kinetic / dt
+    energy_kinetic = 0.5 * m_total * state.velocity**2
+    residual_energy = force_net * state.velocity - energy_kinetic / dt
 
     return {
         "force_residual": residual_force,
         "kinematic_residual": residual_kinematic,
         "energy_residual": residual_energy,
-        "F_net": F_net,
-        "F_gas": F_gas,
-        "F_inertia": F_inertia,
+        "F_net": force_net,
+        "F_gas": force_gas,
+        "F_inertia": force_inertia,
     }
 
 
@@ -481,39 +489,39 @@ def gas_structure_coupling(
 
     # Extract gas state
     p_gas = gas_state.get("p", 1e5)
-    T_gas = gas_state.get("T", 300.0)
+    temp_gas = gas_state.get("T", 300.0)
     rho_gas = gas_state.get("rho", 1.0)
 
     # Piston area
-    A_piston = math.pi * (geometry.bore / 2.0) ** 2
+    area_piston = math.pi * (geometry.bore / 2.0) ** 2
 
     # Volume change rate
-    dV_dt = A_piston * state.v
+    d_vol_dt = area_piston * state.velocity
 
     # Pressure force on piston
-    F_pressure = p_gas * A_piston
+    force_pressure = p_gas * area_piston
 
     # Work rate (power)
-    P_work = F_pressure * state.v
+    power_work = force_pressure * state.velocity
 
     # Mass flow rate due to piston motion (simplified)
     # This would be more complex in practice
-    mdot_piston = rho_gas * dV_dt
+    mdot_piston = rho_gas * d_vol_dt
 
     # Heat transfer rate (simplified)
     # Based on piston surface area and temperature difference
-    A_surface = math.pi * geometry.bore * geometry.stroke
+    area_surface = math.pi * geometry.bore * geometry.stroke
     h_conv = 100.0  # W/(m^2·K) - simplified
-    T_wall = 400.0  # K - simplified
-    Q_heat = h_conv * A_surface * (T_gas - T_wall)
+    temp_wall = 400.0  # K - simplified
+    flux_heat = h_conv * area_surface * (temp_gas - temp_wall)
 
     return {
-        "dV_dt": dV_dt,
-        "F_pressure": F_pressure,
-        "P_work": P_work,
+        "dV_dt": d_vol_dt,
+        "F_pressure": force_pressure,
+        "P_work": power_work,
         "mdot_piston": mdot_piston,
-        "Q_heat": Q_heat,
-        "A_piston": A_piston,
+        "Q_heat": flux_heat,
+        "A_piston": area_piston,
     }
 
 
@@ -542,14 +550,14 @@ def piston_mass_inertia_calculation(
 
     # Piston moment of inertia (simplified - assumes solid cylinder)
     r_piston = geometry.bore / 2.0
-    I_piston = 0.5 * geometry.mass * r_piston**2
+    inertia_piston = 0.5 * geometry.mass * r_piston**2
 
     # Connecting rod moment of inertia (simplified)
     # Assumes uniform rod
-    I_rod = (1.0 / 12.0) * geometry.rod_mass * geometry.rod_length**2
+    inertia_rod = (1.0 / 12.0) * geometry.rod_mass * geometry.rod_length**2
 
     # Total moment of inertia
-    I_total = I_piston + I_rod
+    inertia_total = inertia_piston + inertia_rod
 
     # Effective mass for linear motion
     m_effective = geometry.mass + geometry.rod_mass * (geometry.rod_cg_offset / geometry.rod_length)
@@ -557,9 +565,9 @@ def piston_mass_inertia_calculation(
     return {
         "m_total": m_total,
         "m_effective": m_effective,
-        "I_piston": I_piston,
-        "I_rod": I_rod,
-        "I_total": I_total,
+        "I_piston": inertia_piston,
+        "I_rod": inertia_rod,
+        "I_total": inertia_total,
     }
 
 
@@ -584,13 +592,13 @@ def piston_clearance_validation(
         Clearance validation and forces
     """
     # Current clearance
-    clearance_current = geometry.clearance_nominal - abs(state.x)
+    clearance_current = geometry.clearance_nominal - abs(state.position)
 
     # Clearance violation
     clearance_violation = max(0.0, geometry.clearance_min - clearance_current)
 
     # Clearance penalty force
-    F_clearance = clearance_penalty(
+    force_clearance = clearance_penalty(
         gap=clearance_current,
         gap_min=geometry.clearance_min,
         k=1e6,
@@ -605,7 +613,7 @@ def piston_clearance_validation(
     return {
         "clearance_current": clearance_current,
         "clearance_violation": clearance_violation,
-        "F_clearance": F_clearance,
+        "F_clearance": force_clearance,
         "safety_factor": safety_factor,
         "clearance_ok": clearance_ok,
     }
