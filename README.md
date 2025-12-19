@@ -1,479 +1,141 @@
-# Larrak: Optimal Motion Law Problems with CasADi and Ipopt
+# Larrak: Breathing Gear Engine Design Framework
+## User Manual & Workflow Guide
 
-A comprehensive Python framework for solving optimal motion law problems using direct collocation methods with CasADi and Ipopt.
+Larrak is a specialized engineering framework for designing "Breathing Gear" engines—internal combustion engines where the piston motion is governed by a non-circular ring/planet gear set with a variable center distance. This allows for completely custom, non-sinusoidal piston trajectories optimized for thermodynamic efficiency.
 
-[![CI](https://github.com/yourusername/larrak/workflows/CI/badge.svg)](https://github.com/yourusername/larrak/actions)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+This manual outlines the 5-Phase Workflow to design, optimize, and validate these engines.
 
-**CI/CD**: This repository includes GitHub Actions workflows that automatically validate the environment setup, run tests, and perform code quality checks on every push and pull request.
+---
 
-## Prerequisites
+## 🚀 Quick Start
 
-- **Python 3.9+**: Required for all installations
-- **Conda or Miniconda**: Recommended for best compatibility with ipopt solver
-- **Git**: For cloning the repository
-
-## Quick Installation
-
-The fastest way to get started:
+### 1. Installation
+The project relies on a Conda environment with CasADi and IPOPT.
 
 ```bash
-# Clone and setup
-git clone <repository-url>
-cd Larrak
-python scripts/setup_environment.py
-conda activate larrak
-
-# Verify installation
-python scripts/check_environment.py
-```
-
-**Note**: Large dependency folders (`casadi/`, `coinhsl-archive-2023.11.17/`, `ThirdParty-HSL/`) are excluded from GitHub clones. The setup script will install CasADi and IPOPT via conda. HSL solvers (MA27/MA57) are supported; non-HSL fallbacks are not permitted in this project.
-
-## Modern Usage
-
-### CLI
-
-```bash
-# Solve a motion law from a YAML/JSON spec
-larrak solve --spec specs/example_min_jerk.yml --diagnose
-```
-
-This writes `runs/{RUN_ID}-report.json` and an Ipopt log to `runs/{RUN_ID}-ipopt.log`.
-
-### Python API
-
-```python
-from campro.api import ProblemSpec, solve_motion
-
-spec = ProblemSpec(
-    stroke=20.0,
-    cycle_time=1.0,
-    phases={"upstroke_percent": 60.0, "zero_accel_percent": 0.0},
-    bounds={"max_velocity": 100.0, "max_acceleration": 1000.0, "max_jerk": 10000.0},
-    objective="minimum_jerk",
-)
-report = solve_motion(spec)
-print(report.status, report.kkt)
-```
-
-> Legacy examples below (CamPro_OptimalMotion, older solver APIs) are kept for reference and will be updated as the façade API expands.
-
-## Features
-
-- **Multiple Motion Law Types**: Minimum time, energy, jerk, and custom objectives
-- **True Collocation Methods**: Legendre, Radau, and Lobatto collocation
-- **Flexible Constraints**: Position, velocity, acceleration, and jerk bounds
-- **Boundary Conditions**: Full control over initial and final states
-- **High Performance**: Leverages CasADi's symbolic computation and Ipopt's optimization
-- **Comprehensive Testing**: Unit tests, integration tests, and property-based testing
-- **Visualization**: Built-in plotting capabilities for solution analysis
-- **Automated Setup**: One-command environment setup with dependency validation
-
-### Basic Usage - Cam Motion Laws
-
-```python
-from CamPro_OptimalMotion import solve_cam_motion_law
-
-# Solve a cam follower motion law problem
-solution = solve_cam_motion_law(
-    stroke=20.0,                    # 20mm follower stroke
-    upstroke_duration_percent=60.0, # 60% of cycle for upstroke
-    motion_type="minimum_jerk",     # Smooth motion
-    cycle_time=1.0                  # 1 second cycle (360°)
-)
-
-# Access the solution
-cam_angle = solution['cam_angle']    # 0 to 360 degrees
-position = solution['position']      # Follower position
-velocity = solution['velocity']      # Follower velocity
-acceleration = solution['acceleration']  # Follower acceleration
-jerk = solution['control']           # Follower jerk
-```
-
-### Advanced Cam Usage
-
-```python
-from CamPro_OptimalMotion import solve_cam_motion_law
-
-# Cam with constraints and zero acceleration phase
-solution = solve_cam_motion_law(
-    stroke=25.0,                    # 25mm stroke
-    upstroke_duration_percent=50.0, # 50% of cycle for upstroke
-    motion_type="minimum_jerk",     # Smooth motion
-    cycle_time=0.5,                 # 0.5 second cycle
-    max_velocity=100.0,             # 100 mm/s max velocity
-    max_acceleration=500.0,         # 500 mm/s² max acceleration
-    zero_accel_duration_percent=10.0, # 10% of cycle with zero acceleration
-    dwell_at_tdc=True,              # Dwell at TDC (0°)
-    dwell_at_bdc=False              # No dwell at BDC (180°)
-)
-```
-
-### Advanced Usage
-
-```python
-from CamPro_OptimalMotion import OptimalMotionSolver, MotionConstraints, CollocationSettings
-
-# Configure solver with high accuracy
-settings = CollocationSettings(
-    degree=5,           # Higher collocation degree
-    method="radau",     # Radau collocation
-    max_iterations=1000,
-    tolerance=1e-8
-)
-
-solver = OptimalMotionSolver(settings)
-
-# Define detailed constraints
-constraints = MotionConstraints(
-    initial_position=0.0,
-    initial_velocity=0.0,
-    final_position=20.0,
-    final_velocity=0.0,
-    velocity_bounds=(-8.0, 8.0),
-    acceleration_bounds=(-3.0, 3.0),
-    jerk_bounds=(-2.0, 2.0)
-)
-
-# Solve minimum energy problem
-solution = solver.solve_minimum_energy(
-    constraints=constraints,
-    distance=20.0,
-    time_horizon=8.0,
-    max_velocity=8.0,
-    max_acceleration=3.0
-)
-
-# Visualize results
-solver.plot_solution(solution, save_path="motion_law.png")
-```
-
-## Cam Motion Law Types
-
-### 1. Minimum Jerk Motion (Default)
-Minimize jerk for smooth, comfortable cam follower motion.
-
-```python
-solution = solve_cam_motion_law(
-    stroke=20.0,
-    upstroke_duration_percent=60.0,
-    motion_type="minimum_jerk"
-)
-```
-
-### 2. Minimum Energy Motion
-Minimize energy consumption for cam follower motion.
-
-```python
-solution = solve_cam_motion_law(
-    stroke=20.0,
-    upstroke_duration_percent=60.0,
-    motion_type="minimum_energy"
-)
-```
-
-### 3. Minimum Time Motion
-Minimize time to complete cam follower motion.
-
-```python
-solution = solve_cam_motion_law(
-    stroke=20.0,
-    upstroke_duration_percent=60.0,
-    motion_type="minimum_time"
-)
-```
-
-## Cam Constraint Parameters
-
-### Core Parameters
-- **`stroke`**: Total follower stroke (required)
-- **`upstroke_duration_percent`**: Percentage of cycle for upstroke (0-100)
-- **`zero_accel_duration_percent`**: Percentage of cycle with zero acceleration (optional)
-
-### Optional Constraints
-- **`max_velocity`**: Maximum allowed velocity
-- **`max_acceleration`**: Maximum allowed acceleration  
-- **`max_jerk`**: Maximum allowed jerk
-
-### Boundary Conditions
-- **`dwell_at_tdc`**: Whether to dwell (zero velocity) at TDC (0°)
-- **`dwell_at_bdc`**: Whether to dwell (zero velocity) at BDC (180°)
-
-## General Motion Law Types (Advanced)
-
-### 1. Minimum Time Motion
-Minimize the time to complete a motion while satisfying all constraints.
-
-```python
-solution = solve_minimum_time_motion(
-    distance=10.0,
-    max_velocity=5.0,
-    max_acceleration=2.0,
-    max_jerk=1.0
-)
-```
-
-### 2. Minimum Energy Motion
-Minimize energy consumption for a fixed time horizon.
-
-```python
-solution = solve_minimum_energy_motion(
-    distance=10.0,
-    time_horizon=5.0,
-    max_velocity=5.0,
-    max_acceleration=2.0
-)
-```
-
-### 3. Minimum Jerk Motion
-Minimize jerk for smooth, comfortable motion.
-
-```python
-solution = solve_minimum_jerk_motion(
-    distance=10.0,
-    time_horizon=5.0,
-    max_velocity=5.0,
-    max_acceleration=2.0
-)
-```
-
-### 4. Custom Objectives
-Define your own objective functions.
-
-```python
-import casadi as ca
-
-def custom_objective(t, x, v, a, u):
-    """Minimize energy + smoothness penalty."""
-    return ca.integral(u**2 + 0.1*v**2)
-
-solution = solver.solve_custom_objective(
-    objective_function=custom_objective,
-    constraints=constraints,
-    distance=20.0,
-    time_horizon=8.0
-)
-```
-
-## Collocation Methods
-
-The framework supports three collocation methods:
-
-- **Legendre**: Legendre-Gauss-Radau collocation (default)
-- **Radau**: Radau collocation
-- **Lobatto**: Lobatto collocation
-
-```python
-settings = CollocationSettings(
-    degree=3,           # Collocation degree (1-7)
-    method="radau",     # Collocation method
-    max_iterations=1000,
-    tolerance=1e-6
-)
-```
-
-## Testing
-
-Run the comprehensive test suite:
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=CamPro_OptimalMotion --cov=campro
-
-# Run specific test file
-pytest tests/test_optimal_motion.py -v
-```
-
-## Code Quality
-
-Ensure code quality with the provided tools:
-
-```bash
-# Format and lint code
-ruff --fix
-
-# Type checking
-mypy --strict
-
-# Run all quality checks
-pytest -q
-```
-
-## Documentation
-
-- [Installation Guide](docs/installation_guide.md): Comprehensive installation instructions
-- [Design Document](docs/optimal_motion_design.md): Detailed technical documentation
-- [Project Status](docs/project_status.md): Current implementation status and API reference
-
-## Installation Methods
-
-### Method 1: Conda (Recommended)
-
-Conda provides the most reliable installation with ipopt solver support:
-
-```bash
-# Create environment from environment.yml
+# 1. Create Environment
 conda env create -f environment.yml
+
+# 2. Activate
 conda activate larrak
 
-# Verify installation
+# 3. Verify Setup
 python scripts/check_environment.py
 ```
 
-### Method 2: Automated Setup
+### 2. The Dashboard
+All key results are centralized in the `dashboard/` directory.
+- **`dashboard/breathing_gear_sets.html`**: Interactive visualization of optimized gear profiles.
+- **`dashboard/phase1/`**: Results from large-scale thermodynamic sweeps.
 
-Use the provided setup script for automated installation:
+---
 
-```bash
-# Run setup script (detects conda/mamba automatically)
-python scripts/setup_environment.py
+## 📚 The 5-Phase Workflow
 
-# Activate environment
-conda activate larrak
-```
+The design process moves from abstract thermodynamics to concrete mechanical geometry.
 
-### Method 3: Pip (Alternative)
+### Phase 1: Physical DOE (Thermodynamic Scaling)
+**Goal:** Find the optimal thermodynamic operating points (RPM, Boost, Fuel) assuming an "Ideal" custom piston motion.
+**Script:** `tests/goldens/phase1/generate_doe.py`
 
-Pip installation may not include ipopt solver support:
+*   **How it works:**  Runs a 0D Thermodynamic Optimization (NLP) to find the *best possible* piston trajectory for given inputs, ignoring mechanical constraints initially.
+*   **How to Run:**
+    ```bash
+    python tests/goldens/phase1/generate_doe.py
+    ```
+*   **Output:** `dashboard/phase1/phase1_physical_results.csv` (13,000+ points).
+*   **Tuning Inputs:**
+    Open `tests/goldens/phase1/generate_doe.py` and modify `main()`:
+    ```python
+    # Example: Change RPM range
+    rpm_levels = np.linspace(1000, 8000, 36) 
+    # Example: Switch from Full Factorial to Smoke Test
+    doe_list = doe_list[:10] 
+    ```
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+### Phase 2: Kinematic Interpreter
+**Goal:** Translate the abstract "Ideal Piston Motion" from Phase 1 into a specific "Gear Ratio Function".
+**Key Concept:** The "Breathing Gear" mechanism modulates the gear ratio $i(\theta)$ and center distance $C(\theta)$ to achieve the target lift.
+*   *Note: This phase is often integrated directly into Phase 3's optimization loop.*
 
-# Verify installation
-python scripts/check_environment.py
-```
+### Phase 3: Conjugate Gear Design
+**Goal:** Generate physical Ring and Planet gear profiles that produce the target motion *without* interference, slip, or gaps.
+**Script:** `scripts/run_conjugate_optimization.py`
 
-## Verifying Installation
+*   **How it works:** Uses a specialized NLP to optimize the pitch curves of the Ring and Planet simultaneously. Enforces:
+    1.  **Conjugacy:** The gears mesh perfectly.
+    2.  **2:1 Topology:** Standard engine cycle map.
+    3.  **No Interference:** Profiles do not self-intersect.
+    4.  **Symmetry:** Ensures balanced forces.
+*   **How to Run:**
+    ```bash
+    python scripts/run_conjugate_optimization.py
+    ```
+*   **Output:** 
+    - `dashboard/breathing_gear_sets.html`: The definitive visual check. Look for "Pitch Curves" that are smooth and closed.
 
-After installation, verify everything works:
+### Phase 4: Valve Strategy
+**Goal:** Optimize intake/exhaust valve timings for the new custom piston motion.
+**Script:** `scripts/run_phase4_cycle.py`
 
-```bash
-# Check environment status
-python scripts/check_environment.py
+*   **How it works:** Re-runs the thermodynamic simulation with the *actual* kinematic constraints derived from Phase 3, optimizing valve opening/closing angles.
 
-# Test basic functionality
-python -c "import campro; print('✓ Installation successful!')"
+### Phase 5: Surrogate Scaling (The "Mega-Run")
+**Goal:** Run massive design sweeps (10k+ points) in minutes instead of days.
+**Method:** "Calibrate-Then-Optimize".
+1.  **Calibrate:** Run high-fidelity simulations on a small sample (e.g., 25 points).
+    - Script: `scripts/run_phase5_campaign.py`
+    - Output: `thermo/calibration/friction_map.v1.json`, `combustion_map.v1.json`.
+2.  **Optimize:** Use these "Surrogate Maps" to instantly predict engine performance across the full design space.
+    - Script: Uses `tests/goldens/phase1/generate_doe.py` (which automatically loads the maps).
 
-# Run GUI
-python cam_motion_gui.py
-```
+---
 
-## Dependencies
+## 🛠️ Tuning & Modification Guide
 
-- **CasADi** (>=3.6.0): Symbolic computation and optimal control
-- **Ipopt**: Interior-point optimizer (included with conda installation)
-- **NumPy** (>=1.24.0): Numerical computations
-- **SciPy** (>=1.10.0): Additional numerical tools
-- **Matplotlib** (>=3.7.0): Plotting and visualization
+### "I want to change the engine geometry (Bore/Stroke)"
+Edit: `Simulations/common/io_schema.py` or the specific config dictionary in the running script (e.g., inside `generate_doe.py` -> `phase1_test` -> `GeometryConfig`).
 
-## Development Dependencies
-
-- **pytest** (>=7.4.0): Testing framework
-- **mypy** (>=1.5.0): Static type checking
-- **ruff** (>=0.0.280): Code formatting and linting
-- **hypothesis** (>=6.82.0): Property-based testing
-
-## Examples
-
-### Example 1: Basic Cam Motion
-
+### "I want to change the optimization target (e.g., Maximize Power instead of Efficiency)"
+Edit: `thermo/nlp.py`.
+Likely in `_calculate_objectives`. You will see weights for `work`, `smoothness`, etc.
 ```python
-from CamPro_OptimalMotion import solve_cam_motion_law
-
-# Create smooth cam follower motion
-solution = solve_cam_motion_law(
-    stroke=20.0,                    # 20mm stroke
-    upstroke_duration_percent=60.0, # 60% of cycle for upstroke
-    motion_type="minimum_jerk",     # Smooth motion
-    cycle_time=1.0                  # 1 second cycle
-)
-
-# The resulting motion will be very smooth with minimal jerk
+# Example: Increase weight on Work
+J = -10.0 * work_nondim + 1e-4 * jerk_penalty
 ```
 
-### Example 2: High-Speed Cam with Constraints
-
+### "I want to change the number of samples in the DOE"
+Edit: `tests/goldens/phase1/generate_doe.py`.
+Modify the `np.linspace` calls in `main()`:
 ```python
-from CamPro_OptimalMotion import solve_cam_motion_law
-
-# High-speed cam with velocity and acceleration limits
-solution = solve_cam_motion_law(
-    stroke=15.0,                    # 15mm stroke
-    upstroke_duration_percent=40.0, # 40% of cycle for upstroke
-    motion_type="minimum_time",     # Minimize time
-    cycle_time=0.2,                 # 0.2 second cycle (fast)
-    max_velocity=200.0,             # 200 mm/s max velocity
-    max_acceleration=1000.0,        # 1000 mm/s² max acceleration
-    dwell_at_tdc=True,              # Dwell at TDC
-    dwell_at_bdc=False              # No dwell at BDC
-)
+# Finer grid
+rpm_levels = np.linspace(1000, 6000, 51) # 50 steps
 ```
 
-### Example 3: Cam with Zero Acceleration Phase
+### "The gears look weird / self-intersect"
+This typically happens if the target motion is too aggressive (infinite jerk).
+1.  Go to `thermo/nlp.py` and increase `jerk` penalty weight.
+2.  Re-run Phase 1 to get a smoother target.
+3.  Re-run Phase 3 (`run_conjugate_optimization.py`) to fit the new curve.
 
-```python
-from CamPro_OptimalMotion import solve_cam_motion_law
+---
 
-# Cam with constant velocity phase during expansion
-solution = solve_cam_motion_law(
-    stroke=25.0,                    # 25mm stroke
-    upstroke_duration_percent=70.0, # 70% of cycle for upstroke
-    motion_type="minimum_energy",   # Minimize energy
-    cycle_time=1.5,                 # 1.5 second cycle
-    zero_accel_duration_percent=20.0, # 20% of cycle with zero acceleration
-    max_velocity=50.0,              # 50 mm/s max velocity
-    dwell_at_tdc=True,              # Dwell at TDC
-    dwell_at_bdc=True               # Dwell at BDC
-)
+## 📂 File Stack Overview
+
 ```
-
-### Example 4: General Motion Law (Advanced)
-
-```python
-from CamPro_OptimalMotion import solve_minimum_jerk_motion
-
-# General motion law for non-cam applications
-solution = solve_minimum_jerk_motion(
-    distance=15.0,      # 15 meters
-    time_horizon=6.0,   # 6 seconds
-    max_velocity=4.0,   # 4 m/s
-    max_acceleration=2.0 # 2 m/s²
-)
+Larrak/
+├── dashboard/                  # <--- START HERE. All Visualizations.
+│   ├── phase1/                 # Large scale plots
+│   └── breathing_gear_sets.html
+├── scripts/
+│   ├── run_conjugate_optimization.py  # Phase 3 (Gear Gen)
+│   ├── run_phase4_cycle.py            # Phase 4 (Valves)
+│   └── run_phase5_campaign.py         # Phase 5 (Surrogate Training)
+├── tests/goldens/phase1/
+│   └── generate_doe.py         # The Main Execution Script for Scaling
+├── thermo/
+│   ├── nlp.py                  # The Core Physics Engine (CasADi)
+│   └── calibration/            # Where Phase 5 saves its AI models
+└── Simulations/
+    └── common/                 # Shared schemas (Geometry, OperatingPoint)
 ```
-
-## Performance
-
-Typical performance on modern hardware:
-
-- **Simple problems** (< 100 collocation points): 0.1-1.0 seconds
-- **Medium problems** (100-1000 points): 0.2-3.0 seconds
-- **Complex problems** (> 1000 points): 1.0-10.0 seconds
-
-Memory usage scales linearly with problem size, typically 100-500 MB for most problems.
-
-## Contributing
-
-1. Follow the project's cursor rules for code organization
-2. Write tests for all new functionality
-3. Ensure all tests pass before submitting
-4. Update documentation for new features
-5. Use type hints and follow PEP 8 style
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Acknowledgments
-
-- [CasADi](https://web.casadi.org/) for symbolic computation and optimal control
-- [Ipopt](https://coin-or.github.io/Ipopt/) for interior-point optimization
-- The optimal control and robotics communities for inspiration and algorithms
-#   W o r k f l o w   t e s t   t r i g g e r 
- 
- 

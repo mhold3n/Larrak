@@ -1,0 +1,99 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Provenance: final_gear_design</title>
+        <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background: #f4f6f8; color: #172b4d; }
+    .container { max_width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+    h1 { border-bottom: 2px solid #ebecf0; padding-bottom: 10px; margin-top: 0; }
+    h2 { color: #42526e; margin-top: 30px; font-size: 1.2em; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }
+    .badge-success { background: #e3fcef; color: #006644; }
+    .badge-running { background: #deebff; color: #0747a6; }
+    .badge-failure { background: #ffebe6; color: #bf2600; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ebecf0; }
+    th { color: #5e6c84; font-size: 0.9em; }
+    .diff-missing { color: #bf2600; background: #ffebe6; }
+    .diff-extra { color: #006644; background: #e3fcef; }
+    .section { margin-bottom: 30px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    </style>
+    </head>
+    <body>
+        <div class="container">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>Module: final_gear_design</h1>
+                <span class="badge badge-success">SUCCESS</span>
+            </div>
+            
+            <p><strong>Run ID:</strong> e2ff8a21-39ad-44f9-b0d5-951566fd808b</p>
+            <p><strong>Time:</strong> 2025-12-15 18:57:39.800689 &rarr; 2025-12-15 18:57:40.010072</p>
+            
+            <div class="grid">
+                <div class="section">
+                    <h2>Inputs</h2>
+                    <table>
+                        <thead><tr><th>Path</th><th>Status</th></tr></thead>
+                        <tbody>
+    <tr class=''><td>dashboard\phase5\final_motion_profile.csv</td><td>✓</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="section">
+                    <h2>Outputs</h2>
+                    <table>
+                        <thead><tr><th>Path</th><th>Status</th></tr></thead>
+                        <tbody>
+    <tr class='diff-missing'><td>dashboard\final_gear_set.html</td><td>MISSING</td></tr><tr class=''><td>dashboard\final_gear_data.csv</td><td>✓</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Event Log</h2>
+                 <table>
+                    <thead><tr><th>Time</th><th>Type</th><th>Details</th></tr></thead>
+                    <tbody>
+    <tr><td>2025-12-15 18:57:39.804972</td><td>RunStartEvent</td><td><pre>{
+  "module_id": "final_gear_design",
+  "args": []
+}</pre></td></tr><tr><td>2025-12-15 18:57:39.813545</td><td>FileEvent</td><td><pre>{
+  "path": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\dashboard\\phase5\\final_motion_profile.csv",
+  "op": "read",
+  "size": 23869,
+  "file_hash": null
+}</pre></td></tr><tr><td>2025-12-15 18:57:39.821200</td><td>FileEvent</td><td><pre>{
+  "path": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\dashboard\\phase5\\final_motion_profile.csv",
+  "op": "read",
+  "size": 23869,
+  "file_hash": null
+}</pre></td></tr><tr><td>2025-12-15 18:57:39.829444</td><td>FileEvent</td><td><pre>{
+  "path": "C:\\Users\\maxed\\miniconda3\\Lib\\site-packages\\plotly\\validators\\_validators.json",
+  "op": "read",
+  "size": 3777489,
+  "file_hash": null
+}</pre></td></tr><tr><td>2025-12-15 18:57:39.965947</td><td>FileEvent</td><td><pre>{
+  "path": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\dashboard\\final_gear_data.csv",
+  "op": "write",
+  "size": 0,
+  "file_hash": null
+}</pre></td></tr><tr><td>2025-12-15 18:57:39.978237</td><td>FileEvent</td><td><pre>{
+  "path": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\dashboard\\final_gear_data.csv",
+  "op": "write",
+  "size": 31277,
+  "file_hash": null
+}</pre></td></tr><tr><td>2025-12-15 18:57:40.004318</td><td>RunEndEvent</td><td><pre>{
+  "status": "SUCCESS",
+  "duration_ms": 0.0
+}</pre></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </body>
+    </html>
+    

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Larrak Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="brand">
+                <div style="width:24px; height:24px; background:white; border-radius:4px;"></div>
+                Larrak
+            </div>
+            
+            <div class="nav-links">
+                <div class="nav-item active" data-tab="overview">
+                    <span>Overview</span>
+                </div>
+                <!-- Runs & Control -->
+                <div class="nav-item" data-tab="runs">
+                    <span>Run Control</span>
+                </div>
+                <!-- Logic Views -->
+                <div class="nav-item" data-tab="graph">
+                    <span>Graph / Map</span>
+                </div>
+                <!-- Artifact Indexes -->
+                <div class="nav-item" data-tab="dashboards">
+                    <span>Dashboards</span>
+                </div>
+                <div class="nav-item" data-tab="reports">
+                    <span>Reports</span>
+                </div>
+            </div>
+            
+            <div style="flex:1"></div>
+            
+            <div class="status-pill">
+                <div class="status-dot"></div>
+                <span id="system-status">Idle</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="top-bar">
+                <div class="page-title" id="page-title">Overview</div>
+                <div class="actions">
+                    <button id="refresh-btn" style="background:none; border:none; color:var(--text-secondary); cursor:pointer;">Refresh</button>
+                </div>
+            </div>
+
+            <div class="content-area">
+                <!-- Tab: Overview -->
+                <div id="tab-overview" class="tab-content">
+                    <h2>Recent Activity</h2>
+                    <div id="recent-grid" class="grid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                
+                <!-- Tab: Runs -->
+                <div id="tab-runs" class="tab-content hidden">
+                    <h2>Run Control</h2>
+                    <p>Parameter configuration coming in Phase 2.</p>
+                </div>
+                
+                <!-- Tab: Graph -->
+                <div id="tab-graph" class="tab-content hidden" style="height:100%">
+                    <div id="graph-container" style="width:100%; height:100%; background:#161b22; border-radius:8px;"></div>
+                </div>
+
+                <!-- Tab: Dashboards (The List) -->
+                <div id="tab-dashboards" class="tab-content hidden">
+                    <h2>Module Dashboards</h2>
+                    <div id="dashboard-grid" class="grid"></div>
+                </div>
+
+                 <!-- Tab: Reports (The List) -->
+                 <div id="tab-reports" class="tab-content hidden">
+                    <h2>Generated Reports</h2>
+                    <div id="report-grid" class="grid"></div>
+                </div>
+
+                <!-- Tab: Viewer (Hidden by default, used for iframe) -->
+                <div id="tab-viewer" class="tab-content hidden" style="height:100%">
+                    <iframe id="content-frame" class="iframe-container" src=""></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/graph.js?v=4"></script>
+    <script src="/static/js/main.js?v=4"></script>
+</body>
+</html>

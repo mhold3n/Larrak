@@ -1,0 +1,15 @@
+{
+  "run_id": "phase5_train_011",
+  "success": true,
+  "T_crown_max": null,
+  "T_liner_max": null,
+  "max_von_mises": null,
+  "friction_fmep": null,
+  "calibration_params": {
+    "wiebe_m": 2.066164785450584,
+    "wiebe_a": 5.0,
+    "jet_intensity": 1.9379822190028702
+  },
+  "fit_residual": 0.0,
+  "computation_time": 0.0
+}

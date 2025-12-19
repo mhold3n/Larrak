@@ -1,0 +1,33 @@
+# Material Properties Database
+# Single Source of Truth for Larrak Simulations
+
+materials:
+  steel_4140:
+    density: 7850.0       # kg/m3
+    thermal_conductivity: 42.0 # W/m-K
+    specific_heat: 470.0  # J/kg-K
+    poissons_ratio: 0.29
+    youngs_modulus: 205e9 # Pa
+
+  aluminum_6061:
+    density: 2700.0
+    thermal_conductivity: 167.0
+    specific_heat: 896.0
+    poissons_ratio: 0.33
+    youngs_modulus: 69e9
+
+  cast_iron_grey:
+    density: 7200.0
+    thermal_conductivity: 52.0
+    specific_heat: 460.0
+    poissons_ratio: 0.26
+    youngs_modulus: 110e9
+
+  air_standard:
+    gas_constant: 287.0   # J/kg-K
+    gamma: 1.35           # Average over cycle
+    prandtl: 0.7
+
+  fuel_gasoline:
+    lhv: 44.0e6           # J/kg
+    density_liquid: 740.0 # kg/m3

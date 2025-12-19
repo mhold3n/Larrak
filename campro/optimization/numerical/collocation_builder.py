@@ -178,13 +178,9 @@ class CollocationBuilder:
         return sym
 
     def add_parameter(self, name: str, value: float) -> ca.SX:
-        """Add a fixed parameter (treated as a constant in expressions)."""
-        # For SX, parameters are just constants or symbols substituted later.
-        # Here we'll return a constant SX for simplicity in expressions.
-        # If we wanted to optimize over it, we'd add it to w.
-        # If we want it to be changeable without rebuilding, we'd use ca.SX.sym and pass as param.
-        # But for this builder, let's treat it as a constant value injected into expressions.
-        p = ca.SX(value)
+        """Add a parameter to the NLP."""
+        # Create a symbolic variable for the parameter
+        p = ca.SX.sym(name)
         self.parameters[name] = p
         return p
 
@@ -414,7 +410,12 @@ class CollocationBuilder:
             nlp: Dictionary with 'x', 'f', 'g'.
             meta: Dictionary with 'w0', 'lbw', 'ubw', 'lbg', 'ubg', 'n_vars', 'n_constraints'.
         """
-        nlp = {"x": ca.vertcat(*self.w), "f": self.J, "g": ca.vertcat(*self.g)}
+        nlp = {
+            "x": ca.vertcat(*self.w),
+            "f": self.J,
+            "g": ca.vertcat(*self.g),
+            "p": ca.vertcat(*self.parameters.values()) if self.parameters else ca.SX([]),
+        }
 
         meta = {
             "w0": np.array(self.w0),

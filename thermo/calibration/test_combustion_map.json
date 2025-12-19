@@ -1,0 +1,12 @@
+{
+  "model_type": "polynomial_deg1",
+  "features": [
+    "jet_intensity"
+  ],
+  "coeffs": {
+    "bias": 1.9419505954405525,
+    "jet_intensity": 0.05016627571232553
+  },
+  "r2": 0.9591334222395974,
+  "n_samples": 3
+}

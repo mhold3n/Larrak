@@ -1,0 +1,14 @@
+{
+  "model_type": "polynomial_deg1",
+  "features": [
+    "p_max_bar",
+    "rpm"
+  ],
+  "coeffs": {
+    "bias": 0.29999992961071764,
+    "p_max_bar": 0.01200000012948771,
+    "rpm": 0.00010000000765968841
+  },
+  "r2": 0.9999999999999998,
+  "n_samples": 50
+}

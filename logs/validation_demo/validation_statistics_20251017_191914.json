@@ -1,0 +1,73 @@
+{
+  "total_validations": 100,
+  "successful_validations": 86,
+  "failed_validations": 14,
+  "within_tolerance_count": 0,
+  "tolerance_exceeded_count": 100,
+  "torque_avg_stats": {
+    "min": -0.027703015971951572,
+    "max": 0.03328198245077374,
+    "mean": 0.0012022578048984656,
+    "std": 0.014274505451390055,
+    "median": 0.0018422963593422992
+  },
+  "torque_ripple_stats": {
+    "min": -0.0070218189720172575,
+    "max": 0.008413323055844302,
+    "mean": 5.7210267238190225e-05,
+    "std": 0.0036759808704536637,
+    "median": -6.871464623836587e-05
+  },
+  "side_load_penalty_stats": {
+    "min": -0.016134019953881307,
+    "max": 0.01667832078567244,
+    "mean": -1.2470928232204414e-05,
+    "std": 0.007700209533852797,
+    "median": -1.6690874574010195e-05
+  },
+  "litvin_objective_stats": {
+    "min": -9.788652302206158e-05,
+    "max": 9.848243714832144e-05,
+    "mean": 8.439648374969928e-06,
+    "std": 5.926248310718229e-05,
+    "median": 6.814256407892266e-06
+  },
+  "litvin_closure_stats": {
+    "min": -4.853869503537028e-05,
+    "max": 4.870316269923536e-05,
+    "mean": 5.507688218027888e-06,
+    "std": 2.6447092673608055e-05,
+    "median": 2.918308165390099e-06
+  },
+  "evaluation_speedup_stats": {
+    "min": 1.4802891444207782,
+    "max": 8.032309845864376,
+    "mean": 3.539264944282853,
+    "std": 1.4363059838738128,
+    "median": 3.3747545632938847
+  },
+  "gradient_speedup_stats": {
+    "min": 1.647718069462301,
+    "max": 7.3183692454971006,
+    "mean": 3.560168782809842,
+    "std": 1.1685582187646417,
+    "median": 3.3441950302209023
+  },
+  "python_convergence_rate": 0.91,
+  "casadi_convergence_rate": 0.95,
+  "tolerance_success_rate": 0.0,
+  "tolerance_threshold": 0.0001,
+  "problem_type_counts": {
+    "crank_center": 43,
+    "thermal_efficiency": 27,
+    "litvin": 30
+  },
+  "problem_type_success_rates": {
+    "crank_center": 0.0,
+    "thermal_efficiency": 0.0,
+    "litvin": 0.0
+  },
+  "collection_start": "2025-10-17T19:19:14.882320",
+  "collection_end": "2025-10-17T19:19:14.948646",
+  "collection_duration_days": 7.67662037037037e-07
+}

@@ -1,0 +1,18 @@
+{
+  "run_id": "train_24",
+  "success": true,
+  "T_crown_max": null,
+  "T_liner_max": null,
+  "max_von_mises": null,
+  "friction_fmep": 0.8478599624054346,
+  "calibration_params": {
+    "p_max_bar": 0.0,
+    "rpm": 5478.599624054345,
+    "wiebe_m": 2.0602237784164386,
+    "wiebe_a": 5.0,
+    "jet_intensity": 3.7785724344010863,
+    "load": 206909.02933356632
+  },
+  "fit_residual": 0.0,
+  "computation_time": 0.0
+}

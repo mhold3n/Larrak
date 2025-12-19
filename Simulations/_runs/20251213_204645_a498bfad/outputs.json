@@ -1,0 +1,14 @@
+{
+  "run_id": "phase5_train_034",
+  "success": true,
+  "T_crown_max": null,
+  "T_liner_max": null,
+  "max_von_mises": null,
+  "friction_fmep": 5.501663258390142,
+  "calibration_params": {
+    "p_max_bar": 392.03299007811216,
+    "rpm": 4972.673774527961
+  },
+  "fit_residual": 0.0,
+  "computation_time": 0.0
+}

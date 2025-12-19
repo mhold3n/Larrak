@@ -1,0 +1,40 @@
+{
+  "model_type": "wiebe_surrogate_v1",
+  "features": [
+    "jet_intensity"
+  ],
+  "models": {
+    "a": {
+      "coeffs": {
+        "bias": 0.0,
+        "jet_intensity": -0.0,
+        "jet_intensity^2": -0.0
+      },
+      "r2": 1.0
+    },
+    "m": {
+      "coeffs": {
+        "bias": 0.0,
+        "jet_intensity": -0.0,
+        "jet_intensity^2": -0.0
+      },
+      "r2": 1.0
+    },
+    "start": {
+      "coeffs": {
+        "bias": 0.0,
+        "jet_intensity": -0.0,
+        "jet_intensity^2": -0.0
+      },
+      "r2": 1.0
+    },
+    "duration": {
+      "coeffs": {
+        "bias": 0.0,
+        "jet_intensity": -0.0,
+        "jet_intensity^2": -0.0
+      },
+      "r2": 1.0
+    }
+  }
+}

@@ -1,0 +1,135 @@
+modules:
+  # Sequence order: thermo_calibration_loop -> gear_kinematics_nlp -> gear_profile_synthesis
+  
+  - module_id: "thermo_calibration_loop"
+    display_name: "Thermo Calibration"
+    entrypoint: "scripts/run_thermo_calibration.py"
+    description: "Thermodynamic DOE with surrogate validation and calibration loop."
+    owner: "Thermo Team"
+    params:
+      - name: "force_rerun"
+        type: "bool"
+        default: false
+        description: "If true, ignore/reserialize previous DOE results and run all DOE points again."
+      - name: "train_surrogate"
+        type: "bool"
+        default: true
+        description: "Train the surrogate model after DOE completes."
+      - name: "validate_surrogate"
+        type: "bool"
+        default: true
+        description: "Validate the surrogate after training; nonzero exit marks the loop as not converged."
+      - name: "surrogate_epochs"
+        type: "int"
+        default: 200
+        description: "Training epochs for the surrogate."
+        min: 1
+        max: 2000
+      - name: "surrogate_r2_target"
+        type: "float"
+        default: 0.95
+        description: "Validation R2 target (applied to efficiency, p_max, and work)."
+        min: 0.0
+        max: 0.999
+      - name: "rpm_grid_size"
+        type: "int"
+        default: 5
+        description: "Number of RPM points in the DOE grid."
+        min: 3
+        max: 20
+      - name: "error_margin"
+        type: "float"
+        default: 2.0
+        description: "Convergence threshold for simulation error (%)."
+        min: 0.1
+        max: 10.0
+      - name: "rpm_min"
+        type: "float"
+        default: 10.0
+        description: "Minimum RPM."
+      - name: "rpm_max"
+        type: "float"
+        default: 10000.0
+        description: "Maximum RPM."
+      - name: "fuel_max_mg"
+        type: "float"
+        default: 500.0
+        description: "Maximum Fuel Mass (mg)."
+      - name: "boost_max_bar"
+        type: "float"
+        default: 8.0
+        description: "Maximum Boost Pressure (Bar)."
+      - name: "lambda_min"
+        type: "float"
+        default: 0.7
+        description: "Minimum Lambda (Rich Limit)."
+      - name: "lambda_max"
+        type: "float"
+        default: 1.5
+        description: "Maximum Lambda (Lean Limit)."
+    expected_outputs:
+      - path: "dashboard/thermo/thermo_doe_results.csv"
+        role: "dataset"
+        description: "DOE results with thermodynamic simulation outputs."
+
+  - module_id: "gear_kinematics_nlp"
+    display_name: "Gear Kinematics"
+    entrypoint: "scripts/run_gear_kinematics.py"
+    description: "Optimizes planet-ring kinematic geometry for target motion profile."
+    owner: "Kinematics Team"
+    params:
+      - name: "collocation_points"
+        type: "int"
+        default: 40
+        description: "Number of collocation points (K) for the solver. Higher = more resolution."
+        min: 20
+        max: 100
+      - name: "mass_kg"
+        type: "float"
+        default: 0.04
+        description: "Mass of the piston assembly (kg)."
+        min: 0.01
+        max: 0.5
+      - name: "r_planet_max"
+        type: "float"
+        default: 0.050
+        description: "Maximum Planet Radius limit (m)."
+      - name: "R_ring_max"
+        type: "float"
+        default: 0.100
+        description: "Maximum Ring Radius limit (m)."
+    expected_outputs:
+      - path: "dashboard/gear_kinematics_results.csv"
+        role: "dataset"
+        description: "Optimized gear kinematics geometry data."
+
+  - module_id: "gear_profile_synthesis"
+    display_name: "Gear Profile Synthesis"
+    entrypoint: "scripts/run_gear_profile_synthesis.py"
+    description: "Generates final gear set geometry using Litvin synthesis from motion profile."
+    owner: "Gear Design Team"
+    params:
+      - name: "stroke_scaling"
+        type: "float"
+        default: 1.0
+        description: "Scaling factor for the stroke length."
+        min: 0.5
+        max: 2.0
+      - name: "enable_plots"
+        type: "bool"
+        default: true
+        description: "Generate interactive plots."
+    expected_inputs:
+      - path: "dashboard/orchestration/target_motion_profile.csv"
+        role: "input"
+        description: "Target motion profile (theta, x)."
+    expected_outputs:
+      - path: "dashboard/final_gear_set.html"
+        role: "report"
+        description: "Interactive dashboard of the gear set."
+      - path: "dashboard/final_gear_data.csv"
+        role: "dataset"
+        description: "Raw gear geometry data."
+    checkpoints:
+      - name: "stroke_check"
+        description: "Verify effective stroke matches requirements."

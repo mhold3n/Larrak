@@ -1,0 +1,70 @@
+{
+  "modules": {
+    "adaptive_doe": "thermo_calibration_loop",
+    "planet_ring_optimization": "gear_kinematics_nlp",
+    "final_gear_design": "gear_profile_synthesis"
+  },
+  "directories": {
+    "dashboard/phase1": "dashboard/thermo",
+    "dashboard/phase5": "dashboard/orchestration",
+    "Simulations/_runs_phase5": "Simulations/_runs_orchestration",
+    "interpreter": "surrogate"
+  },
+  "files": {
+    "dashboard/phase1/phase1_physical_results.csv": "dashboard/thermo/thermo_doe_results.csv",
+    "dashboard/phase5/final_motion_profile.csv": "dashboard/orchestration/target_motion_profile.csv",
+    "dashboard/phase3_optimized_gears.csv": "dashboard/gear_kinematics_results.csv",
+    "scripts/run_adaptive_doe.py": "scripts/run_thermo_calibration.py",
+    "scripts/run_phase4_cycle.py": "scripts/run_simulation_loop.py",
+    "scripts/run_phase5_campaign.py": "scripts/run_orchestration_campaign.py",
+    "scripts/run_final_gear_design.py": "scripts/run_gear_profile_synthesis.py",
+    "scripts/run_planet_ring_opt.py": "scripts/run_gear_kinematics.py",
+    "scripts/generate_phase4_doe.py": "scripts/generate_simulation_doe.py",
+    "scripts/tests/test_phase1_thermo.py": "scripts/tests/test_thermo_cycle.py",
+    "scripts/train_interpreter.py": "scripts/train_surrogate.py",
+    "scripts/validate_interpreter.py": "scripts/validate_surrogate.py",
+    "scripts/run_interpreter.py": "scripts/run_surrogate_inference.py",
+    "scripts/run_interpreter_breathing.py": "scripts/run_surrogate_breathing.py",
+    "campro/physics/kinematics/phase2_relationships.py": "campro/physics/kinematics/motion_relationships.py",
+    "campro/optimization/adapters/freepiston_phase1_adapter.py": "campro/optimization/adapters/thermo_cycle_adapter.py"
+  },
+  "docs": {
+    "docs/phase1_implementation_summary.md": "docs/thermo_implementation_summary.md",
+    "docs/phase2_motion_mapping.md": "docs/motion_mapping.md",
+    "docs/casadi_phase1_formulation.md": "docs/casadi_thermo_formulation.md",
+    "Simulations/phase4_strategy.md": "Simulations/simulation_strategy.md",
+    "Simulations/phase4_strategy_UPDATED.md": "Simulations/simulation_strategy_UPDATED.md"
+  },
+  "env_vars": {
+    "LARRAK_TRAIN_INTERPRETER": "LARRAK_TRAIN_SURROGATE",
+    "LARRAK_VALIDATE_INTERPRETER": "LARRAK_VALIDATE_SURROGATE",
+    "LARRAK_INTERPRETER_EPOCHS": "LARRAK_SURROGATE_EPOCHS",
+    "LARRAK_INTERPRETER_R2_TARGET": "LARRAK_SURROGATE_R2_TARGET",
+    "LARRAK_PHASE1_RESULTS": "LARRAK_THERMO_RESULTS"
+  },
+  "functions": {
+    "run_adaptive_doe": "run_thermo_calibration",
+    "run_gear_design": "run_gear_profile_synthesis"
+  },
+  "classes": {
+    "BreathingKinematics": "GearMotionKinematics"
+  },
+  "display_names": {
+    "thermo_calibration_loop": "Thermo Calibration",
+    "gear_kinematics_nlp": "Gear Kinematics",
+    "gear_profile_synthesis": "Gear Profile Synthesis"
+  },
+  "phase_labels": {
+    "Phase 1": "Thermo Calibration",
+    "Phase 2": "Motion Mapping",
+    "Phase 3": "Gear Kinematics",
+    "Phase 4": "High-Fidelity Simulation",
+    "Phase 5": "Orchestration",
+    "phase1": "thermo",
+    "phase2": "motion",
+    "phase3": "gear_kinematics",
+    "phase4": "simulation",
+    "phase5": "orchestration"
+  }
+}
+

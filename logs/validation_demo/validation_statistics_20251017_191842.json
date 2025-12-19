@@ -1,0 +1,73 @@
+{
+  "total_validations": 100,
+  "successful_validations": 92,
+  "failed_validations": 8,
+  "within_tolerance_count": 0,
+  "tolerance_exceeded_count": 100,
+  "torque_avg_stats": {
+    "min": -6.94134498398131,
+    "max": 6.419269840688401,
+    "mean": 0.5351801872842051,
+    "std": 2.987382353964148,
+    "median": 0.7403656258605622
+  },
+  "torque_ripple_stats": {
+    "min": -0.8624862456836091,
+    "max": 0.8033860284460985,
+    "mean": -0.014797487421499743,
+    "std": 0.39266768518237455,
+    "median": -0.020994524454619246
+  },
+  "side_load_penalty_stats": {
+    "min": -1.7332368814846006,
+    "max": 1.72793493073965,
+    "mean": -0.039278607746135064,
+    "std": 0.7673106000341756,
+    "median": -0.01838633006141066
+  },
+  "litvin_objective_stats": {
+    "min": -0.009829218419745447,
+    "max": 0.009666886112542933,
+    "mean": 0.00039045133422337336,
+    "std": 0.0061363326554259995,
+    "median": 0.000667197601946428
+  },
+  "litvin_closure_stats": {
+    "min": -0.004949355169152007,
+    "max": 0.004910282349022743,
+    "mean": -0.00011207196276596155,
+    "std": 0.0028682463348274063,
+    "median": 0.0002895248753434932
+  },
+  "evaluation_speedup_stats": {
+    "min": 1.5381273045313892,
+    "max": 9.547523176528179,
+    "mean": 4.0069682355999285,
+    "std": 1.659423924673381,
+    "median": 3.7025414783644095
+  },
+  "gradient_speedup_stats": {
+    "min": 1.7954244777983648,
+    "max": 7.258558782854354,
+    "mean": 3.7292517618402785,
+    "std": 1.1460400934870552,
+    "median": 3.7121822139678864
+  },
+  "python_convergence_rate": 0.97,
+  "casadi_convergence_rate": 0.95,
+  "tolerance_success_rate": 0.0,
+  "tolerance_threshold": 0.0001,
+  "problem_type_counts": {
+    "thermal_efficiency": 36,
+    "litvin": 44,
+    "crank_center": 20
+  },
+  "problem_type_success_rates": {
+    "thermal_efficiency": 0.0,
+    "litvin": 0.0,
+    "crank_center": 0.0
+  },
+  "collection_start": "2025-10-17T19:18:42.685029",
+  "collection_end": "2025-10-17T19:18:42.750688",
+  "collection_duration_days": 7.599421296296296e-07
+}

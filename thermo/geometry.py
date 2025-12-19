@@ -128,17 +128,31 @@ class StandardSliderCrankGeometry:
 
         return 0.0  # Placeholder for now, typically 2D lookup is better.
 
-    def Area_intake(self, theta: ca.SX) -> ca.SX:
-        # Placeholder: A_int_max * bump(theta, 180 +/- 50)
-        # Implementing a simple differentiable bump centered at BDC (pi)
-        # width approx pi/2
-        sigma = 0.5
-        return 0.005 * ca.exp(-((theta - np.pi) ** 2) / (2 * sigma**2))
+    def Area_intake(self, theta: ca.SX, open_rad: ca.SX | None = None, duration_rad: ca.SX | None = None) -> ca.SX:
+        # Defaults to instance values if not provided
+        if open_rad is None: open_rad = self.intake_open_rad
+        if duration_rad is None: 
+            duration_rad = self.intake_close_rad - self.intake_open_rad
+            
+        # Implementing a simple differentiable bump centered at the window
+        # Center = open + duration/2
+        # Width (sigma) approx duration/4
+        center = open_rad + duration_rad / 2.0
+        sigma = duration_rad / 4.0
+        
+        # Max Area parameter could also be passed, fixed for now
+        # Use periodic distance for 0-2pi wrapping? 
+        # For 2-stroke centered at PI, simple diff is fine if range is [0, 2pi]
+        return 0.005 * ca.exp(-((theta - center) ** 2) / (2 * sigma**2))
 
-    def Area_exhaust(self, theta: ca.SX) -> ca.SX:
-        # Placeholder: A_exh_max * bump(theta, 180 +/- 70)
-        sigma = 0.7
-        return 0.006 * ca.exp(-((theta - np.pi) ** 2) / (2 * sigma**2))
+    def Area_exhaust(self, theta: ca.SX, open_rad: ca.SX | None = None, duration_rad: ca.SX | None = None) -> ca.SX:
+        if open_rad is None: open_rad = self.exhaust_open_rad
+        if duration_rad is None:
+            duration_rad = self.exhaust_close_rad - self.exhaust_open_rad
+            
+        center = open_rad + duration_rad / 2.0
+        sigma = duration_rad / 4.0
+        return 0.006 * ca.exp(-((theta - center) ** 2) / (2 * sigma**2))
 
 
 class InterpolatedGeometry:

@@ -17,6 +17,18 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# [FIX] Ensure CasADi PATH is set up
+try:
+    import env_setup
+except ImportError:
+    pass # Might fail if running from outside scripts/ dir, but sys.path injection above handles project root.
+         # Actually env_setup is in scripts/, so if project_root is added, we need scripts.env_setup?
+         # No, scripts is not in project_root. project_root IS the parent.
+         # So imports from scripts/ are tricky unless scripts/ is in path.
+         # Ideally we copy env_setup to a util or just inline-path it.
+         # Let's rely on relative import if main.
+
+
 from campro.environment.validator import (  # noqa: E402
     ValidationResult,
     ValidationStatus,
