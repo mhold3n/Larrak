@@ -143,3 +143,8 @@ PY
     - name: Run mypy type checking (narrowed scope for fast green)
       run: |
         mypy --strict campro/optimization campro/physics campro/api CamPro_OptimalMotion.py
+
+    - name: Validate requirements.txt sync
+      run: |
+        pip install pyyaml
+        python scripts/sync_requirements.py --check

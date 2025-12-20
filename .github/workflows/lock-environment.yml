@@ -1,0 +1,92 @@
+name: Lock Conda Environment
+
+on:
+  push:
+    paths:
+      - "environment.yml"
+    branches: [main, develop]
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  generate-lock:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to commit lock files
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: "3.11"
+          environment-file: environment.yml
+          auto-activate-base: false
+          auto-update-conda: true
+
+      - name: Configure conda
+        shell: bash -l {0}
+        run: |
+          conda config --add channels conda-forge || true
+          conda config --set channel_priority strict || true
+          conda config --set solver libmamba || true
+
+      - name: Export environment lock file
+        shell: bash -l {0}
+        run: |
+          conda activate larrak
+          # Export without build strings for cross-platform compatibility
+          conda env export --no-builds > environment-lock.yml
+          echo "Generated environment-lock.yml"
+
+      - name: Install conda-lock
+        shell: bash -l {0}
+        run: |
+          conda activate larrak
+          pip install conda-lock
+
+      - name: Generate cross-platform lock files
+        shell: bash -l {0}
+        run: |
+          conda activate larrak
+          # Generate lock file for all target platforms
+          conda-lock -f environment.yml \
+            -p linux-64 \
+            -p win-64 \
+            -p osx-64 \
+            --lockfile conda-lock.yml
+          echo "Generated conda-lock.yml"
+
+      - name: Sync requirements.txt
+        shell: bash -l {0}
+        run: |
+          conda activate larrak
+          pip install pyyaml  # Ensure yaml is available
+          python scripts/sync_requirements.py --generate
+          echo "Synchronized requirements.txt"
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet environment-lock.yml conda-lock.yml requirements.txt; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push lock files
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add environment-lock.yml conda-lock.yml requirements.txt
+          git commit -m "chore: update environment lock files [skip ci]"
+          git push
+
+      - name: No changes detected
+        if: steps.check_changes.outputs.changed == 'false'
+        run: |
+          echo "Lock files are already up to date"

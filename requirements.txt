@@ -1,46 +1,40 @@
 # Larrak Dependencies
-# 
+#
 # IMPORTANT: This project requires conda for proper installation:
 #   conda create -n larrak python=3.11
 #   conda activate larrak
 #   conda install -c conda-forge casadi ipopt numpy scipy matplotlib
 #
-# HSL Solvers (MA27, MA57, MA77, MA86, MA97) Configuration:
-# The HSL binaries are located in: CoinHSL-archive.v2024.5.15.x86_64-w64-mingw32-libgfortran5/bin
-# These have been added to the system PATH for CasADi/Ipopt to access all HSL solvers.
-# Available solvers: MA27 (small problems), MA57 (medium problems), MA77 (large problems, out-of-core),
-# MA86 (parallel), MA97 (advanced parallel). See docs/hsl_solver_guide.md for details.
+# This file is auto-generated from environment.yml.
+# Run: python scripts/sync_requirements.py --generate
 #
 # If you must use pip, run: pip install -r requirements.txt
 # Then verify installation: python scripts/check_environment.py
 
-# Core optimization dependencies
+bandit
 casadi>=3.6.0
-# Note: pip install of casadi may not include ipopt solver
-# Use conda install -c conda-forge casadi ipopt for full support
-
-# Numerical computing
-numpy>=1.24.0
-scipy>=1.10.0
+colorama
+hypothesis>=6.82.0
+ipopt>=3.14.0
+ipython
 joblib>=1.0
-scikit-learn>=1.1.0
-
-# Visualization
-
-# Visualization
+jupyter
+markdown>=3.5.0
 matplotlib>=3.7.0
-python-dateutil>=2.8.0
+memory_profiler
+mypy>=1.5.0
+numpy>=1.24.0
 pandas>=2.0.0
+pip-audit
 plotly>=5.15.0
-
-# Development tools
+pygments>=2.16.0
 pytest>=7.4.0
 pytest-cov>=4.1.0
-mypy>=1.5.0
+python-dateutil>=2.8.0
+radon
 ruff>=0.0.280
-hypothesis>=6.82.0
-
-
-
-
-
+scalene
+scikit-learn>=1.1.0
+scipy>=1.10.0
+typeguard
+xenon
