@@ -1,8 +1,8 @@
+import datetime
 import enum
 import uuid
-import datetime
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Any, Union
+from typing import Any, Dict, List, Optional, Union
 
 # --- Strings & IDs ---
 # Using strict types to avoid confusion
@@ -78,7 +78,7 @@ class ModuleSpec:
     expected_inputs: List[Dict[str, Any]] = field(default_factory=list)
     expected_outputs: List[Dict[str, Any]] = field(default_factory=list)
     params: List[ParamSpec] = field(default_factory=list)
-    
+
 # --- Data Classes for Runtime (Dynamic) ---
 
 @dataclass
@@ -103,7 +103,7 @@ class Artifact:
     producer_module_id: ModuleID
     role: FileRole
     size_bytes: int
-    creation_time: datetime.datetime
+    creation_time: Optional[datetime.datetime]
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 # --- Events for the Stream ---
@@ -137,3 +137,14 @@ class CheckpointEvent(Event):
     expected: Any = None
     observed: Any = None
     passed: bool = True
+
+@dataclass
+class RunSummary:
+    run_id: RunID
+    module_id: ModuleID
+    start_time: Optional[Union[datetime.datetime, str]]
+    end_time: Optional[Union[datetime.datetime, str]]
+    status: str
+    inputs: List[Dict[str, Any]]
+    outputs: List[Dict[str, Any]]
+    events: List[Dict[str, Any]]

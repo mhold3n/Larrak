@@ -1,25 +1,18 @@
 """Tests for sync_requirements.py script."""
 
-from __future__ import annotations
-
+import os
+import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-
 # Import the module under test
-import sys
 script_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(script_dir))
 
-from sync_requirements import (
-    Dependency,
-    parse_version_constraint,
-    parse_environment_yml,
-    parse_requirements_txt,
-    check_sync,
-    generate_requirements_content,
-)
+from sync_requirements import (Dependency, check_sync,  # noqa: E402
+                               generate_requirements_content,
+                               parse_environment_yml, parse_requirements_txt,
+                               parse_version_constraint)
 
 
 class TestParseVersionConstraint:

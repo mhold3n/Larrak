@@ -1,11 +1,12 @@
-import sqlite3
+import datetime
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
-from dataclasses import dataclass
+
+import weaviate
 from dateutil import parser
-import datetime
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,25 +29,26 @@ def migrate():
     # 1. Migrate Runs
     runs = c.execute("SELECT * FROM runs").fetchall()
     print(f"Found {len(runs)} runs.")
-    
+
     for row in runs:
         run_id = row['run_id']
         module_id = row['module_id']
         try:
             args = json.loads(row['args']) if row['args'] else []
             env = json.loads(row['env']) if row['env'] else {}
-        except:
+        except json.JSONDecodeError as e:
+            print(f"Warning: Could not parse args/env for run {run_id}: {e}. Using empty values.")
             args = []
             env = {}
 
         # Use db.start_run to create the Run and Module objects
         # Note: start_run sets status to RUNNING and time to NOW.
         # We need a way to insert historical data.
-        # Since db.start_run logic is simple, we will use the internal client directly 
-        # to respect historical timestamps if we wanted perfection, 
+        # Since db.start_run logic is simple, we will use the internal client directly
+        # to respect historical timestamps if we wanted perfection,
         # but for this MVP migration reused logic is safer.
         # ACTUALLY: We should just use the client to get precise control over ID and timestamps.
-        
+
         # Let's use the Weaviate client directly via the 'db' instance helper
         # to avoid overwriting timestamps.
         if not db._client:
@@ -54,17 +56,16 @@ def migrate():
             return
 
         print(f"Migrating run {run_id}...")
-        
+
         # Create/Get Module
         module_col = db._client.collections.get("Module")
         module_uuid = db._get_or_create_module(module_col, module_id)
-        
+
         # Create Run
         run_col = db._client.collections.get("Run")
-        
-        import weaviate.util
+
         run_uuid = weaviate.util.generate_uuid5(run_id)
-        
+
         # Parse timestamps to RFC3339
         def format_date(dt_str):
             if not dt_str: return None
@@ -78,13 +79,13 @@ def migrate():
 
         start_time = format_date(row['start_time'])
         end_time = format_date(row['end_time'])
-        
+
         try:
             run_col.data.insert(
                 uuid=run_uuid,
                 properties={
                     "run_id": run_id,
-                    "start_time": start_time, 
+                    "start_time": start_time,
                     "end_time": end_time,
                     "status": row['status'],
                     "args": args,
@@ -102,11 +103,11 @@ def migrate():
     print(f"Found {len(artifacts)} artifacts.")
 
     for row in artifacts:
-        # Reconstruct Artifact object to use helper? 
-        # Or direct insert. Direct insert is better for batching usually, but here 
+        # Reconstruct Artifact object to use helper?
+        # Or direct insert. Direct insert is better for batching usually, but here
         # we will just use the register_artifact method which handles linking.
         # Wait, register_artifact generates UUIDs. We want to be consistent.
-        
+
         art = Artifact(
             artifact_id=row['artifact_id'],
             path=row['path'],
@@ -118,7 +119,7 @@ def migrate():
             creation_time=None, # not in DB
             metadata=json.loads(row['meta']) if row['meta'] else {}
         )
-        
+
         print(f"Migrating artifact {art.path}...")
         db.register_artifact(art)
 

@@ -30,7 +30,8 @@ class OptimizationRegistry:
     def __init__(self, storage: BaseStorage | None = None):
         self.storage = storage or MemoryStorage("OptimizationRegistry")
         self._optimization_chains: dict[
-            str, list[str],
+            str,
+            list[str],
         ] = {}  # chain_id -> [optimizer_ids]
         self._optimizer_results: dict[str, str] = {}  # optimizer_id -> storage_key
 
@@ -52,7 +53,9 @@ class OptimizationRegistry:
 
         if optimizer_id not in self._optimization_chains[chain_id]:
             self._optimization_chains[chain_id].append(optimizer_id)
-            log.info(f"Registered optimizer '{optimizer_id}' in chain '{chain_id}'")
+            log.info(
+                f"Registered optimizer '{optimizer_id}' in chain '{chain_id}'"
+            )
 
     def store_result(
         self,
@@ -157,7 +160,9 @@ class OptimizationRegistry:
 
         return results
 
-    def get_available_results(self, optimizer_id: str) -> dict[str, StorageResult]:
+    def get_available_results(
+        self, optimizer_id: str
+    ) -> dict[str, StorageResult]:
         """
         Get all available results that an optimizer can access.
 
@@ -175,10 +180,14 @@ class OptimizationRegistry:
         chain_results = self.get_chain_results(chain_id)
 
         # Filter to only include results from optimizers that run before this one
-        optimizer_index = self._optimization_chains[chain_id].index(optimizer_id)
+        optimizer_index = self._optimization_chains[chain_id].index(
+            optimizer_id
+        )
         available_results = {}
 
-        for i, other_optimizer_id in enumerate(self._optimization_chains[chain_id]):
+        for i, other_optimizer_id in enumerate(
+            self._optimization_chains[chain_id]
+        ):
             if i < optimizer_index and other_optimizer_id in chain_results:
                 available_results[other_optimizer_id] = chain_results[
                     other_optimizer_id

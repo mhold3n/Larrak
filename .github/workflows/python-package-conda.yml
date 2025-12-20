@@ -46,14 +46,14 @@ jobs:
       run: |
         conda activate larrak
         python - << 'PY'
-import sys
-try:
-    import casadi  # noqa: F401
-    print("casadi import OK (conda)")
-except Exception as e:
-    print(f"casadi import failed: {e}; installing via pip...")
-    sys.exit(1)
-PY
+        import sys
+        try:
+            import casadi  # noqa: F401
+            print("casadi import OK (conda)")
+        except Exception as e:
+            print(f"casadi import failed: {e}; installing via pip...")
+            sys.exit(1)
+        PY
         if [ $? -ne 0 ]; then pip install "casadi>=3.6.0"; fi
 
     - name: Verify CasADi and ipopt installation

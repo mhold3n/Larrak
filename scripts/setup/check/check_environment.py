@@ -10,8 +10,9 @@ import argparse
 import json
 import os
 import sys
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 # Add project root to path for imports
 project_root = Path(__file__).resolve().parents[3]
@@ -29,12 +30,10 @@ except ImportError:
          # Let's rely on relative import if main.
 
 
-from campro.environment.validator import (  # noqa: E402
-    ValidationResult,
-    ValidationStatus,
-    get_installation_instructions,
-    validate_environment,
-)
+from campro.environment.validator import ValidationResult  # noqa: E402
+from campro.environment.validator import (ValidationStatus,
+                                          get_installation_instructions,
+                                          validate_environment)
 from campro.logging import get_logger  # noqa: E402
 
 log = get_logger(__name__)
@@ -89,7 +88,6 @@ def print_validation_result(result: ValidationResult, indent: str = "") -> None:
         ValidationStatus.PASS: "green",
         ValidationStatus.WARNING: "yellow",
         ValidationStatus.ERROR: "red",
-        ValidationStatus.SKIPPED: "blue",
     }.get(result.status, "white")
 
     print(f"{indent}{icon} {colorize(result.message, status_color)}")
@@ -267,6 +265,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import os
-
     main()
