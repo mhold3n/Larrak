@@ -8,7 +8,7 @@ import os
 import sys
 from typing import Any, Dict, List
 
-import weaviate  # type: ignore
+import weaviate  # type: ignore # pylint: disable=import-error
 import yaml  # type: ignore
 
 from provenance.db import db
@@ -126,6 +126,15 @@ def load_registry_file() -> Dict[str, Any]:
 
 
 def load_expectations(module_id: str) -> Dict[str, Any]:
+    """
+    Load expectations for a specific module from the registry.
+
+    Args:
+        module_id: The ID of the module to load expectations for.
+
+    Returns:
+        Dict[str, Any]: The expectations dictionary.
+    """
     # In a real app, use the Scanner/Registry class.
     # Here, we parse the yaml directly for simplicity.
     try:

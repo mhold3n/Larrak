@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 # Add project root to path for imports
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 
@@ -61,7 +61,7 @@ def parse_environment_yml(env_file: Path) -> dict[str, Dependency]:
         return dependencies
 
     try:
-        import yaml
+        import yaml  # type: ignore
 
         with open(env_file, encoding="utf-8") as f:
             data = yaml.safe_load(f)
@@ -92,13 +92,11 @@ def parse_environment_yml(env_file: Path) -> dict[str, Dependency]:
     except ImportError:
         # Fallback: simple parsing without yaml
         with open(env_file, encoding="utf-8") as f:
-            in_pip_section = False
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
                 if "- pip:" in line or "pip:" in line:
-                    in_pip_section = True
                     continue
                 if line.startswith("- "):
                     dep_str = line.replace("- ", "").strip()
@@ -174,11 +172,13 @@ def generate_requirements_content(
     # Sort dependencies alphabetically
     sorted_deps = sorted(env_deps.items(), key=lambda x: x[0])
 
-    for name, dep in sorted_deps:
-        if dep.constraint:
-            lines.append(f"{dep.name}{dep.constraint}")
+    for dep in sorted_deps:
+        # dep is a tuple (name, Dependency)
+        dependency = dep[1]
+        if dependency.constraint:
+            lines.append(f"{dependency.name}{dependency.constraint}")
         else:
-            lines.append(dep.name)
+            lines.append(dependency.name)
 
     lines.append("")  # Trailing newline
     return "\n".join(lines)
@@ -206,22 +206,30 @@ def check_sync(
     # Check for packages in env but not in requirements
     for name in env_deps:
         if name not in req_deps:
-            discrepancies.append(f"Package '{name}' in environment.yml but not in requirements.txt")
+            discrepancies.append(
+                f"Package '{name}' in environment.yml but not in "
+                "requirements.txt"
+            )
 
     # Check for packages in requirements but not in env
     for name in req_deps:
         if name not in env_deps:
-            discrepancies.append(f"Package '{name}' in requirements.txt but not in environment.yml")
+            discrepancies.append(
+                f"Package '{name}' in requirements.txt but not in "
+                "environment.yml"
+            )
 
     # Check for version constraint mismatches
-    for name in env_deps:
+    for name, env_dep in env_deps.items():
         if name in req_deps:
-            env_constraint = env_deps[name].constraint
-            req_constraint = req_deps[name].constraint
+            req_dep = req_deps[name]
+            env_constraint = env_dep.constraint
+            req_constraint = req_dep.constraint
             if env_constraint != req_constraint:
                 discrepancies.append(
                     f"Version mismatch for '{name}': "
-                    f"env={env_constraint or '(none)'}, req={req_constraint or '(none)'}"
+                    f"env={env_constraint or '(none)'}, "
+                    f"req={req_constraint or '(none)'}"
                 )
 
     return len(discrepancies) == 0, discrepancies
@@ -273,7 +281,10 @@ def main() -> int:
             print("✗ requirements.txt is NOT in sync with environment.yml:")
             for msg in discrepancies:
                 print(f"  - {msg}")
-            print("\nRun 'python scripts/sync_requirements.py --generate' to fix.")
+            print(
+                "\nRun 'python scripts/sync_requirements.py --generate' "
+                "to fix."
+            )
             return 1
 
     elif args.generate:
