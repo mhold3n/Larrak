@@ -1,0 +1,258 @@
+// CEM gRPC Service Definition
+// Cross-platform interface between Python optimizer and C# CEM runtime
+
+syntax = "proto3";
+
+package larrak.cem;
+
+option csharp_namespace = "Larrak.CEM.API.Protos";
+
+// ============================================================
+// Violation Taxonomy (matches ViolationCodes.cs)
+// ============================================================
+
+enum ViolationCode {
+    VIOLATION_NONE = 0;
+    
+    // Thermodynamic violations (1xx)
+    THERMO_MAX_PRESSURE = 100;
+    THERMO_MAX_TEMPERATURE = 101;
+    THERMO_MAX_CROWN_TEMP = 102;
+    THERMO_LAMBDA_TOO_RICH = 103;
+    THERMO_LAMBDA_TOO_LEAN = 104;
+    THERMO_NEGATIVE_MASS = 105;
+    THERMO_MODEL_ASSUMPTION_BROKEN = 110;
+    
+    // Kinematic violations (2xx)
+    KINEMATIC_MAX_JERK = 200;
+    KINEMATIC_MAX_ACCELERATION = 201;
+    KINEMATIC_PERIODICITY_BROKEN = 202;
+    KINEMATIC_PHASE_MISMATCH = 203;
+    
+    // Gear geometry violations (3xx)
+    GEAR_ENVELOPE_STROKE = 300;
+    GEAR_MIN_RADIUS = 301;
+    GEAR_MAX_RADIUS = 302;
+    GEAR_CURVATURE_UNDERCUT = 303;
+    GEAR_INTERFERENCE = 304;
+    GEAR_CENTER_DISTANCE_INCONSISTENT = 305;
+    
+    // Manufacturing violations (4xx)
+    AM_MIN_FEATURE_SIZE = 400;
+    AM_MAX_OVERHANG_ANGLE = 401;
+    AM_SUPPORT_REQUIRED = 402;
+    
+    // Model/assumption violations (5xx)
+    ASSUMPTION_REGIME_INVALID = 500;
+    ASSUMPTION_CORRELATION_OUT_OF_RANGE = 501;
+}
+
+enum ViolationSeverity {
+    SEVERITY_INFO = 0;
+    SEVERITY_WARN = 1;
+    SEVERITY_ERROR = 2;
+    SEVERITY_FATAL = 3;
+}
+
+enum SuggestedAction {
+    ACTION_NONE = 0;
+    
+    // Motion profile adjustments
+    INCREASE_SMOOTHING = 100;
+    REDUCE_STROKE = 101;
+    ADJUST_PHASE = 102;
+    RESAMPLE_GRID = 103;
+    
+    // Bound adjustments
+    TIGHTEN_BOUNDS = 200;
+    RELAX_BOUNDS = 201;
+    EXPAND_ENVELOPE = 202;
+    
+    // Optimizer hints
+    IMPROVE_INITIAL_GUESS = 400;
+    INCREASE_REGULARIZATION = 401;
+    
+    // Manual intervention
+    MANUAL_REVIEW_REQUIRED = 900;
+}
+
+// ============================================================
+// Core Messages
+// ============================================================
+
+message ConstraintViolation {
+    ViolationCode code = 1;
+    ViolationSeverity severity = 2;
+    string message = 3;
+    optional double margin = 4;  // Distance to feasibility
+    SuggestedAction suggested_action = 5;
+    repeated string affected_variables = 6;
+    map<string, double> metrics = 7;
+}
+
+message ValidationReport {
+    bool is_valid = 1;
+    repeated ConstraintViolation violations = 2;
+    string cem_version = 3;
+    string config_hash = 4;
+    int64 timestamp_unix_ms = 5;
+    int32 regime_id = 6;  // 0=unknown, 1=idle, 2=cruise, 3=full_load
+}
+
+message VersionInfo {
+    string cem_version = 1;
+    string config_hash = 2;
+    string platform = 3;
+    string dotnet_version = 4;
+}
+
+// ============================================================
+// Motion Validation
+// ============================================================
+
+message MotionValidationRequest {
+    repeated double x_profile_mm = 1;  // Piston position [mm]
+    repeated double theta_rad = 2;     // Crank angle [rad]
+    
+    // Optional configuration override
+    optional double max_jerk = 3;
+    optional double max_radius = 4;
+    optional double min_radius = 5;
+}
+
+message MotionValidationResponse {
+    ValidationReport report = 1;
+    
+    // Computed metrics (always returned)
+    double stroke_mm = 2;
+    double max_jerk = 3;
+    double periodicity_error = 4;
+    double min_rp_required = 5;
+}
+
+// ============================================================
+// Thermodynamic Envelope
+// ============================================================
+
+message EngineGeometry {
+    double bore_m = 1;
+    double stroke_m = 2;
+    double compression_ratio = 3;
+    optional double conrod_length_m = 4;
+}
+
+message ThermoEnvelopeRequest {
+    EngineGeometry geometry = 1;
+    double rpm = 2;
+    
+    // Optional ambient conditions
+    optional double ambient_pressure_pa = 3;
+    optional double ambient_temp_k = 4;
+}
+
+message ThermoEnvelopeResponse {
+    bool feasible = 1;
+    
+    double boost_min = 2;
+    double boost_max = 3;
+    double fuel_min_mg = 4;
+    double fuel_max_mg = 5;
+    double motion_min_m = 6;
+    double motion_max_m = 7;
+    
+    string config_hash = 8;
+    
+    // Regime assumptions
+    repeated string valid_assumptions = 9;
+}
+
+// ============================================================
+// Gear Initial Guess
+// ============================================================
+
+message GearInitialGuessRequest {
+    repeated double x_target_mm = 1;
+    repeated double theta_rad = 2;
+    
+    // Optional constraints
+    optional double min_radius = 3;
+    optional double max_radius = 4;
+}
+
+message GearInitialGuessResponse {
+    repeated double rp = 1;  // Planet radius [mm]
+    repeated double rr = 2;  // Ring radius [mm]
+    repeated double c = 3;   // Center distance [mm]
+    
+    double phase_offset_rad = 4;
+    double mean_centerline_mm = 5;
+    
+    // Quality indicators
+    bool is_high_quality = 6;
+    string notes = 7;
+}
+
+// ============================================================
+// Design Candidate Evaluation (Batch)
+// ============================================================
+
+message DesignCandidate {
+    string id = 1;
+    
+    // Motion profile
+    repeated double x_mm = 2;
+    repeated double theta_rad = 3;
+    
+    // Gear geometry (optional - for post-NLP validation)
+    repeated double rp = 4;
+    repeated double rr = 5;
+    repeated double c = 6;
+}
+
+message EvaluationRequest {
+    repeated DesignCandidate candidates = 1;
+    bool include_metrics = 2;
+}
+
+message CandidateEvaluation {
+    string id = 1;
+    ValidationReport report = 2;
+    map<string, double> metrics = 3;
+}
+
+message EvaluationResponse {
+    repeated CandidateEvaluation results = 1;
+    int32 passed = 2;
+    int32 failed = 3;
+}
+
+// ============================================================
+// Service Definition
+// ============================================================
+
+service CEMService {
+    // Health and version
+    rpc GetVersion(VersionRequest) returns (VersionInfo);
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+    
+    // Motion validation (pre-Phase 3)
+    rpc ValidateMotion(MotionValidationRequest) returns (MotionValidationResponse);
+    
+    // Thermodynamic envelope (pre-Phase 1)
+    rpc GetThermoEnvelope(ThermoEnvelopeRequest) returns (ThermoEnvelopeResponse);
+    
+    // Gear initialization
+    rpc GetGearInitialGuess(GearInitialGuessRequest) returns (GearInitialGuessResponse);
+    
+    // Batch evaluation (for dashboards)
+    rpc EvaluateCandidates(EvaluationRequest) returns (EvaluationResponse);
+}
+
+message VersionRequest {}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+    bool healthy = 1;
+    string status = 2;
+}

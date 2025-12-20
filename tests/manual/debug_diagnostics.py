@@ -12,10 +12,16 @@ conda_paths = [
     os.path.join(conda_prefix, "Library", "usr", "bin"),
 ]
 
-# HSL Path (Hardcoded based on detected location)
-hsl_dll = r"c:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Libraries\CoinHSL.v2024.5.15.x86_64-w64-mingw32-libgfortran5\bin\libcoinhsl.dll"
-hsl_dir = os.path.dirname(hsl_dll)
-conda_paths.insert(0, hsl_dir)
+# HSL Path - auto-detected for cross-platform support
+from campro.environment.resolve import hsl_path
+try:
+    hsl_dll = str(hsl_path())
+    hsl_dir = os.path.dirname(hsl_dll)
+    conda_paths.insert(0, hsl_dir)
+except RuntimeError:
+    print("Warning: HSL library not detected, solver may fail")
+    hsl_dll = None
+    hsl_dir = None
 
 current_path = os.environ.get("PATH", "")
 for p in conda_paths:
@@ -28,12 +34,13 @@ for p in conda_paths:
                 pass
 
 # Explicitly set HSLLIB option availability for Ipopt via Env (optional/fallback)
-os.environ["HSLLIB_PATH"] = hsl_dll
+if hsl_dll:
+    os.environ["HSLLIB_PATH"] = hsl_dll
 
 # Ensure path
 sys.path.append(os.getcwd())
 
-from thermo.nlp import build_thermo_nlp
+from campro.optimization.nlp.thermo_nlp import build_thermo_nlp
 
 def debug_diag():
     print("Building NLP...")

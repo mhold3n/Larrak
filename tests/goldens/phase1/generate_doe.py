@@ -35,10 +35,16 @@ conda_paths = [
     os.path.join(conda_prefix, "Library", "usr", "bin"),
 ]
 
-# 2. HSL Path (Hardcoded based on detected location)
-hsl_dll = r"c:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Libraries\CoinHSL.v2024.5.15.x86_64-w64-mingw32-libgfortran5\bin\libcoinhsl.dll"
-hsl_dir = os.path.dirname(hsl_dll)
-conda_paths.insert(0, hsl_dir)
+# 2. HSL Path - auto-detected for cross-platform support
+from campro.environment.resolve import hsl_path as resolve_hsl_path
+try:
+    hsl_dll = str(resolve_hsl_path())
+    hsl_dir = os.path.dirname(hsl_dll)
+    conda_paths.insert(0, hsl_dir)
+except RuntimeError:
+    print("Warning: HSL library not detected, solver may fail")
+    hsl_dll = None
+    hsl_dir = None
 
 current_path = os.environ.get("PATH", "")
 for p in conda_paths:
@@ -51,7 +57,8 @@ for p in conda_paths:
                 pass
 
 # Explicitly set HSLLIB option availability for Ipopt via Env (optional/fallback)
-os.environ["HSLLIB_PATH"] = hsl_dll
+if hsl_dll:
+    os.environ["HSLLIB_PATH"] = hsl_dll
 
 # Add project root to path
 sys.path.append(
@@ -59,7 +66,7 @@ sys.path.append(
 )
 
 from tests.infra.doe_runner import DOERunner
-from thermo.nlp import build_thermo_nlp
+from campro.optimization.nlp.thermo_nlp import build_thermo_nlp
 import json
 import pathlib
 
@@ -114,7 +121,7 @@ def phase1_test(params: dict[str, Any], solver_opts: dict[str, Any] = None, debu
     t_int_val = 300.0
     rho_int = p_int / (r_gas * t_int_val)
     
-    from thermo.config import CONFIG
+    from campro.optimization.nlp.config import CONFIG
     
     # Geometry (From Fixed Variables)
     B = CONFIG.geometry.bore
@@ -335,7 +342,7 @@ def phase1_test(params: dict[str, Any], solver_opts: dict[str, Any] = None, debu
 def main():
     # 1. Define Physical Grid (Rectangular Domain)
     # Load from centralized CONFIG to ensure consistency with Simulation Layer
-    from thermo.config import CONFIG
+    from campro.optimization.nlp.config import CONFIG
     
     rpm_levels = CONFIG.rpm_grid
     p_int_levels = CONFIG.boost_grid
@@ -377,9 +384,10 @@ def main():
     print(f"Generated {len(doe_list)} DOE points (Filtered by Lambda {CONFIG.ranges.lambda_min}-{CONFIG.ranges.lambda_max})")
     
     # --- RESUME / FORCE RERUN LOGIC ---
-    output_dir = "dashboard/thermo"
+    output_dir = "output/thermo"
     os.makedirs(output_dir, exist_ok=True)
-    results_file = os.path.join(output_dir, "thermo_doe_results.csv")
+    # IMPORTANT: Must match DOERunner name below ("phase1_physical") 
+    results_file = os.path.join(output_dir, "phase1_physical_results.csv")
 
     force_rerun = str(os.environ.get("LARRAK_FORCE_RERUN", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
     if force_rerun and os.path.exists(results_file):
@@ -431,7 +439,7 @@ def main():
     # Define Output Location (Consolidated Dashboard)
     # output_dir = "tests/goldens/phase1/doe_output"
     # User Request: Centralize to Dashboard
-    output_dir = "dashboard/thermo"
+    output_dir = "output/thermo"
     os.makedirs(output_dir, exist_ok=True)
 
     # Initialize Runner

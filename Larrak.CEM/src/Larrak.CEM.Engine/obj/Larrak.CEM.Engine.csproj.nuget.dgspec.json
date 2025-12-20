@@ -1,0 +1,128 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\Larrak.CEM.Engine.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj",
+        "projectName": "Larrak.CEM.Core",
+        "projectPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj",
+        "packagesPath": "C:\\Users\\maxed\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\maxed\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.416/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\Larrak.CEM.Engine.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\Larrak.CEM.Engine.csproj",
+        "projectName": "Larrak.CEM.Engine",
+        "projectPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\Larrak.CEM.Engine.csproj",
+        "packagesPath": "C:\\Users\\maxed\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\maxed\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj": {
+                "projectPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.416/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

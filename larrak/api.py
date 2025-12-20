@@ -16,9 +16,9 @@ from typing import Dict, Any, Optional
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../")))
 
 # Modules
-from thermo.nlp import build_thermo_nlp
-from thermo.calibration.registry import CalibrationRegistry
-from thermo.export_candidate import export_candidate
+from campro.optimization.nlp.thermo_nlp import build_thermo_nlp
+from campro.optimization.calibration.registry import CalibrationRegistry
+from campro.optimization.nlp.export_candidate import export_candidate
 from Simulations.common.io_schema import SimulationInput, GeometryConfig, OperatingPoint
 
 # Simulations

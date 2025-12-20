@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 
-f = "dashboard/phase1/phase1_physical_results.csv"
+f = "output/phase1/phase1_physical_results.csv"
 print(f"Checking {f}...")
 if os.path.exists(f):
     print(f"Size: {os.path.getsize(f)} bytes")

@@ -1,4 +1,4 @@
-from dashboard_app.services.graph import graph_service
+from webapp.services.graph import graph_service
 import json
 
 print("Building graph...")

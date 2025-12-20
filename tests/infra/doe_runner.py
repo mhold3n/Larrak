@@ -4,11 +4,13 @@ import pandas as pd
 import time
 import json
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from pathlib import Path
 
 class DOERunner:
     def __init__(self, name, output_dir):
         self.name = name
-        self.output_dir = output_dir
+        # Normalize path separators for cross-platform compatibility
+        self.output_dir = str(Path(output_dir).resolve())
         self.design = None
         
     def run(self, test_func, workers=1):
@@ -16,8 +18,8 @@ class DOERunner:
         
         results = []
 
-        # Prepare Output File
-        output_file = os.path.join(self.output_dir, f"{self.name}_results.csv")
+        # Prepare Output File - use Path for consistent cross-platform paths
+        output_file = str(Path(self.output_dir) / f"{self.name}_results.csv")
         
         # Convert dataframe to list of dicts
         doe_dicts = self.design.to_dict('records')
@@ -108,6 +110,7 @@ class DOERunner:
                     header_written = True
                     batch_results = []
             
+            # Flush remaining batch after loop completes
             if batch_results:
                 df_batch = pd.DataFrame(batch_results)
                 mode = 'w' if not header_written else 'a'
@@ -116,4 +119,11 @@ class DOERunner:
 
         print(f"Results saved to {output_file}")
         
-        return pd.read_csv(output_file)
+        # Return results - handle case where file may not exist (0 tests run with no prior data)
+        if os.path.exists(output_file):
+            return pd.read_csv(output_file)
+        else:
+            print(f"Warning: Output file not found. Returning empty DataFrame.")
+            return pd.DataFrame()
+
+

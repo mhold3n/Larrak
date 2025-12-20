@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from thermo.driver import solve_thermo_cycle
+from campro.optimization.nlp.phase_driver import solve_thermo_cycle
 
 
 def test_phase1_thermo_solve():

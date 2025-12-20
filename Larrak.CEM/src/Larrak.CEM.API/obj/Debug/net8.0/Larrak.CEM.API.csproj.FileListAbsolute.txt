@@ -1,0 +1,7 @@
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.API\obj\Debug\net8.0\Larrak.CEM.API.csproj.AssemblyReference.cache
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.API\obj\Debug\net8.0\Larrak.CEM.API.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.API\obj\Debug\net8.0\Larrak.CEM.API.AssemblyInfoInputs.cache
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.API\obj\Debug\net8.0\Larrak.CEM.API.AssemblyInfo.cs
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.API\obj\Debug\net8.0\Larrak.CEM.API.csproj.CoreCompileInputs.cache
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.API\obj\Debug\net8.0\Larrak.CEM.API.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.API\obj\Debug\net8.0\Larrak.CEM.API.sourcelink.json

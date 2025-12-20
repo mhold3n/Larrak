@@ -7,7 +7,7 @@ import os
 # Add project root
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
-from thermo.calibration.registry import CalibrationRegistry, get_calibration
+from campro.optimization.calibration.registry import CalibrationRegistry, get_calibration
 
 def test_registry():
     reg = CalibrationRegistry()

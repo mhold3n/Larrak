@@ -65,7 +65,7 @@ def test_circle_optimization_regression():
     import sys
 
     # Path to helper script
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
     helper_script = Path(__file__).parent / "run_solver_helper.py"
     if not helper_script.exists():
         pytest.fail(f"Helper script not found at {helper_script}")

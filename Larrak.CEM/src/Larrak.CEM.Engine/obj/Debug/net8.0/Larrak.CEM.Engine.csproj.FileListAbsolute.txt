@@ -1,0 +1,16 @@
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\bin\Debug\net8.0\Larrak.CEM.Engine.deps.json
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\bin\Debug\net8.0\Larrak.CEM.Engine.dll
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\bin\Debug\net8.0\Larrak.CEM.Engine.pdb
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\bin\Debug\net8.0\Larrak.CEM.Core.dll
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\bin\Debug\net8.0\Larrak.CEM.Core.pdb
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.csproj.AssemblyReference.cache
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.AssemblyInfoInputs.cache
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.AssemblyInfo.cs
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.csproj.CoreCompileInputs.cache
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.sourcelink.json
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.C.C1596A4F.Up2Date
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.dll
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\refint\Larrak.CEM.Engine.dll
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\Larrak.CEM.Engine.pdb
+C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Engine\obj\Debug\net8.0\ref\Larrak.CEM.Engine.dll

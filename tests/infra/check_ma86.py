@@ -13,10 +13,16 @@ conda_usr = os.path.join(conda_prefix, "Library", "usr", "bin")
 current_path = os.environ.get("PATH", "")
 paths_to_prepend = [conda_lib_bin, conda_mingw, conda_usr]
 
-# Also add HSL path
-hsl_dll = r"c:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Libraries\CoinHSL.v2024.5.15.x86_64-w64-mingw32-libgfortran5\bin\libcoinhsl.dll"
-hsl_dir = os.path.dirname(hsl_dll)
-paths_to_prepend.insert(0, hsl_dir)
+# HSL Path - auto-detected for cross-platform support
+from campro.environment.resolve import hsl_path
+try:
+    hsl_dll = str(hsl_path())
+    hsl_dir = os.path.dirname(hsl_dll)
+    paths_to_prepend.insert(0, hsl_dir)
+except RuntimeError:
+    print("Warning: HSL library not detected, solver may fail")
+    hsl_dll = None
+    hsl_dir = None
 
 for p in paths_to_prepend:
     if os.path.exists(p) and p not in current_path:

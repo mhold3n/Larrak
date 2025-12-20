@@ -31,7 +31,7 @@ try:
                 except: pass
 except: pass
 
-from thermo.nlp import build_thermo_nlp
+from campro.optimization.nlp.thermo_nlp import build_thermo_nlp
 import casadi as ca
 
 def debug_point():

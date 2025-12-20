@@ -1,12 +1,12 @@
-import sqlite3
 import json
 import os
 import datetime
 import yaml
+import weaviate
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
-from provenance.db import DB_PATH
+from provenance.db import db # Use the global instance which has the client
 
 @dataclass
 class RunSummary:
@@ -20,81 +20,68 @@ class RunSummary:
     events: List[Dict[str, Any]]
 
 def get_latest_run(module_id: str) -> Optional[RunSummary]:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    
-    # Get Run
-    run = c.execute('''
-        SELECT * FROM runs 
-        WHERE module_id = ? 
-        ORDER BY start_time DESC 
-        LIMIT 1
-    ''', (module_id,)).fetchone()
-    
-    if not run:
-        conn.close()
+    if not db._client:
         return None
+        
+    runs = db._client.collections.get("Run")
     
-    run_id = run['run_id']
+    # Query for the specific module
+    # We need to filter by the referenced module's module_id.
+    # In v4, we can filter by nested properties.
     
-    # Get Artifacts (Outputs)
-    artifacts = c.execute('''
-        SELECT * FROM artifacts WHERE run_id = ?
-    ''', (run_id,)).fetchall()
+    response = runs.query.fetch_objects(
+        filters=weaviate.classes.query.Filter.by_ref("executed_module").by_property("module_id").equal(module_id),
+        sort=weaviate.classes.query.Sort.by_property("start_time", ascending=False),
+        limit=1,
+        return_references=[
+            weaviate.classes.query.QueryReference(
+                link_on="generated_artifacts",
+                return_properties=["path", "role", "content_hash", "artifact_id"]
+            ),
+             weaviate.classes.query.QueryReference(
+                link_on="executed_module",
+                return_properties=["module_id"]
+            )
+        ]
+    )
     
+    if not response.objects:
+        return None
+        
+    run_obj = response.objects[0]
+    props = run_obj.properties
+    
+    # Extract references
+    artifacts = run_obj.references.get("generated_artifacts", [])
+    module_ref = run_obj.references.get("executed_module", [])
+    
+    actual_module_id = module_ref[0].properties["module_id"] if module_ref else module_id
+    
+    # Map Artifacts (Outputs)
     output_list = []
     for art in artifacts:
+        p = art.properties
         output_list.append({
-            'path': art['path'],
-            'role': art['role'],
-            'hash': art['content_hash'],
-            'id': art['artifact_id']
+            'path': p.get('path'),
+            'role': p.get('role'),
+            'hash': p.get('content_hash'),
+            'id': p.get('artifact_id')
         })
         
-    # Get File Events (Inputs - approximate from Reads)
-    # We filter for reads that are NOT in artifacts (outputs of this run)
-    # This is a naive heuristic; better to check if it's an OriginFile
-    events = c.execute('''
-        SELECT * FROM events 
-        WHERE run_id = ? AND event_type = 'FileEvent'
-    ''', (run_id,)).fetchall()
-    
-    input_list = []
-    seen_inputs = set()
-    
-    for row in events:
-        details = json.loads(row['details'])
-        if details.get('op') == 'read':
-            path = details.get('path')
-            if path not in seen_inputs:
-                input_list.append({
-                    'path': path,
-                    'role': 'input(inferred)'
-                })
-                seen_inputs.add(path)
+    # Inputs - For now, we don't have a reliable way to get inputs unless they are explicitly linked
+    # We will leave this empty for this iteration or implement 'used_input_artifacts' fetching if we had them.
+    input_list = [] 
                 
-    # Get Other Events
-    all_events = c.execute('''
-        SELECT * FROM events WHERE run_id = ? ORDER BY timestamp
-    ''', (run_id,)).fetchall()
-    
+    # Events - Detailed events are not currently pushed to Weaviate as objects.
+    # We might have stored them in a blob or just omit them for now.
     event_list = []
-    for row in all_events:
-        event_list.append({
-           'type': row['event_type'],
-           'timestamp': row['timestamp'],
-           'details': json.loads(row['details'])     
-        })
         
-    conn.close()
-    
     return RunSummary(
-        run_id=run_id,
-        module_id=run['module_id'],
-        start_time=run['start_time'],
-        end_time=run['end_time'],
-        status=run['status'],
+        run_id=props.get('run_id'),
+        module_id=actual_module_id,
+        start_time=str(props.get('start_time')),
+        end_time=str(props.get('end_time')),
+        status=props.get('status'),
         inputs=input_list,
         outputs=output_list,
         events=event_list
@@ -186,28 +173,13 @@ def generate_html(summary: RunSummary, expected: Dict[str, Any]) -> str:
             <div class="grid">
                 <div class="section">
                     <h2>Inputs</h2>
+                    <p><em>(Input tracking via FileEvents is temporarily disabled in Weaviate migration)</em></p>
                     <table>
                         <thead><tr><th>Path</th><th>Status</th></tr></thead>
                         <tbody>
-    """
+                    """
     
-    # Render Inputs
-    # 1. Expected inputs
-    for path in expected_inputs:
-        found = any(path == inp for inp in actual_inputs)
-        cls = "" if found else "diff-missing"
-        icon = "✓" if found else "MISSING"
-        html += f"<tr class='{cls}'><td>{path}</td><td>{icon}</td></tr>"
-        
-    # 2. Unexpected inputs
-    for inp in actual_inputs:
-        # Very loose check
-        if inp not in expected_inputs:
-             # Filter out python libs (noisy)
-             if "site-packages" in inp or "lib" in inp.lower(): 
-                 continue
-             html += f"<tr class='diff-extra'><td>{inp}</td><td>UNEXPECTED</td></tr>"
-
+    # Expectation logic for inputs omitted for brevity as we don't have actual inputs
     html += """
                         </tbody>
                     </table>
@@ -245,7 +217,7 @@ def generate_html(summary: RunSummary, expected: Dict[str, Any]) -> str:
     """
     
     for ev in summary.events:
-        html += f"<tr><td>{ev['timestamp']}</td><td>{ev['type']}</td><td><pre>{json.dumps(ev['details'], indent=2)}</pre></td></tr>"
+        html += f"<tr><td>{ev.get('timestamp')}</td><td>{ev.get('type')}</td><td><pre>{json.dumps(ev.get('details'), indent=2)}</pre></td></tr>"
         
     html += """
                     </tbody>
@@ -259,23 +231,27 @@ def generate_html(summary: RunSummary, expected: Dict[str, Any]) -> str:
     return html
 
 def main():
-    module_id = "gear_profile_synthesis" # Default module (new naming)
+    module_id = "gear_profile_synthesis" 
     print(f"Generating dashboard for {module_id}...")
     
-    summary = get_latest_run(module_id)
-    if not summary:
-        print("No run found.")
-        return
+    try:
+        summary = get_latest_run(module_id)
+        if not summary:
+            print("No run found.")
+            return
+            
+        expected = load_expectations(module_id)
         
-    expected = load_expectations(module_id)
-    
-    html = generate_html(summary, expected)
-    
-    out_path = f"dashboard/provenance_{module_id}.html"
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(html)
+        html = generate_html(summary, expected)
         
-    print(f"Report generated: {out_path}")
+        out_path = f"dashboard/provenance_{module_id}.html"
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(html)
+            
+        print(f"Report generated: {out_path}")
+    except Exception as e:
+        print(f"Error generating dashboard: {e}")
 
 if __name__ == "__main__":
     main()

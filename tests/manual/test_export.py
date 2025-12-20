@@ -18,10 +18,16 @@ conda_paths = [
     os.path.join(conda_prefix, "Library", "usr", "bin"),
 ]
 
-# HSL Path (Hardcoded based on detected location)
-hsl_dll = r"c:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Libraries\CoinHSL.v2024.5.15.x86_64-w64-mingw32-libgfortran5\bin\libcoinhsl.dll"
-hsl_dir = os.path.dirname(hsl_dll)
-conda_paths.insert(0, hsl_dir)
+# HSL Path - auto-detected for cross-platform support
+from campro.environment.resolve import hsl_path
+try:
+    hsl_dll = str(hsl_path())
+    hsl_dir = os.path.dirname(hsl_dll)
+    conda_paths.insert(0, hsl_dir)
+except RuntimeError:
+    print("Warning: HSL library not detected, solver may fail")
+    hsl_dll = None
+    hsl_dir = None
 
 current_path = os.environ.get("PATH", "")
 for p in conda_paths:
@@ -34,8 +40,8 @@ for p in conda_paths:
                 pass
 
 
-from thermo.nlp import build_thermo_nlp
-from thermo.export_candidate import export_candidate
+from campro.optimization.nlp.thermo_nlp import build_thermo_nlp
+from campro.optimization.nlp.export_candidate import export_candidate
 from Simulations.common.io_schema import SimulationInput
 
 def test_export_flow():

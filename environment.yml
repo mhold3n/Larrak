@@ -18,6 +18,8 @@ dependencies:
 
   # Visualization
   - matplotlib>=3.7.0
+  - pandas>=2.0.0
+  - plotly>=5.15.0
 
   # Development tools
   - pytest>=7.4.0
@@ -34,6 +36,11 @@ dependencies:
   - jupyter
   - ipython
 
+  # Dashboard / documentation rendering
+  - python-dateutil>=2.8.0
+  - markdown>=3.5.0
+  - pygments>=2.16.0
+
   # Pip packages (if needed)
   - pip:
       # Add pip-only packages here if required
@@ -45,4 +52,4 @@ dependencies:
       - bandit
       - pip-audit
       - memory_profiler
-
+      - weaviate-client>=4.0.0

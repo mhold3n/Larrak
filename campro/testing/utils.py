@@ -1,5 +1,4 @@
 import multiprocessing
-import platform
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -114,7 +113,10 @@ def run_isolated(target_func: Callable[..., Any], *args: Any, **kwargs: Any) -> 
     Returns the result of the function.
     Uses file-based IPC to avoid Queue threading issues with os._exit().
     """
-    if platform.system() != "Darwin":
+    # Use platform context to determine if isolation is needed
+    from campro.environment.context import ctx
+
+    if not ctx.workflows.requires_process_isolation():
         return target_func(*args, **kwargs)
 
     import os
