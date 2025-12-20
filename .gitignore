@@ -248,6 +248,6 @@ PERMANENT_ARCHIVE/
 investigation_output*.txt
 
 # User-requested exclusions
-libraries/
+
 runs/
 
