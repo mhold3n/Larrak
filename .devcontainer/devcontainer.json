@@ -1,0 +1,28 @@
+{
+  "name": "Larrak Dev",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "larrak-dev",
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml",
+        "ms-dotnettools.csharp",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/conda/envs/larrak-dev/bin/python",
+        "python.analysis.extraPaths": [
+          "/workspace"
+        ]
+      }
+    }
+  },
+  "postCreateCommand": "pip install -e ."
+}

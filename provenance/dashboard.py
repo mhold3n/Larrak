@@ -2,6 +2,7 @@ import json
 import os
 import datetime
 import yaml
+import sys
 import weaviate
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
@@ -52,21 +53,24 @@ def get_latest_run(module_id: str) -> Optional[RunSummary]:
     props = run_obj.properties
     
     # Extract references
-    artifacts = run_obj.references.get("generated_artifacts", [])
-    module_ref = run_obj.references.get("executed_module", [])
+    artifacts = run_obj.references.get("generated_artifacts")
+    module_ref = run_obj.references.get("executed_module")
     
-    actual_module_id = module_ref[0].properties["module_id"] if module_ref else module_id
+    actual_module_id = module_id
+    if module_ref and hasattr(module_ref, 'objects') and module_ref.objects:
+        actual_module_id = module_ref.objects[0].properties["module_id"]
     
     # Map Artifacts (Outputs)
     output_list = []
-    for art in artifacts:
-        p = art.properties
-        output_list.append({
-            'path': p.get('path'),
-            'role': p.get('role'),
-            'hash': p.get('content_hash'),
-            'id': p.get('artifact_id')
-        })
+    if artifacts and hasattr(artifacts, 'objects'):
+        for art in artifacts.objects:
+            p = art.properties
+            output_list.append({
+                'path': p.get('path'),
+                'role': p.get('role'),
+                'hash': p.get('content_hash'),
+                'id': p.get('artifact_id')
+            })
         
     # Inputs - For now, we don't have a reliable way to get inputs unless they are explicitly linked
     # We will leave this empty for this iteration or implement 'used_input_artifacts' fetching if we had them.
@@ -231,7 +235,7 @@ def generate_html(summary: RunSummary, expected: Dict[str, Any]) -> str:
     return html
 
 def main():
-    module_id = "gear_profile_synthesis" 
+    module_id = sys.argv[1] if len(sys.argv) > 1 else "gear_profile_synthesis"
     print(f"Generating dashboard for {module_id}...")
     
     try:

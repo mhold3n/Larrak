@@ -1,5 +1,29 @@
 version: "3.4"
 services:
+  larrak-dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - .:/workspace:cached
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    working_dir: /workspace
+    environment:
+      - WEAVIATE_URL=http://weaviate:8080
+      - CEM_SERVICE_URL=http://cem-service:50051
+    depends_on:
+      - weaviate
+      - cem-service
+
+  cem-service:
+    build:
+      context: ./Larrak.CEM
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - ASPNETCORE_URLS=http://+:50051
+
   weaviate:
     command:
       - --host
@@ -8,10 +32,10 @@ services:
       - "8080"
       - --scheme
       - http
-    image: semitechnologies/weaviate:1.24.1
+    image: semitechnologies/weaviate:1.27.0
     ports:
-      - 8080:8080
-      - 50051:50051
+      - "8080:8080"
+      - "50052:50051" # Avoid conflict with CEM on host if both use 50051, mapping Weaviate GRPC to different host port
     volumes:
       - weaviate_data:/var/lib/weaviate
     restart: on-failure:0

@@ -10,13 +10,13 @@ def create_schema(client: weaviate.WeaviateClient):
             properties=[
                 wvc.Property(name="module_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
                 wvc.Property(name="entrypoint", data_type=wvc.DataType.TEXT, skip_vectorization=True),
-                wvc.Property(name="description", data_type=wvc.DataType.TEXT),  # Vectorized for semantic search
+                wvc.Property(name="description", data_type=wvc.DataType.TEXT),  
                 wvc.Property(name="owner", data_type=wvc.DataType.TEXT),
             ],
             vectorizer_config=wvc.Configure.Vectorizer.text2vec_transformers()
         )
 
-    # 2. Run (Execution Instance)
+    # 2. Run (Execution Instance) - Create WITHOUT Artifact refs first
     if not client.collections.exists("Run"):
         client.collections.create(
             name="Run",
@@ -27,18 +27,14 @@ def create_schema(client: weaviate.WeaviateClient):
                 wvc.Property(name="end_time", data_type=wvc.DataType.DATE),
                 wvc.Property(name="status", data_type=wvc.DataType.TEXT, skip_vectorization=True),
                 wvc.Property(name="args", data_type=wvc.DataType.TEXT_ARRAY, skip_vectorization=True),
-                wvc.Property(name="env", data_type=wvc.DataType.TEXT, skip_vectorization=True), # JSON blob
+                wvc.Property(name="env", data_type=wvc.DataType.TEXT, skip_vectorization=True), 
                 wvc.Property(name="tags", data_type=wvc.DataType.TEXT_ARRAY),
-                wvc.Property(name="logs", data_type=wvc.DataType.TEXT, skip_vectorization=True), # High volume logs
+                wvc.Property(name="logs", data_type=wvc.DataType.TEXT, skip_vectorization=True), 
             ],
             references=[
                 wvc.ReferenceProperty(name="executed_module", target_collection="Module"),
-                wvc.ReferenceProperty(name="generated_artifacts", target_collection="Artifact"),
-                wvc.ReferenceProperty(name="used_input_artifacts", target_collection="Artifact"),
+                # artifacts added later
             ],
-             # Runs usually don't need semantic search on their metadata, but tags might be useful.
-             # vectorizer_config=wvc.Configure.Vectorizer.none() 
-             # Keeping default vectorizer to allow searching by tags/notes if we add them.
         )
 
     # 3. Artifact (Data Object)
@@ -49,17 +45,36 @@ def create_schema(client: weaviate.WeaviateClient):
             properties=[
                 wvc.Property(name="artifact_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
                 wvc.Property(name="path", data_type=wvc.DataType.TEXT, skip_vectorization=True),
-                wvc.Property(name="role", data_type=wvc.DataType.TEXT), # input, output, report
+                wvc.Property(name="role", data_type=wvc.DataType.TEXT), 
                 wvc.Property(name="content_hash", data_type=wvc.DataType.TEXT, skip_vectorization=True),
-                wvc.Property(name="meta", data_type=wvc.DataType.TEXT), # JSON blob
-                wvc.Property(name="summary", data_type=wvc.DataType.TEXT), # Vectorized description of content
+                wvc.Property(name="meta", data_type=wvc.DataType.TEXT), 
+                wvc.Property(name="summary", data_type=wvc.DataType.TEXT), 
             ],
              references=[
                 wvc.ReferenceProperty(name="generated_by", target_collection="Run"),
             ],
             vectorizer_config=wvc.Configure.Vectorizer.text2vec_transformers(
-                vectorize_class_name=False
+                vectorize_collection_name=False
             )
+        )
+
+    # 2b. Update Run to include Artifact refs
+    # Check if property exists first? V4 add_property/reference is idempotent-ish or we try/except
+    runs = client.collections.get("Run")
+    # There isn't a simple "has_reference" check in the object config easily accessible 
+    # without fetching config. Let's just try adding it.
+    # Note: v4 uses `config.add_reference`
+    
+    # We check if 'generated_artifacts' is in the references
+    current_refs = [r.name for r in runs.config.get().references]
+    
+    if "generated_artifacts" not in current_refs:
+        runs.config.add_reference(
+            wvc.ReferenceProperty(name="generated_artifacts", target_collection="Artifact")
+        )
+    if "used_input_artifacts" not in current_refs:
+        runs.config.add_reference(
+            wvc.ReferenceProperty(name="used_input_artifacts", target_collection="Artifact")
         )
 
     # 4. CodeSymbol (Function/Class - for semantic linking)
@@ -70,8 +85,8 @@ def create_schema(client: weaviate.WeaviateClient):
             properties=[
                 wvc.Property(name="name", data_type=wvc.DataType.TEXT),
                 wvc.Property(name="path", data_type=wvc.DataType.TEXT, skip_vectorization=True),
-                wvc.Property(name="type", data_type=wvc.DataType.TEXT), # function, class
-                wvc.Property(name="content", data_type=wvc.DataType.TEXT), # The actual code signature/docstring
+                wvc.Property(name="type", data_type=wvc.DataType.TEXT), 
+                wvc.Property(name="content", data_type=wvc.DataType.TEXT), 
             ],
              references=[
                 wvc.ReferenceProperty(name="implemented_in", target_collection="Module"),
@@ -87,7 +102,7 @@ def create_schema(client: weaviate.WeaviateClient):
                 wvc.Property(name="tracker_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
                 wvc.Property(name="title", data_type=wvc.DataType.TEXT),
                 wvc.Property(name="body", data_type=wvc.DataType.TEXT),
-                wvc.Property(name="kind", data_type=wvc.DataType.TEXT), # bug, feature, decision
+                wvc.Property(name="kind", data_type=wvc.DataType.TEXT), 
             ],
             references=[
                  wvc.ReferenceProperty(name="related_code", target_collection="CodeSymbol"),

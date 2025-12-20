@@ -231,7 +231,7 @@ ma57_migration_data.json
 
 # Development tools and IDE
 .github-mcp/
-.vscode/
+
 .idea/
 *.swp
 *.swo

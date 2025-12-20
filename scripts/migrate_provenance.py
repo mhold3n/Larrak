@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 from dataclasses import dataclass
+from dateutil import parser
+import datetime
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -63,18 +65,26 @@ def migrate():
         import weaviate.util
         run_uuid = weaviate.util.generate_uuid5(run_id)
         
-        # Parse timestamps? They are stored as strings or timestamps in SQLite.
-        # For simplicity, we might just re-use them as strings if the schema allowed,
-        # but our schema expects Date. Weaviate handles ISO strings.
-        start_time = row['start_time']
-        end_time = row['end_time']
+        # Parse timestamps to RFC3339
+        def format_date(dt_str):
+            if not dt_str: return None
+            try:
+                dt = parser.parse(dt_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+                return dt.isoformat()
+            except:
+                return None
+
+        start_time = format_date(row['start_time'])
+        end_time = format_date(row['end_time'])
         
         try:
             run_col.data.insert(
                 uuid=run_uuid,
                 properties={
                     "run_id": run_id,
-                    "start_time": start_time, # Weaviate auto-parses ISO-8601
+                    "start_time": start_time, 
                     "end_time": end_time,
                     "status": row['status'],
                     "args": args,
