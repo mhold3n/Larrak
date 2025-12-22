@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # Initially proposed by Sebastian Ehlert (@awvwgk)
-from os import environ, listdir, makedirs, walk
-from os.path import join, isdir, exists
-from sys import argv
+from os import environ, makedirs, walk
+from os.path import exists, join
 from shutil import copy
 
 build_dir = environ["MESON_BUILD_ROOT"]
@@ -16,7 +15,7 @@ module_dir = join(install_dir, include_dir)
 
 modules = []
 # finds $build_dir/**/*.mod and $build_dir/**/*.smod
-for root, dirs, files in walk(build_dir):
+for root, _dirs, files in walk(build_dir):
     modules += [join(root, f) for f in files if f.endswith(".mod") or f.endswith(".smod")]
 
 if not exists(module_dir):
