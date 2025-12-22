@@ -2,85 +2,92 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
-  build-test:
+  quality-checks:
+    name: Quality Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Install system dependencies (Ipopt optional)
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y libblas-dev liblapack-dev
-
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install ruff mypy pytest
+          pip install ruff mypy types-PyYAML
 
-      - name: Show dependency versions
-        run: |
-          python --version
-          pip --version
-          ruff --version
-          mypy --version
-          pytest --version
+      - name: Lint (Ruff)
+        run: ruff check --output-format=github .
 
-      - name: Lint (ruff --fix)
-        run: |
-          ruff check --fix . --exclude '.*\\.png$'
+      - name: Format Check (Ruff)
+        run: ruff format --check .
 
-      - name: Type check library (mypy --strict)
+      - name: Type Check (MyPy)
         run: |
-          python -m pip install types-PyYAML
+          # Strict check on core library
           mypy --strict campro CamPro_OptimalMotion.py
-
-      - name: Type check scripts (lenient, non-blocking)
-        continue-on-error: true
-        run: |
+          # Lenient check on scripts
           mypy scripts || true
 
-      - name: Run tests (pytest -q)
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: |
-          pytest -q tests/
+  test-matrix:
+    name: Test Matrix
+    needs: quality-checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11"]
 
-  lint-only:
-    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+          environment-file: environment.yml
+          auto-activate-base: false
+          auto-update-conda: true
+          use-only-tar-bz2: false
 
-    - name: Install ruff
-      run: |
-        pip install ruff
+      - name: Configure Conda
+        shell: bash -l {0}
+        run: |
+          conda config --add channels conda-forge || true
+          conda config --set channel_priority strict || true
+          conda config --set solver libmamba || true
 
-    - name: Run ruff check
-      run: |
-        ruff check --output-format=github
+      - name: Install Package
+        shell: bash -l {0}
+        run: |
+          conda activate larrak
+          pip install -e .
+
+      - name: Verify Environment
+        shell: bash -l {0}
+        run: |
+          conda activate larrak
+          python -c "import casadi; print(f'CasADi: {casadi.__version__}')"
+
+      - name: Run Tests
+        shell: bash -l {0}
+        run: |
+          conda activate larrak
+          pytest tests/ --cov=campro --cov=CamPro_OptimalMotion --cov-report=xml
+
+      - name: Upload Coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
