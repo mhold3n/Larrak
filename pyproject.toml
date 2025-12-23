@@ -152,6 +152,27 @@ markers = [
     "solver: tests that call CasADi/IPOPT",
 ]
 
-
-
+[tool.pyright]
+pythonVersion = "3.11"
+stubPath = "campro/stubs"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+# Exclude directories that shouldn't be type-checked
+exclude = [
+    "miniforge3",
+    "CoinHSL-archive*",
+    "services",
+    "runs",
+    "plots",
+    "docs",
+    "examples",
+    "specs",
+    "cfg",
+    "build",
+    "dist",
+    "out",
+    "libraries",
+    "PERMANENT_ARCHIVE",
+    "**/__pycache__",
+]
 

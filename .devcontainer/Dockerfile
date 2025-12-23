@@ -17,7 +17,7 @@ USER mambauser
 COPY environment-dev.yml /tmp/environment-dev.yml
 
 # Install Conda environment
-RUN micromamba install -y -n larrak-dev -f /tmp/environment-dev.yml && \
+RUN micromamba create -y -f /tmp/environment-dev.yml && \
     micromamba clean --all --yes
 
 # Add environment to path

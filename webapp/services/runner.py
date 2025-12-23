@@ -1,19 +1,21 @@
-import subprocess
-import os
-import sys
-import yaml
 import asyncio
-from typing import Dict, Any, List
-from pathlib import Path
-from webapp.services.stream import stream_manager
 import json
+import os
+import subprocess
+import sys
 import time
 import traceback
 from os import makedirs
 from os.path import dirname
+from pathlib import Path
+from typing import Any, Dict, List
+
+import yaml
+
+from webapp.services.stream import stream_manager
 
 # region agent log
-_AGENT_DEBUG_LOG_PATH = r"c:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\.cursor\debug.log"
+_AGENT_DEBUG_LOG_PATH = Path.home() / ".larrak" / "debug.log"
 def _agent_log(hypothesisId: str, location: str, message: str, data: Dict[str, Any], runId: str = "pre-fix") -> None:
     try:
         makedirs(dirname(_AGENT_DEBUG_LOG_PATH), exist_ok=True)
@@ -51,17 +53,17 @@ class Runner:
         self.root_dir = Path(root_dir).resolve()
         self.registry = self._load_registry()
         self.current_process = None
-        
+
     def _load_registry(self):
         try:
             with open(self.root_dir / "provenance" / "registry.yaml", "r") as f:
                 return yaml.safe_load(f)
         except:
             return {"modules": []}
-            
+
     def get_modules(self):
         return self.registry.get("modules", [])
-        
+
     async def run_module_async(self, module_id: str, params: Dict[str, Any]):
         # region agent log
         _agent_log(
@@ -82,24 +84,32 @@ class Runner:
         module = next((m for m in self.registry["modules"] if m["module_id"] == module_id), None)
         if not module:
             raise ValueError(f"Module {module_id} not found")
-        
+
         # 1. Prepare Run Context
-        import uuid
         import datetime
-        from provenance.db import db
-        
+        import uuid
+
+        # Optional: provenance DB (may timeout if Weaviate is unavailable)
+        try:
+            from provenance.db import db
+        except Exception:
+            db = None  # type: ignore
+
         run_id = str(uuid.uuid4())
-        
+
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         # Windows consoles often default to cp1252; force UTF-8 so logs don't crash on symbols like '≈' or 'κ'.
         env.setdefault("PYTHONUTF8", "1")
         env.setdefault("PYTHONIOENCODING", "utf-8")
+        # Add project root to PYTHONPATH so scripts can import sibling modules
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(self.root_dir) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
         env["LARRAK_RUN_ID"] = run_id
-        
+
         for k, v in params.items():
             env[f"LARRAK_{k.upper()}"] = str(v)
-            
+
         cmd = [sys.executable, module["entrypoint"]]
 
         # region agent log
@@ -121,19 +131,20 @@ class Runner:
             runId="pre-fix",
         )
         # endregion agent log
-        
+
         # 2. Log Start to DB
         try:
-            db.start_run(run_id, module_id, cmd, {k:str(v) for k,v in env.items() if k.startswith("LARRAK_")})
+            if db:
+                db.start_run(run_id, module_id, cmd, {k:str(v) for k,v in env.items() if k.startswith("LARRAK_")})
         except Exception as e:
             print(f"[Runner] DB Start Log Failed: {e}")
-        
+
         await stream_manager.broadcast({
-            "type": "status", 
-            "content": "running", 
+            "type": "status",
+            "content": "running",
             "module_id": module_id
         })
-        
+
         try:
             # region agent log
             _agent_log(
@@ -216,7 +227,7 @@ class Runner:
                     if decoded:
                         print(f"[Runner] {decoded}") # Local echo
                         await stream_manager.broadcast({
-                            "type": "log", 
+                            "type": "log",
                             "content": decoded
                         })
 
@@ -231,19 +242,20 @@ class Runner:
                     runId="pre-fix",
                 )
                 # endregion agent log
-            
+
             # 3. Log End to DB
             try:
-                db.end_run(run_id, status)
+                if db:
+                    db.end_run(run_id, status)
             except Exception as e:
                 print(f"[Runner] DB End Log Failed: {e}")
-            
+
             await stream_manager.broadcast({
-                "type": "status", 
+                "type": "status",
                 "content": status.lower(),
                 "module_id": module_id
             })
-            
+
         except Exception as e:
             print(f"[Runner] Failed: {e}")
             # region agent log
@@ -262,11 +274,12 @@ class Runner:
             )
             # endregion agent log
             try:
-                db.end_run(run_id, "FAILURE")
+                if db:
+                    db.end_run(run_id, "FAILURE")
             except: pass
-            
+
             await stream_manager.broadcast({
-                "type": "status", 
+                "type": "status",
                 "content": "failure",
                 "error": str(e),
                 "error_type": type(e).__name__,

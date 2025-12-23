@@ -1,2 +1,0 @@
-obj\Release\net8.0/Cem.cs \
-obj\Release\net8.0/CemGrpc.cs: ../../protos/cem.proto

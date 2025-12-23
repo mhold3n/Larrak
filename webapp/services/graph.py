@@ -1,12 +1,13 @@
-import sqlite3
 import json
-import yaml
+import sqlite3
 import time
 from pathlib import Path
-from typing import Dict, Any, List, Set
+from typing import Any, Dict, List, Set
+
+import yaml
 
 # region agent log (graph)
-_AGENT_DEBUG_LOG_PATH = r"c:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\.cursor\debug.log"
+_AGENT_DEBUG_LOG_PATH = Path.home() / ".larrak" / "debug.log"
 def _agent_log(hypothesisId: str, location: str, message: str, data: Dict[str, Any]):
     try:
         payload = {
@@ -30,15 +31,15 @@ class GraphService:
         # DB is in the root directory
         self.root_dir = Path(root_dir)
         self.db_path = self.root_dir / "provenance.db"
-        
+
     def build_graph(self) -> Dict[str, Any]:
         print(f"GraphService DB Path: {self.db_path} Exists: {self.db_path.exists()}")
         if not self.db_path.exists():
             return {"nodes": [], "links": []}
-            
+
         nodes = {}
         links = []
-        
+
         # Load registry for module ordering (sequence links), display_names, and to ensure all modules appear as nodes
         registry_modules: List[Dict[str, Any]] = []
         display_names: Dict[str, str] = {}
@@ -59,20 +60,20 @@ class GraphService:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        
+
         try:
             # 1. Get Latest Runs per Module
             # simple group by module_id
             c.execute('''
-                SELECT run_id, module_id, status, start_time 
-                FROM runs 
+                SELECT run_id, module_id, status, start_time
+                FROM runs
                 ORDER BY start_time ASC
             ''')
             # Use dictionary to keep only latest per module
             latest_runs = {}
             for r in c.fetchall():
                 latest_runs[r['module_id']] = dict(r)
-                
+
             # Create Module Nodes (prefer registry order, fall back to runs-only)
             reg_ids = [m.get("module_id") for m in registry_modules if m.get("module_id")]
             all_mod_ids = reg_ids or list(latest_runs.keys())
@@ -88,22 +89,22 @@ class GraphService:
                     "status": run['status'] if run else "unknown",
                     "run_id": run['run_id'] if run else None
                 })
-                
+
             # 2. Get Artifacts (Outputs) for these Runs
             # We only track artifacts from the *latest* runs to keep graph clean
             run_ids = [r['run_id'] for r in latest_runs.values()]
             if not run_ids:
                 return {"nodes": [], "links": []}
-                
+
             placeholders = ','.join('?' * len(run_ids))
-            
+
             # Outputs (Artifacts)
             c.execute(f'''
-                SELECT path, run_id, role 
-                FROM artifacts 
+                SELECT path, run_id, role
+                FROM artifacts
                 WHERE run_id IN ({placeholders})
             ''', tuple(run_ids))
-            
+
             # Helper map: run_id -> module_id
             run_to_mod = {r['run_id']: r['module_id'] for r in latest_runs.values()}
 
@@ -113,37 +114,37 @@ class GraphService:
                 mod_id = run_to_mod.get(art['run_id'])
                 if not mod_id:
                     continue
-                    
+
                 # Node for Artifact
                 # Simplify path for display
                 label = Path(path).name
-                
+
                 nodes[path] = {
                     "id": path,
                     "type": "artifact",
                     "label": label,
                     "role": art['role']
                 }
-                
+
                 # Link Module -> Artifact
                 links.append({
                     "source": mod_id,
                     "target": path,
                     "type": "produced"
                 })
-                
+
             # 3. Get Inputs (File Events) for these Runs
             # Helper to find which artifact (if any) corresponds to a Read event
             # For now, inputs are just paths. If that path exists as an artifact node, link it.
             # If not, create an "Origin" node.
-            
+
             c.execute(f'''
-                SELECT run_id, event_type, details, id 
-                FROM events 
+                SELECT run_id, event_type, details, id
+                FROM events
                 WHERE run_id IN ({placeholders})
                 ORDER BY id ASC
             ''', tuple(run_ids))
-            
+
             events = c.fetchall()
             checkpoint_counter = {}
             checkpoints_by_run = {}
@@ -156,9 +157,9 @@ class GraphService:
 
                 if evt_type == 'FileEvent' and details.get('op') == 'read':
                     path = details['path']
-                    
+
                     target_node_id = None
-                    
+
                     # Try exact match
                     if path in nodes:
                         target_node_id = path
@@ -168,12 +169,12 @@ class GraphService:
                             if path.endswith(n_id) or n_id.endswith(path):
                                 target_node_id = n_id
                                 break
-                    
+
                     # If still not found, it's an external/origin input
                     if not target_node_id:
                         # Create Origin Node
                         label = Path(path).name
-                        if "Larrak" in path: 
+                        if "Larrak" in path:
                             target_node_id = path
                             nodes[target_node_id] = {
                                 "id": target_node_id,
@@ -181,7 +182,7 @@ class GraphService:
                                 "label": label,
                                 "role": "input"
                             }
-                    
+
                     if run and target_node_id:
                         links.append({
                             "source": target_node_id,
@@ -259,12 +260,12 @@ class GraphService:
                             "target": dst,
                             "type": "sequence"
                         })
-                        
+
         except Exception as e:
             print(f"Graph build error: {e}")
         finally:
             conn.close()
-            
+
         result = {
             "nodes": list(nodes.values()),
             "links": links

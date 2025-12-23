@@ -54,6 +54,18 @@ repos:
         args: [-r, campro/, CamPro_OptimalMotion.py]
         exclude: tests/
 
+  # Engineering standards tracking
+  - repo: local
+    hooks:
+      - id: engineering-scanner
+        name: Engineering element scanner
+        entry: python -m provenance.engineering_scanner --dry-run --changed-only
+        language: system
+        files: ^(campro|truthmaker)/.*\.py$
+        pass_filenames: true
+        stages: [pre-commit]
+        verbose: true
+
   # Documentation
   - repo: https://github.com/pycqa/pydocstyle
     rev: 6.3.0

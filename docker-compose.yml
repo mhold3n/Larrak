@@ -35,7 +35,7 @@ services:
     image: semitechnologies/weaviate:1.27.0
     ports:
       - "8080:8080"
-      - "50052:50051" # Avoid conflict with CEM on host if both use 50051, mapping Weaviate GRPC to different host port
+      - "50052:50051"
     volumes:
       - weaviate_data:/var/lib/weaviate
     restart: on-failure:0
@@ -43,15 +43,8 @@ services:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
       PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
-      DEFAULT_VECTORIZER_MODULE: "text2vec-transformers"
-      ENABLE_MODULES: "text2vec-transformers"
-      TRANSFORMERS_INFERENCE_API: "http://t2v-transformers:8080"
+      DEFAULT_VECTORIZER_MODULE: "none"
       CLUSTER_HOSTNAME: "node1"
-
-  t2v-transformers:
-    image: semitechnologies/transformers-inference:sentence-transformers-paraphrase-multilingual-MiniLM-L12-v2
-    environment:
-      ENABLE_CUDA: "0"
 
 volumes:
   weaviate_data:
