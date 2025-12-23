@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Larrak Project Graph</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-purple: #a371f7;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .controls input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            width: 300px;
+        }
+
+        .controls button {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .controls button:hover {
+            opacity: 0.9;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #cy {
+            flex: 1;
+            background: var(--bg-primary);
+        }
+
+        .sidebar {
+            width: 360px;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border-color);
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .sidebar h2 {
+            font-size: 16px;
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .node-info {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .node-info h3 {
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .node-info .type {
+            display: inline-block;
+            background: var(--accent-purple);
+            color: white;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+        }
+
+        .node-info .property {
+            margin-bottom: 8px;
+        }
+
+        .node-info .property label {
+            color: var(--text-secondary);
+            font-size: 12px;
+            display: block;
+        }
+
+        .node-info .property value {
+            font-size: 14px;
+        }
+
+        .legend {
+            margin-top: 16px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .legend-item .color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+
+        .stats {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat .value {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        .stat .label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .error {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>🕸️ Larrak Project Graph</h1>
+        <div class="controls">
+            <input type="text" id="weaviate-url" placeholder="Weaviate URL (e.g., http://localhost:8080)"
+                value="http://localhost:8080">
+            <button onclick="loadGraph()">Load Graph</button>
+            <button onclick="cy.fit()">Fit View</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div id="cy"></div>
+        <div class="sidebar">
+            <div class="stats" id="stats">
+                <h2>Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat">
+                        <div class="value" id="node-count">-</div>
+                        <div class="label">Nodes</div>
+                    </div>
+                    <div class="stat">
+                        <div class="value" id="edge-count">-</div>
+                        <div class="label">Edges</div>
+                    </div>
+                    <div class="stat">
+                        <div class="value" id="file-count">-</div>
+                        <div class="label">Files</div>
+                    </div>
+                    <div class="stat">
+                        <div class="value" id="symbol-count">-</div>
+                        <div class="label">Symbols</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="node-details">
+                <h2>Selected Node</h2>
+                <p style="color: var(--text-secondary); font-size: 14px;">Click a node to see details</p>
+            </div>
+
+            <div class="legend">
+                <h2>Legend</h2>
+                <div class="legend-item">
+                    <div class="color" style="background: #a371f7;"></div>
+                    <span>Project</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color" style="background: #f85149;"></div>
+                    <span>Issue</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color" style="background: #3fb950;"></div>
+                    <span>Pull Request</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color" style="background: #58a6ff;"></div>
+                    <span>File</span>
+                </div>
+                <div class="legend-item">
+                    <div class="color" style="background: #d29922;"></div>
+                    <span>Symbol</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Cytoscape
+        const cy = cytoscape({
+            container: document.getElementById('cy'),
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'label': 'data(label)',
+                        'text-valign': 'bottom',
+                        'text-halign': 'center',
+                        'font-size': '10px',
+                        'color': '#e6edf3',
+                        'text-margin-y': 8,
+                        'width': 'data(size)',
+                        'height': 'data(size)',
+                        'background-color': 'data(color)'
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1,
+                        'line-color': '#30363d',
+                        'target-arrow-color': '#30363d',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'opacity': 0.6
+                    }
+                },
+                {
+                    selector: 'node:selected',
+                    style: {
+                        'border-width': 3,
+                        'border-color': '#ffffff'
+                    }
+                },
+                {
+                    selector: 'edge:selected',
+                    style: {
+                        'line-color': '#58a6ff',
+                        'target-arrow-color': '#58a6ff',
+                        'width': 2,
+                        'opacity': 1
+                    }
+                }
+            ],
+            layout: { name: 'preset' }
+        });
+
+        // Color mapping
+        const typeColors = {
+            'GitHubProject': '#a371f7',
+            'GitHubIssue': '#f85149',
+            'GitHubPullRequest': '#3fb950',
+            'GitHubDraftIssue': '#8b949e',
+            'GitHubProjectItem': '#6e7681',
+            'CodeFile': '#58a6ff',
+            'CodeSymbol': '#d29922',
+            'Repository': '#79c0ff',
+            'WorkflowRun': '#a5d6ff'
+        };
+
+        async function fetchWeaviate(url, query) {
+            const response = await fetch(`${url}/v1/graphql`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query })
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        }
+
+        async function loadGraph() {
+            const weaviateUrl = document.getElementById('weaviate-url').value.replace(/\/$/, '');
+            const detailsDiv = document.getElementById('node-details');
+
+            detailsDiv.innerHTML = '<div class="loading">Loading graph data...</div>';
+
+            try {
+                const elements = [];
+                let fileCount = 0;
+                let symbolCount = 0;
+
+                // Fetch Files (sample - limit to 100)
+                const filesQuery = `{
+                    Get {
+                        CodeFile(limit: 100) {
+                            _additional { id }
+                            path
+                        }
+                    }
+                }`;
+                const filesResult = await fetchWeaviate(weaviateUrl, filesQuery);
+                const files = filesResult.data?.Get?.CodeFile || [];
+                fileCount = files.length;
+
+                files.forEach(file => {
+                    const shortPath = file.path.split('/').slice(-2).join('/');
+                    elements.push({
+                        data: {
+                            id: file._additional.id,
+                            label: shortPath,
+                            type: 'CodeFile',
+                            color: typeColors['CodeFile'],
+                            size: 20,
+                            fullPath: file.path
+                        }
+                    });
+                });
+
+                // Fetch Symbols (sample - limit to 200)
+                const symbolsQuery = `{
+                    Get {
+                        CodeSymbol(limit: 200) {
+                            _additional { id }
+                            name
+                            file_path
+                            signature
+                        }
+                    }
+                }`;
+                const symbolsResult = await fetchWeaviate(weaviateUrl, symbolsQuery);
+                const symbols = symbolsResult.data?.Get?.CodeSymbol || [];
+                symbolCount = symbols.length;
+
+                // Create a map of file_path to file node id for edges
+                const filePathToId = {};
+                files.forEach(f => { filePathToId[f.path] = f._additional.id; });
+
+                symbols.forEach(sym => {
+                    elements.push({
+                        data: {
+                            id: sym._additional.id,
+                            label: sym.name,
+                            type: 'CodeSymbol',
+                            color: typeColors['CodeSymbol'],
+                            size: 12,
+                            signature: sym.signature,
+                            filePath: sym.file_path
+                        }
+                    });
+
+                    // Create edge to file if exists
+                    const fileId = filePathToId[sym.file_path];
+                    if (fileId) {
+                        elements.push({
+                            data: {
+                                source: sym._additional.id,
+                                target: fileId,
+                                label: 'defined_in'
+                            }
+                        });
+                    }
+                });
+
+                // Update stats
+                document.getElementById('node-count').textContent = elements.filter(e => !e.data.source).length;
+                document.getElementById('edge-count').textContent = elements.filter(e => e.data.source).length;
+                document.getElementById('file-count').textContent = fileCount;
+                document.getElementById('symbol-count').textContent = symbolCount;
+
+                // Load into Cytoscape
+                cy.elements().remove();
+                cy.add(elements);
+
+                // Layout
+                cy.layout({
+                    name: 'cose',
+                    animate: false,
+                    nodeRepulsion: 8000,
+                    idealEdgeLength: 100,
+                    edgeElasticity: 100,
+                    randomize: true
+                }).run();
+
+                cy.fit(undefined, 50);
+
+                detailsDiv.innerHTML = `
+                    <h2>Selected Node</h2>
+                    <p style="color: var(--text-secondary); font-size: 14px;">Click a node to see details</p>
+                `;
+
+            } catch (error) {
+                detailsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                console.error(error);
+            }
+        }
+
+        // Node click handler
+        cy.on('tap', 'node', function (evt) {
+            const node = evt.target;
+            const data = node.data();
+
+            let html = `
+                <h2>Node Details</h2>
+                <div class="node-info">
+                    <span class="type">${data.type}</span>
+                    <h3>${data.label}</h3>
+            `;
+
+            if (data.type === 'CodeFile') {
+                html += `<div class="property"><label>Path</label><value>${data.fullPath}</value></div>`;
+            } else if (data.type === 'CodeSymbol') {
+                html += `
+                    <div class="property"><label>Signature</label><value><code>${data.signature || 'N/A'}</code></value></div>
+                    <div class="property"><label>File</label><value>${data.filePath}</value></div>
+                `;
+            }
+
+            html += `</div>`;
+            document.getElementById('node-details').innerHTML = html;
+        });
+
+        // Initial load
+        loadGraph();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,31 @@
+name: Index Codebase to Weaviate
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "**.py"
+    workflow_dispatch:
+    repository_dispatch:
+        types: [reindex]
+
+jobs:
+    index:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Install dependencies
+              run: pip install weaviate-client
+
+            - name: Index codebase to Weaviate
+              run: python truthmaker/ingestion/code_scanner.py
+              env:
+                  WEAVIATE_URL: ${{ secrets.WEAVIATE_URL }}
+                  REPO_NAME: Larrak
+                  REPO_OWNER: mhold3n

@@ -220,3 +220,169 @@ def create_schema(client: weaviate.WeaviateClient) -> None:
             ],
             vectorizer_config=wvc.Configure.Vectorizer.none(),
         )
+
+    # ==========================================================================
+    # GitHub Integration Collections (Phase 4)
+    # ==========================================================================
+
+    # 10. Repository (GitHub repo - no refs initially)
+    if not client.collections.exists("Repository"):
+        client.collections.create(
+            name="Repository",
+            description="A GitHub repository",
+            properties=[
+                wvc.Property(name="node_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="name", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="owner", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="url", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="default_branch", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="last_indexed", data_type=wvc.DataType.DATE),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 11. CodeFile (refs: Repository)
+    if not client.collections.exists("CodeFile"):
+        client.collections.create(
+            name="CodeFile",
+            description="A file in a repository",
+            properties=[
+                wvc.Property(name="path", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="language", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="size_bytes", data_type=wvc.DataType.INT),
+                wvc.Property(name="last_indexed", data_type=wvc.DataType.DATE),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="in_repo", target_collection="Repository"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 11b. Add defined_in_file ref to CodeSymbol (now that CodeFile exists)
+    code_symbols = client.collections.get("CodeSymbol")
+    current_refs = [r.name for r in code_symbols.config.get().references]
+    if "defined_in_file" not in current_refs:
+        code_symbols.config.add_reference(
+            wvc.ReferenceProperty(name="defined_in_file", target_collection="CodeFile")
+        )
+
+    # 12. GitHubIssue (refs: none initially, Symbol ref added later)
+    if not client.collections.exists("GitHubIssue"):
+        client.collections.create(
+            name="GitHubIssue",
+            description="A GitHub issue",
+            properties=[
+                wvc.Property(name="node_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="number", data_type=wvc.DataType.INT),
+                wvc.Property(name="title", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="body", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="state", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="labels", data_type=wvc.DataType.TEXT_ARRAY),
+                wvc.Property(name="assignees", data_type=wvc.DataType.TEXT_ARRAY),
+                wvc.Property(name="url", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="created_at", data_type=wvc.DataType.DATE),
+                wvc.Property(name="updated_at", data_type=wvc.DataType.DATE),
+                # Custom field for confirmed symbol links (from GitHub Projects)
+                wvc.Property(name="linked_symbols_field", data_type=wvc.DataType.TEXT),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="relates_to", target_collection="CodeSymbol"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 13. GitHubPullRequest (refs: none initially)
+    if not client.collections.exists("GitHubPullRequest"):
+        client.collections.create(
+            name="GitHubPullRequest",
+            description="A GitHub pull request",
+            properties=[
+                wvc.Property(name="node_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="number", data_type=wvc.DataType.INT),
+                wvc.Property(name="title", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="body", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="state", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="head_ref", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="base_ref", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="url", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="created_at", data_type=wvc.DataType.DATE),
+                wvc.Property(name="merged_at", data_type=wvc.DataType.DATE),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="touches_files", target_collection="CodeFile"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 14. GitHubDraftIssue
+    if not client.collections.exists("GitHubDraftIssue"):
+        client.collections.create(
+            name="GitHubDraftIssue",
+            description="A draft issue in a GitHub Project",
+            properties=[
+                wvc.Property(name="node_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="title", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="body", data_type=wvc.DataType.TEXT),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 15. GitHubProjectItem (refs: Issue/PR/Draft)
+    if not client.collections.exists("GitHubProjectItem"):
+        client.collections.create(
+            name="GitHubProjectItem",
+            description="An item in a GitHub Project v2",
+            properties=[
+                wvc.Property(name="node_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="item_type", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="status", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="custom_fields", data_type=wvc.DataType.TEXT),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="content_issue", target_collection="GitHubIssue"),
+                wvc.ReferenceProperty(name="content_pr", target_collection="GitHubPullRequest"),
+                wvc.ReferenceProperty(name="content_draft", target_collection="GitHubDraftIssue"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 16. GitHubProject (refs: ProjectItem[])
+    if not client.collections.exists("GitHubProject"):
+        client.collections.create(
+            name="GitHubProject",
+            description="A GitHub Project v2",
+            properties=[
+                wvc.Property(name="node_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="number", data_type=wvc.DataType.INT),
+                wvc.Property(name="title", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="description", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="url", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="last_synced", data_type=wvc.DataType.DATE),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="has_items", target_collection="GitHubProjectItem"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 17. WorkflowRun (optional - GitHub Actions linkage)
+    if not client.collections.exists("WorkflowRun"):
+        client.collections.create(
+            name="WorkflowRun",
+            description="A GitHub Actions workflow run",
+            properties=[
+                wvc.Property(name="run_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="workflow_name", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="status", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="conclusion", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="run_number", data_type=wvc.DataType.INT),
+                wvc.Property(name="started_at", data_type=wvc.DataType.DATE),
+                wvc.Property(name="completed_at", data_type=wvc.DataType.DATE),
+                wvc.Property(name="url", data_type=wvc.DataType.TEXT),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="touches_files", target_collection="CodeFile"),
+                wvc.ReferenceProperty(name="touches_issues", target_collection="GitHubIssue"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
