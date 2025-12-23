@@ -1,9 +1,9 @@
 modules:
   # Sequence order: thermo_calibration_loop -> gear_kinematics_nlp -> gear_profile_synthesis
-  
+
   - module_id: "thermo_calibration_loop"
     display_name: "Thermo Calibration"
-    entrypoint: "scripts/run_thermo_calibration.py"
+    entrypoint: "scripts/phase1/run_thermo_calibration.py"
     description: "Thermodynamic DOE with surrogate validation and calibration loop."
     owner: "Thermo Team"
     params:
@@ -74,7 +74,7 @@ modules:
 
   - module_id: "gear_kinematics_nlp"
     display_name: "Gear Kinematics"
-    entrypoint: "scripts/run_gear_kinematics.py"
+    entrypoint: "scripts/phase3/run_gear_kinematics.py"
     description: "Optimizes planet-ring kinematic geometry for target motion profile."
     owner: "Kinematics Team"
     params:
@@ -105,7 +105,7 @@ modules:
 
   - module_id: "gear_profile_synthesis"
     display_name: "Gear Profile Synthesis"
-    entrypoint: "scripts/run_gear_profile_synthesis.py"
+    entrypoint: "scripts/phase3/run_gear_profile_synthesis.py"
     description: "Generates final gear set geometry using Litvin synthesis from motion profile."
     owner: "Gear Design Team"
     params:

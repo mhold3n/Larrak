@@ -28,10 +28,9 @@ import sys
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal
+from typing import Any, Callable, Literal
 
 from campro.environment.platform_detector import (
-    IS_LINUX,
     IS_MACOS,
     IS_WINDOWS,
     PlatformInfo,

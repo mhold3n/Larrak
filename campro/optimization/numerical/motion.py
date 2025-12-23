@@ -17,11 +17,11 @@ from numpy.typing import NDArray
 from campro.constraints.cam import CamMotionConstraints
 from campro.constraints.motion import MotionConstraints
 from campro.logging import get_logger
+from campro.optimization.utils.grid import GridSpec
 from campro.storage import OptimizationRegistry
 
 from .base import BaseOptimizer, OptimizationResult, OptimizationStatus
 from .collocation import CollocationOptimizer, CollocationSettings
-from campro.optimization.utils.grid import GridSpec
 
 log = get_logger(__name__)
 

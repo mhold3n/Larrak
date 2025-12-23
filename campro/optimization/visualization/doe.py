@@ -1,7 +1,8 @@
-import plotly.graph_objects as go
-import pandas as pd
 import os
-from .utils import get_common_layout
+
+import pandas as pd
+import plotly.graph_objects as go
+
 
 def plot_efficiency_map(df: pd.DataFrame, x_col: str, y_col: str, z_col: str, output_path: str = None) -> go.Figure:
     """

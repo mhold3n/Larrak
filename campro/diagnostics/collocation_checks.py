@@ -38,9 +38,7 @@ def check_collocation_residuals(
             # builder.w contains symbolic variables
 
             # We can cache this function in the builder if needed, but creating it here is fine
-            g_func = ca.Function(
-                "g_eval", [ca.vertcat(*builder.w)], [ca.vertcat(*builder.g)]
-            )
+            g_func = ca.Function("g_eval", [ca.vertcat(*builder.w)], [ca.vertcat(*builder.g)])
 
             # Evaluate
             g_val = g_func(w_opt).full().flatten()
@@ -62,7 +60,7 @@ def check_collocation_residuals(
     if opti is not None:
         try:
             return opti.stats()["iterations"]["inf_pr"][-1]
-        except:
+        except Exception:
             log.warning("Could not retrieve primal infeasibility from solver stats.")
             return -1.0
 
@@ -173,20 +171,14 @@ def check_scaling(
     warnings = []
 
     w_opt = None
-    if (
-        builder is not None
-        and solution_values is not None
-        and "_w_opt" in solution_values
-    ):
+    if builder is not None and solution_values is not None and "_w_opt" in solution_values:
         w_opt = solution_values["_w_opt"]
 
         # Check variable magnitudes
         max_val = np.max(np.abs(w_opt))
         min_val = np.min(np.abs(w_opt) + 1e-16)
         if max_val > threshold:
-            warnings.append(
-                f"Max variable value {max_val:.2e} exceeds threshold {threshold:.2e}"
-            )
+            warnings.append(f"Max variable value {max_val:.2e} exceeds threshold {threshold:.2e}")
         if min_val < 1.0 / threshold and min_val > 1e-16:
             warnings.append(f"Min variable value {min_val:.2e} is very small")
 

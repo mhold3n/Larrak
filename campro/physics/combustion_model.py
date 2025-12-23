@@ -16,25 +16,43 @@ from typing import Any
 
 import numpy as np
 
+from campro.constants import (
+    CASADI_PHYSICS_EPSILON,
+    DEFAULT_BURN_COEF_C,
+    DEFAULT_TURBULENCE_FACTOR_K,
+    DEFAULT_WIEBE_M,
+    MIN_FLAME_SPEED,
+    TURBULENCE_EXPONENT,
+)
 from campro.logging import get_logger
+from campro.materials.fuels import get_stoich_afr
 
 from .base import BasePhysicsModel, PhysicsResult
-from .chem import (
-    CombustionParameters,
-    create_combustion_parameters,
-    laminar_flame_speed,
-)
+from .chem import CombustionParameters, create_combustion_parameters, laminar_flame_speed
 
 log = get_logger(__name__)
 
-CASADI_EPS = 1e-9
 
-STOICH_AFR: dict[str, float] = {
-    "gasoline": 14.7,
-    "diesel": 14.5,
-    "natural_gas": 17.2,
-    "hydrogen": 34.3,
-}
+# CASADI_EPS = 1e-9  <- Removed, using CASADI_EPSILON
+
+
+def _get_stoich_afr(fuel_type: str) -> float:
+    """Get stoichiometric AFR from materials database.
+
+    Args:
+        fuel_type: Fuel type name
+
+    Returns:
+        Stoichiometric air-fuel ratio (kg air / kg fuel)
+    """
+    try:
+        afr, _ = get_stoich_afr(fuel_type)
+        return afr
+    except KeyError:
+        # Fallback for unknown fuels
+        log.warning(f"Unknown fuel '{fuel_type}', using gasoline stoich AFR")
+        afr, _ = get_stoich_afr("gasoline")
+        return afr
 
 
 @dataclass
@@ -48,14 +66,14 @@ class CombustionConfig:
     clearance_volume_m3: float
     fuel_mass_kg: float
     cycle_time_s: float
-    initial_temperature_K: float
-    initial_pressure_Pa: float = 1e5
+    initial_temperature_k: float
+    initial_pressure_pa: float = 1e5
     target_mfb: float = 0.99
-    m_wiebe: float = 2.0
-    k_turb: float = 0.3
-    c_burn: float = 3.0
-    turbulence_exponent: float = 0.7
-    min_flame_speed: float = 0.1
+    m_wiebe: float = DEFAULT_WIEBE_M.value
+    k_turb: float = DEFAULT_TURBULENCE_FACTOR_K.value
+    c_burn: float = DEFAULT_BURN_COEF_C.value
+    turbulence_exponent: float = TURBULENCE_EXPONENT.value
+    min_flame_speed: float = MIN_FLAME_SPEED.value
     heating_value_override: float | None = None
     phi_override: float | None = None
     injector_delay_s: float = 0.0  # Injector delay [s] - shifts effective combustion start
@@ -71,7 +89,7 @@ class CombustionOutputs:
     time_s: np.ndarray
     theta_deg: np.ndarray | None
     mass_fraction_burned: np.ndarray
-    heat_release_rate_W: np.ndarray
+    heat_release_rate_w: np.ndarray
     heat_release_per_deg: np.ndarray | None
     burn_duration_s: float
     burn_duration_deg: float | None
@@ -108,8 +126,11 @@ class CombustionModel(BasePhysicsModel):
 
         cfg = CombustionConfig(**kwargs)
         fuel_key = cfg.fuel_type.lower()
-        if fuel_key not in STOICH_AFR:
-            raise ValueError(f"Unsupported fuel type '{cfg.fuel_type}'")
+        # Validation - try to get stoich AFR to verify fuel is known
+        try:
+            stoich_afr = _get_stoich_afr(fuel_key)
+        except KeyError:
+            raise ValueError(f"Unsupported fuel type '{cfg.fuel_type}'") from None
 
         if cfg.afr <= 0:
             raise ValueError("AFR must be positive")
@@ -123,7 +144,7 @@ class CombustionModel(BasePhysicsModel):
         params = create_combustion_parameters(fuel_key)
         self.params = params
         self.config = cfg
-        self._stoich_afr = STOICH_AFR[fuel_key]
+        self._stoich_afr = stoich_afr
 
         # Geometric properties
         radius = cfg.bore_m / 2.0
@@ -151,8 +172,8 @@ class CombustionModel(BasePhysicsModel):
         self._laminar_speed_m_per_s = float(
             laminar_flame_speed(
                 phi=phi,
-                temperature=cfg.initial_temperature_K,
-                pressure=cfg.initial_pressure_Pa,
+                temperature=cfg.initial_temperature_k,
+                pressure=cfg.initial_pressure_pa,
                 params=params,
             ),
         )
@@ -191,7 +212,7 @@ class CombustionModel(BasePhysicsModel):
             "time_s": outputs.time_s,
             "theta_deg": outputs.theta_deg,
             "mass_fraction_burned": outputs.mass_fraction_burned,
-            "heat_release_rate_W": outputs.heat_release_rate_W,
+            "heat_release_rate_W": outputs.heat_release_rate_w,
             "heat_release_per_deg": outputs.heat_release_per_deg,
             "burn_duration_s": outputs.burn_duration_s,
             "burn_duration_deg": outputs.burn_duration_deg,
@@ -251,7 +272,7 @@ class CombustionModel(BasePhysicsModel):
         params = self.params
         ca_fmax = ca.fmax
 
-        S_L = float(max(self._laminar_speed_m_per_s or 1e-3, 1e-3))
+        s_l_val = float(max(self._laminar_speed_m_per_s or 1e-3, 1e-3))
         clearance_h = float(self._clearance_height_m or 1e-6)
         min_speed = float(cfg.min_flame_speed)
         alpha = float(params.alpha_turbulence)
@@ -262,15 +283,15 @@ class CombustionModel(BasePhysicsModel):
         q_total = float(cfg.fuel_mass_kg * (self._lhv or params.lower_heating_value_fuel))
 
         u_turb = k_turb * ca.fabs(piston_speed_m_per_s)
-        S_ratio = u_turb / ca_fmax(S_L, CASADI_EPS)
-        S_T = S_L * (1.0 + alpha * ca.power(S_ratio, exponent))
-        S_T = ca_fmax(S_T, min_speed)
-        burn_time = cfg.c_burn * clearance_h / ca_fmax(S_T, CASADI_EPS)
+        v_ratio = u_turb / ca_fmax(s_l_val, CASADI_PHYSICS_EPSILON.value)
+        s_t_val = s_l_val * (1.0 + alpha * ca.power(v_ratio, exponent))
+        s_t_val = ca_fmax(s_t_val, min_speed)
+        burn_time = cfg.c_burn * clearance_h / ca_fmax(s_t_val, CASADI_PHYSICS_EPSILON.value)
 
         # Note: injector_delay handling in symbolic interface requires passing
         # effective_ignition_time_s = ignition_time_s - injector_delay_s
         # This is handled at the caller level; here we use ignition_time_s directly
-        tau_raw = (time_s - ignition_time_s) / ca_fmax(burn_time, CASADI_EPS)
+        tau_raw = (time_s - ignition_time_s) / ca_fmax(burn_time, CASADI_PHYSICS_EPSILON.value)
         tau = ca.if_else(
             tau_raw < 0.0,
             0.0,
@@ -282,8 +303,8 @@ class CombustionModel(BasePhysicsModel):
         base = (
             a_wiebe
             * (m_wiebe + 1.0)
-            / ca_fmax(burn_time, CASADI_EPS)
-            * ca.power(ca.fmax(tau, CASADI_EPS), m_wiebe)
+            / ca_fmax(burn_time, CASADI_PHYSICS_EPSILON.value)
+            * ca.power(ca.fmax(tau, CASADI_PHYSICS_EPSILON.value), m_wiebe)
             * exp_term
         )
         dxb_dt = ca.if_else(
@@ -296,7 +317,7 @@ class CombustionModel(BasePhysicsModel):
         if omega_deg_per_s is not None:
             heat_release_per_deg = heat_release_rate / ca_fmax(
                 omega_deg_per_s,
-                CASADI_EPS,
+                CASADI_PHYSICS_EPSILON.value,
             )
             burn_duration_deg = burn_time * omega_deg_per_s
         else:
@@ -320,118 +341,44 @@ class CombustionModel(BasePhysicsModel):
         if cfg is None or params is None:
             raise RuntimeError("CombustionModel must be configured before simulate")
 
-        time_s: np.ndarray = np.asarray(inputs.get("time_s"))
-        if time_s.ndim != 1:
-            raise ValueError("time_s must be a 1D array")
-        piston_speed = np.asarray(inputs.get("piston_speed_m_per_s"))
-        if piston_speed.shape != time_s.shape:
-            raise ValueError("piston_speed_m_per_s must match time_s shape")
+        time_s, piston_speed, theta_deg, omega_deg_per_s = self._resolve_kinematics(inputs)
 
-        theta_deg_input = inputs.get("theta_deg")
-        if theta_deg_input is not None:
-            theta_deg = np.asarray(theta_deg_input)
-            if theta_deg.shape != time_s.shape:
-                raise ValueError("theta_deg must match time_s shape")
-        else:
-            theta_deg = None
+        (
+            effective_ignition_time_s,
+            effective_ignition_theta_deg,
+            ignition_theta_deg,  # Needed for outputs
+        ) = self._resolve_ignition_and_delay(inputs, time_s, theta_deg)
 
-        omega_deg_per_s_input = inputs.get("omega_deg_per_s")
-        if omega_deg_per_s_input is not None:
-            omega_deg_per_s = np.asarray(omega_deg_per_s_input)
-            if omega_deg_per_s.shape != time_s.shape:
-                raise ValueError("omega_deg_per_s must match time_s shape")
-        else:
-            omega_deg_per_s = None
+        if omega_deg_per_s is None and theta_deg is not None:
+            omega_deg_per_s = np.gradient(theta_deg, time_s, edge_order=1)
+        elif omega_deg_per_s is None and cfg is not None:
+            omega_deg_per_s = np.full_like(time_s, 360.0 / cfg.cycle_time_s)
 
-        ignition_time_s: float | None = inputs.get("ignition_time_s")
-        ignition_theta_deg: float | None = inputs.get("ignition_theta_deg")
-
-        # Get injector delay from inputs (takes precedence) or config
-        injector_delay_s_input: float | None = inputs.get("injector_delay_s")
-        injector_delay_deg_input: float | None = inputs.get("injector_delay_deg")
-        injector_delay_s: float = 0.0
-        if injector_delay_s_input is not None:
-            injector_delay_s = float(injector_delay_s_input)
-        elif injector_delay_deg_input is not None and theta_deg is not None and time_s is not None:
-            # Convert injector_delay_deg to time
-            omega_avg = (
-                360.0 / cfg.cycle_time_s if cfg else 360.0 / max(time_s[-1] - time_s[0], 1e-9)
-            )
-            injector_delay_s = float(injector_delay_deg_input) / omega_avg
-        elif cfg and cfg.injector_delay_s is not None:
-            injector_delay_s = float(cfg.injector_delay_s)
-        elif (
-            cfg
-            and cfg.injector_delay_deg is not None
-            and theta_deg is not None
-            and time_s is not None
-        ):
-            # Convert from config
-            omega_avg = 360.0 / cfg.cycle_time_s
-            injector_delay_s = float(cfg.injector_delay_deg) / omega_avg
-
-        if ignition_time_s is None:
-            if ignition_theta_deg is None or theta_deg is None:
-                raise ValueError(
-                    "Either ignition_time_s or (ignition_theta_deg and theta_deg) must be provided",
-                )
-            ignition_time_s = float(
-                np.interp(
-                    ignition_theta_deg,
-                    theta_deg,
-                    time_s,
-                ),
-            )
-        if ignition_theta_deg is None and theta_deg is not None:
-            ignition_theta_deg = float(
-                np.interp(
-                    ignition_time_s,
-                    time_s,
-                    theta_deg,
-                ),
-            )
-
-        # Apply injector delay: shift effective ignition time earlier by delay
-        # Positive delay means fuel injected earlier, so combustion can start earlier
-        effective_ignition_time_s = ignition_time_s - injector_delay_s
-
+        # --------------------------------------------------------
+        # Compute Burn Duration Profile (from turbulence)
+        # --------------------------------------------------------
         duration_profile = self._duration_profile_from_speed(piston_speed)
-        # Use effective ignition time for burn duration lookup
+
+        # Burn duration at the effective ignition time
         burn_duration_s = float(
             np.interp(effective_ignition_time_s, time_s, duration_profile),
         )
 
-        if omega_deg_per_s is None and theta_deg is not None:
-            # Numerical derivative for ω when only θ provided
-            omega_deg_per_s = np.gradient(theta_deg, time_s, edge_order=1)
-        elif omega_deg_per_s is None:
-            omega_deg_per_s = np.full_like(time_s, 360.0 / cfg.cycle_time_s)
-
+        omega_interp = omega_deg_per_s if omega_deg_per_s is not None else np.zeros_like(time_s)
         burn_duration_deg = float(
             burn_duration_s
             * np.interp(
                 effective_ignition_time_s,
                 time_s,
-                omega_deg_per_s,
+                omega_interp,
             )
         )
 
-        # Compute effective ignition angle for output
-        effective_ignition_theta_deg: float | None = None
-        if theta_deg is not None:
-            effective_ignition_theta_deg = float(
-                np.interp(
-                    effective_ignition_time_s,
-                    time_s,
-                    theta_deg,
-                ),
-            )
-
         mfb, heat_rate, heat_per_deg = self._burn_profile(
             time_s=time_s,
-            ignition_time_s=effective_ignition_time_s,  # Use effective ignition time
+            ignition_time_s=effective_ignition_time_s,
             burn_duration_s=burn_duration_s,
-            omega_deg_per_s=omega_deg_per_s,
+            omega_deg_per_s=omega_interp,
         )
 
         ca_points = self._extract_combustion_angles(theta_deg, mfb)
@@ -448,7 +395,7 @@ class CombustionModel(BasePhysicsModel):
             time_s=time_s,
             theta_deg=theta_deg,
             mass_fraction_burned=mfb,
-            heat_release_rate_W=heat_rate,
+            heat_release_rate_w=heat_rate,
             heat_release_per_deg=heat_per_deg,
             burn_duration_s=burn_duration_s,
             burn_duration_deg=burn_duration_deg,
@@ -468,13 +415,15 @@ class CombustionModel(BasePhysicsModel):
         if cfg is None or params is None:
             raise RuntimeError("CombustionModel must be configured")
 
-        S_L = max(self._laminar_speed_m_per_s or 1e-3, 1e-3)
+        s_l_val = max(self._laminar_speed_m_per_s or 1e-3, 1e-3)
         alpha = params.alpha_turbulence
         u_turb = cfg.k_turb * np.abs(piston_speed)
-        S_T = S_L * (1.0 + alpha * np.power(u_turb / max(S_L, 1e-9), cfg.turbulence_exponent))
-        S_T = np.maximum(S_T, cfg.min_flame_speed)
+        s_t_val = s_l_val * (
+            1.0 + alpha * np.power(u_turb / max(s_l_val, 1e-9), cfg.turbulence_exponent)
+        )
+        s_t_val = np.maximum(s_t_val, cfg.min_flame_speed)
         clearance_h = float(self._clearance_height_m or 1e-6)
-        burn_time = cfg.c_burn * clearance_h / np.maximum(S_T, 1e-9)
+        burn_time = cfg.c_burn * clearance_h / np.maximum(s_t_val, 1e-9)
         return burn_time
 
     def _burn_profile(
@@ -544,3 +493,83 @@ class CombustionModel(BasePhysicsModel):
                 ca_values[name] = None
 
         return ca_values
+
+    def _resolve_kinematics(
+        self,
+        inputs: dict[str, Any],
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]:
+        time_s: np.ndarray = np.asarray(inputs.get("time_s"))
+        if time_s.ndim != 1:
+            raise ValueError("time_s must be a 1D array")
+        piston_speed = np.asarray(inputs.get("piston_speed_m_per_s"))
+        if piston_speed.shape != time_s.shape:
+            raise ValueError("piston_speed_m_per_s must match time_s shape")
+
+        theta_deg_input = inputs.get("theta_deg")
+        theta_deg: np.ndarray | None = None
+        if theta_deg_input is not None:
+            theta_deg = np.asarray(theta_deg_input)
+            if theta_deg.shape != time_s.shape:
+                raise ValueError("theta_deg must match time_s shape")
+
+        omega_input = inputs.get("omega_deg_per_s")
+        omega_deg_per_s: np.ndarray | None = None
+        if omega_input is not None:
+            omega_deg_per_s = np.asarray(omega_input)
+            if omega_deg_per_s.shape != time_s.shape:
+                raise ValueError("omega_deg_per_s must match time_s shape")
+
+        return time_s, piston_speed, theta_deg, omega_deg_per_s
+
+    def _resolve_ignition_and_delay(
+        self,
+        inputs: dict[str, Any],
+        time_s: np.ndarray,
+        theta_deg: np.ndarray | None,
+    ) -> tuple[float, float | None, float | None]:
+        cfg = self.config
+
+        # Injector Delay Logic
+        injector_delay_s_input = inputs.get("injector_delay_s")
+        injector_delay_deg_input = inputs.get("injector_delay_deg")
+        injector_delay_s: float = 0.0
+
+        if injector_delay_s_input is not None:
+            injector_delay_s = float(injector_delay_s_input)
+        elif injector_delay_deg_input is not None and theta_deg is not None:
+            omega_avg = (
+                360.0 / cfg.cycle_time_s if cfg else 360.0 / max(time_s[-1] - time_s[0], 1e-9)
+            )
+            injector_delay_s = float(injector_delay_deg_input) / omega_avg
+        elif cfg and cfg.injector_delay_s is not None:
+            injector_delay_s = float(cfg.injector_delay_s)
+        elif cfg and cfg.injector_delay_deg is not None and theta_deg is not None:
+            omega_avg = 360.0 / cfg.cycle_time_s
+            injector_delay_s = float(cfg.injector_delay_deg) / omega_avg
+
+        # Ignition Timing Logic
+        ignition_time_s: float | None = inputs.get("ignition_time_s")
+        ignition_theta_deg: float | None = inputs.get("ignition_theta_deg")
+
+        if ignition_time_s is None:
+            if ignition_theta_deg is None or theta_deg is None:
+                raise ValueError(
+                    "Either ignition_time_s or (ignition_theta_deg and theta_deg) must be provided",
+                )
+            ignition_time_s = float(np.interp(ignition_theta_deg, theta_deg, time_s))
+
+        if ignition_theta_deg is None and theta_deg is not None:
+            # Back-calculate angle from time if missing
+            ignition_theta_deg = float(np.interp(ignition_time_s, time_s, theta_deg))
+
+        # Effective Ignition Time
+        effective_ignition_time_s = ignition_time_s - injector_delay_s
+
+        # Effective Ignition Angle
+        effective_ignition_theta_deg: float | None = None
+        if theta_deg is not None:
+            effective_ignition_theta_deg = float(
+                np.interp(effective_ignition_time_s, time_s, theta_deg)
+            )
+
+        return effective_ignition_time_s, effective_ignition_theta_deg, ignition_theta_deg

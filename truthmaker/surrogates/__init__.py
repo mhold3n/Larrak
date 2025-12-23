@@ -1,6 +1,6 @@
-from .models.ensemble import EnsembleSurrogate
-from .models.model import SurrogateModel
-from .training.trainer import CEMTrainer, TrainingConfig, PhysicsConstraints
 from .inference.gated import GatedSurrogateInference, SurrogatePrediction
-from .sampling.active import ActiveSampler
-from .training.dataset import SurrogateDataset
+from .models.ensemble import EnsembleSurrogate
+from .models.model import EngineSurrogateModel
+from .sampling.active import sample_feasible_envelope
+from .training.dataset import EngineDataset as SurrogateDataset
+from .training.trainer import CEMTrainer, PhysicsConstraints, TrainingConfig

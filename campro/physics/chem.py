@@ -1,12 +1,30 @@
-"""Combustion models for free-piston engines."""
+"""Combustion models for free-piston engines.
+
+This module uses T-dependent material properties from campro.materials
+for validated thermodynamic calculations.
+"""
 
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
+from campro.constants import (
+    DEFAULT_TURBULENCE_FACTOR_K,
+    DEFAULT_WIEBE_A,
+    DEFAULT_WIEBE_M,
+    FLAME_SPEED_PRESSURE_EXPONENT,
+    FLAME_SPEED_REF_PRESSURE,
+    FLAME_SPEED_REF_TEMP,
+    FLAME_SPEED_TEMP_EXPONENT,
+    IGNITION_ACTIVATION_ENERGY,
+    IGNITION_DELAY_PRE_EXP,
+)
 from campro.logging import get_logger
-from typing import Callable
+from campro.materials.fuels import get_lhv, get_stoich_afr
+from campro.units import R_UNIVERSAL
 
 log = get_logger(__name__)
 
@@ -154,16 +172,17 @@ def ignition_delay_correlation(
     # Simplified ignition delay correlation
     # tau = A * p^(-n) * exp(E_a / (R * T)) * phi^(-m)
 
-    pre_exponential = 1e-6  # Pre-exponential factor [s]
+    pre_exponential = IGNITION_DELAY_PRE_EXP.value  # Pre-exponential factor [s]
     n = 1.0  # Pressure exponent
-    activation_energy = 15000.0  # Activation energy [J/mol]
-    gas_constant = 8.314  # Gas constant [J/(mol K)]
+    activation_energy = IGNITION_ACTIVATION_ENERGY.value  # Activation energy [J/mol]
+    # Use universal gas constant from typed constants module
+    r_gas = R_UNIVERSAL.value  # J/(mol·K)
     m = 0.5  # Equivalence ratio exponent
 
     tau_ignition = (
         pre_exponential
         * (pressure ** (-n))
-        * math.exp(activation_energy / (gas_constant * temperature))
+        * math.exp(activation_energy / (r_gas * temperature))
         * (phi ** (-m))
     )
 
@@ -200,10 +219,10 @@ def laminar_flame_speed(
     # Simplified laminar flame speed correlation
     # S_L = S_L0 * (T/T_ref)^alpha * (p/p_ref)^beta * f(phi)
 
-    ref_temp = 300.0  # K
-    ref_pressure = 1e5  # Pa
-    alpha = 2.0  # Temperature exponent
-    beta = -0.5  # Pressure exponent
+    ref_temp = FLAME_SPEED_REF_TEMP.value  # K
+    ref_pressure = FLAME_SPEED_REF_PRESSURE.value  # Pa
+    alpha = FLAME_SPEED_TEMP_EXPONENT.value  # Temperature exponent
+    beta = FLAME_SPEED_PRESSURE_EXPONENT.value  # Pressure exponent
 
     # Equivalence ratio dependence (simplified)
     if phi < 0.5 or phi > 1.5:
@@ -348,12 +367,12 @@ def multi_zone_combustion(
     for zone_name, zone_data in zones.items():
         # Compute heat release for this zone
         phi = zone_data.get("equivalence_ratio", 1.0)
-        temperature = zone_data.get("temperature", 500.0)
-        pressure = zone_data.get("pressure", 1e5)
         mass = zone_data.get("mass", 0.001)
 
         # Heat release from fuel in this zone
-        m_fuel = mass * phi / 14.7  # Simplified stoichiometric ratio
+        # Use stoichiometric AFR from fuels database for gasoline
+        stoich_afr, _ = get_stoich_afr("gasoline")
+        m_fuel = mass * phi / stoich_afr
         heat_release_zone = heat_release_from_fuel(m_fuel=m_fuel, params=params)
 
         zone_results[zone_name] = heat_release_zone
@@ -414,7 +433,7 @@ def combustion_timing_optimization(
     }
 
 
-def get_combustion_function(method: str = "wiebe") -> Callable[..., float]:
+def get_combustion_function(method: str = "wiebe") -> Callable[..., Any]:
     """Get combustion function by name.
 
     Parameters
@@ -445,6 +464,8 @@ def get_combustion_function(method: str = "wiebe") -> Callable[..., float]:
 def create_combustion_parameters(fuel_type: str = "gasoline") -> CombustionParameters:
     """Create combustion parameters for different fuel types.
 
+    Uses validated fuel properties from campro.materials.fuels for LHV values.
+
     Parameters
     ----------
     fuel_type : str
@@ -455,52 +476,64 @@ def create_combustion_parameters(fuel_type: str = "gasoline") -> CombustionParam
     params : CombustionParameters
         Combustion parameters
     """
-    if fuel_type == "gasoline":
-        return CombustionParameters(
-            m_wiebe=2.0,
-            a_wiebe=5.0,
-            theta_start=10.0,
-            theta_duration=60.0,
-            total_heat_release=1000.0,
-            lower_heating_value_fuel=44e6,  # J/kg
-            tau_ignition=1e-3,
-            laminar_flame_speed_zero=0.4,  # m/s
-            alpha_turbulence=2.0,
-        )
-    if fuel_type == "diesel":
-        return CombustionParameters(
-            m_wiebe=1.5,
-            a_wiebe=6.9,
-            theta_start=5.0,
-            theta_duration=80.0,
-            total_heat_release=1000.0,
-            lower_heating_value_fuel=42e6,  # J/kg
-            tau_ignition=1e-4,
-            laminar_flame_speed_zero=0.3,  # m/s
-            alpha_turbulence=1.5,
-        )
-    if fuel_type == "natural_gas":
-        return CombustionParameters(
-            m_wiebe=2.5,
-            a_wiebe=4.0,
-            theta_start=15.0,
-            theta_duration=70.0,
-            total_heat_release=1000.0,
-            lower_heating_value_fuel=50e6,  # J/kg
-            tau_ignition=2e-3,
-            laminar_flame_speed_zero=0.35,  # m/s
-            alpha_turbulence=2.5,
-        )
-    if fuel_type == "hydrogen":
-        return CombustionParameters(
-            m_wiebe=3.0,
-            a_wiebe=3.0,
-            theta_start=20.0,
-            theta_duration=50.0,
-            total_heat_release=1000.0,
-            lower_heating_value_fuel=120e6,  # J/kg
-            tau_ignition=5e-4,
-            laminar_flame_speed_zero=2.0,  # m/s
-            alpha_turbulence=3.0,
-        )
-    raise ValueError(f"Unknown fuel type: {fuel_type}")
+    # Get LHV from materials database (returns value and uncertainty)
+    try:
+        lhv_j_kg, _ = get_lhv(fuel_type)
+    except KeyError:
+        raise ValueError(f"Unknown fuel type: {fuel_type}") from None
+
+    # Fuel-specific Wiebe and flame parameters
+    fuel_configs = {
+        "gasoline": {
+            "m_wiebe": DEFAULT_WIEBE_M.value,
+            "a_wiebe": DEFAULT_WIEBE_A.value,
+            "theta_start": 10.0,
+            "theta_duration": 60.0,
+            "tau_ignition": 1e-3,
+            "laminar_flame_speed_zero": 0.4,
+            "alpha_turbulence": DEFAULT_TURBULENCE_FACTOR_K.value,
+        },
+        "diesel": {
+            "m_wiebe": 1.5,
+            "a_wiebe": 6.9,
+            "theta_start": 5.0,
+            "theta_duration": 80.0,
+            "tau_ignition": 1e-4,
+            "laminar_flame_speed_zero": 0.3,
+            "alpha_turbulence": 1.5,
+        },
+        "natural_gas": {
+            "m_wiebe": 2.5,
+            "a_wiebe": 4.0,
+            "theta_start": 15.0,
+            "theta_duration": 70.0,
+            "tau_ignition": 2e-3,
+            "laminar_flame_speed_zero": 0.35,
+            "alpha_turbulence": 2.5,
+        },
+        "hydrogen": {
+            "m_wiebe": 3.0,
+            "a_wiebe": 3.0,
+            "theta_start": 20.0,
+            "theta_duration": 50.0,
+            "tau_ignition": 5e-4,
+            "laminar_flame_speed_zero": 2.0,
+            "alpha_turbulence": 3.0,
+        },
+    }
+
+    if fuel_type not in fuel_configs:
+        raise ValueError(f"Unknown fuel type: {fuel_type}")
+
+    cfg = fuel_configs[fuel_type]
+    return CombustionParameters(
+        m_wiebe=cfg["m_wiebe"],
+        a_wiebe=cfg["a_wiebe"],
+        theta_start=cfg["theta_start"],
+        theta_duration=cfg["theta_duration"],
+        total_heat_release=1000.0,
+        lower_heating_value_fuel=lhv_j_kg,  # From materials database
+        tau_ignition=cfg["tau_ignition"],
+        laminar_flame_speed_zero=cfg["laminar_flame_speed_zero"],
+        alpha_turbulence=cfg["alpha_turbulence"],
+    )

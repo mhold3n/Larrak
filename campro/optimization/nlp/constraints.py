@@ -4,8 +4,6 @@ Provides CasADi expressions for Feasibility Gates (Thermal, Mechanical).
 These surrogates are calibrated by Phase 4 simulations.
 """
 
-import casadi as ca
-import numpy as np
 
 class ThermalConstraints:
     """

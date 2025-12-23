@@ -1,11 +1,11 @@
 """Dynamic parameter tuning based on problem characteristics."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from campro.optimization.solver_selection import AnalysisHistory, ProblemCharacteristics
-
 from campro.logging import get_logger
+from campro.optimization.solvers.solver_selection import AnalysisHistory, ProblemCharacteristics
 
 log = get_logger(__name__)
 
@@ -95,13 +95,13 @@ class DynamicParameterTuner:
         # Convergence issues adjustments
         if problem_chars.has_convergence_issues:
             params.mu_strategy = "monotone"
-            params.max_iter = min(params.max_iter * 1.5, 10000)
+            params.max_iter = int(min(params.max_iter * 1.5, 10000))
             params.tol = max(params.tol * 0.1, 1e-8)
 
         # Linear solver ratio adjustments
         if problem_chars.linear_solver_ratio > 0.5:
             # Linear solver is dominating - use more conservative settings
-            params.max_iter = min(params.max_iter * 1.2, 8000)
+            params.max_iter = int(min(params.max_iter * 1.2, 8000))
             params.tol = max(params.tol * 0.5, 1e-7)
 
         log.debug(
@@ -155,7 +155,10 @@ class DynamicParameterTuner:
         }
 
     def estimate_problem_characteristics(
-        self, n_variables: int, n_constraints: int, phase: str,
+        self,
+        n_variables: int,
+        n_constraints: int,
+        phase: str,
     ) -> ProblemCharacteristics:
         """Estimate problem characteristics for parameter tuning."""
 
@@ -202,7 +205,9 @@ class DynamicParameterTuner:
         """Convenience method to tune parameters for a specific phase."""
 
         problem_chars = self.estimate_problem_characteristics(
-            n_variables, n_constraints, phase,
+            n_variables,
+            n_constraints,
+            phase,
         )
         return self.tune_parameters(phase, problem_chars, analysis_history)
 
@@ -231,7 +236,9 @@ class DynamicParameterTuner:
                 "hessian_approximation": params.hessian_approximation,
             },
             "tuning_rationale": self._get_tuning_rationale(
-                phase, problem_chars, params,
+                phase,
+                problem_chars,
+                params,
             ),
         }
 

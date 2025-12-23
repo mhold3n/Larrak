@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -49,7 +49,7 @@ class IPOPTOptions:
     linear_solver: str = (
         "ma86"  # Prefer MA86 for better multicore performance (User requested ma83->ma86)
     )
-    linear_solver_options: dict[str, Any] = None
+    linear_solver_options: dict[str, Any] = field(default_factory=dict)
 
     # Barrier parameter options
     mu_strategy: str = "monotone"  # "monotone", "adaptive" - monotone provides better control
@@ -79,8 +79,6 @@ class IPOPTOptions:
 
     # Advanced options
     obj_scaling_factor: float = 1.0
-    acceptable_iter: int = 15
-    acceptable_tol: float = 1e-2
     acceptable_constr_viol_tol: float = 1e-2
     acceptable_dual_inf_tol: float = 1e10
     acceptable_compl_inf_tol: float = 1e-2
@@ -92,6 +90,7 @@ class IPOPTOptions:
     dependency_detector: str = "none"
     dependency_detection_with_rhs: str = "no"
     output_file: str | None = None
+    print_level: int = 5
     print_frequency_iter: int = 1
     print_frequency_time: float = 0.0
     print_timing_statistics: bool = False
@@ -116,7 +115,7 @@ class IPOPTOptions:
         0.9  # Required reduction in infeasibility for restoration
     )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.linear_solver_options is None:
             self.linear_solver_options = {}
 
@@ -242,11 +241,8 @@ class IPOPTIterationCallback(ca.Callback):
             x = data.get("x")
             g = data.get("g")
             lam_g = data.get("lam_g")
-            obj_val = (
-                float(data.get("f")[0])
-                if data.get("f") is not None and data.get("f").size
-                else float("nan")
-            )
+            f = data.get("f")
+            obj_val = float(f[0]) if f is not None and f.size else float("nan")
 
             step_inf = self._compute_step_norm(x)
             primal_violation = self._compute_violation(g, self._lbg, self._ubg)
@@ -380,16 +376,17 @@ class IPOPTIterationCallback(ca.Callback):
                         "Complementarity": compl_inf,
                     }
                     # Find key with max value
-                    dominant_metric = max(metrics, key=metrics.get)
+                    dominant_metric = max(metrics, key=lambda k: metrics[k])
 
                     self._reporter.warning(
                         f"PLATEAU DETECTED at iter {iteration}: "
                         f"Dominant metric: {dominant_metric} ({metrics[dominant_metric]:.2e}). "
                         f"max(delta_Q) over last {self._plateau_window_size} iters = {max_delta:.2e} "
                         f"< eps ({self._plateau_eps:.2e}). "
-                        f"Stopping optimization."
+                        f"Continuing optimization (warning only)."
                     )
-                    return True
+                    # Return False to continue optimization (warning only, not a hard stop)
+                    return False
 
         self._last_Q = Q_k
         return False
@@ -558,10 +555,7 @@ class IPOPTSolver:
             warm_kwargs: dict[str, Any] = {}
             try:
                 if str(self.options.warm_start_init_point).lower() == "yes":
-                    from campro.diagnostics.warmstart import (
-                        load_warmstart,
-                        save_warmstart,
-                    )
+                    from campro.diagnostics.warmstart import load_warmstart, save_warmstart
 
                     n_x = int(np.asarray(x0).size)
                     n_g = (
@@ -695,8 +689,8 @@ class IPOPTSolver:
                                             meta = self._meta_for_diagnostics
 
                                         # Diagnose first few NaN locations in detail
-                                        from campro.optimization.driver import (
-                                            _diagnose_nan_in_jacobian,
+                                        from campro.optimization.nlp.diagnostics import (
+                                            diagnose_nan_in_jacobian,
                                         )
 
                                         for i in range(min(5, len(jac_nan_pairs[0]))):
@@ -706,7 +700,7 @@ class IPOPTSolver:
 
                                             # Detailed diagnosis
                                             try:
-                                                diag = _diagnose_nan_in_jacobian(
+                                                diag = diagnose_nan_in_jacobian(
                                                     nlp_dict, x0, row_idx, col_idx, meta
                                                 )
                                                 reporter.error(
@@ -870,7 +864,7 @@ class IPOPTSolver:
 
     def _convert_options(self) -> dict[str, Any]:
         """Convert IPOPTOptions to CasADi format."""
-        opts = {}
+        opts: dict[str, Any] = {}
 
         # Basic options
         opts["ipopt.max_iter"] = self.options.max_iter
@@ -1026,7 +1020,7 @@ class IPOPTSolver:
             if np.isnan(kkt_error) or np.isinf(kkt_error):
                 return float("inf")
 
-            return kkt_error
+            return float(kkt_error)
 
         except Exception:
             return float("inf")
@@ -1042,7 +1036,7 @@ class IPOPTSolver:
         violations = np.maximum(0, g - ubg) + np.maximum(0, lbg - g)
         feasibility_error = np.linalg.norm(violations)
 
-        return feasibility_error
+        return float(feasibility_error)
 
     def _get_status_message(self, status: int) -> str:
         """Get human-readable status message."""

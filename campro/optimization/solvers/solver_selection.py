@@ -1,13 +1,13 @@
 """Adaptive solver selection based on problem characteristics and availability."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from campro.optimization.solver_analysis import IpoptAnalysisReport
-
 from campro.logging import get_logger
+from campro.optimization.solvers.solver_analysis import IpoptAnalysisReport
 
 log = get_logger(__name__)
 
@@ -56,7 +56,7 @@ class AdaptiveSolverSelector:
         """Detect which HSL solvers are available."""
         try:
             from campro.environment.hsl_detector import detect_available_solvers
-            
+
             self._available_solvers = detect_available_solvers(test_runtime=True)
             if not self._available_solvers:
                 # Fallback to MA27 if no solvers detected
@@ -82,15 +82,15 @@ class AdaptiveSolverSelector:
     ) -> SolverType:
         """
         Select optimal solver based on problem size and availability.
-        
+
         Selection logic:
         - Small problems (< 5,000 vars): MA27
         - Medium problems (5,000-50,000 vars): MA57 if available, else MA27
-        - Large problems (> 50,000 vars): MA97/MA86 if available and multi-core, 
+        - Large problems (> 50,000 vars): MA97/MA86 if available and multi-core,
           else MA77 if available, else MA27
         """
         n_vars = problem_chars.n_variables
-        
+
         # Small problems: prefer MA27
         if n_vars < 5000:
             if self._is_solver_available(SolverType.MA27):
@@ -101,7 +101,7 @@ class AdaptiveSolverSelector:
             # Fallback if MA27 not available (shouldn't happen)
             log.warning("MA27 not available; this should not happen")
             return SolverType.MA27
-        
+
         # Medium problems: prefer MA57
         elif n_vars < 50000:
             if self._is_solver_available(SolverType.MA57):
@@ -115,7 +115,7 @@ class AdaptiveSolverSelector:
                     f"Solver selection for phase '{phase}': MA27 (MA57 not available, {n_vars} vars)"
                 )
                 return SolverType.MA27
-        
+
         # Large problems: prefer parallel solvers (MA97/MA86) or MA77
         else:
             # Try MA97 first (best for very large problems)
@@ -124,21 +124,21 @@ class AdaptiveSolverSelector:
                     f"Solver selection for phase '{phase}': MA97 (large problem: {n_vars} vars)"
                 )
                 return SolverType.MA97
-            
+
             # Try MA86 (parallel solver for large problems)
             if self._is_solver_available(SolverType.MA86):
                 log.debug(
                     f"Solver selection for phase '{phase}': MA86 (large problem: {n_vars} vars)"
                 )
                 return SolverType.MA86
-            
+
             # Try MA77 (out-of-core solver)
             if self._is_solver_available(SolverType.MA77):
                 log.debug(
                     f"Solver selection for phase '{phase}': MA77 (large problem: {n_vars} vars)"
                 )
                 return SolverType.MA77
-            
+
             # Fallback to MA27
             log.debug(
                 f"Solver selection for phase '{phase}': MA27 (no large-problem solvers available, {n_vars} vars)"
@@ -149,7 +149,7 @@ class AdaptiveSolverSelector:
         self, phase: str, analysis: dict[str, Any] | IpoptAnalysisReport | None
     ) -> None:
         """Record basic statistics from Ipopt analysis metadata.
-        
+
         Accepts either a dict (for backward compatibility) or an IpoptAnalysisReport object.
         """
         if not analysis:
@@ -195,10 +195,12 @@ class AdaptiveSolverSelector:
         history = self.analysis_history.get(phase)
         if history and history.avg_grade in {"medium", "high"}:
             available = ", ".join(self._available_solvers or ["ma27"])
-            return f"Monitor solver performance (available: {available}); consider scaling or tuning"
+            return (
+                f"Monitor solver performance (available: {available}); consider scaling or tuning"
+            )
         available = ", ".join(self._available_solvers or ["ma27"])
         return f"Current solver is sufficient (available: {available})"
-    
+
     def get_available_solvers(self) -> list[str]:
         """Get list of available solver names."""
         if self._available_solvers is None:

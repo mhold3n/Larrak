@@ -1,6 +1,7 @@
 import numpy as np
 import plotly.graph_objects as go
-from scipy.interpolate import splrep, splev
+from scipy.interpolate import splev, splrep
+
 
 def get_common_layout(title: str, xaxis_title: str = "Crank Angle (deg)", yaxis_title: str = ""):
     """Return a standard consistent Plotly layout."""

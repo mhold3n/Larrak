@@ -16,22 +16,22 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-from campro.optimization.numerical.config_factory import ConfigFactory
 from campro.optimization.framework.base import (
     BaseOptimizer,
     OptimizationResult,
     OptimizationStatus,
 )
+
+from campro.constraints.cam import CamMotionConstraints
+from campro.logging import get_logger
+from campro.optimization.driver import solve_cycle
+from campro.optimization.numerical.config_factory import ConfigFactory
 from campro.physics.simple_cycle_adapter import (
     CycleGeometry,
     CycleThermo,
     SimpleCycleAdapter,
     WiebeParams,
 )
-
-from campro.constraints.cam import CamMotionConstraints
-from campro.logging import get_logger
-from campro.optimization.driver import solve_cycle
 from campro.utils import format_duration
 from campro.utils.structured_reporter import StructuredReporter
 

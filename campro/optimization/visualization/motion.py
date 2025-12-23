@@ -1,7 +1,10 @@
-import plotly.graph_objects as go
-import numpy as np
 import os
+
+import numpy as np
+import plotly.graph_objects as go
+
 from .utils import get_common_layout
+
 
 def plot_motion_family(results: list, title: str, output_path: str = None) -> go.Figure:
     """

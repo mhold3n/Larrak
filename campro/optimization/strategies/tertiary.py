@@ -17,11 +17,10 @@ from typing import Any
 import numpy as np
 
 from campro.logging import get_logger
-from campro.storage import OptimizationRegistry
-
 from campro.optimization.numerical.base import BaseOptimizer, OptimizationResult
 from campro.optimization.numerical.collocation import CollocationOptimizer, CollocationSettings
 from campro.optimization.utils.grid import GridSpec
+from campro.storage import OptimizationRegistry
 
 log = get_logger(__name__)
 

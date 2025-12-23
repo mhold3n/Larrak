@@ -822,19 +822,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\maxed\\.nuget\\packages\\": {}
+    "/Users/maxholden/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.API\\Larrak.CEM.API.csproj",
+      "projectUniqueName": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.API/Larrak.CEM.API.csproj",
       "projectName": "Larrak.CEM.API",
-      "projectPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.API\\Larrak.CEM.API.csproj",
-      "packagesPath": "C:\\Users\\maxed\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.API\\obj\\",
+      "projectPath": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.API/Larrak.CEM.API.csproj",
+      "packagesPath": "/Users/maxholden/.nuget/packages/",
+      "outputPath": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.API/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\maxed\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "/Users/maxholden/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
@@ -846,11 +846,11 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "projectReferences": {
-            "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj": {
-              "projectPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj"
+            "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/Larrak.CEM.Core.csproj": {
+              "projectPath": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/Larrak.CEM.Core.csproj"
             },
-            "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\Larrak.CEM.Engine.csproj": {
-              "projectPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\Larrak.CEM.Engine.csproj"
+            "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Engine/Larrak.CEM.Engine.csproj": {
+              "projectPath": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Engine/Larrak.CEM.Engine.csproj"
             }
           }
         }
@@ -864,7 +864,8 @@
         "enableAudit": "true",
         "auditLevel": "low",
         "auditMode": "direct"
-      }
+      },
+      "SdkAnalysisLevel": "9.0.300"
     },
     "frameworks": {
       "net8.0": {
@@ -886,6 +887,20 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[8.0.20, 8.0.20]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Host.osx-x64",
+            "version": "[8.0.20, 8.0.20]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[8.0.20, 8.0.20]"
+          }
+        ],
         "frameworkReferences": {
           "Microsoft.AspNetCore.App": {
             "privateAssets": "none"
@@ -894,7 +909,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.416/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/9.0.305/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

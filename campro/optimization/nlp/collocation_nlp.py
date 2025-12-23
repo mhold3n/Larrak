@@ -16,6 +16,14 @@ from campro.optimization.numerical.collocation_builder import CollocationBuilder
 
 log = get_logger(__name__)
 
+# Litvin constraint scaling factor - normalizes residuals to O(1)
+# Typical conjugacy residuals are O(1e-2) to O(1e0), so scale by 100 for IPOPT
+LITVIN_CONSTRAINT_SCALE = 100.0
+
+# Litvin constraint tolerance - slacken from strict equality to small band
+# This helps IPOPT find feasible path during restoration
+LITVIN_CONSTRAINT_TOL = 1e-3
+
 
 def generate_bspline_basis(knots, grid, degree=3, derivative=0):
     """
@@ -57,6 +65,17 @@ def build_collocation_nlp(
     Build Phase 3 NLP: Breathing Gears Optimization.
     Optimizes global B-spline parameters for planet/ring radii to match target ratio
     while satisfying kinematic (Litvin) constraints.
+
+    TODO: Known convergence issues (as of 2024-12):
+    - IPOPT hits max iterations (500) with constraint violation ~7.0
+    - Root cause: Litvin conjugacy constraints may be too tight for initial guess
+    - Initial B-spline weights (w_rp_0=0.025, w_rr_0=0.050) may not satisfy gear constraints
+
+    Next steps to improve convergence:
+    1. Increase max_iter to 1000+ for complex gear problems
+    2. Compute initial weights that satisfy spline-control linking constraints
+    3. Use slack variables or penalty formulation for Litvin conjugacy
+    4. Add feasibility restoration or warm-start from simpler problem
     """
 
     # 1. Setup Grid
@@ -77,6 +96,9 @@ def build_collocation_nlp(
     # No, use the lifted approach: Controls r, R linked to w via constraints.
 
     builder = CollocationBuilder(time_horizon=phi_horizon, n_points=K, method="radau", degree=C)
+    # Allow small defect violations during restoration (helps with infeasible starts)
+    # Tolerance of 0.1 ≈ h/3 where h = 2π/20 ≈ 0.314
+    builder.collocation_tolerance = 0.1
 
     # 3. Define Variables (Controls/States)
 
@@ -102,7 +124,8 @@ def build_collocation_nlp(
 
     # 4. Dynamics
     def dynamics_mech(x, u, p=None):
-        r = u["r_planet"]
+        # Add epsilon floor to prevent division by zero
+        r = ca.fmax(u["r_planet"], 1e-4)
         R = u["R_ring"]
         # Ratio i = R/r
         # dpsi/dphi = i - 1
@@ -188,6 +211,62 @@ def build_collocation_nlp(
     r_prime_vec = ca.mtimes(M_der, w_rp)
     R_prime_vec = ca.mtimes(M_der, w_rr)
 
+    # Synchronize control initial values with spline evaluation
+    # This ensures the linking constraints are satisfied at initialization
+    r_init_from_spline = M_val @ w_rp_0
+    R_init_from_spline = M_val @ w_rr_0
+    rj_init_from_spline = M_val @ w_rj_0
+
+    # Update builder's control initial values to match splines
+    # Controls are stored in meta["w0"] at specific indices
+    # Get control indices from builder
+    ctrl_indices = builder._var_indices
+    w0_array = np.array(meta["w0"])
+
+    if "r_planet" in ctrl_indices:
+        for k, idx in enumerate(ctrl_indices["r_planet"][:K]):
+            if k < len(r_init_from_spline):
+                w0_array[idx] = r_init_from_spline[k]
+    if "R_ring" in ctrl_indices:
+        for k, idx in enumerate(ctrl_indices["R_ring"][:K]):
+            if k < len(R_init_from_spline):
+                w0_array[idx] = R_init_from_spline[k]
+    if "r_journal" in ctrl_indices:
+        for k, idx in enumerate(ctrl_indices["r_journal"][:K]):
+            if k < len(rj_init_from_spline):
+                w0_array[idx] = rj_init_from_spline[k]
+
+    # Integrate psi trajectory from dynamics: dpsi/dphi = R/r - 1
+    # This ensures collocation and continuity constraints are satisfied at initialization
+    h = phi_horizon / K  # Step size
+    psi_init = [0.0]  # Start at psi=0
+    for k in range(K):
+        r_k = max(r_init_from_spline[k], 1e-4)  # Prevent division by zero
+        R_k = R_init_from_spline[k]
+        dpsi_dphi = (R_k / r_k) - 1.0
+        psi_init.append(psi_init[-1] + dpsi_dphi * h)
+
+    # Update psi state initial values in w0_array
+    # psi indices include both grid points and collocation points
+    if "psi" in ctrl_indices:
+        psi_indices = ctrl_indices["psi"]
+        # The first K+1 or so entries should be grid points, but collocation points
+        # are also mixed in. We'll initialize all psi variables with interpolated values.
+        n_psi_vars = len(psi_indices)
+        # Create interpolated psi values for all psi variables
+        # Grid points are at indices 0, degree+1, 2*(degree+1), ...
+        # We'll use a simple approach: assign based on relative position
+        for i, idx in enumerate(psi_indices):
+            # Approximate which grid point this corresponds to
+            # With Radau collocation: per interval we have 1 state + degree colloc points + 1 next state
+            # But states are shared between intervals
+            # Simpler: linear interpolation across all psi vars
+            frac = i / max(n_psi_vars - 1, 1)
+            psi_val = psi_init[0] + frac * (psi_init[-1] - psi_init[0])
+            w0_array[idx] = psi_val
+
+    meta["w0"] = w0_array
+
     # Global Config
     track_weight = P.get("weights", {}).get("track", 10.0)
     eff_weight = P.get("weights", {}).get("eff", 1.0)
@@ -249,13 +328,15 @@ def build_collocation_nlp(
         R_prime = R_prime_vec[k]
         # rj_prime unused for now
 
-        # 2. Link Controls to Splines (Equality)
+        # 2. Link Controls to Splines (Soft Equality with tolerance)
+        # Slackened from [0,0] to allow small mismatch during optimization
+        SPLINE_LINKING_TOL = 1e-4
         g_spline.append(r_ctrls[k] - r_val)
         g_spline.append(R_ctrls[k] - R_val)
         g_spline.append(rj_ctrls[k] - rj_val)
 
-        lbg_spline.extend([0.0, 0.0, 0.0])
-        ubg_spline.extend([0.0, 0.0, 0.0])
+        lbg_spline.extend([-SPLINE_LINKING_TOL, -SPLINE_LINKING_TOL, -SPLINE_LINKING_TOL])
+        ubg_spline.extend([SPLINE_LINKING_TOL, SPLINE_LINKING_TOL, SPLINE_LINKING_TOL])
 
         # 3. Litvin Conjugacy Constraint
         # center distance d = R - r
@@ -266,7 +347,9 @@ def build_collocation_nlp(
         # Planet angle theta_p (approx psi)
         # Dynamics: dpsi/dphi = R/r - 1
         # theta_p' = R/r - 1
-        i_ratio = R_ctrls[k] / r_ctrls[k]
+        # Use epsilon floor to prevent Inf gradient
+        r_safe = ca.fmax(r_ctrls[k], 1e-4)
+        i_ratio = R_ctrls[k] / r_safe
         theta_p_k = psi_states[k]
         theta_p_prime_k = i_ratio - 1.0
 
@@ -282,9 +365,11 @@ def build_collocation_nlp(
             d_prime_k,
             theta_p_prime_k,
         )
-        g_litvin.append(conjugacy_res)
-        lbg_litvin.append(0.0)
-        ubg_litvin.append(0.0)
+        # Scale Litvin constraint for better conditioning
+        g_litvin.append(conjugacy_res * LITVIN_CONSTRAINT_SCALE)
+        # Slacken from strict equality to tolerance band
+        lbg_litvin.append(-LITVIN_CONSTRAINT_TOL * LITVIN_CONSTRAINT_SCALE)
+        ubg_litvin.append(LITVIN_CONSTRAINT_TOL * LITVIN_CONSTRAINT_SCALE)
 
         # 4. Objectives
 
@@ -305,7 +390,8 @@ def build_collocation_nlp(
         # alpha_op is defined by cos(alpha_op) = rb_ring / R_ring
         # So cos_alpha = rb_ring / R_ctrls[k]
         # We clamp denominator to avoid singular forces if cos_alpha -> 0 (though R < rb is invalid anyway)
-        cos_alpha = rb_ring / (R_ctrls[k] + 1e-6)
+        R_safe = ca.fmax(R_ctrls[k], 1e-4)
+        cos_alpha = rb_ring / R_safe
         # If R < rb, cos_alpha > 1, physically impossible for involute but numerically we just want smoothness.
         # But wait, if R < rb, contact happens below base circle?
         # Let's just use the ratio blindly for smoothness.

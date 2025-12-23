@@ -11,12 +11,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-import numpy as np
-
 from campro.logging import get_logger
 
-from .base import BaseConstraints, ConstraintType, ConstraintViolation
-from .motion import MotionConstraints
+from .base import BaseConstraints
 
 log = get_logger(__name__)
 

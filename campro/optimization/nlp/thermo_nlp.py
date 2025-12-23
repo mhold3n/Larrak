@@ -11,10 +11,9 @@ from typing import Any
 import casadi as ca
 import numpy as np
 
-from campro.optimization.numerical.collocation_builder import CollocationBuilder
 from campro.optimization.nlp.geometry import StandardSliderCrankGeometry
 from campro.optimization.nlp.physics import PrechamberSurrogate, ThermoODE, WiebeSurrogate
-
+from campro.optimization.numerical.collocation_builder import CollocationBuilder
 
 # Reference scales for nondimensionalization (keeps all variables O(1))
 # This dramatically improves Jacobian conditioning
@@ -575,7 +574,6 @@ def _calculate_objectives(
     T_history = []
 
     # Import SCALES to de-scale variables
-    from campro.optimization.nlp.thermo_nlp import build_thermo_nlp
     from campro.optimization.nlp.constraints import ThermalConstraints
     # Access SCALES from local scope or closure if possible, but simpler to re-define or pass it.
     # For now, hardcode or access from builder output?

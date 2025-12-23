@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj": {}
+    "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/Larrak.CEM.Core.csproj": {}
   },
   "projects": {
-    "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj": {
+    "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/Larrak.CEM.Core.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj",
+        "projectUniqueName": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/Larrak.CEM.Core.csproj",
         "projectName": "Larrak.CEM.Core",
-        "projectPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\Larrak.CEM.Core.csproj",
-        "packagesPath": "C:\\Users\\maxed\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Core\\obj\\",
+        "projectPath": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/Larrak.CEM.Core.csproj",
+        "packagesPath": "/Users/maxholden/.nuget/packages/",
+        "outputPath": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\maxed\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "/Users/maxholden/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
@@ -37,7 +37,8 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "9.0.300"
       },
       "frameworks": {
         "net8.0": {
@@ -53,12 +54,22 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.20, 8.0.20]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.20, 8.0.20]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.416/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/9.0.305/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

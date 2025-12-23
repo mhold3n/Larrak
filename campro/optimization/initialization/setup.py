@@ -387,10 +387,41 @@ def apply_problem_bounds(
     ubg: np.ndarray[Any, Any],
     params: dict[str, Any],
 ) -> None:
-    """Apply problem-specific bounds."""
+    """Apply problem-specific bounds.
+
+    If CEM envelope is available in params['_cem_envelope'], uses those
+    bounds instead of hardcoded defaults for boost/fuel ranges.
+    """
     # Get problem parameters
-    # geom = P.get("geom", {}) # unused
     constraints = params.get("constraints", {})
+
+    # === CEM Envelope Integration ===
+    # If CEM was queried in driver.py, use its envelope bounds
+    cem_envelope = params.get("_cem_envelope")
+    if cem_envelope is not None:
+        log.info("Applying CEM envelope bounds to optimization")
+        # CEM provides boost_range and fuel_range
+        # These map to pressure/density bounds in the NLP
+        boost_min, boost_max = cem_envelope.boost_range
+        fuel_min, fuel_max = cem_envelope.fuel_range
+
+        # Convert boost (bar) to pressure bounds (Pa)
+        # boost_range is intake pressure in bar
+        p_boost_min = boost_min * 1e5  # bar to Pa
+        p_boost_max = boost_max * 1e5
+
+        # Update constraints with CEM bounds (override defaults)
+        constraints = {
+            **constraints,
+            "_cem_boost_min": p_boost_min,
+            "_cem_boost_max": p_boost_max,
+            "_cem_fuel_min": fuel_min,
+            "_cem_fuel_max": fuel_max,
+        }
+        log.debug(
+            f"CEM bounds: boost={boost_min:.2f}-{boost_max:.2f} bar, "
+            f"fuel={fuel_min:.4f}-{fuel_max:.4f}"
+        )
 
     # Piston position bounds
     pos_left_min = constraints.get("x_L_min", 0.01)

@@ -11,7 +11,15 @@ from typing import Protocol
 import casadi as ca
 import numpy as np
 
+from campro.constants import (
+    CASADI_FLOW_EPSILON,
+    DEFAULT_WALL_TEMPERATURE,
+    FRICTION_CHEN_FLYNN_A,
+    FRICTION_CHEN_FLYNN_B,
+    HEAT_TRANSFER_WOSCHNI_C,
+)
 from campro.optimization.nlp.geometry import GeometryInterface
+from campro.units import CV_AIR, LHV_GASOLINE, R_AIR
 
 
 class CombustionSurrogate(Protocol):
@@ -76,18 +84,11 @@ class WiebeSurrogate:
         # Protect against phi=0
         phi_safe = ca.fmax(0.01, phi)
         eta_comb = 0.98 * ca.if_else(phi_safe > 1.0, 1.0 / phi_safe, 1.0)
-        
+
         # Scale Q_total by efficiency
         Q_eff = Q_tot * eta_comb
 
-        val = (
-            Q_eff
-            * a
-            * (m + 1)
-            / theta_dur
-            * ca.power(tr, m)
-            * ca.exp(-a * ca.power(tr, m + 1))
-        )
+        val = Q_eff * a * (m + 1) / theta_dur * ca.power(tr, m) * ca.exp(-a * ca.power(tr, m + 1))
         return val * active
 
 
@@ -168,37 +169,34 @@ class ThermoODE:
         self.comb = combustion
         self.ns = num_species
 
-        # Constants
+        # Constants (from typed PhysicalConstants in campro.units)
         # Tuned for Hot Exhaust Gas (Gamma ~ 1.32)
-        # R = 287.0
-        # cv = R / (gamma - 1) = 287 / 0.32 = 896.8
-        # cp = cv + R = 1183.8
-        self.R_gas = 287.0
-        self.cv = 896.8
-        self.cp = 1183.8
+        # Note: Using fixed values for CasADi compatibility
+        self.R_gas = R_AIR.value  # 287.0 J/(kg·K)
+        self.cv = CV_AIR.value * 1.25  # ~896.8 (adjusted for hot exhaust)
+        self.cp = self.cv + self.R_gas  # ~1183.8
 
     def calculate_fmep(self, rpm: ca.SX, p_max_pa: ca.SX) -> ca.SX:
         """Calculate Friction Mean Effective Pressure (FMEP) using Chen-Flynn model.
-        
+
         Equation: FMEP [bar] = A + B * Pmax [bar] + C * S_p + ...
         Here simplified to RPM dependence.
-        
+
         Args:
            rpm: Engine speed [RPM]
            p_max_pa: Peak cylinder pressure [Pa]
-           
+
         Returns:
            FMEP [Pa]
         """
 
         # Coefficients (Chen-Flynn / Heywood generic Diesel)
-        # CALIBRATION: Phase 3c (Final?) - Strong Friction for Realistic Eff
-        A = 2.0  # bar (Constant)
-        B = 0.005  # Scaling with peak pressure
+        A = FRICTION_CHEN_FLYNN_A.value  # bar (Constant)
+        B = FRICTION_CHEN_FLYNN_B.value  # Scaling with peak pressure
         # Speed term approximated as linear/quadratic with RPM for this 0D model
         # 1000 RPM ~ 0.1 bar friction increase?
         freq = rpm / 1000.0
-        
+
         fmep_bar = A + B * (p_max_pa / 1e5) + 0.09 * freq + 0.0009 * freq**2
         return fmep_bar * 1e5
 
@@ -250,19 +248,19 @@ class ThermoODE:
         # Geometry
         # Check for valve timing overrides in parameters
         # Default behavior: None (geometry uses internal defaults)
-        
+
         # Generic Control Override (Phase 4b)
         if "intake_alpha" in u and u["intake_alpha"] is not None:
-             # Scaling Factor: Matches the max peak of the fixed geometry (~0.005 m2)
-             A_int = u["intake_alpha"] * 0.005
+            # Scaling Factor: Matches the max peak of the fixed geometry (~0.005 m2)
+            A_int = u["intake_alpha"] * 0.005
         else:
             # Intake Parametric
-            int_open = p.get("intake_open") # Expecting Rad if present
+            int_open = p.get("intake_open")  # Expecting Rad if present
             int_dur = p.get("intake_dur")
             A_int = self.geo.Area_intake(theta, open_rad=int_open, duration_rad=int_dur)
-        
+
         if "exhaust_alpha" in u and u["exhaust_alpha"] is not None:
-             A_exh = u["exhaust_alpha"] * 0.006 # Exhaust usually slightly larger
+            A_exh = u["exhaust_alpha"] * 0.006  # Exhaust usually slightly larger
         else:
             # Exhaust Parametric
             exh_open = p.get("exhaust_open")
@@ -295,8 +293,10 @@ class ThermoODE:
         # Mass flow in (Intake)
         # Mass flow in (Intake)
         # Smooth Flow Approximation (Essential for MA86 on Windows, and stability for MA57)
-        def smooth_flow(delta_p, eps=1e-2): 
-             return delta_p * ca.power(delta_p**2 + eps**2, -0.25)
+        flow_eps = CASADI_FLOW_EPSILON.value
+
+        def smooth_flow(delta_p: ca.SX) -> ca.SX:
+            return delta_p * ca.power(delta_p**2 + flow_eps**2, -0.25)
 
         # Note: Fixed rho is standard for simple 0D control models
         rho_est = 1.2
@@ -312,49 +312,47 @@ class ThermoODE:
 
         # Heat Loss (Woschni Correlation)
         # h [W/m2K] = 3.26 * B^-0.2 * P[kPa]^0.8 * T[K]^-0.55 * w[m/s]^0.8
-        
-        B_m = 0.1 # Default Bore 0.1m if self.geo.B not accessible easily or symbolic
+
+        B_m = 0.1  # Default Bore 0.1m if self.geo.B not accessible easily or symbolic
         # Actually self.geo should have it.
         # But self.geo might be a symbolic interface.
         # Let's try to access self.geo.B
         if hasattr(self.geo, "B"):
-             B_m = self.geo.B
+            B_m = self.geo.B
         elif hasattr(self.geo, "bore"):
-             B_m = self.geo.bore
-             
+            B_m = self.geo.bore
+
         # Mean Piston Speed (Sp) = 2 * Stroke * RPM / 60 = Stroke * RPM / 30
         # omega [rad/s] -> RPM = omega * 30 / pi
         # Sp = S * (omega * 30 / pi) / 30 = S * omega / pi
-        S_m = 0.2 # Default Stroke
+        S_m = 0.2  # Default Stroke
         if hasattr(self.geo, "S"):
             S_m = self.geo.S
-             
+
         Sp = S_m * omega / np.pi
-        
+
         # Woschni Velocity w
         # Without P-Pmot term: w = C1 * Sp
         # C1 = 2.28 (Combustion/Expansion typical avg) + Swirl boost?
         # Let's use 6.18 for gas exchange, 2.28 for compression.
         # Averaging to ~3.0 to account for swirl + turbulence.
         w_gas = 3.0 * Sp
-        
+
         # P in kPa
         P_kpa = P_c / 1000.0
-        
+
         # Woschni Coeff
-        # 3.26 * B^-0.2 ...
-        # CALIBRATION: Phase 3c - Strong Heat Loss
-        C_woschni = 12.0
-        
+        C_woschni = HEAT_TRANSFER_WOSCHNI_C.value
+
         h_coeff = (
-            C_woschni 
-            * ca.power(B_m, -0.2) 
-            * ca.power(ca.fmax(1e-1, P_kpa), 0.8) 
-            * ca.power(ca.fmax(100.0, T_c), -0.55) 
+            C_woschni
+            * ca.power(B_m, -0.2)
+            * ca.power(ca.fmax(1e-1, P_kpa), 0.8)
+            * ca.power(ca.fmax(100.0, T_c), -0.55)
             * ca.power(ca.fmax(0.1, w_gas), 0.8)
         )
-        
-        dQ_wall_dt = h_coeff * A_wall * (T_c - 450.0) # Wall temp 450K
+
+        dQ_wall_dt = h_coeff * A_wall * (T_c - DEFAULT_WALL_TEMPERATURE.value)
 
         # Energy Balance (dT/dt)
         # m cv dT/dt = sum(mh)in - sum(mh)out + Q_comb - Q_wall - P dV/dt - u dm/dt
@@ -384,7 +382,7 @@ class ThermoODE:
         # Species
         # dY/dt
         # Simple burnout: dYf = - dQ_comb / LHV
-        LHV = 44e6
+        LHV = LHV_GASOLINE.value
         dYf_dt = -dQ_comb_dt / LHV / m_c  # approx
 
         # Convert time derivatives to theta derivatives

@@ -6,6 +6,8 @@ from typing import Any
 
 import numpy as np
 
+from campro.materials.gases import get_gamma
+
 from .combustion_model import CombustionModel
 
 
@@ -375,8 +377,8 @@ class SimpleCycleAdapter:
             "bore_m": bore_m,
             "stroke_m": stroke_m,
             "clearance_volume_m3": geom.clearance_volume_mm3 * 1e-9,
-            "initial_temperature_K": float(combustion.get("T_init", 300.0)),
-            "initial_pressure_Pa": float(thermo.p_atm_kpa * 1e3),
+            "initial_temperature_k": float(combustion.get("T_init", 300.0)),
+            "initial_pressure_pa": float(thermo.p_atm_kpa * 1e3),
             "injector_delay_deg": combustion.get("injector_delay_deg"),
             "m_wiebe": float(combustion.get("m_wiebe", 2.0)),
         }
@@ -406,7 +408,8 @@ class SimpleCycleAdapter:
         # 3. Compute Pressure Trace (Thermodynamic Integration)
         # dQ = d(mfb) * Q_total
         # dP = ((gamma-1) dQ - gamma P dV) / V
-        gamma = 1.35  # Approximate for combustion
+        # Use gamma for air at approx combustion temperature (2000K)
+        gamma = get_gamma("air", 2000.0)
         # combustion_model.params is guaranteed to be set if configure succeeded
         params = self._combustion_model.params
         lhv = self._combustion_model._lhv or (params.LHV_fuel if params else 44e6)

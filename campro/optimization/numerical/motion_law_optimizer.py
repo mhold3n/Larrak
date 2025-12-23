@@ -23,8 +23,6 @@ from typing import Any
 import casadi as ca
 import numpy as np
 from casadi import MX, Opti
-from scipy.interpolate import PchipInterpolator
-from scipy.optimize import minimize
 
 from campro.logging import get_logger
 from campro.utils import format_duration

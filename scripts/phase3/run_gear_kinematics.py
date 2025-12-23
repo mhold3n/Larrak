@@ -6,16 +6,18 @@ import numpy as np
 
 print("[DEBUG] Started run_planet_ring_opt.py", flush=True)
 
+# Add root to path
+# Add root to path (Insert at 0 to prioritize local changes over installed packages)
+sys.path.insert(0, os.getcwd())
+
 # [FIX] Critical: Setup CasADi PATH before imports
-from scripts.setup import env_setup 
+from scripts.setup import env_setup
+
 print("[DEBUG] env_setup imported", flush=True)
 
 # Configure Parallelism for MA86
 # Default to 12 threads on this 16-core machine for better MA86 performance
 os.environ.setdefault("OMP_NUM_THREADS", "12")
-
-# Add root to path
-sys.path.append(os.getcwd())
 
 
 def run_optimization():
@@ -31,8 +33,8 @@ def run_optimization():
     try:
         print("[DEBUG] Importing ArchiveManager...", flush=True)
         from campro.utils.archiving import ArchiveManager
-        print("[DEBUG] ArchiveManager imported", flush=True)
 
+        print("[DEBUG] ArchiveManager imported", flush=True)
 
         project_root = Path(os.getcwd())
         archive_root = project_root / "PERMANENT_ARCHIVE"
@@ -109,9 +111,9 @@ def run_optimization():
         },
         "bounds": {  # Bounds for Kinematic Optimization
             "r_planet_min": 0.005,
-            "r_planet_max": r_planet_max, # Configurable
+            "r_planet_max": r_planet_max,  # Configurable
             "R_ring_min": 0.010,
-            "R_ring_max": R_ring_max, # Configurable
+            "R_ring_max": R_ring_max,  # Configurable
             # Bounds for Piston (0 to Stroke)
             "xL_min": -0.01,  # Buffer
             "xL_max": 0.03,  # Buffer
@@ -144,9 +146,15 @@ def run_optimization():
     import copy
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--shape", type=str, help="Specific shape file to run (e.g. circle.json)"
-    )
+    parser.add_argument("--shape", type=str, help="Specific shape file to run (e.g. circle.json)")
+    # Orchestration Flags
+    parser.add_argument("--orchestrate", action="store_true", help="Use CEM-gated orchestrator")
+    parser.add_argument("--budget", type=int, default=1000, help="Simulation budget")
+    parser.add_argument("--use-cem", action="store_true", help="Enable CEM feasibility")
+    parser.add_argument("--use-surrogate", action="store_true", help="Enable ML surrogate")
+    parser.add_argument("--mock-sim", action="store_true", help="Use mock simulation")
+    parser.add_argument("--mock-solver", action="store_true", help="Use mock solver")
+
     args = parser.parse_args()
 
     # --- Mode 1: Supervisor (No Shape arg) ---
@@ -160,19 +168,32 @@ def run_optimization():
         shapes_to_test = [os.path.basename(f) for f in shape_files]
         shapes_to_test.sort()
 
-        log.info(
-            f"Supervisor: Found {len(shapes_to_test)} shapes to processing in isolation."
-        )
+        log.info(f"Supervisor: Found {len(shapes_to_test)} shapes to processing in isolation.")
+
+        # Build pass-through args
+        pass_args = []
+        if args.orchestrate:
+            pass_args.append("--orchestrate")
+        if args.budget != 1000:
+            pass_args.extend(["--budget", str(args.budget)])
+        if args.use_cem:
+            pass_args.append("--use-cem")
+        if args.use_surrogate:
+            pass_args.append("--use-surrogate")
+        if args.mock_sim:
+            pass_args.append("--mock-sim")
+        if args.mock_solver:
+            pass_args.append("--mock-solver")
 
         failed = []
         for shape in shapes_to_test:
             log.info(f"--- Launching process for {shape} ---")
             try:
                 # Run this script recursively with --shape arg
+                cmd = [sys.executable, __file__, "--shape", shape] + pass_args
+
                 # Check=False allows us to handle exit code 139 (Segfault) gracefully
-                result = subprocess.run(
-                    [sys.executable, __file__, "--shape", shape], check=False
-                )
+                result = subprocess.run(cmd, check=False)
 
                 # Check return code
                 if result.returncode == 0:
@@ -182,9 +203,7 @@ def run_optimization():
                         f"Process for {shape} finished with Segmentation Fault (Expected on macOS). detailed results should be saved."
                     )
                 else:
-                    log.error(
-                        f"Process for {shape} failed with exit code {result.returncode}"
-                    )
+                    log.error(f"Process for {shape} failed with exit code {result.returncode}")
                     failed.append(shape)
 
             except Exception as e:
@@ -195,9 +214,7 @@ def run_optimization():
             log.error(f"Supervisor: Batch completed with failures in: {failed}")
             sys.exit(1)
         else:
-            log.info(
-                "Supervisor: Batch completed successfully (all subprocesses finished)."
-            )
+            log.info("Supervisor: Batch completed successfully (all subprocesses finished).")
             return
 
     # --- Mode 2: Worker (Specific Shape) ---
@@ -207,7 +224,7 @@ def run_optimization():
 
     shapes_to_test = [shape_name]  # List of one
 
-    from campro.optimization.driver import solve_cycle
+    from campro.optimization.driver import solve_cycle, solve_cycle_orchestrated
 
     had_failure = False
 
@@ -265,7 +282,19 @@ def run_optimization():
         try:
             # 4. Run Optimization
             # Ensure P_run is passed, not P
-            final_solution = solve_cycle(P_run)
+            if args.orchestrate:
+                log.info(f"Running ORCHESTRATED solve with budget={args.budget}")
+                final_solution = solve_cycle_orchestrated(
+                    P_run,
+                    budget=args.budget,
+                    use_cem=args.use_cem,
+                    use_surrogate=args.use_surrogate,
+                    mock_simulation=args.mock_sim,
+                    mock_solver=args.mock_solver,
+                )
+            else:
+                log.info("Running STANDARD solve_cycle")
+                final_solution = solve_cycle(P_run)
 
             if final_solution and final_solution.success:
                 print(f"\n[SUCCESS] {shape_name}: Optimization converged.")
@@ -273,17 +302,9 @@ def run_optimization():
                     print(f"Objective: {final_solution.objective_value}")
             else:
                 status = "Unknown"
-                if (
-                    final_solution
-                    and final_solution.meta
-                    and "optimization" in final_solution.meta
-                ):
-                    status = final_solution.meta["optimization"].get(
-                        "status", "Unknown"
-                    )
-                print(
-                    f"\n[FAILURE] {shape_name}: Optimization failed with status: {status}"
-                )
+                if final_solution and final_solution.meta and "optimization" in final_solution.meta:
+                    status = final_solution.meta["optimization"].get("status", "Unknown")
+                print(f"\n[FAILURE] {shape_name}: Optimization failed with status: {status}")
                 had_failure = True
         except Exception as e:
             log.error(f"Run crashed for {shape_name}: {e}", exc_info=True)

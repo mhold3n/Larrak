@@ -13,11 +13,7 @@ from itertools import product
 from typing import Any
 
 # Import shared config definitions
-from campro.litvin.config import (
-    GeometrySearchConfig,
-    OptimizationOrder,
-    PlanetSynthesisConfig,
-)
+from campro.litvin.config import GeometrySearchConfig, OptimizationOrder, PlanetSynthesisConfig
 from campro.litvin.metrics import evaluate_order0_metrics
 from campro.logging import get_logger
 
@@ -188,7 +184,7 @@ def _optimize_piecewise_sections(config: GeometrySearchConfig) -> OptimResult:
             if not m.feasible:
                 return 1e6 + score
             return score
-        except:
+        except Exception:
             return 1e9
 
     res = minimize(objective, x0, bounds=bounds, method="L-BFGS-B")

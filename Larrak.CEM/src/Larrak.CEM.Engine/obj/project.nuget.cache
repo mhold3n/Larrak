@@ -1,8 +1,11 @@
 {
   "version": 2,
-  "dgSpecHash": "oIK/Oykvoz4=",
+  "dgSpecHash": "XYOqQpv33Lc=",
   "success": true,
-  "projectFilePath": "C:\\Users\\maxed\\OneDrive\\Desktop\\Github Projects\\Larrak\\Larrak.CEM\\src\\Larrak.CEM.Engine\\Larrak.CEM.Engine.csproj",
-  "expectedPackageFiles": [],
+  "projectFilePath": "/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Engine/Larrak.CEM.Engine.csproj",
+  "expectedPackageFiles": [
+    "/Users/maxholden/.nuget/packages/microsoft.netcore.app.ref/8.0.20/microsoft.netcore.app.ref.8.0.20.nupkg.sha512",
+    "/Users/maxholden/.nuget/packages/microsoft.aspnetcore.app.ref/8.0.20/microsoft.aspnetcore.app.ref.8.0.20.nupkg.sha512"
+  ],
   "logs": []
 }

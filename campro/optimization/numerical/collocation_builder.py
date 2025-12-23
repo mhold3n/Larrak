@@ -65,6 +65,8 @@ class CollocationBuilder:
         self.method = method
         self.degree = degree
         self.h = self.T / self.N  # Time step
+        # Tolerance for collocation/continuity constraints (0 = strict equality)
+        self.collocation_tolerance: float = 0.0
 
         self.states: dict[str, CollocationVariable] = {}
         self.controls: dict[str, CollocationVariable] = {}
@@ -318,8 +320,8 @@ class CollocationBuilder:
 
                     # Collocation constraint
                     self.g.append(approx_deriv - dx_dt * self.h)
-                    self.lbg.append(0.0)
-                    self.ubg.append(0.0)
+                    self.lbg.append(-self.collocation_tolerance)
+                    self.ubg.append(self.collocation_tolerance)
                     self._add_constraint_indices(f"collocation_{name}", [len(self.g) - 1])
 
             # Continuity constraint
@@ -329,8 +331,8 @@ class CollocationBuilder:
                     continuity_expr += self.D[r + 1] * XC_k[r][name]
 
                 self.g.append(X_next[name] - continuity_expr)
-                self.lbg.append(0.0)
-                self.ubg.append(0.0)
+                self.lbg.append(-self.collocation_tolerance)
+                self.ubg.append(self.collocation_tolerance)
                 self._add_constraint_indices(f"continuity_{name}", [len(self.g) - 1])
 
             # 3. Apply Boundary Conditions

@@ -1,12 +1,24 @@
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\bin\Debug\net8.0\Larrak.CEM.Core.deps.json
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\bin\Debug\net8.0\Larrak.CEM.Core.dll
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\bin\Debug\net8.0\Larrak.CEM.Core.pdb
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\Larrak.CEM.Core.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\Larrak.CEM.Core.AssemblyInfoInputs.cache
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\Larrak.CEM.Core.AssemblyInfo.cs
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\Larrak.CEM.Core.csproj.CoreCompileInputs.cache
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\Larrak.CEM.Core.sourcelink.json
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\Larrak.CEM.Core.dll
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\refint\Larrak.CEM.Core.dll
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\Larrak.CEM.Core.pdb
-C:\Users\maxed\OneDrive\Desktop\Github Projects\Larrak\Larrak.CEM\src\Larrak.CEM.Core\obj\Debug\net8.0\ref\Larrak.CEM.Core.dll
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/bin/Debug/net8.0/Larrak.CEM.Core.deps.json
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/bin/Debug/net8.0/Larrak.CEM.Core.dll
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/bin/Debug/net8.0/Larrak.CEM.Core.pdb
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.AssemblyInfoInputs.cache
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.AssemblyInfo.cs
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.csproj.CoreCompileInputs.cache
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.sourcelink.json
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.dll
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/refint/Larrak.CEM.Core.dll
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.pdb
+C:/Users/maxed/OneDrive/Desktop/Github Projects/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/ref/Larrak.CEM.Core.dll
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/bin/Debug/net8.0/Larrak.CEM.Core.deps.json
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/bin/Debug/net8.0/Larrak.CEM.Core.dll
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/bin/Debug/net8.0/Larrak.CEM.Core.pdb
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.GeneratedMSBuildEditorConfig.editorconfig
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.AssemblyInfoInputs.cache
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.AssemblyInfo.cs
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.csproj.CoreCompileInputs.cache
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.sourcelink.json
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.dll
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/refint/Larrak.CEM.Core.dll
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/Larrak.CEM.Core.pdb
+/Users/maxholden/Documents/GitHub/Larrak/Larrak.CEM/src/Larrak.CEM.Core/obj/Debug/net8.0/ref/Larrak.CEM.Core.dll

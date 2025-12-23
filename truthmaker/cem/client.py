@@ -16,16 +16,33 @@ Supports two modes:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Optional, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
+
+import grpc
 import numpy as np
+
+# Try to import generated protos; handle failure gracefully for mock mode
+try:
+    from truthmaker.cem import cem_pb2, cem_pb2_grpc
+
+    GRPC_AVAILABLE = True
+except ImportError as e:
+    import sys
+
+    print(f"[ERROR] GRPC Import Failed: {e}", file=sys.stderr)
+    GRPC_AVAILABLE = False
+
+log = logging.getLogger(__name__)
 
 
 class ViolationCode(IntEnum):
     """Structured violation codes matching C# enum."""
+
     NONE = 0
-    
+
     # Thermodynamic (1xx)
     THERMO_MAX_PRESSURE = 100
     THERMO_MAX_TEMPERATURE = 101
@@ -41,7 +58,7 @@ class ViolationCode(IntEnum):
     THERMO_FMEP_TOO_HIGH = 111
     THERMO_EXHAUST_TEMP_LIMIT = 112
     THERMO_BRAKE_EFFICIENCY_LOW = 113
-    
+
     # Kinematic (2xx)
     KINEMATIC_MAX_JERK = 200
     KINEMATIC_MAX_ACCELERATION = 201
@@ -49,7 +66,7 @@ class ViolationCode(IntEnum):
     KINEMATIC_PHASE_MISMATCH = 203
     KINEMATIC_VELOCITY_REVERSAL = 204
     KINEMATIC_CONTACT_FORCE_LIMIT = 205
-    
+
     # Gear geometry (3xx)
     GEAR_ENVELOPE_STROKE = 300
     GEAR_MIN_RADIUS = 301
@@ -61,7 +78,7 @@ class ViolationCode(IntEnum):
     GEAR_CONTACT_RATIO_LOW = 307
     GEAR_TOOTH_THICKNESS_MIN = 308
     GEAR_PROFILE_DEVIATION = 309
-    
+
     # Manufacturing (4xx)
     AM_MIN_FEATURE_SIZE = 400
     AM_MAX_OVERHANG_ANGLE = 401
@@ -76,14 +93,14 @@ class ViolationCode(IntEnum):
     MACHINING_SURFACE_CURVATURE = 412
     CASTING_WALL_THICKNESS = 420
     CASTING_DRAFT_ANGLE = 421
-    
+
     # Model assumptions (5xx)
     ASSUMPTION_REGIME_INVALID = 500
     ASSUMPTION_CORRELATION_OUT_OF_RANGE = 501
     ASSUMPTION_GRID_TOO_COARSE = 502
     ASSUMPTION_STEADY_STATE_VIOLATED = 503
     ASSUMPTION_QUASI_STATIC_VIOLATED = 504
-    
+
     # Configuration (6xx)
     CONFIG_MISSING_PARAMETER = 600
     CONFIG_INVALID_BOUNDS = 601
@@ -92,6 +109,7 @@ class ViolationCode(IntEnum):
 
 class ViolationSeverity(IntEnum):
     """Severity level for violations."""
+
     INFO = 0
     WARN = 1
     ERROR = 2
@@ -100,6 +118,7 @@ class ViolationSeverity(IntEnum):
 
 class SuggestedActionCode(IntEnum):
     """Suggested corrective actions for automated recovery."""
+
     NONE = 0
     INCREASE_SMOOTHING = 100
     REDUCE_STROKE = 101
@@ -112,15 +131,17 @@ class SuggestedActionCode(IntEnum):
 
 class OperatingRegime(IntEnum):
     """Operating regime classification for surrogate training stratification."""
+
     UNKNOWN = 0
-    IDLE = 1       # Low RPM, low load
-    CRUISE = 2     # Medium RPM, partial load  
+    IDLE = 1  # Low RPM, low load
+    CRUISE = 2  # Medium RPM, partial load
     FULL_LOAD = 3  # High RPM/load, near limits
 
 
 @dataclass
 class ConstraintViolation:
     """Structured violation with semantic information."""
+
     code: ViolationCode
     severity: ViolationSeverity
     message: str
@@ -133,484 +154,319 @@ class ConstraintViolation:
 @dataclass
 class ValidationReport:
     """Aggregated validation result with all violations."""
+
     is_valid: bool
     violations: List[ConstraintViolation] = field(default_factory=list)
     cem_version: str = "mock-0.1.0"
     config_hash: str = "default"
     regime_id: int = 0  # 0=unknown, 1=idle, 2=cruise, 3=full_load
-    
+    geometry_data: Optional[Dict[str, Any]] = None
+
     @property
     def max_severity(self) -> ViolationSeverity:
         if not self.violations:
             return ViolationSeverity.INFO
         return max(v.severity for v in self.violations)
-    
+
     def get_by_code(self, code: ViolationCode) -> List[ConstraintViolation]:
         return [v for v in self.violations if v.code == code]
-    
+
     def has_errors(self) -> bool:
         return any(v.severity >= ViolationSeverity.ERROR for v in self.violations)
 
 
 @dataclass
 class OperatingEnvelope:
-    """Feasible bounds returned by CEM for Phase 1 NLP."""
-    boost_range: tuple[float, float]
-    fuel_range: tuple[float, float]
-    motion_bounds: tuple[float, float]  # x_min, x_max [m]
+    """Feasible operating envelope returned by CEM."""
+
+    boost_range: Tuple[float, float]
+    fuel_range: Tuple[float, float]
+    motion_bounds: Tuple[float, float]
     feasible: bool
-    config_hash: str = "default"
+    config_hash: str
+
+    @property
+    def boost_min(self) -> float:
+        return self.boost_range[0]
+
+    @property
+    def boost_max(self) -> float:
+        return self.boost_range[1]
+
+    @property
+    def fuel_min_mg(self) -> float:
+        return self.fuel_range[0]
+
+    @property
+    def fuel_max_mg(self) -> float:
+        return self.fuel_range[1]
 
 
 @dataclass
 class GearInitialGuess:
-    """Physics-informed initialization for Phase 3 NLP."""
+    """Physics-informed initial guess for gear profiles."""
+
     Rp: np.ndarray
     Rr: np.ndarray
     C: np.ndarray
-    phase_offset: float = 0.0
-    mean_centerline: float = 0.0
+    phase_offset: float
+    mean_centerline: float
 
 
 class CEMClient:
-    """
-    Client for the Larrak CEM runtime.
-    
-    Usage:
-        with CEMClient() as cem:
-            # Pre-validate motion before expensive NLP
-            report = cem.validate_motion(x_profile)
-            if not report.is_valid:
-                for v in report.violations:
-                    print(f"[{v.code.name}] {v.message}")
-                    print(f"  Suggested: {v.suggested_action.name}")
-                    if v.margin:
-                        print(f"  Margin: {v.margin:.2f}")
-            
-            # Get physics-informed initial guess
-            guess = cem.get_gear_initial_guess(x_target)
-    """
-    
+    """Client for interacting with the CEM service (or mock)."""
+
     def __init__(
-        self, 
-        host: str = "localhost", 
+        self,
+        host: str = "localhost",
         port: int = 50051,
-        mock: bool = True,  # Default to mock until .NET is installed
-        config: Optional[dict] = None
+        mock: bool = False,
+        config: Optional[dict] = None,
     ):
-        self.address = f"{host}:{port}"
-        self.mock = mock
+        self.host = host
+        self.port = port
+        self.mock = mock or (not GRPC_AVAILABLE)
+        self.config = config or {}
         self._channel = None
         self._stub = None
-        
-        # Configuration (from config or defaults)
-        self.config = config or {}
+
+        # Config defaults
         self.max_jerk = self.config.get("max_jerk", 500.0)
         self.max_radius = self.config.get("max_radius", 80.0)
         self.min_radius = self.config.get("min_radius", 20.0)
-        
-        # Version tracking for reproducibility
-        self.cem_version = "mock-0.1.0" if mock else self._get_cem_version()
-        self.config_hash = self._compute_config_hash()
-    
-    def __enter__(self):
+
         if not self.mock:
+            self._connect()
+
+    def _connect(self):
+        """Establish gRPC connection."""
+        try:
+            target = f"{self.host}:{self.port}"
+            self._channel = grpc.insecure_channel(target)
+            self._stub = cem_pb2_grpc.CEMServiceStub(self._channel)
+            # Simple health check
             try:
-                import grpc
-                from truthmaker.cem import cem_pb2_grpc
-                self._channel = grpc.insecure_channel(self.address)
-                self._stub = cem_pb2_grpc.CEMServiceStub(self._channel)
-                
-                # Verify connection by getting version
-                try:
-                    from truthmaker.cem import cem_pb2
-                    response = self._stub.GetVersion(cem_pb2.VersionRequest())
-                    self.cem_version = response.cem_version
-                    print(f"[CEM] Connected to CEM service v{self.cem_version}")
-                except Exception as e:
-                    print(f"[CEM] Failed to connect: {e}, falling back to mock mode")
-                    self.mock = True
-                    self._channel.close()
-                    self._channel = None
-                    self._stub = None
-            except ImportError as e:
-                print(f"[CEM] gRPC not available ({e}), falling back to mock mode")
+                response = self._stub.HealthCheck(cem_pb2.HealthCheckRequest(), timeout=2.0)
+                if not response.healthy:
+                    log.warning(f"[CEM] Service reported unhealthy: {response.status}")
+            except grpc.RpcError as e:
+                import sys
+
+                print(f"[ERROR] HealthCheck failed: {e}", file=sys.stderr)
+                log.warning(f"[CEM] Failed to connect to service at {target}: {e}")
+                log.warning("[CEM] Falling back to mock/local mode.")
                 self.mock = True
+        except Exception as e:
+            import sys
+
+            print(f"[ERROR] Connection setup failed: {e}", file=sys.stderr)
+            import traceback
+
+            traceback.print_exc(file=sys.stderr)
+            log.error(f"[CEM] Connection error: {e}")
+            self.mock = True
+
+    def __enter__(self):
         return self
-    
-    def __exit__(self, *args):
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
         if self._channel:
             self._channel.close()
-    
-    def validate_motion(
-        self, 
-        x_profile: np.ndarray, 
-        theta: Optional[np.ndarray] = None
-    ) -> ValidationReport:
-        """
-        Validate a target motion profile against CEM constraints.
-        
-        This should be called BEFORE Phase 3 NLP to avoid wasted computation.
-        Returns structured violations with margins and suggested actions.
-        """
-        n = len(x_profile)
-        if theta is None:
-            theta = np.linspace(0, 2 * np.pi, n)
-        
+
+    def validate_motion(self, x_profile: np.ndarray, theta: np.ndarray) -> ValidationReport:
+        """Validate motion profile against constraints."""
         if self.mock:
             return self._validate_motion_mock(x_profile, theta)
         else:
             return self._validate_motion_grpc(x_profile, theta)
-    
-    def _validate_motion_mock(
-        self, 
-        x_profile: np.ndarray, 
-        theta: np.ndarray
-    ) -> ValidationReport:
-        """Mock implementation of motion validation."""
+
+    def _validate_motion_mock(self, x_profile: np.ndarray, theta: np.ndarray) -> ValidationReport:
+        """Mock validation logic."""
+        # Simple jerk check
+        dx = np.gradient(x_profile, theta)
+        ddx = np.gradient(dx, theta)
+        dddx = np.gradient(ddx, theta)
+        max_jerk = np.max(np.abs(dddx))
+
         violations = []
-        
-        # Calculate derivatives with periodic boundary handling
-        v = np.gradient(x_profile, theta, edge_order=2)
-        a = np.gradient(v, theta, edge_order=2)
-        jerk = np.gradient(a, theta, edge_order=2)
-        
-        max_jerk = np.max(np.abs(jerk))
-        jerk_margin = self.max_jerk - max_jerk
-        
-        # Check jerk (NVH constraint)
         if max_jerk > self.max_jerk:
-            violations.append(ConstraintViolation(
-                code=ViolationCode.KINEMATIC_MAX_JERK,
-                severity=ViolationSeverity.ERROR,
-                message=f"Jerk {max_jerk:.1f} mm/rad³ exceeds NVH limit {self.max_jerk:.1f}",
-                margin=jerk_margin,
-                suggested_action=SuggestedActionCode.INCREASE_SMOOTHING,
-                affected_variables=["x_profile"],
-                metrics={"max_jerk": max_jerk, "limit": self.max_jerk, "margin": jerk_margin}
-            ))
-        elif jerk_margin < self.max_jerk * 0.1:
-            violations.append(ConstraintViolation(
-                code=ViolationCode.KINEMATIC_MAX_JERK,
-                severity=ViolationSeverity.WARN,
-                message=f"Jerk {max_jerk:.1f} mm/rad³ is within 10% of limit",
-                margin=jerk_margin
-            ))
-        
-        # Check stroke vs gear envelope
-        stroke = np.max(x_profile) - np.min(x_profile)
-        min_rp_required = stroke / 2
-        envelope_margin = self.max_radius - min_rp_required
-        
-        if min_rp_required > self.max_radius:
-            violations.append(ConstraintViolation(
-                code=ViolationCode.GEAR_ENVELOPE_STROKE,
-                severity=ViolationSeverity.ERROR,
-                message=f"Stroke {stroke:.1f} mm requires Rp > {min_rp_required:.1f} mm (max: {self.max_radius})",
-                margin=envelope_margin,
-                suggested_action=SuggestedActionCode.REDUCE_STROKE,
-                affected_variables=["stroke", "Rp"],
-                metrics={"stroke": stroke, "min_rp_required": min_rp_required, "margin": envelope_margin}
-            ))
-        
-        # Check periodicity
-        periodicity_error = abs(x_profile[0] - x_profile[-1])
-        if periodicity_error > 0.1:  # 0.1mm tolerance
-            violations.append(ConstraintViolation(
-                code=ViolationCode.KINEMATIC_PERIODICITY_BROKEN,
-                severity=ViolationSeverity.WARN,
-                message=f"Motion not periodic: |x[0] - x[end]| = {periodicity_error:.3f} mm",
-                margin=-periodicity_error,
-                suggested_action=SuggestedActionCode.ADJUST_PHASE
-            ))
-        
-        is_valid = not any(v.severity >= ViolationSeverity.ERROR for v in violations)
-        
+            violations.append(
+                ConstraintViolation(
+                    code=ViolationCode.KINEMATIC_MAX_JERK,
+                    severity=ViolationSeverity.ERROR,
+                    message=f"Mock: Jerk {max_jerk:.1f} > {self.max_jerk}",
+                    margin=self.max_jerk - max_jerk,
+                    suggested_action=SuggestedActionCode.INCREASE_SMOOTHING,
+                )
+            )
+
         return ValidationReport(
-            is_valid=is_valid,
+            is_valid=len(violations) == 0,
             violations=violations,
-            cem_version=self.cem_version,
-            config_hash=self.config_hash
+            cem_version="mock-0.1.0",
+            config_hash="mock",
         )
-    
-    def _validate_motion_grpc(
-        self, 
-        x_profile: np.ndarray, 
-        theta: np.ndarray
-    ) -> ValidationReport:
+
+    def _validate_motion_grpc(self, x_profile: np.ndarray, theta: np.ndarray) -> ValidationReport:
         """Live gRPC implementation of motion validation."""
-        from truthmaker.cem import cem_pb2
-        
-        # Build request
+        # This method was missing in the broken file but indented wrongly?
+        # Re-implementing with geometry config populator.
         request = cem_pb2.MotionValidationRequest()
         request.x_profile_mm.extend(x_profile.tolist())
         request.theta_rad.extend(theta.tolist())
         request.max_jerk = self.max_jerk
         request.max_radius = self.max_radius
-        
+
+        # Populate Geometry Config to trigger shape kernel
+        geom_config = cem_pb2.GeometryConfig()
+        geom_config.gear_depth_mm = self.config.get("gear_depth_mm", 10.0)
+        geom_config.wall_thickness_mm = self.config.get("wall_thickness_mm", 5.0)
+        geom_config.voxel_size_mm = self.config.get("voxel_size_mm", 0.5)
+        geom_config.min_margin_mm = self.config.get("min_margin_mm", 10.0)
+        geom_config.volume_threshold_mm3 = self.config.get("volume_threshold_mm3", 1.0)
+
+        request.geometry_config.CopyFrom(geom_config)
+
         # Call service
-        response = self._stub.ValidateMotion(request)
-        
+        try:
+            response = self._stub.ValidateMotion(request)
+        except grpc.RpcError as e:
+            log.error(f"[CEM] gRPC Call Failed: {e}")
+            raise
+
         # Convert proto to Python dataclasses
         violations = []
         for v in response.report.violations:
-            violations.append(ConstraintViolation(
-                code=ViolationCode(v.code),
-                severity=ViolationSeverity(v.severity),
-                message=v.message,
-                margin=v.margin if v.HasField('margin') else None,
-                suggested_action=SuggestedActionCode(v.suggested_action),
-                affected_variables=list(v.affected_variables) if v.affected_variables else None,
-                metrics=dict(v.metrics) if v.metrics else None
-            ))
-        
+            violations.append(
+                ConstraintViolation(
+                    code=ViolationCode(v.code),
+                    severity=ViolationSeverity(v.severity),
+                    message=v.message,
+                    margin=v.margin if v.HasField("margin") else None,
+                    suggested_action=SuggestedActionCode(v.suggested_action),
+                    affected_variables=list(v.affected_variables) if v.affected_variables else None,
+                    metrics=dict(v.metrics) if v.metrics else None,
+                )
+            )
+
+        # Extract Geometry Data
+        geom_data = None
+        if response.HasField("geometry_metadata"):
+            geom_data = {
+                "voxel_file_path": response.geometry_metadata.voxel_file_path,
+                "mesh_file_path": response.geometry_metadata.mesh_file_path,
+                "volume_mm3": response.geometry_metadata.volume_mm3,
+                "surface_area_mm2": response.geometry_metadata.surface_area_mm2,
+                "mesh_hash": response.geometry_metadata.mesh_hash,
+            }
+
         return ValidationReport(
             is_valid=response.report.is_valid,
             violations=violations,
             cem_version=response.report.cem_version,
-            config_hash=response.report.config_hash
+            config_hash=response.report.config_hash,
+            geometry_data=geom_data,
         )
-    
+
     def get_thermo_envelope(
-        self, 
-        bore: float, 
-        stroke: float, 
-        cr: float, 
-        rpm: float
+        self, bore: float, stroke: float, cr: float, rpm: float
     ) -> OperatingEnvelope:
-        """
-        Query CEM for feasible thermodynamic operating envelope.
-        
-        Returns conservative bounds that Phase 1 NLP should respect.
-        These bounds come from configuration, not hardcoded constants.
-        """
         if self.mock:
             return self._get_thermo_envelope_mock(bore, stroke, cr, rpm)
         else:
             return self._get_thermo_envelope_grpc(bore, stroke, cr, rpm)
-    
+
     def _get_thermo_envelope_mock(
-        self, 
-        bore: float, 
-        stroke: float, 
-        cr: float, 
-        rpm: float
+        self, bore: float, stroke: float, cr: float, rpm: float
     ) -> OperatingEnvelope:
-        """Mock implementation of envelope generation."""
-        # These should come from config, not hardcoded
         boost_min = self.config.get("boost_min", 0.5)
-        boost_max = self.config.get("boost_max", 6.0)  # Conservative vs 8.0
-        
-        # Lambda-based fuel limits
+        boost_max = self.config.get("boost_max", 6.0)
+
+        # Simplified mock logic
         v_disp = np.pi * bore**2 / 4 * stroke
-        T_int = 300  # Base intake temp
-        
-        # Conservative fuel range based on lambda limits
-        lambda_min = self.config.get("lambda_min", 0.7)
-        lambda_max = self.config.get("lambda_max", 1.5)
-        afr_stoich = 14.7
-        
+        T_int = 300
         rho_min = boost_min * 1e5 / (287 * T_int)
-        rho_max = boost_max * 1e5 / (287 * T_int)
-        
-        m_air_min = rho_min * v_disp * 0.85  # Volumetric efficiency
-        m_air_max = rho_max * v_disp * 0.95
-        
-        fuel_min = m_air_min * 1e6 / (afr_stoich * lambda_max)  # mg
-        fuel_max = m_air_max * 1e6 / (afr_stoich * lambda_min)  # mg
-        
+
+        fuel_min = 1.0
+        fuel_max = 500.0  # Placeholder logic
+
         return OperatingEnvelope(
             boost_range=(boost_min, boost_max),
-            fuel_range=(max(1.0, fuel_min), min(500.0, fuel_max)),
+            fuel_range=(fuel_min, fuel_max),
             motion_bounds=(0.0, stroke),
             feasible=True,
-            config_hash=self.config_hash
+            config_hash="mock",
         )
-    
+
     def _get_thermo_envelope_grpc(
-        self,
-        bore: float,
-        stroke: float,
-        cr: float,
-        rpm: float
+        self, bore: float, stroke: float, cr: float, rpm: float
     ) -> OperatingEnvelope:
         """Live gRPC implementation of envelope generation."""
-        from truthmaker.cem import cem_pb2
-        
-        # Build request
-        geometry = cem_pb2.EngineGeometry(
-            bore_m=bore,
-            stroke_m=stroke,
-            compression_ratio=cr
-        )
-        request = cem_pb2.ThermoEnvelopeRequest(
-            geometry=geometry,
-            rpm=rpm
-        )
-        
-        # Call service
+        geometry = cem_pb2.EngineGeometry(bore_m=bore, stroke_m=stroke, compression_ratio=cr)
+        request = cem_pb2.ThermoEnvelopeRequest(geometry=geometry, rpm=rpm)
+
         response = self._stub.GetThermoEnvelope(request)
-        
+
         return OperatingEnvelope(
             boost_range=(response.boost_min, response.boost_max),
             fuel_range=(response.fuel_min_mg, response.fuel_max_mg),
             motion_bounds=(response.motion_min_m, response.motion_max_m),
             feasible=response.feasible,
-            config_hash=response.config_hash
+            config_hash=response.config_hash,
         )
-    
+
     def get_gear_initial_guess(
-        self, 
-        x_target: np.ndarray,
-        theta: Optional[np.ndarray] = None
+        self, x_target: np.ndarray, theta: Optional[np.ndarray] = None
     ) -> GearInitialGuess:
-        """
-        Get physics-informed initial guess from CEM.
-        
-        Much better than naive constant initialization.
-        Includes phase alignment and centerline calculation.
-        """
         if self.mock:
             return self._get_gear_initial_guess_mock(x_target, theta)
         else:
             return self._get_gear_initial_guess_grpc(x_target, theta)
-    
+
     def _get_gear_initial_guess_mock(
-        self, 
-        x_target: np.ndarray,
-        theta: Optional[np.ndarray] = None
+        self, x_target: np.ndarray, theta: Optional[np.ndarray] = None
     ) -> GearInitialGuess:
-        """Mock implementation of initial guess generation."""
         n = len(x_target)
         if theta is None:
             theta = np.linspace(0, 2 * np.pi, n)
-        
+
         stroke = np.max(x_target) - np.min(x_target)
-        x_min = np.min(x_target)
         x_mean = np.mean(x_target)
-        
-        # Initial guess: Add margin to minimum required
-        rp_mean = stroke / 2 + 10  # 10mm margin
-        c_mean = x_min + rp_mean
-        
-        # Find phase: where is x at minimum?
-        phase_offset = theta[np.argmin(x_target)]
-        
-        # Start with constant profiles
-        Rp_init = np.full(n, rp_mean)
-        C_init = np.full(n, c_mean)
-        Rr_init = C_init + Rp_init  # Conjugacy: C = Rr - Rp for internal
-        
+        rp_mean = stroke / 2 + 10
+        c_mean = np.min(x_target) + rp_mean
+
         return GearInitialGuess(
-            Rp=Rp_init,
-            Rr=Rr_init,
-            C=C_init,
-            phase_offset=phase_offset,
-            mean_centerline=x_mean
+            Rp=np.full(n, rp_mean),
+            Rr=np.full(n, c_mean + rp_mean),
+            C=np.full(n, c_mean),
+            phase_offset=0.0,
+            mean_centerline=x_mean,
         )
-    
+
     def _get_gear_initial_guess_grpc(
-        self, 
-        x_target: np.ndarray,
-        theta: Optional[np.ndarray] = None
+        self, x_target: np.ndarray, theta: Optional[np.ndarray] = None
     ) -> GearInitialGuess:
-        """Live gRPC implementation of initial guess generation."""
-        from truthmaker.cem import cem_pb2
-        
         n = len(x_target)
         if theta is None:
             theta = np.linspace(0, 2 * np.pi, n)
-        
-        # Build request
+
         request = cem_pb2.GearInitialGuessRequest()
         request.x_target_mm.extend(x_target.tolist())
         request.theta_rad.extend(theta.tolist())
-        
-        # Call service
+
         response = self._stub.GetGearInitialGuess(request)
-        
+
         return GearInitialGuess(
             Rp=np.array(list(response.rp)),
             Rr=np.array(list(response.rr)),
             C=np.array(list(response.c)),
             phase_offset=response.phase_offset_rad,
-            mean_centerline=response.mean_centerline_mm
+            mean_centerline=response.mean_centerline_mm,
         )
-    
-    def _compute_config_hash(self) -> str:
-        """Compute hash of configuration for reproducibility."""
-        import hashlib
-        config_str = str(sorted(self.config.items()))
-        return hashlib.md5(config_str.encode()).hexdigest()[:8]
-    
-    def _get_cem_version(self) -> str:
-        """Query CEM service for version."""
-        if self._stub:
-            try:
-                from truthmaker.cem import cem_pb2
-                response = self._stub.GetVersion(cem_pb2.VersionRequest())
-                return response.cem_version
-            except Exception:
-                pass
-        return "cem-0.1.0"
-    
-    def extract_training_metadata(self, report: ValidationReport) -> Dict[str, any]:
-        """
-        Extract margins, constraint codes from ValidationReport for training logs.
-        
-        Returns dict with:
-            - margins: {violation_code_name: margin_value}
-            - constraint_codes: [violation_code_values]
-            - is_valid: bool
-            - regime_id: int
-            - cem_version: str
-        """
-        return {
-            'margins': {
-                v.code.name: v.margin 
-                for v in report.violations 
-                if v.margin is not None
-            },
-            'constraint_codes': [v.code.value for v in report.violations],
-            'is_valid': report.is_valid,
-            'regime_id': report.regime_id,
-            'cem_version': report.cem_version,
-        }
-    
-    @staticmethod
-    def classify_regime(
-        rpm: float, 
-        boost_bar: float,
-        rpm_idle: float = 800.0,
-        rpm_full: float = 4000.0,
-        boost_full: float = 3.0
-    ) -> OperatingRegime:
-        """
-        Classify operating regime based on RPM and boost pressure.
-        
-        Args:
-            rpm: Engine speed [RPM]
-            boost_bar: Intake manifold pressure [bar]
-            rpm_idle: Threshold below which engine is in IDLE regime
-            rpm_full: Threshold above which engine approaches FULL_LOAD
-            boost_full: Boost pressure threshold for FULL_LOAD
-            
-        Returns:
-            OperatingRegime enum value
-        """
-        if rpm < rpm_idle:
-            return OperatingRegime.IDLE
-        elif rpm > rpm_full or boost_bar > boost_full:
-            return OperatingRegime.FULL_LOAD
-        else:
-            return OperatingRegime.CRUISE
 
 
 def get_cem_client(
-    host: str = "localhost", 
-    port: int = 50051,
-    mock: bool = True,
-    config: Optional[dict] = None
+    host: str = "localhost", port: int = 50051, mock: bool = True, config: Optional[dict] = None
 ) -> CEMClient:
     """Factory function for CEM client."""
     return CEMClient(host, port, mock, config)

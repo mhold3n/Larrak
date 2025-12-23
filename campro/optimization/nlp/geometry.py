@@ -13,7 +13,28 @@ import numpy as np
 
 
 class GeometryInterface(Protocol):
-    """Interface for geometry lookup."""
+    """Interface for geometry lookup.
+
+    Required attributes for engine geometry:
+        B: Bore diameter [m]
+        S: Stroke length [m]
+        bore: Alias for B (bore diameter) [m]
+        stroke: Alias for S (stroke length) [m]
+    """
+
+    # Geometry dimensions - required for physics calculations
+    B: float  # Bore diameter [m]
+    S: float  # Stroke length [m]
+
+    @property
+    def bore(self) -> float:
+        """Bore diameter [m] (alias for B)."""
+        ...
+
+    @property
+    def stroke(self) -> float:
+        """Stroke length [m] (alias for S)."""
+        ...
 
     def Volume(self, theta: ca.SX) -> ca.SX:
         """Cylinder volume [m^3] at angle theta."""
@@ -27,11 +48,21 @@ class GeometryInterface(Protocol):
         """Wetted wall area [m^2] at angle theta."""
         ...
 
-    def Area_intake(self, theta: ca.SX) -> ca.SX:
+    def Area_intake(
+        self,
+        theta: ca.SX,
+        open_rad: ca.SX | float | None = None,
+        duration_rad: ca.SX | float | None = None,
+    ) -> ca.SX:
         """Effective intake valve area [m^2] at angle theta."""
         ...
 
-    def Area_exhaust(self, theta: ca.SX) -> ca.SX:
+    def Area_exhaust(
+        self,
+        theta: ca.SX,
+        open_rad: ca.SX | float | None = None,
+        duration_rad: ca.SX | float | None = None,
+    ) -> ca.SX:
         """Effective exhaust valve area [m^2] at angle theta."""
         ...
 
@@ -66,6 +97,16 @@ class StandardSliderCrankGeometry:
         self.intake_close_rad = np.radians(180.0 - intake_open + intake_duration)
         self.exhaust_open_rad = np.radians(180.0 - exhaust_open)
         self.exhaust_close_rad = np.radians(180.0 - exhaust_open + exhaust_duration)
+
+    @property
+    def bore(self) -> float:
+        """Bore diameter [m] (alias for B)."""
+        return self.B
+
+    @property
+    def stroke(self) -> float:
+        """Stroke length [m] (alias for S)."""
+        return self.S
 
     def _piston_position(self, theta: ca.SX) -> ca.SX:
         """Distance from TDC [m]."""
@@ -128,28 +169,34 @@ class StandardSliderCrankGeometry:
 
         return 0.0  # Placeholder for now, typically 2D lookup is better.
 
-    def Area_intake(self, theta: ca.SX, open_rad: ca.SX | None = None, duration_rad: ca.SX | None = None) -> ca.SX:
+    def Area_intake(
+        self, theta: ca.SX, open_rad: ca.SX | None = None, duration_rad: ca.SX | None = None
+    ) -> ca.SX:
         # Defaults to instance values if not provided
-        if open_rad is None: open_rad = self.intake_open_rad
-        if duration_rad is None: 
+        if open_rad is None:
+            open_rad = self.intake_open_rad
+        if duration_rad is None:
             duration_rad = self.intake_close_rad - self.intake_open_rad
-            
+
         # Implementing a simple differentiable bump centered at the window
         # Center = open + duration/2
         # Width (sigma) approx duration/4
         center = open_rad + duration_rad / 2.0
         sigma = duration_rad / 4.0
-        
+
         # Max Area parameter could also be passed, fixed for now
-        # Use periodic distance for 0-2pi wrapping? 
+        # Use periodic distance for 0-2pi wrapping?
         # For 2-stroke centered at PI, simple diff is fine if range is [0, 2pi]
         return 0.005 * ca.exp(-((theta - center) ** 2) / (2 * sigma**2))
 
-    def Area_exhaust(self, theta: ca.SX, open_rad: ca.SX | None = None, duration_rad: ca.SX | None = None) -> ca.SX:
-        if open_rad is None: open_rad = self.exhaust_open_rad
+    def Area_exhaust(
+        self, theta: ca.SX, open_rad: ca.SX | None = None, duration_rad: ca.SX | None = None
+    ) -> ca.SX:
+        if open_rad is None:
+            open_rad = self.exhaust_open_rad
         if duration_rad is None:
             duration_rad = self.exhaust_close_rad - self.exhaust_open_rad
-            
+
         center = open_rad + duration_rad / 2.0
         sigma = duration_rad / 4.0
         return 0.006 * ca.exp(-((theta - center) ** 2) / (2 * sigma**2))

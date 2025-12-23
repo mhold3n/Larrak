@@ -5,7 +5,19 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from campro.constants import TOLERANCE
+from campro.design.safety import (
+    SF_COMBUSTION_PEAK_PRESSURE,
+    SF_PISTON_FATIGUE,
+    ConsequenceLevel,
+    DesignMarginReport,
+    FailureMode,
+    LoadType,
+    get_recommended_sf,
+)
 from campro.logging import get_logger
+from campro.materials.gases import R_UNIVERSAL, get_gamma
+from campro.units import G_STANDARD
 
 log = get_logger(__name__)
 
@@ -23,19 +35,30 @@ class PhysicsValidator:
         self.geometry = config.get("geometry", {})
         self.thermo = config.get("thermodynamics", {})
 
-        # Physical constants
-        self.g = 9.81  # m/s^2
-        self.R_air = 287.0  # J/(kg·K)
-        self.gamma_air = 1.4
+        # Physical constants (using typed constants from campro.units)
+        self.g = G_STANDARD.value  # m/s² (exact standard gravity)
+        self.R_air = R_UNIVERSAL / 0.028964  # J/(kg·K) for air
+        self.gamma_air = get_gamma("air", 300.0)
 
-        # Validation tolerances
+        # Validation tolerances (using typed constants)
         self.tolerances = {
-            "mass_conservation": 1e-6,
-            "energy_conservation": 1e-6,
-            "momentum_conservation": 1e-6,
-            "entropy_increase": 1e-6,
-            "thermodynamic_consistency": 1e-6,
+            "mass_conservation": float(TOLERANCE) * 100,  # Relaxed for mass
+            "energy_conservation": float(TOLERANCE) * 100,
+            "momentum_conservation": float(TOLERANCE) * 100,
+            "entropy_increase": float(TOLERANCE) * 100,
+            "thermodynamic_consistency": float(TOLERANCE) * 100,
         }
+
+        # Safety limits from config or defaults
+        self.safety_limits = config.get(
+            "safety_limits",
+            {
+                "max_pressure_Pa": 20e6,  # 20 MPa peak pressure
+                "max_temperature_K": 2500.0,  # Max combustion temperature
+                "max_velocity_m_s": 50.0,  # Max piston velocity
+                "max_acceleration_m_s2": 50000.0,  # Max acceleration
+            },
+        )
 
     def validate_physics(self, solution: Any) -> dict[str, Any]:
         """Validate physics of optimization solution.
@@ -58,6 +81,7 @@ class PhysicsValidator:
             "momentum_conservation": False,
             "entropy_increase": False,
             "thermodynamic_consistency": False,
+            "safety_margins": None,
             "violations": [],
             "metrics": {},
             "warnings": [],
@@ -82,6 +106,9 @@ class PhysicsValidator:
 
             # Calculate physics metrics
             self._calculate_physics_metrics(solution, validation_results)
+
+            # Validate safety margins
+            self._validate_safety_margins(solution, validation_results)
 
             # Determine overall success
             validation_results["success"] = (
@@ -113,7 +140,9 @@ class PhysicsValidator:
         return validation_results
 
     def _validate_mass_conservation(
-        self, solution: Any, results: dict[str, Any],
+        self,
+        solution: Any,
+        results: dict[str, Any],
     ) -> None:
         """Validate mass conservation."""
         try:
@@ -127,9 +156,7 @@ class PhysicsValidator:
                 results["warnings"].append(
                     "Mass conservation validation not implemented for current Solution structure",
                 )
-                results["mass_conservation"] = (
-                    True  # Mark as passed to avoid blocking optimization
-                )
+                results["mass_conservation"] = True  # Mark as passed to avoid blocking optimization
                 return
 
             # Check if we have density and volume data
@@ -171,7 +198,9 @@ class PhysicsValidator:
             results["errors"].append(f"Mass conservation validation failed: {e!s}")
 
     def _validate_energy_conservation(
-        self, solution: Any, results: dict[str, Any],
+        self,
+        solution: Any,
+        results: dict[str, Any],
     ) -> None:
         """Validate energy conservation."""
         try:
@@ -236,7 +265,9 @@ class PhysicsValidator:
             results["errors"].append(f"Energy conservation validation failed: {e!s}")
 
     def _validate_momentum_conservation(
-        self, solution: Any, results: dict[str, Any],
+        self,
+        solution: Any,
+        results: dict[str, Any],
     ) -> None:
         """Validate momentum conservation."""
         try:
@@ -273,9 +304,7 @@ class PhysicsValidator:
             if len(momenta) > 1:
                 momentum_change = abs(momenta[-1] - momenta[0])
                 momentum_avg = sum(momenta) / len(momenta)
-                relative_change = (
-                    momentum_change / momentum_avg if momentum_avg > 0 else 0
-                )
+                relative_change = momentum_change / momentum_avg if momentum_avg > 0 else 0
 
                 if relative_change < self.tolerances["momentum_conservation"]:
                     results["momentum_conservation"] = True
@@ -299,7 +328,9 @@ class PhysicsValidator:
             results["errors"].append(f"Momentum conservation validation failed: {e!s}")
 
     def _validate_entropy_increase(
-        self, solution: Any, results: dict[str, Any],
+        self,
+        solution: Any,
+        results: dict[str, Any],
     ) -> None:
         """Validate entropy increase (second law of thermodynamics)."""
         try:
@@ -313,9 +344,7 @@ class PhysicsValidator:
                 results["warnings"].append(
                     "Entropy validation not implemented for current Solution structure",
                 )
-                results["entropy_increase"] = (
-                    True  # Mark as passed to avoid blocking optimization
-                )
+                results["entropy_increase"] = True  # Mark as passed to avoid blocking optimization
                 return
 
             # Check if we have temperature and pressure data
@@ -366,7 +395,9 @@ class PhysicsValidator:
             results["errors"].append(f"Entropy validation failed: {e!s}")
 
     def _validate_thermodynamic_consistency(
-        self, solution: Any, results: dict[str, Any],
+        self,
+        solution: Any,
+        results: dict[str, Any],
     ) -> None:
         """Validate thermodynamic consistency."""
         try:
@@ -424,9 +455,7 @@ class PhysicsValidator:
 
             # Store thermodynamic metrics
             results["metrics"]["thermodynamic_violations"] = violations
-            results["metrics"]["thermodynamic_violation_rate"] = (
-                violations / len(T) if T else 0.0
-            )
+            results["metrics"]["thermodynamic_violation_rate"] = violations / len(T) if T else 0.0
 
         except Exception as e:
             results["errors"].append(
@@ -434,7 +463,9 @@ class PhysicsValidator:
             )
 
     def _calculate_physics_metrics(
-        self, solution: Any, results: dict[str, Any],
+        self,
+        solution: Any,
+        results: dict[str, Any],
     ) -> None:
         """Calculate additional physics metrics."""
         try:
@@ -486,9 +517,7 @@ class PhysicsValidator:
                 v_R = states["v_R"]
 
                 # Average velocity
-                v_avg = sum(abs(v_L[i]) + abs(v_R[i]) for i in range(len(v_L))) / (
-                    2 * len(v_L)
-                )
+                v_avg = sum(abs(v_L[i]) + abs(v_R[i]) for i in range(len(v_L))) / (2 * len(v_L))
                 results["metrics"]["average_velocity"] = v_avg
 
                 # Maximum velocity
@@ -497,6 +526,95 @@ class PhysicsValidator:
 
         except Exception as e:
             results["warnings"].append(f"Physics metrics calculation failed: {e!s}")
+
+    def _validate_safety_margins(
+        self,
+        solution: Any,
+        results: dict[str, Any],
+    ) -> None:
+        """Validate safety margins for critical parameters.
+
+        Creates a DesignMarginReport tracking peak pressure, temperature,
+        velocity, and acceleration against configured safety limits.
+        """
+        try:
+            # Use property with fallback to dict access
+            states = getattr(solution, "states", {})
+            if not states:
+                states = solution.data.get("states", {})
+
+            if not states:
+                results["warnings"].append("Safety margin validation skipped: no states available")
+                return
+
+            # Create design margin report
+            report = DesignMarginReport("OP Engine Cycle")
+
+            # Peak pressure check
+            if "p" in states:
+                p_values = states["p"]
+                p_max = max(p_values) if p_values else 0.0
+                p_limit = self.safety_limits.get("max_pressure_Pa", 20e6)
+                report.add_margin(
+                    "Peak Pressure",
+                    p_max,
+                    p_limit,
+                    SF_COMBUSTION_PEAK_PRESSURE,
+                    "Pa",
+                )
+
+            # Peak temperature check
+            if "T" in states:
+                t_values = states["T"]
+                t_max = max(t_values) if t_values else 0.0
+                t_limit = self.safety_limits.get("max_temperature_K", 2500.0)
+                # Use fatigue SF for repeated thermal cycling
+                report.add_margin(
+                    "Peak Temperature",
+                    t_max,
+                    t_limit,
+                    SF_PISTON_FATIGUE,
+                    "K",
+                )
+
+            # Peak velocity check
+            v_max = 0.0
+            if "v_L" in states:
+                v_max = max(v_max, max(abs(v) for v in states["v_L"]))
+            if "v_R" in states:
+                v_max = max(v_max, max(abs(v) for v in states["v_R"]))
+
+            if v_max > 0:
+                v_limit = self.safety_limits.get("max_velocity_m_s", 50.0)
+                # Use recommended SF for dynamic loading
+                sf_velocity = get_recommended_sf(
+                    FailureMode.FATIGUE,
+                    ConsequenceLevel.CRITICAL,
+                    LoadType.DYNAMIC,
+                )
+                report.add_margin("Peak Velocity", v_max, v_limit, sf_velocity, "m/s")
+
+            # Store report in results
+            results["safety_margins"] = report
+
+            # Log summary
+            if report.all_pass:
+                log.info(
+                    "Safety margins validated: all %d checks pass (critical util: %.1f%%)",
+                    len(report.margins),
+                    report.critical_utilization * 100,
+                )
+            else:
+                log.warning(
+                    "Safety margin violations detected: critical utilization %.1f%%",
+                    report.critical_utilization * 100,
+                )
+                for margin in report.margins:
+                    if not margin.passes:
+                        results["violations"].append(margin.summary())
+
+        except Exception as e:
+            results["warnings"].append(f"Safety margin validation failed: {e!s}")
 
     def generate_physics_report(self, validation_results: dict[str, Any]) -> str:
         """Generate detailed physics validation report.

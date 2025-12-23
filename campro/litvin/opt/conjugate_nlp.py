@@ -1,6 +1,8 @@
 import casadi as ca
 import numpy as np
+
 from campro.litvin.gear_config import GEAR_CONFIG
+
 
 def build_gear_nlp(
     target_profile_x: np.ndarray, 

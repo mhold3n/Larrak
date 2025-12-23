@@ -1,6 +1,9 @@
-import plotly.graph_objects as go
 import os
+
+import plotly.graph_objects as go
+
 from .utils import get_common_layout, smooth_curve
+
 
 def plot_valve_strategy(results: list, output_path: str = None) -> go.Figure:
     """

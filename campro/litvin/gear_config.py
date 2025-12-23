@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class GearGeometry:
     """Fixed Geometric Parameters for Conjugate Gear Set."""
