@@ -14,3 +14,7 @@ out/ linguist-generated=true
 # Mark libraries as vendored (third-party code)
 libraries/ linguist-vendored=true
 libraries/** linguist-vendored=true
+
+# Handle case sensitivity (git index has it as Libraries)
+Libraries/ linguist-vendored=true
+Libraries/** linguist-vendored=true
