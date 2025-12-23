@@ -251,3 +251,19 @@ investigation_output*.txt
 
 runs/
 
+
+# C# / .NET
+obj/
+bin/
+
+# Test Outputs and Reports
+tests/goldens/**/*.csv
+tests/goldens/**/*.html
+tests/goldens/**/*.txt
+tests/goldens/**/matrix_output/
+out/diagnostics/
+load_error.txt
+
+# Generated HTML Reports
+output/*.html
+dashboard/*.html
