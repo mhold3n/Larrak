@@ -1,0 +1,12 @@
+# Mark HTML files as generated to exclude from language stats
+*.html linguist-generated=true
+*.css linguist-generated=true
+*.js linguist-generated=true
+
+# Mark documentation as documentation
+docs/ linguist-documentation=true
+
+# Mark specific large data folders
+tests/goldens/ linguist-generated=true
+output/ linguist-generated=true
+out/ linguist-generated=true
