@@ -12,6 +12,9 @@ on:
 jobs:
     index:
         runs-on: ubuntu-latest
+        # Only run if WEAVIATE_URL is set (skip on forks/no-secret setups)
+        if: ${{ vars.ENABLE_WEAVIATE_SYNC == 'true' || github.event_name == 'workflow_dispatch' }}
+
         steps:
             - uses: actions/checkout@v4
 

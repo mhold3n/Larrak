@@ -4,15 +4,13 @@ on:
     schedule:
         - cron: "0 */6 * * *" # Every 6 hours
     workflow_dispatch:
-        inputs:
-            project_numbers:
-                description: "Comma-separated project numbers to sync"
-                required: false
-                default: "1"
 
 jobs:
     sync:
         runs-on: ubuntu-latest
+        # Only run if Weaviate sync is explicitly enabled
+        if: ${{ vars.ENABLE_WEAVIATE_SYNC == 'true' || github.event_name == 'workflow_dispatch' }}
+
         steps:
             - uses: actions/checkout@v4
 
@@ -24,10 +22,10 @@ jobs:
             - name: Install dependencies
               run: pip install weaviate-client
 
-            - name: Sync Projects to Weaviate
+            - name: Sync projects to Weaviate
               run: python truthmaker/ingestion/github_ingest.py
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   WEAVIATE_URL: ${{ secrets.WEAVIATE_URL }}
                   GITHUB_ORG: mhold3n
-                  GITHUB_PROJECT_NUMBERS: ${{ github.event.inputs.project_numbers || '1' }}
+                  GITHUB_PROJECT_NUMBERS: "1"
