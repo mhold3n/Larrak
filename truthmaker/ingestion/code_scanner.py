@@ -299,12 +299,38 @@ def main() -> int:
     repo_path = Path(os.environ.get("REPO_PATH", ".")).resolve()
     repo_name = os.environ.get("REPO_NAME", "Larrak")
     repo_owner = os.environ.get("REPO_OWNER", "mhold3n")
+    weaviate_url = os.environ.get("WEAVIATE_URL", "http://localhost:8080")
+    weaviate_api_key = os.environ.get("WEAVIATE_API_KEY", "")
 
     print(f"Scanning repository: {repo_path}")
     print(f"Repository: {repo_owner}/{repo_name}")
 
-    print("Connecting to Weaviate...")
-    client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+    print(f"Connecting to Weaviate at {weaviate_url}...")
+
+    # Detect if using Weaviate Cloud (WCD)
+    if "weaviate.cloud" in weaviate_url or "wcs.api.weaviate.io" in weaviate_url:
+        # Weaviate Cloud connection
+        import weaviate.classes.init as wvi
+
+        # Extract cluster URL (add https:// if missing)
+        cluster_url = weaviate_url
+        if not cluster_url.startswith("http"):
+            cluster_url = f"https://{cluster_url}"
+
+        if weaviate_api_key:
+            auth = wvi.Auth.api_key(weaviate_api_key)
+            client = weaviate.connect_to_weaviate_cloud(
+                cluster_url=cluster_url,
+                auth_credentials=auth,
+            )
+        else:
+            # Try without auth (for read-only clusters)
+            client = weaviate.connect_to_weaviate_cloud(cluster_url=cluster_url)
+        print("Connected to Weaviate Cloud")
+    else:
+        # Local Weaviate connection
+        client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+        print("Connected to local Weaviate")
 
     try:
         stats = scan_repository(client, repo_path, repo_name, repo_owner)

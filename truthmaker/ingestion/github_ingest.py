@@ -434,11 +434,32 @@ def main() -> int:
         return 1
 
     weaviate_url = os.environ.get("WEAVIATE_URL", "http://localhost:8080")
+    weaviate_api_key = os.environ.get("WEAVIATE_API_KEY", "")
     org = os.environ.get("GITHUB_ORG", "mhold3n")
     project_numbers_str = os.environ.get("GITHUB_PROJECT_NUMBERS", "1")
 
     print(f"Connecting to Weaviate at {weaviate_url}...")
-    client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+
+    # Detect if using Weaviate Cloud (WCD)
+    if "weaviate.cloud" in weaviate_url or "wcs.api.weaviate.io" in weaviate_url:
+        import weaviate.classes.init as wvi
+
+        cluster_url = weaviate_url
+        if not cluster_url.startswith("http"):
+            cluster_url = f"https://{cluster_url}"
+
+        if weaviate_api_key:
+            auth = wvi.Auth.api_key(weaviate_api_key)
+            client = weaviate.connect_to_weaviate_cloud(
+                cluster_url=cluster_url,
+                auth_credentials=auth,
+            )
+        else:
+            client = weaviate.connect_to_weaviate_cloud(cluster_url=cluster_url)
+        print("Connected to Weaviate Cloud")
+    else:
+        client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+        print("Connected to local Weaviate")
 
     try:
         # Sync each project

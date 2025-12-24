@@ -218,13 +218,38 @@ def suggest_links_from_body(client: weaviate.WeaviateClient) -> list[dict]:
 
 def main() -> int:
     """Main entry point."""
-    print("Connecting to Weaviate...")
-    client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+    import os
+
+    weaviate_url = os.environ.get("WEAVIATE_URL", "http://localhost:8080")
+    weaviate_api_key = os.environ.get("WEAVIATE_API_KEY", "")
+
+    print(f"Connecting to Weaviate at {weaviate_url}...")
+
+    # Detect if using Weaviate Cloud (WCD)
+    if "weaviate.cloud" in weaviate_url or "wcs.api.weaviate.io" in weaviate_url:
+        import weaviate.classes.init as wvi
+
+        cluster_url = weaviate_url
+        if not cluster_url.startswith("http"):
+            cluster_url = f"https://{cluster_url}"
+
+        if weaviate_api_key:
+            auth = wvi.Auth.api_key(weaviate_api_key)
+            client = weaviate.connect_to_weaviate_cloud(
+                cluster_url=cluster_url,
+                auth_credentials=auth,
+            )
+        else:
+            client = weaviate.connect_to_weaviate_cloud(cluster_url=cluster_url)
+        print("Connected to Weaviate Cloud")
+    else:
+        client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+        print("Connected to local Weaviate")
 
     try:
         print("\n=== Processing Confirmed Links ===")
         stats = process_all_issues(client)
-        print(f"\nResults:")
+        print("\nResults:")
         print(f"  Issues processed: {stats['processed']}")
         print(f"  Issues linked: {stats['linked']}")
         print(f"  Symbols found: {stats['symbols_found']}")

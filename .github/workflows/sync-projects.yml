@@ -8,9 +8,6 @@ on:
 jobs:
     sync:
         runs-on: ubuntu-latest
-        # Only run if Weaviate sync is explicitly enabled
-        if: ${{ vars.ENABLE_WEAVIATE_SYNC == 'true' || github.event_name == 'workflow_dispatch' }}
-
         steps:
             - uses: actions/checkout@v4
 
@@ -27,5 +24,6 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   WEAVIATE_URL: ${{ secrets.WEAVIATE_URL }}
+                  WEAVIATE_API_KEY: ${{ secrets.WEAVIATE_API_KEY }}
                   GITHUB_ORG: mhold3n
                   GITHUB_PROJECT_NUMBERS: "1"
