@@ -23,10 +23,77 @@ from typing import Any
 
 import weaviate
 
-# GraphQL query to fetch a Project v2 with its items
-PROJECT_QUERY = """
+# GraphQL query to fetch a Project v2 with its items (for organizations)
+ORG_PROJECT_QUERY = """
 query($owner: String!, $number: Int!) {
   organization(login: $owner) {
+    projectV2(number: $number) {
+      id
+      number
+      title
+      shortDescription
+      url
+      items(first: 100) {
+        nodes {
+          id
+          type
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldTextValue {
+                text
+                field { ... on ProjectV2FieldCommon { name } }
+              }
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field { ... on ProjectV2FieldCommon { name } }
+              }
+            }
+          }
+          content {
+            ... on Issue {
+              __typename
+              id
+              number
+              title
+              body
+              state
+              url
+              createdAt
+              updatedAt
+              labels(first: 10) { nodes { name } }
+              assignees(first: 5) { nodes { login } }
+            }
+            ... on PullRequest {
+              __typename
+              id
+              number
+              title
+              body
+              state
+              url
+              headRefName
+              baseRefName
+              createdAt
+              mergedAt
+            }
+            ... on DraftIssue {
+              __typename
+              id
+              title
+              body
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+# GraphQL query for user-owned projects (personal accounts)
+USER_PROJECT_QUERY = """
+query($owner: String!, $number: Int!) {
+  user(login: $owner) {
     projectV2(number: $number) {
       id
       number
@@ -299,17 +366,28 @@ def sync_project(
     """Sync a single GitHub Project to Weaviate."""
     print(f"Fetching project {owner}/#{project_number}...")
 
+    # Try user query first (for personal accounts), then organization
     response = run_graphql_query(
-        PROJECT_QUERY,
+        USER_PROJECT_QUERY,
         {"owner": owner, "number": project_number},
         token,
     )
 
-    if "errors" in response:
+    project = response.get("data", {}).get("user", {}).get("projectV2")
+
+    # If user query failed, try organization query
+    if not project:
+        response = run_graphql_query(
+            ORG_PROJECT_QUERY,
+            {"owner": owner, "number": project_number},
+            token,
+        )
+        project = response.get("data", {}).get("organization", {}).get("projectV2")
+
+    if "errors" in response and not project:
         print(f"GraphQL errors: {response['errors']}")
         return
 
-    project = response.get("data", {}).get("organization", {}).get("projectV2")
     if not project:
         print(f"Project not found: {owner}/#{project_number}")
         return
