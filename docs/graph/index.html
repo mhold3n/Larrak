@@ -213,8 +213,9 @@
     <header>
         <h1>🕸️ Larrak Project Graph</h1>
         <div class="controls">
-            <input type="text" id="weaviate-url" placeholder="Weaviate URL (e.g., http://localhost:8080)"
-                value="http://localhost:8080">
+            <input type="text" id="weaviate-url" placeholder="Weaviate URL"
+                value="https://mq7zkb8bsr202uipudjoa.c0.us-west3.gcp.weaviate.cloud">
+            <input type="password" id="weaviate-api-key" placeholder="API Key (for WCD)" style="width: 200px;">
             <button onclick="loadGraph()">Load Graph</button>
             <button onclick="cy.fit()">Fit View</button>
         </div>
@@ -339,10 +340,14 @@
             'WorkflowRun': '#a5d6ff'
         };
 
-        async function fetchWeaviate(url, query) {
+        async function fetchWeaviate(url, query, apiKey) {
+            const headers = { 'Content-Type': 'application/json' };
+            if (apiKey) {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+            }
             const response = await fetch(`${url}/v1/graphql`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers,
                 body: JSON.stringify({ query })
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -351,6 +356,7 @@
 
         async function loadGraph() {
             const weaviateUrl = document.getElementById('weaviate-url').value.replace(/\/$/, '');
+            const apiKey = document.getElementById('weaviate-api-key').value;
             const detailsDiv = document.getElementById('node-details');
 
             detailsDiv.innerHTML = '<div class="loading">Loading graph data...</div>';
@@ -369,7 +375,7 @@
                         }
                     }
                 }`;
-                const filesResult = await fetchWeaviate(weaviateUrl, filesQuery);
+                const filesResult = await fetchWeaviate(weaviateUrl, filesQuery, apiKey);
                 const files = filesResult.data?.Get?.CodeFile || [];
                 fileCount = files.length;
 
@@ -398,7 +404,7 @@
                         }
                     }
                 }`;
-                const symbolsResult = await fetchWeaviate(weaviateUrl, symbolsQuery);
+                const symbolsResult = await fetchWeaviate(weaviateUrl, symbolsQuery, apiKey);
                 const symbols = symbolsResult.data?.Get?.CodeSymbol || [];
                 symbolCount = symbols.length;
 
