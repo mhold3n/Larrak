@@ -152,15 +152,15 @@
                         classDef core fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#0d47a1
                         classDef module fill:#e8f5e9,stroke:#1b5e20,stroke-width:3px,color:#1b5e20
                         classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:3px,color:#4a148c
-                        classDef model fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#e65100
+                        classDef hifi fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#e65100
                         classDef invis fill:none,stroke:none
 
                         %% Make arrows thicker and easier to see
                         linkStyle default stroke-width:3px,fill:none,stroke:#666
 
-                        subgraph Orchestrator_Context [Orchestrator Context]
+                        subgraph Orchestrator_Context [Orchestrator Control Layer]
                         direction TB
-                        ORCH[Orchestrator Control]
+                        ORCH[Orchestrator]
 
                         subgraph Internals [State Management]
                         direction LR
@@ -172,55 +172,57 @@
                         ORCH -.- TR
                         end
 
-                        subgraph Pipeline [Optimization Pipeline]
+                        subgraph Pipeline [Fast Optimization Loop]
                         direction TB
                         CEM[1. CEM: Generate & Repair]
-                        SUR[2. Surrogate: Batch Predict]
+                        SUR[2. Surrogate: Fast Predict]
                         SOL[3. Solver: Local Refinement]
-                        SIM[4. Simulation: Ground Truth]
                         end
 
-                        subgraph HiFi [HiFi Solvers - Weaviate Tracked]
+                        subgraph HiFi [HiFi Solvers - Offline Training]
                         direction LR
-                        FOAM[🔥 OpenFOAM laplacianFoam]
-                        CCX[⚙️ CalculiX FEA]
-                        PORTFLOW[💨 OpenFOAM simpleFoam]
-                        COMBUST[🔶 OpenFOAM reactingFoam]
+                        FOAM[🔥 laplacianFoam]
+                        CCX[⚙️ CalculiX]
+                        PORTFLOW[💨 simpleFoam]
+                        COMBUST[🔶 reactingFoam]
                         end
 
-                        subgraph Logging [Persistence]
-                        PROV[Provenance Client]
-                        WEAV[(Weaviate DB)]
+                        subgraph Data [Data Layer - Weaviate Tracked]
+                        direction LR
+                        TRUTH[(Truth DB)]
+                        WEAV[(Vector DB)]
                         end
 
-                        %% Main Control Flow
+                        %% Fast Optimization Loop - NO HiFi calls
                         ORCH ==>|Sample| CEM
                         CEM ==>|Candidates| SUR
                         SUR ==>|Top K| SOL
-                        SOL ==>|Refined| SIM
-                        SIM ==>|Result| ORCH
+                        SOL ==>|Refined| ORCH
 
-                        %% HiFi simulations execute at Stage 4
-                        FOAM -.->|Thermal CFD| SIM
-                        CCX -.->|Structural FEA| SIM
-                        PORTFLOW -.->|Fluid CFD| SIM
-                        COMBUST -.->|Combustion CFD| SIM
+                        %% Orchestrator calls HiFi DIRECTLY for training data
+                        ORCH -.->|DOE Request| FOAM
+                        ORCH -.->|DOE Request| CCX
+                        ORCH -.->|DOE Request| PORTFLOW
+                        ORCH -.->|DOE Request| COMBUST
 
-                        %% Logging Flow (Side Effect)
-                        ORCH -.->|Log| PROV
-                        PROV -.->|Push| WEAV
+                        %% HiFi results go to Truth DB
+                        FOAM -.->|Store| TRUTH
+                        CCX -.->|Store| TRUTH
+                        PORTFLOW -.->|Store| TRUTH
+                        COMBUST -.->|Store| TRUTH
 
-                        %% HiFi runs tracked in Weaviate
-                        FOAM -.-> WEAV
-                        CCX -.-> WEAV
-                        PORTFLOW -.-> WEAV
-                        COMBUST -.-> WEAV
+                        %% Truth DB feeds Surrogate training
+                        TRUTH -.->|Train| SUR
+                        TRUTH -.->|Index| WEAV
+
+                        %% Surrogates use Vector DB for similarity
+                        WEAV -.->|Query| SUR
 
                         %% Classes
-                        class ORCH,BM,TR,PROV core
-                        class CEM,SUR,SOL,SIM module
-                        class WEAV db
-                        class FOAM,CCX,PORTFLOW,COMBUST model
+                        class ORCH,BM,TR core
+                        class CEM,SUR,SOL module
+                        class TRUTH,WEAV db
+                        class FOAM,CCX,PORTFLOW,COMBUST hifi
                         class Internals invis
 
                         %% Interaction
@@ -228,7 +230,6 @@
                         click CEM clickCEM
                         click SUR clickSUR
                         click SOL clickSOL
-                        click SIM clickSIM
                     </div>
                 </div>
                 <p align="center"><em>Click diagram to expand (if implemented)</em></p>
