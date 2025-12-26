@@ -185,6 +185,7 @@
                         FOAM[🔥 OpenFOAM laplacianFoam]
                         CCX[⚙️ CalculiX FEA]
                         PORTFLOW[💨 OpenFOAM simpleFoam]
+                        COMBUST[🔶 OpenFOAM reactingFoam]
                         end
 
                         subgraph Logging [Persistence]
@@ -203,6 +204,7 @@
                         FOAM -.->|Thermal CFD| SIM
                         CCX -.->|Structural FEA| SIM
                         PORTFLOW -.->|Fluid CFD| SIM
+                        COMBUST -.->|Combustion CFD| SIM
 
                         %% Logging Flow (Side Effect)
                         ORCH -.->|Log| PROV
@@ -212,12 +214,13 @@
                         FOAM -.-> WEAV
                         CCX -.-> WEAV
                         PORTFLOW -.-> WEAV
+                        COMBUST -.-> WEAV
 
                         %% Classes
                         class ORCH,BM,TR,PROV core
                         class CEM,SUR,SOL,SIM module
                         class WEAV db
-                        class FOAM,CCX,PORTFLOW model
+                        class FOAM,CCX,PORTFLOW,COMBUST model
                         class Internals invis
 
                         %% Interaction
@@ -299,6 +302,30 @@
                             <tr>
                                 <td>Output:</td>
                                 <td>Cd, swirl/tumble ratio</td>
+                            </tr>
+                            <tr>
+                                <td>Docker Image:</td>
+                                <td><code>openfoam11-paraview510</code></td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>simulation</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Combustion CFD -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #ffb74d, #ff9800); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🔶 Combustion (Prechamber)</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Solver:</td>
+                                <td><code>reactingFoam</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>Wiebe params, p_max</td>
                             </tr>
                             <tr>
                                 <td>Docker Image:</td>
