@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Larrak Orchestrator Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #c9d1d9;
+            --border-color: #30363d;
+            --accent-color: #58a6ff;
+            --card-bg: #161b22;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 20px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .status-offline {
+            background-color: #da3633;
+            color: white;
+        }
+
+        .status-online {
+            background-color: #238636;
+            color: white;
+        }
+
+        .diagram {
+            background-color: white;
+            /* Mermaid needs light bg usually or extensive config */
+            border-radius: 6px;
+            padding: 10px;
+            overflow-x: auto;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .close-btn {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-btn:hover,
+        .close-btn:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Larrak Orchestrator Dashboard</h1>
+
+        <div class="grid">
+            <div class="card">
+                <h2>System Status</h2>
+                <p><strong>Orchestrator:</strong> <span class="status-badge status-online">Integrated</span></p>
+                <p><strong>Weaviate Tracking:</strong> <span class="status-badge status-online">Online</span></p>
+                <p><small>(Provenance logging active)</small></p>
+            </div>
+
+            <div class="card">
+                <h2>Module Connectivity</h2>
+                <p>The Orchestrator gates optimization via three loops:</p>
+                <ul>
+                    <li><strong>Outer Loop:</strong> CEM Feasibility (Geometry validation)</li>
+                    <li><strong>Middle Loop:</strong> Surrogate Prediction (Fast ML filtering)</li>
+                    <li><strong>Inner Loop:</strong> Trust-Region Solver (IPOPT Refinement)</li>
+                </ul>
+            </div>
+
+            <div class="card full-width">
+                <h2>Architecture Diagram</h2>
+                <div class="diagram">
+                    <div class="mermaid">
+                        graph TD
+                        %% Styling
+                        classDef core fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#0d47a1
+                        classDef module fill:#e8f5e9,stroke:#1b5e20,stroke-width:3px,color:#1b5e20
+                        classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:3px,color:#4a148c
+                        classDef invis fill:none,stroke:none
+
+                        %% Make arrows thicker and easier to see
+                        linkStyle default stroke-width:3px,fill:none,stroke:#666
+
+                        subgraph Orchestrator_Context [Orchestrator Context]
+                        direction TB
+                        ORCH[Orchestrator Control]
+
+                        subgraph Internals [State Management]
+                        direction LR
+                        BM[Budget]
+                        TR[Trust Region]
+                        end
+
+                        ORCH -.- BM
+                        ORCH -.- TR
+                        end
+
+                        subgraph Pipeline [Optimization Pipeline]
+                        direction TB
+                        CEM[1. CEM: Generate & Repair]
+                        SUR[2. Surrogate: Batch Predict]
+                        SOL[3. Solver: Local Refinement]
+                        SIM[4. Simulation: Ground Truth]
+                        end
+
+                        subgraph Logging [Persistence]
+                        PROV[Provenance Client]
+                        WEAV[(Weaviate DB)]
+                        end
+
+                        %% Main Control Flow
+                        ORCH ==>|Sample| CEM
+                        CEM ==>|Candidates| SUR
+                        SUR ==>|Top K| SOL
+                        SOL ==>|Refined| SIM
+                        SIM ==>|Result| ORCH
+
+                        %% Logging Flow (Side Effect)
+                        ORCH -.->|Log| PROV
+                        PROV -.->|Push| WEAV
+
+                        %% Classes
+                        class ORCH,BM,TR,PROV core
+                        class CEM,SUR,SOL,SIM module
+                        class WEAV db
+                        class Internals invis
+
+                        %% Interaction
+                        click ORCH clickORCH
+                        click CEM clickCEM
+                        click SUR clickSUR
+                        click SOL clickSOL
+                        click SIM clickSIM
+                    </div>
+                </div>
+                <p align="center"><em>Click diagram to expand (if implemented)</em></p>
+            </div>
+
+            <!-- Trained Models Card - Linked to Stage 2: Surrogate -->
+            <div class="card full-width">
+                <h2>🧠 Trained Surrogate Models <span class="status-badge status-online">Tracked</span></h2>
+                <p>ML models used in <strong>Stage 2: Surrogate Prediction</strong> for fast candidate filtering.</p>
+
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 15px;">
+                    <!-- Thermal Model -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #ff7043, #ff5722); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🔥 Thermal Surrogate</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Model ID:</td>
+                                <td><code>thermal_surrogate</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>T_crown_max (K)</td>
+                            </tr>
+                            <tr>
+                                <td>Training Samples:</td>
+                                <td>5 (pilot DOE)</td>
+                            </tr>
+                            <tr>
+                                <td>Ensemble Size:</td>
+                                <td>3 members</td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>surrogate</strong></td>
+                            </tr>
+                        </table>
+                        <p style="margin: 10px 0 0; font-size: 0.8em;">📁 <code>models/hifi/thermal_surrogate.pt</code>
+                        </p>
+                    </div>
+
+                    <!-- Structural Model -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #42a5f5, #1e88e5); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">⚙️ Structural Surrogate</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Model ID:</td>
+                                <td><code>structural_surrogate</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>von_mises_max (MPa)</td>
+                            </tr>
+                            <tr>
+                                <td>Training Samples:</td>
+                                <td>5 (pilot DOE)</td>
+                            </tr>
+                            <tr>
+                                <td>Ensemble Size:</td>
+                                <td>3 members</td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>surrogate</strong></td>
+                            </tr>
+                        </table>
+                        <p style="margin: 10px 0 0; font-size: 0.8em;">📁
+                            <code>models/hifi/structural_surrogate.pt</code></p>
+                    </div>
+                </div>
+
+                <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                    <strong>Weaviate Collection:</strong> <code>TrainedModel</code> |
+                    <strong>Properties:</strong> model_id, model_type, file_path, training_date, n_samples, final_loss,
+                    workflow_stage
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drill-Down Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title">Module Detail</h2>
+            <div id="modal-diagram" class="diagram"></div>
+        </div>
+    </div>
+
+    <script>
+        // Sub-diagram definitions
+        const diagrams = {
+            "CEM": `graph LR
+                classDef step fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+                Start((Start)) --> Env[Envelope Sampling]
+                Env --> Check{Check Feasibility}
+                Check -- Yes --> Batch[Add to Batch]
+                Check -- No --> Repair[Repair with Constraints]
+                Repair --> Check
+                Batch --> End((Return Batch))
+                class Env,Check,Repair,Batch step`,
+
+            "SUR": `graph LR
+                classDef step fill:#e3f2fd,stroke:#0277bd,stroke-width:2px
+                Input(Batch) --> Feat[Feature Extraction]
+                Feat --> Ensemble[Ensemble Forward Pass]
+                Ensemble --> Mean[Mean Prediction]
+                Ensemble --> Std[Uncertainty Est.]
+                Mean --> Filter[Filter Top K]
+                Std --> End((Return Predictions))
+                Filter --> End
+                class Feat,Ensemble,Mean,Std,Filter step`,
+
+            "SOL": `graph TD
+                classDef step fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+                Input(Candidate) --> Trust[Apply Trust Region]
+                Trust --> IPOPT[Call IPOPT Solver]
+                IPOPT --> Check{Converged?}
+                Check -- Yes --> Opt[Store Local Optima]
+                Check -- No --> Fail[Mark Invalid]
+                Opt --> End((Return Result))
+                Fail --> End
+                class Trust,IPOPT,Check,Opt,Fail step`,
+
+            "SIM": `graph LR
+                classDef step fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+                Input(Params) --> Setup[Setup Physics Kernel]
+                Setup --> Eval[Execute Simulation]
+                Eval --> Metrics[Calculate Efficiency]
+                Metrics --> Cost[Compute Cost Function]
+                Cost --> End((Return Truth))
+                class Setup,Eval,Metrics,Cost step`,
+
+            "ORCH": `graph TD
+                classDef step fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+                Start((Start)) --> Init[Initialize Budget]
+                Init --> Loop{Budget > 0?}
+                Loop -- Yes --> Step1[Sample & Predict]
+                Step1 --> Step2[Refine Candidates]
+                Step2 --> Step3[Simulate & Update]
+                Step3 --> Loop
+                Loop -- No --> End((Final Solution))
+                class Init,Loop,Step1,Step2,Step3 step`
+        };
+
+        const modal = document.getElementById("modal");
+        const modalTitle = document.getElementById("modal-title");
+        const modalDiagram = document.getElementById("modal-diagram");
+
+        function openModal(nodeId, title) {
+            if (diagrams[nodeId]) {
+                modalTitle.innerText = title;
+                modalDiagram.innerHTML = `<div class="mermaid">${diagrams[nodeId]}</div>`;
+                modal.style.display = "flex";
+                mermaid.init(undefined, modalDiagram.querySelector(".mermaid"));
+            }
+        }
+
+        function closeModal() {
+            modal.style.display = "none";
+        }
+
+        // Close on outside click
+        window.onclick = function (event) {
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // Mermaid Click Bindings
+        // Note: Mermaid callbacks look for global functions
+        window.clickCEM = () => openModal("CEM", "CEM: Feasibility Generation");
+        window.clickSUR = () => openModal("SUR", "Surrogate: Inference Model");
+        window.clickSOL = () => openModal("SOL", "Solver: Local Refinement");
+        window.clickSIM = () => openModal("SIM", "Simulation: Ground Truth");
+        window.clickORCH = () => openModal("ORCH", "Orchestrator Logic");
+
+        mermaid.initialize({
+            startOnLoad: true,
+            securityLevel: 'loose' // Required for interaction
+        });
+    </script>
+
+</body>
+
+</html>

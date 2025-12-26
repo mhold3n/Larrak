@@ -386,3 +386,31 @@ def create_schema(client: weaviate.WeaviateClient) -> None:
             ],
             vectorizer_config=wvc.Configure.Vectorizer.none(),
         )
+
+    # ==========================================================================
+    # ML Model Tracking (HiFi Surrogates)
+    # ==========================================================================
+
+    # 18. TrainedModel (tracks expensive ML surrogate models)
+    if not client.collections.exists("TrainedModel"):
+        client.collections.create(
+            name="TrainedModel",
+            description="A trained ML surrogate model used in the optimization pipeline",
+            properties=[
+                wvc.Property(name="model_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(
+                    name="model_type", data_type=wvc.DataType.TEXT
+                ),  # thermal, structural, flow
+                wvc.Property(name="file_path", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="training_date", data_type=wvc.DataType.DATE),
+                wvc.Property(name="n_samples", data_type=wvc.DataType.INT),
+                wvc.Property(name="n_ensemble_members", data_type=wvc.DataType.INT),
+                wvc.Property(name="final_loss", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="workflow_stage", data_type=wvc.DataType.TEXT),  # surrogate
+                wvc.Property(name="metadata", data_type=wvc.DataType.TEXT),  # JSON hyperparams
+            ],
+            references=[
+                wvc.ReferenceProperty(name="trained_by", target_collection="Run"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
