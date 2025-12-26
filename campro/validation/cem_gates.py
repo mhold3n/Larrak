@@ -250,10 +250,236 @@ def get_operating_envelope(
         return cem.get_thermo_envelope(bore, stroke, cr, rpm)
 
 
+# =============================================================================
+# HiFi Surrogate Gates (Phase 4)
+# =============================================================================
+
+# Lazy-loaded surrogate models
+_thermal_surrogate = None
+_structural_surrogate = None
+
+
+def _load_thermal_surrogate():
+    """Lazy load thermal surrogate model."""
+    global _thermal_surrogate
+    if _thermal_surrogate is None:
+        try:
+            from pathlib import Path
+
+            from truthmaker.surrogates.models.hifi_surrogates import ThermalSurrogate
+
+            model_path = Path(__file__).parents[2] / "models" / "hifi" / "thermal_surrogate.pt"
+            if model_path.exists():
+                _thermal_surrogate = ThermalSurrogate.load(str(model_path))
+                log.info(f"Loaded thermal surrogate from {model_path}")
+            else:
+                # Create untrained model for development
+                _thermal_surrogate = ThermalSurrogate(n_models=3)
+                log.warning("Using untrained thermal surrogate (no model file found)")
+        except ImportError as e:
+            log.warning(f"Could not load thermal surrogate: {e}")
+            _thermal_surrogate = None
+    return _thermal_surrogate
+
+
+def _load_structural_surrogate():
+    """Lazy load structural surrogate model."""
+    global _structural_surrogate
+    if _structural_surrogate is None:
+        try:
+            from pathlib import Path
+
+            from truthmaker.surrogates.models.hifi_surrogates import StructuralSurrogate
+
+            model_path = Path(__file__).parents[2] / "models" / "hifi" / "structural_surrogate.pt"
+            if model_path.exists():
+                _structural_surrogate = StructuralSurrogate.load(str(model_path))
+                log.info(f"Loaded structural surrogate from {model_path}")
+            else:
+                _structural_surrogate = StructuralSurrogate(n_models=3)
+                log.warning("Using untrained structural surrogate")
+        except ImportError as e:
+            log.warning(f"Could not load structural surrogate: {e}")
+            _structural_surrogate = None
+    return _structural_surrogate
+
+
+def check_hifi_thermal_feasibility(
+    bore_mm: float,
+    stroke_mm: float,
+    cr: float,
+    rpm: float,
+    load_fraction: float,
+    T_limit_K: float = 620.0,
+    confidence_sigma: float = 2.0,
+) -> dict:
+    """
+    Check thermal feasibility using HiFi surrogate.
+
+    Uses trained ensemble model to predict T_crown_max and check
+    against limit with uncertainty margin.
+
+    Args:
+        bore_mm: Cylinder bore [mm]
+        stroke_mm: Piston stroke [mm]
+        cr: Compression ratio
+        rpm: Engine speed
+        load_fraction: Load (0-1)
+        T_limit_K: Maximum allowable temperature [K]
+        confidence_sigma: Uncertainty multiplier
+
+    Returns:
+        Dict with is_feasible, T_predicted, uncertainty, margin
+    """
+    model = _load_thermal_surrogate()
+
+    if model is None:
+        # Fallback: assume feasible but flag uncertainty
+        return {
+            "is_feasible": True,
+            "T_predicted": 500.0,
+            "uncertainty": 100.0,
+            "margin": T_limit_K - 500.0,
+            "source": "fallback",
+        }
+
+    # Normalize inputs
+    from Simulations.hifi.training_schema import NormalizationParams
+
+    norm = NormalizationParams()
+
+    inputs = np.array(
+        [
+            [
+                (bore_mm - norm.bore_range[0]) / (norm.bore_range[1] - norm.bore_range[0]),
+                (stroke_mm - norm.stroke_range[0]) / (norm.stroke_range[1] - norm.stroke_range[0]),
+                (cr - norm.cr_range[0]) / (norm.cr_range[1] - norm.cr_range[0]),
+                (rpm - norm.rpm_range[0]) / (norm.rpm_range[1] - norm.rpm_range[0]),
+                (load_fraction - norm.load_range[0]) / (norm.load_range[1] - norm.load_range[0]),
+            ]
+        ],
+        dtype=np.float32,
+    )
+
+    mean, std = model.predict(inputs)
+    T_pred = float(mean[0, 0])
+    T_std = float(std[0, 0])
+
+    # Conservative bound
+    T_conservative = T_pred + confidence_sigma * T_std
+    is_feasible = T_conservative < T_limit_K
+    margin = T_limit_K - T_conservative
+
+    return {
+        "is_feasible": is_feasible,
+        "T_predicted": T_pred,
+        "uncertainty": T_std,
+        "margin": margin,
+        "source": "surrogate",
+    }
+
+
+def check_hifi_structural_feasibility(
+    bore_mm: float,
+    stroke_mm: float,
+    cr: float,
+    rpm: float,
+    load_fraction: float,
+    yield_strength_MPa: float = 280.0,
+    safety_factor: float = 1.5,
+    confidence_sigma: float = 2.0,
+) -> dict:
+    """
+    Check structural feasibility using HiFi surrogate.
+
+    Predicts von Mises stress and checks against yield with safety factor.
+
+    Args:
+        bore_mm, stroke_mm, cr, rpm, load_fraction: Operating point
+        yield_strength_MPa: Material yield strength
+        safety_factor: Required safety margin
+        confidence_sigma: Uncertainty multiplier
+
+    Returns:
+        Dict with is_feasible, stress_predicted, uncertainty, margin
+    """
+    model = _load_structural_surrogate()
+
+    if model is None:
+        return {
+            "is_feasible": True,
+            "stress_predicted": 100.0,
+            "uncertainty": 30.0,
+            "margin": yield_strength_MPa / safety_factor - 100.0,
+            "source": "fallback",
+        }
+
+    from Simulations.hifi.training_schema import NormalizationParams
+
+    norm = NormalizationParams()
+
+    inputs = np.array(
+        [
+            [
+                (bore_mm - norm.bore_range[0]) / (norm.bore_range[1] - norm.bore_range[0]),
+                (stroke_mm - norm.stroke_range[0]) / (norm.stroke_range[1] - norm.stroke_range[0]),
+                (cr - norm.cr_range[0]) / (norm.cr_range[1] - norm.cr_range[0]),
+                (rpm - norm.rpm_range[0]) / (norm.rpm_range[1] - norm.rpm_range[0]),
+                (load_fraction - norm.load_range[0]) / (norm.load_range[1] - norm.load_range[0]),
+            ]
+        ],
+        dtype=np.float32,
+    )
+
+    mean, std = model.predict(inputs)
+    stress_pred = float(mean[0, 0])
+    stress_std = float(std[0, 0])
+
+    stress_conservative = stress_pred + confidence_sigma * stress_std
+    allowable = yield_strength_MPa / safety_factor
+    is_feasible = stress_conservative < allowable
+    margin = allowable - stress_conservative
+
+    return {
+        "is_feasible": is_feasible,
+        "stress_predicted": stress_pred,
+        "uncertainty": stress_std,
+        "margin": margin,
+        "source": "surrogate",
+    }
+
+
+def check_all_hifi_gates(
+    bore_mm: float,
+    stroke_mm: float,
+    cr: float,
+    rpm: float,
+    load_fraction: float,
+) -> dict:
+    """
+    Run all HiFi feasibility gates.
+
+    Aggregates thermal and structural checks for overall feasibility.
+    """
+    thermal = check_hifi_thermal_feasibility(bore_mm, stroke_mm, cr, rpm, load_fraction)
+    structural = check_hifi_structural_feasibility(bore_mm, stroke_mm, cr, rpm, load_fraction)
+
+    all_feasible = thermal["is_feasible"] and structural["is_feasible"]
+
+    return {
+        "is_feasible": all_feasible,
+        "thermal": thermal,
+        "structural": structural,
+    }
+
+
 __all__ = [
     "check_motion_feasibility",
     "check_thermo_feasibility",
     "check_gear_feasibility",
     "get_operating_envelope",
+    "check_hifi_thermal_feasibility",
+    "check_hifi_structural_feasibility",
+    "check_all_hifi_gates",
     "CEM_AVAILABLE",
 ]

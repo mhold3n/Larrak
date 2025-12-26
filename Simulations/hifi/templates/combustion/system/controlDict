@@ -1,0 +1,55 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+
+application     reactingFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         0.005;  // 5ms combustion event
+deltaT          1e-7;
+writeControl    adjustableRunTime;
+writeInterval   1e-4;
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  8;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
+adjustTimeStep  yes;
+maxCo           0.5;
+maxDeltaT       1e-5;
+
+functions
+{
+    fieldAverage1
+    {
+        type            fieldAverage;
+        libs            ("libfieldFunctionObjects.so");
+        writeControl    writeTime;
+        fields
+        (
+            U { mean on; prime2Mean on; base time; }
+            p { mean on; prime2Mean on; base time; }
+            T { mean on; prime2Mean on; base time; }
+        );
+    }
+
+    probes
+    {
+        type            probes;
+        libs            ("libsampling.so");
+        writeControl    timeStep;
+        writeInterval   10;
+        probeLocations
+        (
+            (0 0 0.005)  // Chamber center
+        );
+        fields (p T);
+    }
+}

@@ -1,0 +1,56 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+
+application     simpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         500;  // Iterations for steady-state
+deltaT          1;
+writeControl    timeStep;
+writeInterval   100;
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  6;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
+
+functions
+{
+    forceCoeffs
+    {
+        type            forceCoeffs;
+        libs            ("libforces.so");
+        writeControl    timeStep;
+        writeInterval   10;
+        patches         (valve);
+        rho             rhoInf;
+        rhoInf          1.225;
+        CofR            (0 0 0);
+        liftDir         (0 0 1);
+        dragDir         (1 0 0);
+        pitchAxis       (0 1 0);
+        magUInf         50;
+        lRef            0.01;
+        Aref            7.85e-5;  // pi * 5mm^2
+    }
+
+    massFlow
+    {
+        type            surfaceFieldValue;
+        libs            ("libfieldFunctionObjects.so");
+        writeControl    timeStep;
+        writeInterval   10;
+        regionType      patch;
+        name            outlet;
+        operation       sum;
+        fields          (phi);
+    }
+}

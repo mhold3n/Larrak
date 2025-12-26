@@ -1,0 +1,182 @@
+[
+  {
+    "case_id": 0,
+    "solver": "structural",
+    "params": {
+      "bore_mm": 84.53346958729284,
+      "stroke_mm": 93.45686077676162,
+      "compression_ratio": 11.403132801035193,
+      "rpm": 2388.2276990064684,
+      "load_fraction": 0.6756317667175293
+    },
+    "success": true,
+    "outputs": {
+      "von_mises_max": null,
+      "calibration": {
+        "von_mises_max_mpa": 69.71861,
+        "displacement_max_mm": 0.05,
+        "safety_factor": 4.0161443264574554
+      }
+    }
+  },
+  {
+    "case_id": 0,
+    "solver": "thermal",
+    "params": {
+      "bore_mm": 84.53346958729284,
+      "stroke_mm": 93.45686077676162,
+      "compression_ratio": 11.403132801035193,
+      "rpm": 2388.2276990064684,
+      "load_fraction": 0.6756317667175293
+    },
+    "success": false,
+    "outputs": {
+      "T_crown_max": 0.0,
+      "calibration": {}
+    }
+  },
+  {
+    "case_id": 1,
+    "solver": "structural",
+    "params": {
+      "bore_mm": 82.27974170267774,
+      "stroke_mm": 88.4484882326745,
+      "compression_ratio": 11.229327504266536,
+      "rpm": 2777.827107595974,
+      "load_fraction": 0.8440527737111869
+    },
+    "success": true,
+    "outputs": {
+      "von_mises_max": null,
+      "calibration": {
+        "von_mises_max_mpa": 30.49248,
+        "displacement_max_mm": 0.05,
+        "safety_factor": 9.182591904626976
+      }
+    }
+  },
+  {
+    "case_id": 1,
+    "solver": "thermal",
+    "params": {
+      "bore_mm": 82.27974170267774,
+      "stroke_mm": 88.4484882326745,
+      "compression_ratio": 11.229327504266536,
+      "rpm": 2777.827107595974,
+      "load_fraction": 0.8440527737111869
+    },
+    "success": false,
+    "outputs": {
+      "T_crown_max": 0.0,
+      "calibration": {}
+    }
+  },
+  {
+    "case_id": 2,
+    "solver": "structural",
+    "params": {
+      "bore_mm": 86.89952941382145,
+      "stroke_mm": 85.00240045097172,
+      "compression_ratio": 12.511097086670693,
+      "rpm": 3152.762040539366,
+      "load_fraction": 0.7827829098213211
+    },
+    "success": true,
+    "outputs": {
+      "von_mises_max": null,
+      "calibration": {
+        "von_mises_max_mpa": 14.20473,
+        "displacement_max_mm": 0.05,
+        "safety_factor": 19.711743905023187
+      }
+    }
+  },
+  {
+    "case_id": 2,
+    "solver": "thermal",
+    "params": {
+      "bore_mm": 86.89952941382145,
+      "stroke_mm": 85.00240045097172,
+      "compression_ratio": 12.511097086670693,
+      "rpm": 3152.762040539366,
+      "load_fraction": 0.7827829098213211
+    },
+    "success": false,
+    "outputs": {
+      "T_crown_max": 0.0,
+      "calibration": {}
+    }
+  },
+  {
+    "case_id": 3,
+    "solver": "structural",
+    "params": {
+      "bore_mm": 88.78811671013247,
+      "stroke_mm": 92.19815182376462,
+      "compression_ratio": 11.977877786745239,
+      "rpm": 3797.711485520492,
+      "load_fraction": 0.6481762523684301
+    },
+    "success": true,
+    "outputs": {
+      "von_mises_max": null,
+      "calibration": {
+        "von_mises_max_mpa": 10.44022,
+        "displacement_max_mm": 0.05,
+        "safety_factor": 26.81935821275797
+      }
+    }
+  },
+  {
+    "case_id": 3,
+    "solver": "thermal",
+    "params": {
+      "bore_mm": 88.78811671013247,
+      "stroke_mm": 92.19815182376462,
+      "compression_ratio": 11.977877786745239,
+      "rpm": 3797.711485520492,
+      "load_fraction": 0.6481762523684301
+    },
+    "success": false,
+    "outputs": {
+      "T_crown_max": 0.0,
+      "calibration": {}
+    }
+  },
+  {
+    "case_id": 4,
+    "solver": "structural",
+    "params": {
+      "bore_mm": 81.44665279967587,
+      "stroke_mm": 90.5302061976862,
+      "compression_ratio": 12.66909369879422,
+      "rpm": 3250.1598613352935,
+      "load_fraction": 0.7389656176113
+    },
+    "success": true,
+    "outputs": {
+      "von_mises_max": null,
+      "calibration": {
+        "von_mises_max_mpa": 15.61014,
+        "displacement_max_mm": 0.05,
+        "safety_factor": 17.937058860458652
+      }
+    }
+  },
+  {
+    "case_id": 4,
+    "solver": "thermal",
+    "params": {
+      "bore_mm": 81.44665279967587,
+      "stroke_mm": 90.5302061976862,
+      "compression_ratio": 12.66909369879422,
+      "rpm": 3250.1598613352935,
+      "load_fraction": 0.7389656176113
+    },
+    "success": false,
+    "outputs": {
+      "T_crown_max": 0.0,
+      "calibration": {}
+    }
+  }
+]

@@ -1,0 +1,45 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+
+application     chtMultiRegionFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         0.1;  // Quasi-steady thermal
+deltaT          1e-4;
+writeControl    runTime;
+writeInterval   0.01;
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  8;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
+
+functions
+{
+    heatFlux
+    {
+        type            wallHeatFlux;
+        libs            ("libfieldFunctionObjects.so");
+        writeControl    writeTime;
+        patches         (piston_gas);
+        region          gas;
+    }
+
+    maxT
+    {
+        type            fieldMinMax;
+        libs            ("libfieldFunctionObjects.so");
+        writeControl    writeTime;
+        fields          (T);
+        mode            max;
+        region          piston;
+    }
+}
