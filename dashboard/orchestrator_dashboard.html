@@ -153,6 +153,7 @@
                         classDef module fill:#e8f5e9,stroke:#1b5e20,stroke-width:3px,color:#1b5e20
                         classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:3px,color:#4a148c
                         classDef hifi fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#e65100
+                        classDef util fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#880e4f
                         classDef invis fill:none,stroke:none
 
                         %% Make arrows thicker and easier to see
@@ -164,22 +165,25 @@
 
                         subgraph Internals [State Management]
                         direction LR
-                        BM[Budget]
+                        BM[Budget Manager]
                         TR[Trust Region]
+                        CACHE[Eval Cache]
                         end
 
                         ORCH -.- BM
                         ORCH -.- TR
+                        ORCH -.- CACHE
                         end
 
                         subgraph Pipeline [Fast Optimization Loop]
                         direction TB
                         CEM[1. CEM: Generate & Repair]
-                        SUR[2. Surrogate: Fast Predict]
+                        SUR[2. Surrogate: Predict + Uncertainty]
                         SOL[3. Solver: Local Refinement]
+                        SEL[4. Budget Select: Pick for Eval]
                         end
 
-                        subgraph HiFi [HiFi Solvers - Offline Training]
+                        subgraph HiFi [HiFi Solvers - Offline DOE]
                         direction LR
                         FOAM[🔥 laplacianFoam]
                         CCX[⚙️ CalculiX]
@@ -191,15 +195,21 @@
                         direction LR
                         TRUTH[(Truth DB)]
                         WEAV[(Vector DB)]
+                        PROV[Provenance Client]
                         end
 
-                        %% Fast Optimization Loop - NO HiFi calls
+                        %% Fast Optimization Loop
                         ORCH ==>|Sample| CEM
                         CEM ==>|Candidates| SUR
                         SUR ==>|Top K| SOL
-                        SOL ==>|Refined| ORCH
+                        SOL ==>|Refined| SEL
+                        SEL ==>|Selected| ORCH
 
-                        %% Orchestrator calls HiFi DIRECTLY for training data
+                        %% Budget gates expensive evals
+                        SEL -.->|Cache Check| CACHE
+                        CACHE -.->|Hit/Miss| SEL
+
+                        %% Orchestrator calls HiFi for DOE
                         ORCH -.->|DOE Request| FOAM
                         ORCH -.->|DOE Request| CCX
                         ORCH -.->|DOE Request| PORTFLOW
@@ -215,13 +225,17 @@
                         TRUTH -.->|Train| SUR
                         TRUTH -.->|Index| WEAV
 
-                        %% Surrogates use Vector DB for similarity
+                        %% Surrogates query Vector DB
                         WEAV -.->|Query| SUR
 
+                        %% Provenance logging
+                        ORCH -.->|Log| PROV
+                        PROV -.->|Push| WEAV
+
                         %% Classes
-                        class ORCH,BM,TR core
-                        class CEM,SUR,SOL module
-                        class TRUTH,WEAV db
+                        class ORCH,BM,TR,CACHE core
+                        class CEM,SUR,SOL,SEL module
+                        class TRUTH,WEAV,PROV db
                         class FOAM,CCX,PORTFLOW,COMBUST hifi
                         class Internals invis
 
