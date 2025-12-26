@@ -180,10 +180,10 @@
                         SIM[4. Simulation: Ground Truth]
                         end
 
-                        subgraph TrainedModels [Trained Models - Weaviate Tracked]
+                        subgraph HiFi [HiFi Solvers - Weaviate Tracked]
                         direction LR
-                        THERMAL[🔥 thermal_surrogate.pt]
-                        STRUCT[⚙️ structural_surrogate.pt]
+                        FOAM[🔥 OpenFOAM laplacianFoam]
+                        CCX[⚙️ CalculiX FEA]
                         end
 
                         subgraph Logging [Persistence]
@@ -198,23 +198,23 @@
                         SOL ==>|Refined| SIM
                         SIM ==>|Result| ORCH
 
-                        %% Trained models feed into Surrogate stage
-                        THERMAL -.->|Predict T| SUR
-                        STRUCT -.->|Predict σ| SUR
+                        %% HiFi simulations execute at Stage 4
+                        FOAM -.->|Thermal CFD| SIM
+                        CCX -.->|Structural FEA| SIM
 
                         %% Logging Flow (Side Effect)
                         ORCH -.->|Log| PROV
                         PROV -.->|Push| WEAV
 
-                        %% Models tracked in Weaviate
-                        THERMAL -.-> WEAV
-                        STRUCT -.-> WEAV
+                        %% HiFi runs tracked in Weaviate
+                        FOAM -.-> WEAV
+                        CCX -.-> WEAV
 
                         %% Classes
                         class ORCH,BM,TR,PROV core
                         class CEM,SUR,SOL,SIM module
                         class WEAV db
-                        class THERMAL,STRUCT model
+                        class FOAM,CCX model
                         class Internals invis
 
                         %% Interaction
@@ -228,78 +228,66 @@
                 <p align="center"><em>Click diagram to expand (if implemented)</em></p>
             </div>
 
-            <!-- Trained Models Card - Linked to Stage 2: Surrogate -->
+
+            <!-- HiFi Simulation Runs Card - Linked to Stage 4: Simulation -->
             <div class="card full-width">
-                <h2>🧠 Trained Surrogate Models <span class="status-badge status-online">Tracked</span></h2>
-                <p>ML models used in <strong>Stage 2: Surrogate Prediction</strong> for fast candidate filtering.</p>
+                <h2>🖥️ HiFi Simulation Runs <span class="status-badge status-online">Tracked</span></h2>
+                <p>Expensive CFD/FEA simulations at <strong>Stage 4: Ground Truth</strong> that generate training data.
+                </p>
 
                 <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 15px;">
-                    <!-- Thermal Model -->
+                    <!-- OpenFOAM -->
                     <div
                         style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #ff7043, #ff5722); padding: 15px; border-radius: 8px; color: white;">
-                        <h3 style="margin: 0 0 10px 0;">🔥 Thermal Surrogate</h3>
+                        <h3 style="margin: 0 0 10px 0;">🔥 OpenFOAM (Thermal)</h3>
                         <table style="width: 100%; font-size: 0.9em;">
                             <tr>
-                                <td>Model ID:</td>
-                                <td><code>thermal_surrogate</code></td>
+                                <td>Solver:</td>
+                                <td><code>laplacianFoam</code></td>
                             </tr>
                             <tr>
                                 <td>Output:</td>
                                 <td>T_crown_max (K)</td>
                             </tr>
                             <tr>
-                                <td>Training Samples:</td>
-                                <td>5 (pilot DOE)</td>
-                            </tr>
-                            <tr>
-                                <td>Ensemble Size:</td>
-                                <td>3 members</td>
+                                <td>Docker Image:</td>
+                                <td><code>openfoam11-paraview510</code></td>
                             </tr>
                             <tr>
                                 <td>Workflow Stage:</td>
-                                <td><strong>surrogate</strong></td>
+                                <td><strong>simulation</strong></td>
                             </tr>
                         </table>
-                        <p style="margin: 10px 0 0; font-size: 0.8em;">📁 <code>models/hifi/thermal_surrogate.pt</code>
-                        </p>
                     </div>
 
-                    <!-- Structural Model -->
+                    <!-- CalculiX -->
                     <div
                         style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #42a5f5, #1e88e5); padding: 15px; border-radius: 8px; color: white;">
-                        <h3 style="margin: 0 0 10px 0;">⚙️ Structural Surrogate</h3>
+                        <h3 style="margin: 0 0 10px 0;">⚙️ CalculiX (Structural)</h3>
                         <table style="width: 100%; font-size: 0.9em;">
                             <tr>
-                                <td>Model ID:</td>
-                                <td><code>structural_surrogate</code></td>
+                                <td>Solver:</td>
+                                <td><code>ccx</code></td>
                             </tr>
                             <tr>
                                 <td>Output:</td>
                                 <td>von_mises_max (MPa)</td>
                             </tr>
                             <tr>
-                                <td>Training Samples:</td>
-                                <td>5 (pilot DOE)</td>
-                            </tr>
-                            <tr>
-                                <td>Ensemble Size:</td>
-                                <td>3 members</td>
+                                <td>Docker Image:</td>
+                                <td><code>calculix/ccx</code></td>
                             </tr>
                             <tr>
                                 <td>Workflow Stage:</td>
-                                <td><strong>surrogate</strong></td>
+                                <td><strong>simulation</strong></td>
                             </tr>
                         </table>
-                        <p style="margin: 10px 0 0; font-size: 0.8em;">📁
-                            <code>models/hifi/structural_surrogate.pt</code>
-                        </p>
                     </div>
                 </div>
 
                 <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
-                    <strong>Weaviate Collection:</strong> <code>TrainedModel</code> |
-                    <strong>Properties:</strong> model_id, model_type, file_path, training_date, n_samples, final_loss,
-                    workflow_stage
+                    <strong>Weaviate Collection:</strong> <code>HiFiSimulationRun</code> |
+                    <strong>Properties:</strong> run_id, solver_type, case_path, compute_time_s, success, result_json
                 </p>
             </div>
         </div>

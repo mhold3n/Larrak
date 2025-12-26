@@ -414,3 +414,35 @@ def create_schema(client: weaviate.WeaviateClient) -> None:
             ],
             vectorizer_config=wvc.Configure.Vectorizer.none(),
         )
+
+    # ==========================================================================
+    # HiFi Simulation Runs (Expensive OpenFOAM/CalculiX)
+    # ==========================================================================
+
+    # 19. HiFiSimulationRun (tracks expensive CFD/FEA runs at Stage 4: Simulation)
+    if not client.collections.exists("HiFiSimulationRun"):
+        client.collections.create(
+            name="HiFiSimulationRun",
+            description="An expensive OpenFOAM or CalculiX simulation run (Stage 4: Ground Truth)",
+            properties=[
+                wvc.Property(name="run_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="solver_type", data_type=wvc.DataType.TEXT),  # openfoam, calculix
+                wvc.Property(name="solver_name", data_type=wvc.DataType.TEXT),  # laplacianFoam, ccx
+                wvc.Property(name="case_path", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="started_at", data_type=wvc.DataType.DATE),
+                wvc.Property(name="completed_at", data_type=wvc.DataType.DATE),
+                wvc.Property(name="success", data_type=wvc.DataType.BOOL),
+                wvc.Property(name="exit_code", data_type=wvc.DataType.INT),
+                wvc.Property(name="compute_time_s", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="workflow_stage", data_type=wvc.DataType.TEXT),  # simulation
+                # Input parameters
+                wvc.Property(name="bore_mm", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="stroke_mm", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="compression_ratio", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="rpm", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="load_fraction", data_type=wvc.DataType.NUMBER),
+                # Output results
+                wvc.Property(name="result_json", data_type=wvc.DataType.TEXT),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
