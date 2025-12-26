@@ -184,6 +184,7 @@
                         direction LR
                         FOAM[🔥 OpenFOAM laplacianFoam]
                         CCX[⚙️ CalculiX FEA]
+                        PORTFLOW[💨 OpenFOAM simpleFoam]
                         end
 
                         subgraph Logging [Persistence]
@@ -201,6 +202,7 @@
                         %% HiFi simulations execute at Stage 4
                         FOAM -.->|Thermal CFD| SIM
                         CCX -.->|Structural FEA| SIM
+                        PORTFLOW -.->|Fluid CFD| SIM
 
                         %% Logging Flow (Side Effect)
                         ORCH -.->|Log| PROV
@@ -209,12 +211,13 @@
                         %% HiFi runs tracked in Weaviate
                         FOAM -.-> WEAV
                         CCX -.-> WEAV
+                        PORTFLOW -.-> WEAV
 
                         %% Classes
                         class ORCH,BM,TR,PROV core
                         class CEM,SUR,SOL,SIM module
                         class WEAV db
-                        class FOAM,CCX model
+                        class FOAM,CCX,PORTFLOW model
                         class Internals invis
 
                         %% Interaction
@@ -276,6 +279,30 @@
                             <tr>
                                 <td>Docker Image:</td>
                                 <td><code>calculix/ccx</code></td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>simulation</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Port Flow CFD -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #66bb6a, #43a047); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">💨 Port Flow (Fluid)</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Solver:</td>
+                                <td><code>simpleFoam</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>Cd, swirl/tumble ratio</td>
+                            </tr>
+                            <tr>
+                                <td>Docker Image:</td>
+                                <td><code>openfoam11-paraview510</code></td>
                             </tr>
                             <tr>
                                 <td>Workflow Stage:</td>
