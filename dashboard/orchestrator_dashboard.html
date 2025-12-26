@@ -152,6 +152,7 @@
                         classDef core fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#0d47a1
                         classDef module fill:#e8f5e9,stroke:#1b5e20,stroke-width:3px,color:#1b5e20
                         classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:3px,color:#4a148c
+                        classDef model fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#e65100
                         classDef invis fill:none,stroke:none
 
                         %% Make arrows thicker and easier to see
@@ -179,6 +180,12 @@
                         SIM[4. Simulation: Ground Truth]
                         end
 
+                        subgraph TrainedModels [Trained Models - Weaviate Tracked]
+                        direction LR
+                        THERMAL[🔥 thermal_surrogate.pt]
+                        STRUCT[⚙️ structural_surrogate.pt]
+                        end
+
                         subgraph Logging [Persistence]
                         PROV[Provenance Client]
                         WEAV[(Weaviate DB)]
@@ -191,14 +198,23 @@
                         SOL ==>|Refined| SIM
                         SIM ==>|Result| ORCH
 
+                        %% Trained models feed into Surrogate stage
+                        THERMAL -.->|Predict T| SUR
+                        STRUCT -.->|Predict σ| SUR
+
                         %% Logging Flow (Side Effect)
                         ORCH -.->|Log| PROV
                         PROV -.->|Push| WEAV
+
+                        %% Models tracked in Weaviate
+                        THERMAL -.-> WEAV
+                        STRUCT -.-> WEAV
 
                         %% Classes
                         class ORCH,BM,TR,PROV core
                         class CEM,SUR,SOL,SIM module
                         class WEAV db
+                        class THERMAL,STRUCT model
                         class Internals invis
 
                         %% Interaction
@@ -275,7 +291,8 @@
                             </tr>
                         </table>
                         <p style="margin: 10px 0 0; font-size: 0.8em;">📁
-                            <code>models/hifi/structural_surrogate.pt</code></p>
+                            <code>models/hifi/structural_surrogate.pt</code>
+                        </p>
                     </div>
                 </div>
 
