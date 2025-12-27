@@ -232,34 +232,33 @@
                         ORCH -.->|Log| PROV
                         PROV -.->|Push| WEAV
 
-                        %% Link Styles by process type
-                        %% 0-4: Optimization loop (green)
+                        %% Link Styles by process type with unique dash patterns
+                        %% 0-4: Optimization loop (green, solid - main pipeline)
                         linkStyle 0 stroke:#2e7d32,stroke-width:4px
-                        linkStyle 1 stroke:#2e7d32,stroke-width:4px
-                        linkStyle 2 stroke:#2e7d32,stroke-width:4px
-                        linkStyle 3 stroke:#2e7d32,stroke-width:4px
-                        linkStyle 4 stroke:#2e7d32,stroke-width:4px
-                        %% 5-6: Cache check (cyan)
-                        linkStyle 5 stroke:#0097a7,stroke-width:3px
-                        linkStyle 6 stroke:#0097a7,stroke-width:3px
-                        %% 7-10: DOE dispatch (orange)
-                        linkStyle 7 stroke:#e65100,stroke-width:3px
-                        linkStyle 8 stroke:#e65100,stroke-width:3px
-                        linkStyle 9 stroke:#e65100,stroke-width:3px
-                        linkStyle 10 stroke:#e65100,stroke-width:3px
-                        %% 11-14: HiFi store (orange-red)
-                        linkStyle 11 stroke:#d84315,stroke-width:3px
-                        linkStyle 12 stroke:#d84315,stroke-width:3px
-                        linkStyle 13 stroke:#d84315,stroke-width:3px
-                        linkStyle 14 stroke:#d84315,stroke-width:3px
-                        %% 15-16: Training data (purple)
-                        linkStyle 15 stroke:#7b1fa2,stroke-width:3px
-                        linkStyle 16 stroke:#7b1fa2,stroke-width:3px
-                        %% 17: Vector query (purple)
-                        linkStyle 17 stroke:#7b1fa2,stroke-width:3px
-                        %% 18-19: Provenance (red)
-                        linkStyle 18 stroke:#c62828,stroke-width:3px
-                        linkStyle 19 stroke:#c62828,stroke-width:3px
+                        linkStyle 1 stroke:#2e7d32,stroke-width:4px,stroke-dasharray:8 4
+                        linkStyle 2 stroke:#2e7d32,stroke-width:4px,stroke-dasharray:4 2
+                        linkStyle 3 stroke:#2e7d32,stroke-width:4px,stroke-dasharray:12 4
+                        linkStyle 4 stroke:#2e7d32,stroke-width:4px,stroke-dasharray:2 2
+                        %% 5-6: Cache check (cyan, dotted)
+                        linkStyle 5 stroke:#0097a7,stroke-width:3px,stroke-dasharray:3 3
+                        linkStyle 6 stroke:#0097a7,stroke-width:3px,stroke-dasharray:6 3
+                        %% 7-10: DOE dispatch (orange, dash-dot variations)
+                        linkStyle 7 stroke:#e65100,stroke-width:3px,stroke-dasharray:10 3 2 3
+                        linkStyle 8 stroke:#e65100,stroke-width:3px,stroke-dasharray:8 3 2 3
+                        linkStyle 9 stroke:#e65100,stroke-width:3px,stroke-dasharray:6 3 2 3
+                        linkStyle 10 stroke:#e65100,stroke-width:3px,stroke-dasharray:4 3 2 3
+                        %% 11-14: HiFi store (dark orange, long dashes)
+                        linkStyle 11 stroke:#d84315,stroke-width:3px,stroke-dasharray:12 6
+                        linkStyle 12 stroke:#d84315,stroke-width:3px,stroke-dasharray:10 5
+                        linkStyle 13 stroke:#d84315,stroke-width:3px,stroke-dasharray:8 4
+                        linkStyle 14 stroke:#d84315,stroke-width:3px,stroke-dasharray:6 3
+                        %% 15-17: Training/data flow (purple, mixed patterns)
+                        linkStyle 15 stroke:#7b1fa2,stroke-width:3px,stroke-dasharray:5 2 2 2
+                        linkStyle 16 stroke:#7b1fa2,stroke-width:3px,stroke-dasharray:8 2 2 2
+                        linkStyle 17 stroke:#7b1fa2,stroke-width:3px,stroke-dasharray:4 4
+                        %% 18-19: Provenance (red, alternating)
+                        linkStyle 18 stroke:#c62828,stroke-width:3px,stroke-dasharray:6 2 2 2 2 2
+                        linkStyle 19 stroke:#c62828,stroke-width:3px,stroke-dasharray:8 2 2 2 2 2
 
                         %% Classes
                         class ORCH,BM,TR,CACHE core
