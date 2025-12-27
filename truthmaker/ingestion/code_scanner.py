@@ -119,8 +119,14 @@ def upsert_symbol(
     signature: str,
     docstring: str,
     file_uuid: str,
+    decorators: list[str] | None = None,
+    is_async: bool = False,
+    return_type: str | None = None,
+    parameters: str | None = None,
+    parent_uuid: str | None = None,
 ) -> str:
     """Upsert a CodeSymbol object, return its UUID."""
+    import json
     import uuid as uuid_lib
 
     symbols = client.collections.get("CodeSymbol")
@@ -131,14 +137,22 @@ def upsert_symbol(
 
     properties = {
         "name": name,
+        "kind": kind,
         "file_path": file_path,
         "line_number": line_start,
+        "line_end": line_end,
         "signature": signature,
-        "docstring": docstring[:1000] if docstring else "",  # Truncate long docstrings
-        "code_content": "",  # Not extracting full code for now
+        "docstring": docstring[:1000] if docstring else "",
+        "code_content": "",
+        "decorators": decorators or [],
+        "is_async": is_async,
+        "return_type": return_type or "",
+        "parameters": parameters or "",
     }
 
     references = {"defined_in_file": file_uuid}
+    if parent_uuid:
+        references["parent_symbol"] = parent_uuid
 
     try:
         # Try to get existing object by deterministic UUID
@@ -157,7 +171,9 @@ def upsert_symbol(
 
 
 def extract_symbols_from_file(file_path: Path) -> list[dict]:
-    """Parse a Python file and extract function/class definitions."""
+    """Parse a Python file and extract function/class definitions with outline metadata."""
+    import json
+
     symbols = []
 
     try:
@@ -167,72 +183,84 @@ def extract_symbols_from_file(file_path: Path) -> list[dict]:
         print(f"  Warning: Could not parse {file_path}: {e}")
         return symbols
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            # Build signature
-            args = []
-            for arg in node.args.args:
-                arg_str = arg.arg
-                if arg.annotation:
-                    arg_str += f": {ast.unparse(arg.annotation)}"
-                args.append(arg_str)
-            signature = f"def {node.name}({', '.join(args)})"
-            if node.returns:
-                signature += f" -> {ast.unparse(node.returns)}"
+    # Use ast.iter_child_nodes for hierarchy instead of ast.walk
+    def extract_from_body(nodes, parent_name=None):
+        for node in nodes:
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                # Extract decorators
+                decorators = [ast.unparse(d) for d in node.decorator_list]
 
-            symbols.append(
-                {
-                    "name": node.name,
-                    "kind": "function",
-                    "line_start": node.lineno,
-                    "line_end": node.end_lineno or node.lineno,
-                    "signature": signature,
-                    "docstring": ast.get_docstring(node) or "",
-                }
-            )
+                # Build parameter JSON
+                params = []
+                for arg in node.args.args:
+                    param = {"name": arg.arg}
+                    if arg.annotation:
+                        param["type"] = ast.unparse(arg.annotation)
+                    params.append(param)
 
-        elif isinstance(node, ast.ClassDef):
-            # Build class signature with bases
-            bases = [ast.unparse(b) for b in node.bases]
-            signature = f"class {node.name}"
-            if bases:
-                signature += f"({', '.join(bases)})"
+                # Build signature
+                args = []
+                for arg in node.args.args:
+                    arg_str = arg.arg
+                    if arg.annotation:
+                        arg_str += f": {ast.unparse(arg.annotation)}"
+                    args.append(arg_str)
+                signature = f"def {node.name}({', '.join(args)})"
 
-            symbols.append(
-                {
-                    "name": node.name,
-                    "kind": "class",
-                    "line_start": node.lineno,
-                    "line_end": node.end_lineno or node.lineno,
-                    "signature": signature,
-                    "docstring": ast.get_docstring(node) or "",
-                }
-            )
+                return_type = None
+                if node.returns:
+                    return_type = ast.unparse(node.returns)
+                    signature += f" -> {return_type}"
 
-            # Also extract methods
-            for item in node.body:
-                if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef):
-                    method_args = []
-                    for arg in item.args.args:
-                        arg_str = arg.arg
-                        if arg.annotation:
-                            arg_str += f": {ast.unparse(arg.annotation)}"
-                        method_args.append(arg_str)
-                    method_sig = f"def {node.name}.{item.name}({', '.join(method_args)})"
-                    if item.returns:
-                        method_sig += f" -> {ast.unparse(item.returns)}"
+                full_name = f"{parent_name}.{node.name}" if parent_name else node.name
+                kind = "method" if parent_name else "function"
 
-                    symbols.append(
-                        {
-                            "name": f"{node.name}.{item.name}",
-                            "kind": "method",
-                            "line_start": item.lineno,
-                            "line_end": item.end_lineno or item.lineno,
-                            "signature": method_sig,
-                            "docstring": ast.get_docstring(item) or "",
-                        }
-                    )
+                symbols.append(
+                    {
+                        "name": full_name,
+                        "kind": kind,
+                        "line_start": node.lineno,
+                        "line_end": node.end_lineno or node.lineno,
+                        "signature": signature,
+                        "docstring": ast.get_docstring(node) or "",
+                        "decorators": decorators,
+                        "is_async": isinstance(node, ast.AsyncFunctionDef),
+                        "return_type": return_type,
+                        "parameters": json.dumps(params),
+                        "parent_name": parent_name,
+                    }
+                )
 
+            elif isinstance(node, ast.ClassDef):
+                # Extract decorators
+                decorators = [ast.unparse(d) for d in node.decorator_list]
+
+                # Build class signature with bases
+                bases = [ast.unparse(b) for b in node.bases]
+                signature = f"class {node.name}"
+                if bases:
+                    signature += f"({', '.join(bases)})"
+
+                symbols.append(
+                    {
+                        "name": node.name,
+                        "kind": "class",
+                        "line_start": node.lineno,
+                        "line_end": node.end_lineno or node.lineno,
+                        "signature": signature,
+                        "docstring": ast.get_docstring(node) or "",
+                        "decorators": decorators,
+                        "is_async": False,
+                        "return_type": None,
+                        "parameters": "",
+                        "parent_name": None,
+                    }
+                )
+
+                # Extract methods recursively with parent reference
+                extract_from_body(node.body, parent_name=node.name)
+
+    extract_from_body(tree.body)
     return symbols
 
 
@@ -274,8 +302,11 @@ def scan_repository(
 
             # Extract and upsert symbols
             symbols = extract_symbols_from_file(file_path)
+
+            # First pass: create all symbols and build UUID map
+            symbol_uuids = {}
             for sym in symbols:
-                upsert_symbol(
+                sym_uuid = upsert_symbol(
                     client,
                     sym["name"],
                     sym["kind"],
@@ -285,8 +316,29 @@ def scan_repository(
                     sym["signature"],
                     sym["docstring"],
                     file_uuid,
+                    decorators=sym.get("decorators"),
+                    is_async=sym.get("is_async", False),
+                    return_type=sym.get("return_type"),
+                    parameters=sym.get("parameters"),
                 )
+                symbol_uuids[sym["name"]] = sym_uuid
                 stats["symbols"] += 1
+
+            # Second pass: update parent references for methods
+            for sym in symbols:
+                if sym.get("parent_name") and sym["parent_name"] in symbol_uuids:
+                    parent_uuid = symbol_uuids[sym["parent_name"]]
+                    child_uuid = symbol_uuids[sym["name"]]
+                    # Update the child with parent reference
+                    symbols_collection = client.collections.get("CodeSymbol")
+                    try:
+                        symbols_collection.data.reference_add(
+                            from_uuid=child_uuid,
+                            from_property="parent_symbol",
+                            to=parent_uuid,
+                        )
+                    except Exception:
+                        pass  # Reference may already exist
 
             if symbols:
                 print(f"  {relative_path}: {len(symbols)} symbols")

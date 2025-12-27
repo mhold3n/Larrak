@@ -1,0 +1,8 @@
+# Node modules
+node_modules/
+
+# Compiled output
+out/
+
+# macOS
+.DS_Store

@@ -99,11 +99,36 @@ def create_schema(client: weaviate.WeaviateClient) -> None:
                 wvc.Property(name="signature", data_type=wvc.DataType.TEXT),
                 wvc.Property(name="docstring", data_type=wvc.DataType.TEXT),
                 wvc.Property(name="code_content", data_type=wvc.DataType.TEXT),
+                # Outline-specific properties for IDE integration
+                wvc.Property(
+                    name="kind", data_type=wvc.DataType.TEXT
+                ),  # "class", "function", "method", "variable"
+                wvc.Property(
+                    name="line_end", data_type=wvc.DataType.INT
+                ),  # End line for range selection
+                wvc.Property(
+                    name="decorators", data_type=wvc.DataType.TEXT_ARRAY
+                ),  # Decorator names
+                wvc.Property(name="is_async", data_type=wvc.DataType.BOOL),  # Async function/method
+                wvc.Property(
+                    name="return_type", data_type=wvc.DataType.TEXT
+                ),  # Return type annotation
+                wvc.Property(
+                    name="parameters", data_type=wvc.DataType.TEXT
+                ),  # JSON-encoded parameter list
             ],
             references=[
                 wvc.ReferenceProperty(name="defined_in", target_collection="Module"),
             ],
             vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 4b. Add parent_symbol reference (for nested classes/methods) after CodeSymbol exists
+    code_symbols = client.collections.get("CodeSymbol")
+    current_refs = [r.name for r in code_symbols.config.get().references]
+    if "parent_symbol" not in current_refs:
+        code_symbols.config.add_reference(
+            wvc.ReferenceProperty(name="parent_symbol", target_collection="CodeSymbol")
         )
 
     # 5. Tracker (refs: CodeSymbol, Artifact)
@@ -590,6 +615,39 @@ def create_schema(client: weaviate.WeaviateClient) -> None:
             ],
             references=[
                 wvc.ReferenceProperty(name="step", target_collection="OptimizationStep"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # ==========================================================================
+    # CEM Adaptive Learning (Rule Parameter Learning)
+    # ==========================================================================
+
+    # 26. CEMRuleAdaptation (tracks CEM rule parameter learning)
+    if not client.collections.exists("CEMRuleAdaptation"):
+        client.collections.create(
+            name="CEMRuleAdaptation",
+            description="Log entry for CEM adaptive rule parameter change",
+            properties=[
+                wvc.Property(
+                    name="adaptation_id", data_type=wvc.DataType.TEXT, skip_vectorization=True
+                ),
+                wvc.Property(name="rule_name", data_type=wvc.DataType.TEXT),
+                wvc.Property(
+                    name="rule_category", data_type=wvc.DataType.TEXT
+                ),  # thermo, mech, tribo
+                wvc.Property(name="timestamp", data_type=wvc.DataType.DATE),
+                wvc.Property(name="limit_before", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="limit_after", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="delta", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="direction", data_type=wvc.DataType.TEXT),  # tighten, relax
+                wvc.Property(name="trigger_margin", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="n_observations", data_type=wvc.DataType.INT),
+                wvc.Property(name="regime_id", data_type=wvc.DataType.INT),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="run", target_collection="Run"),
+                wvc.ReferenceProperty(name="triggered_by", target_collection="HiFiSimulationRun"),
             ],
             vectorizer_config=wvc.Configure.Vectorizer.none(),
         )
