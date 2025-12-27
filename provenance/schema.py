@@ -446,3 +446,36 @@ def create_schema(client: weaviate.WeaviateClient) -> None:
             ],
             vectorizer_config=wvc.Configure.Vectorizer.none(),
         )
+
+    # ==========================================================================
+    # Tool Tracking (External Dependencies)
+    # ==========================================================================
+
+    # 20. Tool (tracks external tools and libraries used by modules)
+    if not client.collections.exists("Tool"):
+        client.collections.create(
+            name="Tool",
+            description="An external tool or library used by orchestrator modules",
+            properties=[
+                wvc.Property(name="tool_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="name", data_type=wvc.DataType.TEXT),  # Display name
+                wvc.Property(name="version", data_type=wvc.DataType.TEXT),
+                wvc.Property(
+                    name="category", data_type=wvc.DataType.TEXT
+                ),  # optimization, cfd, fea, ml, utility
+                wvc.Property(
+                    name="import_pattern", data_type=wvc.DataType.TEXT
+                ),  # regex for detection
+                wvc.Property(name="documentation_url", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="license", data_type=wvc.DataType.TEXT),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 20b. Add uses_tools reference from Module to Tool
+    modules = client.collections.get("Module")
+    current_refs = [r.name for r in modules.config.get().references]
+    if "uses_tools" not in current_refs:
+        modules.config.add_reference(
+            wvc.ReferenceProperty(name="uses_tools", target_collection="Tool")
+        )
