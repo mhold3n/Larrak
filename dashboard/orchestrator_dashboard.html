@@ -222,6 +222,146 @@
             font-size: 0.75em;
             color: #888;
         }
+
+        /* =============================================
+           Control Panel Styles
+           ============================================= */
+
+        .control-panel {
+            background: linear-gradient(135deg, #1a2332, #161b22);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .control-panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-group {
+            margin-bottom: 12px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.85em;
+            color: #8b949e;
+            margin-bottom: 4px;
+        }
+
+        .input-group input,
+        .input-group select {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-color);
+            font-size: 0.9em;
+        }
+
+        .input-group input:focus,
+        .input-group select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #238636, #2ea043);
+            color: white;
+        }
+
+        .btn-start:hover {
+            background: linear-gradient(135deg, #2ea043, #3fb950);
+        }
+
+        .btn-start:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #da3633, #f85149);
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background: linear-gradient(135deg, #f85149, #ff7b72);
+        }
+
+        .btn-stop:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-reset {
+            background: linear-gradient(135deg, #30363d, #484f58);
+            color: var(--text-color);
+        }
+
+        .btn-reset:hover {
+            background: linear-gradient(135deg, #484f58, #6e7681);
+        }
+
+        .status-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            font-size: 0.85em;
+            color: #8b949e;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #484f58;
+        }
+
+        .status-dot.running {
+            background: #4caf50;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.stopped {
+            background: #da3633;
+        }
+
+        .status-dot.idle {
+            background: #f0ad4e;
+        }
     </style>
 </head>
 
@@ -231,11 +371,52 @@
         <h1>Larrak Orchestrator Dashboard</h1>
 
         <div class="grid">
-            <div class="card">
-                <h2>System Status</h2>
-                <p><strong>Orchestrator:</strong> <span class="status-badge status-online">Integrated</span></p>
-                <p><strong>Weaviate Tracking:</strong> <span class="status-badge status-online">Online</span></p>
-                <p><small>(Provenance logging active)</small></p>
+            <div class="card control-panel">
+                <h2>🎮 Control Panel</h2>
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>Max Iterations</label>
+                        <input type="number" id="input-max-iter" value="100" min="1" max="1000">
+                    </div>
+                    <div class="input-group">
+                        <label>Simulation Budget</label>
+                        <input type="number" id="input-budget" value="50" min="1" max="500">
+                    </div>
+                </div>
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>Trust Region Radius</label>
+                        <input type="number" id="input-tr-radius" value="0.1" min="0.01" max="1" step="0.01">
+                    </div>
+                    <div class="input-group">
+                        <label>Batch Size</label>
+                        <input type="number" id="input-batch" value="10" min="1" max="100">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Config File (optional)</label>
+                    <input type="text" id="input-config" placeholder="path/to/config.yaml">
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-start" id="btn-start" onclick="startSequence()">
+                        ▶️ Start Sequence
+                    </button>
+                    <button class="btn btn-stop" id="btn-stop" onclick="stopSequence()" disabled>
+                        ⏹️ Stop
+                    </button>
+                    <button class="btn btn-reset" id="btn-reset" onclick="resetDashboard()">
+                        🔄 Reset
+                    </button>
+                </div>
+
+                <div class="status-line">
+                    <span class="status-dot" id="run-status-dot"></span>
+                    <span id="run-status-text">Idle - Ready to start</span>
+                </div>
             </div>
 
             <div class="card">
@@ -990,39 +1171,6 @@
             }
         }
 
-        function handleEvent(event) {
-            const { type, module, tool, duration_ms, metadata } = event;
-
-            switch (type) {
-                case 'module_start':
-                    highlightModule(module, true);
-                    moduleStates[module] = { startTime: Date.now() };
-                    break;
-
-                case 'module_end':
-                    highlightModule(module, false);
-                    const stepEl = document.getElementById(`step-${module}`);
-                    if (stepEl && duration_ms) {
-                        const timeEl = stepEl.querySelector('.time');
-                        if (timeEl) timeEl.textContent = `${Math.round(duration_ms)}ms`;
-                    }
-                    break;
-
-                case 'tool_call':
-                    console.log(`🔧 Tool: ${module}.${tool}`);
-                    break;
-
-                case 'flow_start':
-                    console.log(`→ Flow: ${module} → ${metadata?.target}`);
-                    break;
-
-                case 'error':
-                    const errNode = document.querySelectorAll(`[id*="${module}"]`);
-                    errNode.forEach(n => n.style.filter = 'drop-shadow(0 0 10px #f44336)');
-                    break;
-            }
-        }
-
         function connectWebSocket() {
             if (ws && ws.readyState === WebSocket.OPEN) return;
 
@@ -1058,6 +1206,145 @@
         createWsStatus();
         createRunSidebar();
         connectWebSocket();
+
+        // =============================================
+        // Control Panel Functions
+        // =============================================
+
+        let isRunning = false;
+
+        function getControlInputs() {
+            return {
+                max_iterations: parseInt(document.getElementById('input-max-iter').value) || 100,
+                simulation_budget: parseInt(document.getElementById('input-budget').value) || 50,
+                trust_radius: parseFloat(document.getElementById('input-tr-radius').value) || 0.1,
+                batch_size: parseInt(document.getElementById('input-batch').value) || 10,
+                config_file: document.getElementById('input-config').value || null,
+            };
+        }
+
+        function updateRunState(running) {
+            isRunning = running;
+            const btnStart = document.getElementById('btn-start');
+            const btnStop = document.getElementById('btn-stop');
+            const dot = document.getElementById('run-status-dot');
+            const text = document.getElementById('run-status-text');
+
+            btnStart.disabled = running;
+            btnStop.disabled = !running;
+
+            if (running) {
+                dot.className = 'status-dot running';
+                text.textContent = 'Running optimization...';
+            } else {
+                dot.className = 'status-dot idle';
+                text.textContent = 'Idle - Ready to start';
+            }
+        }
+
+        function startSequence() {
+            if (isRunning) return;
+
+            const params = getControlInputs();
+            console.log('Starting sequence with params:', params);
+
+            // Send start command via WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    command: 'start',
+                    params: params,
+                }));
+                updateRunState(true);
+            } else {
+                alert('Not connected to orchestrator. Start the WebSocket server first:\n\npython -m provenance.ws_server');
+            }
+        }
+
+        function stopSequence() {
+            if (!isRunning) return;
+
+            console.log('Stopping sequence...');
+
+            // Send stop command via WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    command: 'stop',
+                }));
+            }
+
+            updateRunState(false);
+            const text = document.getElementById('run-status-text');
+            text.textContent = 'Stopped by user';
+            document.getElementById('run-status-dot').className = 'status-dot stopped';
+        }
+
+        function resetDashboard() {
+            if (isRunning) {
+                if (!confirm('A sequence is running. Stop and reset?')) return;
+                stopSequence();
+            }
+
+            // Clear run step states
+            document.querySelectorAll('.run-step').forEach(el => {
+                el.classList.remove('active', 'complete');
+                const timeEl = el.querySelector('.time');
+                if (timeEl) timeEl.textContent = '';
+            });
+
+            // Clear module highlights
+            document.querySelectorAll('[style*="drop-shadow"]').forEach(el => {
+                el.style.filter = '';
+            });
+
+            // Reset status
+            updateRunState(false);
+            console.log('Dashboard reset');
+        }
+
+        // Handle incoming commands/responses
+        function handleEvent(event) {
+            const { type, module, tool, duration_ms, metadata } = event;
+
+            switch (type) {
+                case 'module_start':
+                    highlightModule(module, true);
+                    moduleStates[module] = { startTime: Date.now() };
+                    break;
+
+                case 'module_end':
+                    highlightModule(module, false);
+                    const stepEl = document.getElementById(`step-${module}`);
+                    if (stepEl && duration_ms) {
+                        const timeEl = stepEl.querySelector('.time');
+                        if (timeEl) timeEl.textContent = `${Math.round(duration_ms)}ms`;
+                    }
+                    break;
+
+                case 'tool_call':
+                    console.log(`🔧 Tool: ${module}.${tool}`);
+                    break;
+
+                case 'flow_start':
+                    console.log(`→ Flow: ${module} → ${metadata?.target}`);
+                    break;
+
+                case 'error':
+                    const errNode = document.querySelectorAll(`[id*="${module}"]`);
+                    errNode.forEach(n => n.style.filter = 'drop-shadow(0 0 10px #f44336)');
+                    document.getElementById('run-status-dot').className = 'status-dot stopped';
+                    document.getElementById('run-status-text').textContent = `Error in ${module}`;
+                    break;
+
+                case 'run_start':
+                    updateRunState(true);
+                    break;
+
+                case 'run_end':
+                    updateRunState(false);
+                    document.getElementById('run-status-text').textContent = 'Completed successfully';
+                    break;
+            }
+        }
     </script>
 
 </body>
