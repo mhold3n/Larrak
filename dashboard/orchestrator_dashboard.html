@@ -118,6 +118,110 @@
             text-decoration: none;
             cursor: pointer;
         }
+
+        /* =============================================
+           Live Tracking Styles
+           ============================================= */
+
+        /* Animation keyframes */
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 15px rgba(76, 175, 80, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+
+        @keyframes flow {
+            0% {
+                stroke-dashoffset: 20;
+            }
+
+            100% {
+                stroke-dashoffset: 0;
+            }
+        }
+
+        /* Connection status indicator */
+        .ws-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+            z-index: 200;
+        }
+
+        .ws-connected {
+            background: #238636;
+            color: white;
+        }
+
+        .ws-disconnected {
+            background: #da3633;
+            color: white;
+        }
+
+        /* Run list sidebar */
+        .run-sidebar {
+            position: fixed;
+            right: 20px;
+            top: 80px;
+            width: 220px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            z-index: 50;
+        }
+
+        .run-sidebar h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.95em;
+            color: var(--accent-color);
+        }
+
+        .run-step {
+            padding: 8px 10px;
+            margin: 4px 0;
+            border-radius: 4px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .run-step.active {
+            background: rgba(76, 175, 80, 0.2);
+            border-left: 3px solid #4caf50;
+            animation: pulse 2s infinite;
+        }
+
+        .run-step.complete {
+            opacity: 0.7;
+        }
+
+        .run-step .icon {
+            width: 16px;
+            text-align: center;
+        }
+
+        .run-step .time {
+            margin-left: auto;
+            font-size: 0.75em;
+            color: #888;
+        }
     </style>
 </head>
 
@@ -805,6 +909,155 @@
             startOnLoad: true,
             securityLevel: 'loose' // Required for interaction
         });
+
+        // =============================================
+        // Live Tracking - WebSocket Client
+        // =============================================
+
+        const WS_URL = 'ws://localhost:8765';
+        let ws = null;
+        let reconnectTimer = null;
+
+        // Run list steps (top to bottom execution order)
+        const RUN_STEPS = [
+            { id: 'ORCH', name: 'Orchestrator Init', icon: '🎛️' },
+            { id: 'CEM', name: 'CEM Generate', icon: '🔧' },
+            { id: 'SUR', name: 'Surrogate Predict', icon: '🧠' },
+            { id: 'SOL', name: 'Solver Refine', icon: '⚡' },
+            { id: 'SEL', name: 'Budget Select', icon: '📊' },
+            { id: 'CACHE', name: 'Cache Check', icon: '💾' },
+            { id: '*HIFI', name: 'HiFi Eval', icon: '🔬' },
+            { id: 'PROV', name: 'Provenance Log', icon: '📝' },
+        ];
+
+        // Module state tracking
+        const moduleStates = {};
+
+        function createRunSidebar() {
+            const sidebar = document.createElement('div');
+            sidebar.className = 'run-sidebar';
+            sidebar.id = 'run-sidebar';
+            sidebar.innerHTML = `
+                <h3>📋 Execution Order</h3>
+                ${RUN_STEPS.map(s => `
+                    <div class="run-step" id="step-${s.id}">
+                        <span class="icon">${s.icon}</span>
+                        <span>${s.name}</span>
+                        <span class="time"></span>
+                    </div>
+                `).join('')}
+            `;
+            document.body.appendChild(sidebar);
+        }
+
+        function createWsStatus() {
+            const status = document.createElement('div');
+            status.id = 'ws-status';
+            status.className = 'ws-status ws-disconnected';
+            status.textContent = '⚫ Disconnected';
+            document.body.appendChild(status);
+        }
+
+        function updateWsStatus(connected) {
+            const el = document.getElementById('ws-status');
+            if (el) {
+                el.className = 'ws-status ' + (connected ? 'ws-connected' : 'ws-disconnected');
+                el.textContent = connected ? '🟢 Live' : '⚫ Disconnected';
+            }
+        }
+
+        function highlightModule(moduleId, active) {
+            // Find Mermaid node and add/remove highlight class
+            const nodes = document.querySelectorAll(`[id*="${moduleId}"]`);
+            nodes.forEach(node => {
+                if (active) {
+                    node.style.filter = 'drop-shadow(0 0 10px #4caf50)';
+                } else {
+                    node.style.filter = '';
+                }
+            });
+
+            // Update run sidebar
+            const step = document.getElementById(`step-${moduleId}`);
+            if (step) {
+                if (active) {
+                    step.classList.add('active');
+                    step.classList.remove('complete');
+                } else {
+                    step.classList.remove('active');
+                    step.classList.add('complete');
+                }
+            }
+        }
+
+        function handleEvent(event) {
+            const { type, module, tool, duration_ms, metadata } = event;
+
+            switch (type) {
+                case 'module_start':
+                    highlightModule(module, true);
+                    moduleStates[module] = { startTime: Date.now() };
+                    break;
+
+                case 'module_end':
+                    highlightModule(module, false);
+                    const stepEl = document.getElementById(`step-${module}`);
+                    if (stepEl && duration_ms) {
+                        const timeEl = stepEl.querySelector('.time');
+                        if (timeEl) timeEl.textContent = `${Math.round(duration_ms)}ms`;
+                    }
+                    break;
+
+                case 'tool_call':
+                    console.log(`🔧 Tool: ${module}.${tool}`);
+                    break;
+
+                case 'flow_start':
+                    console.log(`→ Flow: ${module} → ${metadata?.target}`);
+                    break;
+
+                case 'error':
+                    const errNode = document.querySelectorAll(`[id*="${module}"]`);
+                    errNode.forEach(n => n.style.filter = 'drop-shadow(0 0 10px #f44336)');
+                    break;
+            }
+        }
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                updateWsStatus(true);
+                console.log('Dashboard connected to orchestrator');
+            };
+
+            ws.onmessage = (evt) => {
+                try {
+                    const event = JSON.parse(evt.data);
+                    handleEvent(event);
+                } catch (e) {
+                    console.error('Invalid event:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                updateWsStatus(false);
+                // Reconnect after 3 seconds
+                reconnectTimer = setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+                ws.close();
+            };
+        }
+
+        // Initialize live tracking
+        createWsStatus();
+        createRunSidebar();
+        connectWebSocket();
     </script>
 
 </body>
