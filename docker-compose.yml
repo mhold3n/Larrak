@@ -17,6 +17,29 @@ services:
       - cem-service
       - openfoam
 
+  # Outline API for IDE integration
+  outline-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.outline-api
+    container_name: larrak-outline-api
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      PYTHONPATH: /app
+      WEAVIATE_URL: http://weaviate:8080
+    depends_on:
+      - weaviate
+    volumes:
+      - .:/app:ro
+    command: python dashboard/api.py --port 5001 --host 0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/modules"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   cem-service:
     build:
       context: ./Larrak.CEM
