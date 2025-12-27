@@ -198,39 +198,68 @@
                         PROV[Provenance Client]
                         end
 
-                        %% Fast Optimization Loop
+                        %% Fast Optimization Loop (green - main pipeline)
                         ORCH ==>|Sample| CEM
                         CEM ==>|Candidates| SUR
                         SUR ==>|Top K| SOL
                         SOL ==>|Refined| SEL
                         SEL ==>|Selected| ORCH
 
-                        %% Budget gates expensive evals
+                        %% Budget gates expensive evals (blue - caching)
                         SEL -.->|Cache Check| CACHE
                         CACHE -.->|Hit/Miss| SEL
 
-                        %% Orchestrator calls HiFi for DOE
+                        %% Orchestrator calls HiFi for DOE (orange - HiFi dispatch)
                         ORCH -.->|DOE Request| FOAM
                         ORCH -.->|DOE Request| CCX
                         ORCH -.->|DOE Request| PORTFLOW
                         ORCH -.->|DOE Request| COMBUST
 
-                        %% HiFi results go to Truth DB
+                        %% HiFi results go to Truth DB (orange - HiFi store)
                         FOAM -.->|Store| TRUTH
                         CCX -.->|Store| TRUTH
                         PORTFLOW -.->|Store| TRUTH
                         COMBUST -.->|Store| TRUTH
 
-                        %% Truth DB feeds Surrogate training
+                        %% Truth DB feeds Surrogate training (purple - data flow)
                         TRUTH -.->|Train| SUR
                         TRUTH -.->|Index| WEAV
 
-                        %% Surrogates query Vector DB
+                        %% Surrogates query Vector DB (purple - data flow)
                         WEAV -.->|Query| SUR
 
-                        %% Provenance logging
+                        %% Provenance logging (red - logging)
                         ORCH -.->|Log| PROV
                         PROV -.->|Push| WEAV
+
+                        %% Link Styles by process type
+                        %% 0-4: Optimization loop (green)
+                        linkStyle 0 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 1 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 2 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 3 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 4 stroke:#2e7d32,stroke-width:4px
+                        %% 5-6: Cache check (cyan)
+                        linkStyle 5 stroke:#0097a7,stroke-width:3px
+                        linkStyle 6 stroke:#0097a7,stroke-width:3px
+                        %% 7-10: DOE dispatch (orange)
+                        linkStyle 7 stroke:#e65100,stroke-width:3px
+                        linkStyle 8 stroke:#e65100,stroke-width:3px
+                        linkStyle 9 stroke:#e65100,stroke-width:3px
+                        linkStyle 10 stroke:#e65100,stroke-width:3px
+                        %% 11-14: HiFi store (orange-red)
+                        linkStyle 11 stroke:#d84315,stroke-width:3px
+                        linkStyle 12 stroke:#d84315,stroke-width:3px
+                        linkStyle 13 stroke:#d84315,stroke-width:3px
+                        linkStyle 14 stroke:#d84315,stroke-width:3px
+                        %% 15-16: Training data (purple)
+                        linkStyle 15 stroke:#7b1fa2,stroke-width:3px
+                        linkStyle 16 stroke:#7b1fa2,stroke-width:3px
+                        %% 17: Vector query (purple)
+                        linkStyle 17 stroke:#7b1fa2,stroke-width:3px
+                        %% 18-19: Provenance (red)
+                        linkStyle 18 stroke:#c62828,stroke-width:3px
+                        linkStyle 19 stroke:#c62828,stroke-width:3px
 
                         %% Classes
                         class ORCH,BM,TR,CACHE core
@@ -263,29 +292,56 @@
                 <div style="display: flex; justify-content: center; margin-top: 15px;">
                     <div
                         style="background: #f5f5f5; border-radius: 8px; padding: 15px 25px; display: inline-flex; gap: 30px; flex-wrap: wrap;">
+                        <!-- Node Colors -->
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div
                                 style="width: 16px; height: 16px; background: #e1f5fe; border: 2px solid #01579b; border-radius: 3px;">
                             </div>
-                            <span style="font-size: 0.9em; color: #333;">Core / State</span>
+                            <span style="font-size: 0.85em; color: #333;">Core / State</span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div
                                 style="width: 16px; height: 16px; background: #e8f5e9; border: 2px solid #1b5e20; border-radius: 3px;">
                             </div>
-                            <span style="font-size: 0.9em; color: #333;">Pipeline Module</span>
+                            <span style="font-size: 0.85em; color: #333;">Pipeline Module</span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div
                                 style="width: 16px; height: 16px; background: #fff3e0; border: 2px solid #e65100; border-radius: 3px;">
                             </div>
-                            <span style="font-size: 0.9em; color: #333;">HiFi Solver</span>
+                            <span style="font-size: 0.85em; color: #333;">HiFi Solver</span>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <div
                                 style="width: 16px; height: 16px; background: #f3e5f5; border: 2px solid #4a148c; border-radius: 3px;">
                             </div>
-                            <span style="font-size: 0.9em; color: #333;">Data Layer</span>
+                            <span style="font-size: 0.85em; color: #333;">Data Layer</span>
+                        </div>
+                        <div style="border-left: 2px solid #ccc; height: 24px; margin: 0 10px;"></div>
+                        <!-- Trace Colors -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #2e7d32; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Optimization Loop</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #0097a7; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Cache Check</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #e65100; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">HiFi Dispatch</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #d84315; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">HiFi Store</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #7b1fa2; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Data Flow</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #c62828; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Provenance</span>
                         </div>
                     </div>
                 </div>
