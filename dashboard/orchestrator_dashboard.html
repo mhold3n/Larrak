@@ -244,6 +244,17 @@
                         click CEM clickCEM
                         click SUR clickSUR
                         click SOL clickSOL
+                        click BM clickBM
+                        click TR clickTR
+                        click CACHE clickCACHE
+                        click SEL clickSEL
+                        click FOAM clickFOAM
+                        click CCX clickCCX
+                        click PORTFLOW clickPORTFLOW
+                        click COMBUST clickCOMBUST
+                        click TRUTH clickTRUTH
+                        click WEAV clickWEAV
+                        click PROV clickPROV
                     </div>
                 </div>
                 <p align="center"><em>Click diagram to expand (if implemented)</em></p>
@@ -424,7 +435,140 @@
                 Step2 --> Step3[Simulate & Update]
                 Step3 --> Loop
                 Loop -- No --> End((Final Solution))
-                class Init,Loop,Step1,Step2,Step3 step`
+                class Init,Loop,Step1,Step2,Step3 step`,
+
+            "BM": `graph TD
+                classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Budget((Total Budget)) --> Split[Allocate: 40% Best / 30% Uncertain / 20% Disagree / 10% Random]
+                Split --> Track[Track Consumption]
+                Track --> Reserve[Reserve 10% for Validation]
+                Reserve --> End((Remaining))
+                Track -.-> W[(Weaviate: Run)]
+                class Split,Track,Reserve step
+                class W db`,
+
+            "TR": `graph TD
+                classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+                Pred((Predicted)) --> Compare{Actual Match?}
+                Act((Actual)) --> Compare
+                Compare -- Yes --> Expand[Expand Radius x1.5]
+                Compare -- No --> Contract[Contract Radius x0.5]
+                Expand --> Bound[Bound Step Size]
+                Contract --> Bound
+                Bound --> End((New Bounds))
+                class Compare,Expand,Contract,Bound step`,
+
+            "CACHE": `graph LR
+                classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+                Input((Params)) --> Hash[SHA-256 Hash]
+                Hash --> Check{In Cache?}
+                Check -- Hit --> Return[Return Cached Result]
+                Check -- Miss --> Compute[Run HiFi Simulation]
+                Compute --> Store[Store in LRU Cache]
+                Store --> Return
+                Return --> End((Result + was_cached))
+                class Hash,Check,Return,Compute,Store step`,
+
+            "SEL": `graph TD
+                classDef step fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Input((Refined Candidates)) --> Best[Top K by Prediction]
+                Input --> Uncertain[Top K by Uncertainty]
+                Input --> Random[Random Sample]
+                Best --> Merge[Merge & Dedupe]
+                Uncertain --> Merge
+                Random --> Merge
+                Merge --> End((Selected Indices))
+                Merge -.-> W[(Weaviate: Run.selection_log)]
+                class Best,Uncertain,Random,Merge step
+                class W db`,
+
+            "FOAM": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Input((Geometry)) --> Mesh[blockMesh / snappyHexMesh]
+                Mesh --> BC[Set Thermal BCs]
+                BC --> Solve[Run laplacianFoam]
+                Solve --> Parse[Extract T_crown_max]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                class Mesh,BC,Solve,Parse step
+                class W db`,
+
+            "CCX": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Input((Geometry + Loads)) --> Mesh[Gmsh .inp Generation]
+                Mesh --> BC[Apply Pressure + Thermal BCs]
+                BC --> Solve[Run CalculiX ccx]
+                Solve --> Parse[Extract von_mises_max]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                class Mesh,BC,Solve,Parse step
+                class W db`,
+
+            "PORTFLOW": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Input((Port Geometry)) --> Mesh[Generate Port Mesh]
+                Mesh --> BC[Set Inlet/Outlet BCs]
+                BC --> Solve[Run simpleFoam]
+                Solve --> Parse[Extract Cd, Swirl, Tumble]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                class Mesh,BC,Solve,Parse step
+                class W db`,
+
+            "COMBUST": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Input((Chamber + Mixture)) --> Mesh[Generate Combustion Mesh]
+                Mesh --> Chem[Setup Chemistry: PaSR/EDC]
+                Chem --> Solve[Run reactingFoam 5ms]
+                Solve --> Parse[Extract Wiebe a,m + p_max]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                class Mesh,Chem,Solve,Parse step
+                class W db`,
+
+            "TRUTH": `graph LR
+                classDef step fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                HiFi((HiFi Results)) --> Store[Store Ground Truth]
+                Store --> Embed[Create Embeddings]
+                Embed --> Train[Feed to Surrogate.update]
+                Store --> W1[(HiFiSimulationRun)]
+                Embed --> W2[(Vector Index)]
+                class Store,Embed,Train step
+                class W1,W2 db`,
+
+            "WEAV": `graph TD
+                classDef coll fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                subgraph Collections [16 Weaviate Collections]
+                Run[Run]
+                Geometry[Geometry]
+                HiFi[HiFiSimulationRun]
+                DOE[DOEPoint]
+                Code[CodeFile]
+                Constraint[ConstraintResult]
+                end
+                Query((Query)) --> Search[Vector + Hybrid Search]
+                Search --> Results((Results))
+                class Run,Geometry,HiFi,DOE,Code,Constraint coll`,
+
+            "PROV": `graph TD
+                classDef step fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Event((Orchestrator Event)) --> Log[ProvenanceClient]
+                Log --> Run[start_run / end_run]
+                Log --> Geom[log_geometry]
+                Log --> Check[log_constraint_check]
+                Run --> W[(Run Collection)]
+                Geom --> W2[(Geometry Collection)]
+                Check --> W3[(ConstraintResult)]
+                class Log,Run,Geom,Check step
+                class W,W2,W3 db`
         };
 
         const modal = document.getElementById("modal");
@@ -458,6 +602,23 @@
         window.clickSOL = () => openModal("SOL", "Solver: Local Refinement");
         window.clickSIM = () => openModal("SIM", "Simulation: Ground Truth");
         window.clickORCH = () => openModal("ORCH", "Orchestrator Logic");
+
+        // State Management
+        window.clickBM = () => openModal("BM", "Budget Manager");
+        window.clickTR = () => openModal("TR", "Trust Region");
+        window.clickCACHE = () => openModal("CACHE", "Evaluation Cache");
+        window.clickSEL = () => openModal("SEL", "Budget Selection");
+
+        // HiFi Solvers
+        window.clickFOAM = () => openModal("FOAM", "OpenFOAM laplacianFoam (Thermal)");
+        window.clickCCX = () => openModal("CCX", "CalculiX FEA (Structural)");
+        window.clickPORTFLOW = () => openModal("PORTFLOW", "OpenFOAM simpleFoam (Flow)");
+        window.clickCOMBUST = () => openModal("COMBUST", "OpenFOAM reactingFoam (Combustion)");
+
+        // Data Layer
+        window.clickTRUTH = () => openModal("TRUTH", "Truth Database");
+        window.clickWEAV = () => openModal("WEAV", "Weaviate Vector DB");
+        window.clickPROV = () => openModal("PROV", "Provenance Client");
 
         mermaid.initialize({
             startOnLoad: true,
