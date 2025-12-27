@@ -474,16 +474,24 @@
         const diagrams = {
             "CEM": `graph LR
                 classDef step fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Start((Start)) --> Env[Envelope Sampling]
                 Env --> Check{Check Feasibility}
                 Check -- Yes --> Batch[Add to Batch]
                 Check -- No --> Repair[Repair with Constraints]
                 Repair --> Check
                 Batch --> End((Return Batch))
-                class Env,Check,Repair,Batch step`,
+                subgraph Tools [🔧 Tools]
+                T1[gRPC Server]
+                T2[C++ Core]
+                T3[NumPy]
+                end
+                class Env,Check,Repair,Batch step
+                class T1,T2,T3 tool`,
 
             "SUR": `graph LR
                 classDef step fill:#e3f2fd,stroke:#0277bd,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input(Batch) --> Feat[Feature Extraction]
                 Feat --> Ensemble[Ensemble Forward Pass]
                 Ensemble --> Mean[Mean Prediction]
@@ -491,30 +499,53 @@
                 Mean --> Filter[Filter Top K]
                 Std --> End((Return Predictions))
                 Filter --> End
-                class Feat,Ensemble,Mean,Std,Filter step`,
+                subgraph Tools [🔧 Tools]
+                T1[PyTorch]
+                T2[EnsembleSurrogate]
+                T3[NumPy]
+                end
+                class Feat,Ensemble,Mean,Std,Filter step
+                class T1,T2,T3 tool`,
 
             "SOL": `graph TD
                 classDef step fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input(Candidate) --> Trust[Apply Trust Region]
-                Trust --> IPOPT[Call IPOPT Solver]
+                Trust --> NLP[Build NLP Problem]
+                NLP --> IPOPT[Call IPOPT Solver]
                 IPOPT --> Check{Converged?}
                 Check -- Yes --> Opt[Store Local Optima]
                 Check -- No --> Fail[Mark Invalid]
                 Opt --> End((Return Result))
                 Fail --> End
-                class Trust,IPOPT,Check,Opt,Fail step`,
+                subgraph Tools [🔧 Tools]
+                T1[CasADi]
+                T2[IPOPT]
+                T3[MA57 / HSL]
+                T4[collocation_nlp]
+                end
+                class Trust,NLP,IPOPT,Check,Opt,Fail step
+                class T1,T2,T3,T4 tool`,
 
             "SIM": `graph LR
                 classDef step fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input(Params) --> Setup[Setup Physics Kernel]
                 Setup --> Eval[Execute Simulation]
                 Eval --> Metrics[Calculate Efficiency]
                 Metrics --> Cost[Compute Cost Function]
                 Cost --> End((Return Truth))
-                class Setup,Eval,Metrics,Cost step`,
+                subgraph Tools [🔧 Tools]
+                T1[HiFiSimulationAdapter]
+                T2[Docker Containers]
+                T3[result_parsers.py]
+                end
+                class Setup,Eval,Metrics,Cost step
+                class T1,T2,T3 tool`,
 
             "ORCH": `graph TD
                 classDef step fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Start((Start)) --> Init[Initialize Budget]
                 Init --> Loop{Budget > 0?}
                 Loop -- Yes --> Step1[Sample & Predict]
@@ -522,18 +553,31 @@
                 Step2 --> Step3[Simulate & Update]
                 Step3 --> Loop
                 Loop -- No --> End((Final Solution))
-                class Init,Loop,Step1,Step2,Step3 step`,
+                subgraph Tools [🔧 Tools]
+                T1[Orchestrator class]
+                T2[BudgetManager]
+                T3[TrustRegion]
+                T4[ProvenanceClient]
+                end
+                class Init,Loop,Step1,Step2,Step3 step
+                class T1,T2,T3,T4 tool`,
 
             "BM": `graph TD
                 classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
                 classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Budget((Total Budget)) --> Split[Allocate: 40% Best / 30% Uncertain / 20% Disagree / 10% Random]
                 Split --> Track[Track Consumption]
                 Track --> Reserve[Reserve 10% for Validation]
                 Reserve --> End((Remaining))
                 Track -.-> W[(Weaviate: Run)]
+                subgraph Tools [🔧 Tools]
+                T1[budget.py]
+                T2[NumPy]
+                end
                 class Split,Track,Reserve step
-                class W db`,
+                class W db
+                class T1,T2 tool`,
 
             "TR": `graph TD
                 classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
@@ -548,6 +592,7 @@
 
             "CACHE": `graph LR
                 classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input((Params)) --> Hash[SHA-256 Hash]
                 Hash --> Check{In Cache?}
                 Check -- Hit --> Return[Return Cached Result]
@@ -555,7 +600,13 @@
                 Compute --> Store[Store in LRU Cache]
                 Store --> Return
                 Return --> End((Result + was_cached))
-                class Hash,Check,Return,Compute,Store step`,
+                subgraph Tools [🔧 Tools]
+                T1[cache.py]
+                T2[hashlib]
+                T3[functools.lru_cache]
+                end
+                class Hash,Check,Return,Compute,Store step
+                class T1,T2,T3 tool`,
 
             "SEL": `graph TD
                 classDef step fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
@@ -574,50 +625,78 @@
             "FOAM": `graph TD
                 classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
                 classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input((Geometry)) --> Mesh[blockMesh / snappyHexMesh]
                 Mesh --> BC[Set Thermal BCs]
                 BC --> Solve[Run laplacianFoam]
                 Solve --> Parse[Extract T_crown_max]
                 Parse --> End((Output))
                 Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[OpenFOAM 11]
+                T2[Docker]
+                T3[thermal_cfd.py]
+                end
                 class Mesh,BC,Solve,Parse step
-                class W db`,
+                class W db
+                class T1,T2,T3 tool`,
 
             "CCX": `graph TD
                 classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
                 classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input((Geometry + Loads)) --> Mesh[Gmsh .inp Generation]
                 Mesh --> BC[Apply Pressure + Thermal BCs]
                 BC --> Solve[Run CalculiX ccx]
                 Solve --> Parse[Extract von_mises_max]
                 Parse --> End((Output))
                 Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[CalculiX 2.21]
+                T2[Gmsh]
+                T3[gear_contact.py]
+                end
                 class Mesh,BC,Solve,Parse step
-                class W db`,
+                class W db
+                class T1,T2,T3 tool`,
 
             "PORTFLOW": `graph TD
                 classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
                 classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input((Port Geometry)) --> Mesh[Generate Port Mesh]
                 Mesh --> BC[Set Inlet/Outlet BCs]
                 BC --> Solve[Run simpleFoam]
                 Solve --> Parse[Extract Cd, Swirl, Tumble]
                 Parse --> End((Output))
                 Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[OpenFOAM 11]
+                T2[Docker]
+                T3[port_flow_cfd.py]
+                end
                 class Mesh,BC,Solve,Parse step
-                class W db`,
+                class W db
+                class T1,T2,T3 tool`,
 
             "COMBUST": `graph TD
                 classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
                 classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
                 Input((Chamber + Mixture)) --> Mesh[Generate Combustion Mesh]
                 Mesh --> Chem[Setup Chemistry: PaSR/EDC]
                 Chem --> Solve[Run reactingFoam 5ms]
                 Solve --> Parse[Extract Wiebe a,m + p_max]
                 Parse --> End((Output))
                 Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[OpenFOAM 11]
+                T2[reactingFoam]
+                T3[combustion_cfd.py]
+                end
                 class Mesh,Chem,Solve,Parse step
-                class W db`,
+                class W db
+                class T1,T2,T3 tool`,
 
             "TRUTH": `graph LR
                 classDef step fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
