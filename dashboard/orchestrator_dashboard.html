@@ -362,6 +362,66 @@
         .status-dot.idle {
             background: #f0ad4e;
         }
+
+        /* Collapsible sections */
+        details {
+            margin-bottom: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0;
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        details summary {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95em;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            user-select: none;
+        }
+
+        details summary:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        details[open] summary {
+            border-bottom: 1px solid var(--border-color);
+            border-radius: 6px 6px 0 0;
+        }
+
+        details>div,
+        details>.input-group,
+        details>.input-row {
+            padding: 0 15px;
+        }
+
+        details>.input-row:first-of-type,
+        details>.input-group:first-of-type {
+            padding-top: 12px;
+        }
+
+        details>.input-row:last-of-type,
+        details>.input-group:last-of-type {
+            padding-bottom: 12px;
+        }
+
+        /* Select styling */
+        .input-group select {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-color);
+            font-size: 0.9em;
+        }
+
+        .input-group select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
     </style>
 </head>
 
@@ -371,35 +431,252 @@
         <h1>Larrak Orchestrator Dashboard</h1>
 
         <div class="grid">
-            <div class="card control-panel">
+            <div class="card control-panel" style="grid-column: 1 / -1;">
                 <h2>🎮 Control Panel</h2>
 
-                <div class="input-row">
-                    <div class="input-group">
-                        <label>Max Iterations</label>
-                        <input type="number" id="input-max-iter" value="100" min="1" max="1000">
+                <!-- Collapsible Sections -->
+                <details open>
+                    <summary>📊 Optimization</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Max Iterations</label>
+                            <input type="number" id="input-max-iter" value="100" min="1" max="1000">
+                        </div>
+                        <div class="input-group">
+                            <label>Convergence Tolerance</label>
+                            <input type="number" id="input-tolerance" value="1e-6" step="1e-7">
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <label>Simulation Budget</label>
-                        <input type="number" id="input-budget" value="50" min="1" max="500">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Batch Size</label>
+                            <input type="number" id="input-batch" value="10" min="1" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>CEM Population Size</label>
+                            <input type="number" id="input-cem-pop" value="100" min="10" max="1000">
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <div class="input-row">
-                    <div class="input-group">
-                        <label>Trust Region Radius</label>
-                        <input type="number" id="input-tr-radius" value="0.1" min="0.01" max="1" step="0.01">
+                <details>
+                    <summary>🎯 Trust Region</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Initial Radius</label>
+                            <input type="number" id="input-tr-initial" value="0.1" min="0.01" max="1" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label>Min Radius</label>
+                            <input type="number" id="input-tr-min" value="0.01" min="0.001" max="0.1" step="0.001">
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <label>Batch Size</label>
-                        <input type="number" id="input-batch" value="10" min="1" max="100">
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Max Radius</label>
+                            <input type="number" id="input-tr-max" value="0.5" min="0.1" max="1" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Expand Factor</label>
+                            <input type="number" id="input-tr-expand" value="1.5" min="1.1" max="3" step="0.1">
+                        </div>
                     </div>
-                </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Shrink Factor</label>
+                            <input type="number" id="input-tr-shrink" value="0.5" min="0.1" max="0.9" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Uncertainty Weight</label>
+                            <input type="number" id="input-tr-unc-weight" value="1.0" min="0" max="5" step="0.1">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Good Agreement (≤)</label>
+                            <input type="number" id="input-tr-good" value="0.1" min="0.01" max="0.5" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label>Bad Agreement (≥)</label>
+                            <input type="number" id="input-tr-bad" value="0.3" min="0.1" max="1" step="0.05">
+                        </div>
+                    </div>
+                </details>
 
-                <div class="input-group">
-                    <label>Config File (optional)</label>
-                    <input type="text" id="input-config" placeholder="path/to/config.yaml">
-                </div>
+                <details>
+                    <summary>💰 Budget Allocation</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Total Sim Calls</label>
+                            <input type="number" id="input-budget-total" value="50" min="10" max="500">
+                        </div>
+                        <div class="input-group">
+                            <label>Validation Reserve %</label>
+                            <input type="number" id="input-budget-reserve" value="10" min="0" max="50">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Best Predicted %</label>
+                            <input type="number" id="input-alloc-best" value="40" min="0" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>High Uncertainty %</label>
+                            <input type="number" id="input-alloc-uncertain" value="30" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Disagreement %</label>
+                            <input type="number" id="input-alloc-disagree" value="20" min="0" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>Random Explore %</label>
+                            <input type="number" id="input-alloc-random" value="10" min="0" max="100">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>⚙️ Solver (IPOPT)</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Max Iterations</label>
+                            <input type="number" id="input-ipopt-maxiter" value="3000" min="100" max="50000">
+                        </div>
+                        <div class="input-group">
+                            <label>Acceptable Tol</label>
+                            <input type="number" id="input-ipopt-tol" value="1e-4" step="1e-5">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Print Level</label>
+                            <select id="input-ipopt-print">
+                                <option value="0">0 - Quiet</option>
+                                <option value="3">3 - Summary</option>
+                                <option value="5" selected>5 - Normal</option>
+                                <option value="12">12 - Debug</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Linear Solver</label>
+                            <select id="input-ipopt-linear">
+                                <option value="mumps" selected>MUMPS</option>
+                                <option value="ma57">MA57</option>
+                                <option value="ma27">MA27</option>
+                            </select>
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>🔬 HiFi Simulation</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Thermal Solver</label>
+                            <select id="input-hifi-thermal">
+                                <option value="laplacianFoam" selected>laplacianFoam</option>
+                                <option value="chtMultiRegionFoam">chtMultiRegionFoam</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Structural Solver</label>
+                            <select id="input-hifi-struct">
+                                <option value="calculix" selected>CalculiX</option>
+                                <option value="code_aster">Code_Aster</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Mesh Resolution</label>
+                            <select id="input-hifi-mesh">
+                                <option value="coarse">Coarse</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="fine">Fine</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Parallel Workers</label>
+                            <input type="number" id="input-hifi-workers" value="4" min="1" max="32">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Timeout (s)</label>
+                            <input type="number" id="input-hifi-timeout" value="3600" min="60" max="86400">
+                        </div>
+                        <div class="input-group">
+                            <label>Docker Container</label>
+                            <input type="text" id="input-hifi-docker" placeholder="openfoam:v2312"
+                                value="openfoam:v2312">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>🧠 Surrogate Model</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Model Type</label>
+                            <select id="input-surr-type">
+                                <option value="gated" selected>Gated Ensemble</option>
+                                <option value="gp">Gaussian Process</option>
+                                <option value="nn">Neural Network</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Uncertainty Quantification</label>
+                            <select id="input-surr-uq">
+                                <option value="ensemble" selected>Ensemble Variance</option>
+                                <option value="dropout">MC Dropout</option>
+                                <option value="evidential">Evidential</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Retrain Frequency</label>
+                            <input type="number" id="input-surr-retrain" value="10" min="1" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>Min Training Data</label>
+                            <input type="number" id="input-surr-mindata" value="20" min="5" max="1000">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>📁 Paths & I/O</summary>
+                    <div class="input-group">
+                        <label>Config File</label>
+                        <input type="text" id="input-config" placeholder="path/to/config.yaml">
+                    </div>
+                    <div class="input-group">
+                        <label>Output Directory</label>
+                        <input type="text" id="input-output-dir" placeholder="./results" value="./results">
+                    </div>
+                    <div class="input-group">
+                        <label>Checkpoint Directory</label>
+                        <input type="text" id="input-checkpoint" placeholder="./checkpoints" value="./checkpoints">
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Random Seed</label>
+                            <input type="number" id="input-seed" value="42" min="0" max="999999">
+                        </div>
+                        <div class="input-group">
+                            <label>Log Level</label>
+                            <select id="input-loglevel">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO" selected>INFO</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                            </select>
+                        </div>
+                    </div>
+                </details>
 
                 <div class="btn-group">
                     <button class="btn btn-start" id="btn-start" onclick="startSequence()">
@@ -1214,12 +1491,84 @@
         let isRunning = false;
 
         function getControlInputs() {
+            const getVal = (id, fallback, parser = parseFloat) => {
+                const el = document.getElementById(id);
+                if (!el) return fallback;
+                const val = parser(el.value);
+                return isNaN(val) ? fallback : val;
+            };
+            const getStr = (id, fallback = '') => {
+                const el = document.getElementById(id);
+                return el ? (el.value || fallback) : fallback;
+            };
+
             return {
-                max_iterations: parseInt(document.getElementById('input-max-iter').value) || 100,
-                simulation_budget: parseInt(document.getElementById('input-budget').value) || 50,
-                trust_radius: parseFloat(document.getElementById('input-tr-radius').value) || 0.1,
-                batch_size: parseInt(document.getElementById('input-batch').value) || 10,
-                config_file: document.getElementById('input-config').value || null,
+                // Optimization
+                optimization: {
+                    max_iterations: getVal('input-max-iter', 100, parseInt),
+                    tolerance: getVal('input-tolerance', 1e-6),
+                    batch_size: getVal('input-batch', 10, parseInt),
+                    cem_population: getVal('input-cem-pop', 100, parseInt),
+                },
+
+                // Trust Region
+                trust_region: {
+                    initial_radius: getVal('input-tr-initial', 0.1),
+                    min_radius: getVal('input-tr-min', 0.01),
+                    max_radius: getVal('input-tr-max', 0.5),
+                    expand_factor: getVal('input-tr-expand', 1.5),
+                    shrink_factor: getVal('input-tr-shrink', 0.5),
+                    uncertainty_weight: getVal('input-tr-unc-weight', 1.0),
+                    good_agreement_threshold: getVal('input-tr-good', 0.1),
+                    bad_agreement_threshold: getVal('input-tr-bad', 0.3),
+                },
+
+                // Budget Allocation
+                budget: {
+                    total_sim_calls: getVal('input-budget-total', 50, parseInt),
+                    reserve_for_validation: getVal('input-budget-reserve', 10) / 100,
+                    allocation: {
+                        best_fraction: getVal('input-alloc-best', 40) / 100,
+                        uncertain_fraction: getVal('input-alloc-uncertain', 30) / 100,
+                        disagreement_fraction: getVal('input-alloc-disagree', 20) / 100,
+                        random_fraction: getVal('input-alloc-random', 10) / 100,
+                    },
+                },
+
+                // Solver (IPOPT)
+                solver: {
+                    max_iter: getVal('input-ipopt-maxiter', 3000, parseInt),
+                    acceptable_tol: getVal('input-ipopt-tol', 1e-4),
+                    print_level: getVal('input-ipopt-print', 5, parseInt),
+                    linear_solver: getStr('input-ipopt-linear', 'mumps'),
+                },
+
+                // HiFi Simulation
+                hifi: {
+                    thermal_solver: getStr('input-hifi-thermal', 'laplacianFoam'),
+                    structural_solver: getStr('input-hifi-struct', 'calculix'),
+                    mesh_resolution: getStr('input-hifi-mesh', 'medium'),
+                    workers: getVal('input-hifi-workers', 4, parseInt),
+                    timeout: getVal('input-hifi-timeout', 3600, parseInt),
+                    docker_image: getStr('input-hifi-docker', 'openfoam:v2312'),
+                },
+
+                // Surrogate Model
+                surrogate: {
+                    model_type: getStr('input-surr-type', 'gated'),
+                    uq_method: getStr('input-surr-uq', 'ensemble'),
+                    retrain_frequency: getVal('input-surr-retrain', 10, parseInt),
+                    min_training_data: getVal('input-surr-mindata', 20, parseInt),
+                },
+
+                // Paths & I/O
+                io: {
+                    config_file: getStr('input-config') || null,
+                    output_dir: getStr('input-output-dir', './results'),
+                    checkpoint_dir: getStr('input-checkpoint', './checkpoints'),
+                    seed: getVal('input-seed', 42, parseInt),
+                    log_level: getStr('input-loglevel', 'INFO'),
+                },
             };
         }
 
