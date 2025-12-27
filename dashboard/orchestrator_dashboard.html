@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Larrak Orchestrator Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="tools.js"></script>
     <style>
         :root {
             --bg-color: #0d1117;
@@ -744,7 +745,21 @@
         function openModal(nodeId, title) {
             if (diagrams[nodeId]) {
                 modalTitle.innerText = title;
-                modalDiagram.innerHTML = `<div class="mermaid">${diagrams[nodeId]}</div>`;
+
+                // Get tools from tools.js (sourced from Weaviate via module_linker.py)
+                const tools = typeof getModuleTools === 'function' ? getModuleTools(nodeId) : [];
+                let toolsHtml = '';
+                if (tools.length > 0) {
+                    toolsHtml = `
+                        <div style="margin-top: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; border-left: 4px solid #f57f17;">
+                            <h4 style="margin: 0 0 10px 0; color: #f57f17;">🔧 Tools (from Weaviate)</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                ${tools.map(t => `<span style="background: #2d2d2d; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; color: #e0e0e0;">${t.name} <span style="color: #888; font-size: 0.8em;">${t.version}</span></span>`).join('')}
+                            </div>
+                        </div>`;
+                }
+
+                modalDiagram.innerHTML = `<div class="mermaid">${diagrams[nodeId]}</div>${toolsHtml}`;
                 modal.style.display = "flex";
                 mermaid.init(undefined, modalDiagram.querySelector(".mermaid"));
             }
