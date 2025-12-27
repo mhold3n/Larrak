@@ -479,3 +479,117 @@ def create_schema(client: weaviate.WeaviateClient) -> None:
         modules.config.add_reference(
             wvc.ReferenceProperty(name="uses_tools", target_collection="Tool")
         )
+
+    # ==========================================================================
+    # Dashboard Tracking (Runtime State)
+    # ==========================================================================
+
+    # 21. DataFlow (tracks trace connections between modules)
+    if not client.collections.exists("DataFlow"):
+        client.collections.create(
+            name="DataFlow",
+            description="A data flow connection between orchestrator modules",
+            properties=[
+                wvc.Property(name="flow_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="source_module", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="target_module", data_type=wvc.DataType.TEXT),
+                wvc.Property(
+                    name="label", data_type=wvc.DataType.TEXT
+                ),  # "generate_batch", "candidates"
+                wvc.Property(
+                    name="category", data_type=wvc.DataType.TEXT
+                ),  # optimization, cache, hifi, provenance
+                wvc.Property(name="color", data_type=wvc.DataType.TEXT),  # "#2e7d32" for rendering
+                wvc.Property(name="line_style", data_type=wvc.DataType.TEXT),  # "solid", "dashed"
+            ],
+            references=[
+                wvc.ReferenceProperty(name="source", target_collection="Module"),
+                wvc.ReferenceProperty(name="target", target_collection="Module"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 22. OptimizationStep (snapshot of each optimization iteration)
+    if not client.collections.exists("OptimizationStep"):
+        client.collections.create(
+            name="OptimizationStep",
+            description="Snapshot of a single optimization iteration",
+            properties=[
+                wvc.Property(name="step_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="iteration", data_type=wvc.DataType.INT),
+                wvc.Property(name="timestamp", data_type=wvc.DataType.DATE),
+                wvc.Property(name="candidates_generated", data_type=wvc.DataType.INT),
+                wvc.Property(name="candidates_refined", data_type=wvc.DataType.INT),
+                wvc.Property(name="candidates_selected", data_type=wvc.DataType.INT),
+                wvc.Property(name="budget_remaining", data_type=wvc.DataType.INT),
+                wvc.Property(name="best_objective", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="best_params_json", data_type=wvc.DataType.TEXT),
+                wvc.Property(name="duration_ms", data_type=wvc.DataType.NUMBER),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="run", target_collection="Run"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 23. CacheEntry (tracks evaluation cache hits/misses)
+    if not client.collections.exists("CacheEntry"):
+        client.collections.create(
+            name="CacheEntry",
+            description="An entry in the evaluation cache with access statistics",
+            properties=[
+                wvc.Property(name="entry_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="param_hash", data_type=wvc.DataType.TEXT),  # SHA-256 of params
+                wvc.Property(name="created_at", data_type=wvc.DataType.DATE),
+                wvc.Property(name="last_accessed", data_type=wvc.DataType.DATE),
+                wvc.Property(name="access_count", data_type=wvc.DataType.INT),
+                wvc.Property(name="was_hit", data_type=wvc.DataType.BOOL),
+                wvc.Property(name="compute_time_ms", data_type=wvc.DataType.NUMBER),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="result", target_collection="HiFiSimulationRun"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 24. BudgetSnapshot (tracks budget allocation history)
+    if not client.collections.exists("BudgetSnapshot"):
+        client.collections.create(
+            name="BudgetSnapshot",
+            description="Snapshot of budget allocation at a point in time",
+            properties=[
+                wvc.Property(
+                    name="snapshot_id", data_type=wvc.DataType.TEXT, skip_vectorization=True
+                ),
+                wvc.Property(name="timestamp", data_type=wvc.DataType.DATE),
+                wvc.Property(name="total_budget", data_type=wvc.DataType.INT),
+                wvc.Property(name="spent_budget", data_type=wvc.DataType.INT),
+                wvc.Property(name="remaining_budget", data_type=wvc.DataType.INT),
+                wvc.Property(name="allocation_json", data_type=wvc.DataType.TEXT),  # JSON breakdown
+            ],
+            references=[
+                wvc.ReferenceProperty(name="run", target_collection="Run"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )
+
+    # 25. TrustRegionLog (tracks trust region adjustments)
+    if not client.collections.exists("TrustRegionLog"):
+        client.collections.create(
+            name="TrustRegionLog",
+            description="Log entry for trust region radius adjustment",
+            properties=[
+                wvc.Property(name="log_id", data_type=wvc.DataType.TEXT, skip_vectorization=True),
+                wvc.Property(name="timestamp", data_type=wvc.DataType.DATE),
+                wvc.Property(name="radius_before", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="radius_after", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="action", data_type=wvc.DataType.TEXT),  # expand, contract, hold
+                wvc.Property(name="predicted_improvement", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="actual_improvement", data_type=wvc.DataType.NUMBER),
+                wvc.Property(name="ratio", data_type=wvc.DataType.NUMBER),
+            ],
+            references=[
+                wvc.ReferenceProperty(name="step", target_collection="OptimizationStep"),
+            ],
+            vectorizer_config=wvc.Configure.Vectorizer.none(),
+        )

@@ -113,6 +113,125 @@ def create_app(project_root: Path | None = None) -> "Flask":
             }
         )
 
+    # =========================================================================
+    # Runtime State Endpoints (Dashboard Tracking)
+    # =========================================================================
+
+    @app.route("/api/dataflows")
+    def list_dataflows():
+        """List all data flow connections between modules."""
+        from provenance.dataflow_scanner import scan_dashboard
+
+        dashboard = PROJECT_ROOT / "dashboard" / "orchestrator_dashboard.html"
+        flows = scan_dashboard(dashboard)
+        return jsonify(
+            [
+                {
+                    "flow_id": f.flow_id,
+                    "source": f.source_module,
+                    "target": f.target_module,
+                    "label": f.label,
+                    "category": f.category,
+                    "color": f.color,
+                }
+                for f in flows[:20]  # First 20 valid flows
+            ]
+        )
+
+    @app.route("/api/optimization/steps")
+    def list_optimization_steps():
+        """List recent optimization steps (if Weaviate connected)."""
+        try:
+            import weaviate
+
+            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            steps = client.collections.get("OptimizationStep")
+            result = steps.query.fetch_objects(limit=20)
+            client.close()
+            return jsonify(
+                [
+                    {
+                        "iteration": obj.properties.get("iteration"),
+                        "timestamp": obj.properties.get("timestamp"),
+                        "best_objective": obj.properties.get("best_objective"),
+                        "budget_remaining": obj.properties.get("budget_remaining"),
+                    }
+                    for obj in result.objects
+                ]
+            )
+        except Exception as e:
+            return jsonify({"error": str(e), "data": []})
+
+    @app.route("/api/cache/stats")
+    def cache_stats():
+        """Get evaluation cache statistics."""
+        try:
+            import weaviate
+
+            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            cache = client.collections.get("CacheEntry")
+            result = cache.aggregate.over_all(total_count=True)
+            hits = cache.query.fetch_objects(limit=1000)
+            client.close()
+            hit_count = sum(1 for o in hits.objects if o.properties.get("was_hit"))
+            total = len(hits.objects)
+            return jsonify(
+                {
+                    "total_entries": result.total_count,
+                    "hit_rate": hit_count / total if total > 0 else 0,
+                }
+            )
+        except Exception as e:
+            return jsonify({"error": str(e), "total_entries": 0, "hit_rate": 0})
+
+    @app.route("/api/budget/snapshots")
+    def budget_snapshots():
+        """Get budget allocation history."""
+        try:
+            import weaviate
+
+            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            budget = client.collections.get("BudgetSnapshot")
+            result = budget.query.fetch_objects(limit=20)
+            client.close()
+            return jsonify(
+                [
+                    {
+                        "timestamp": obj.properties.get("timestamp"),
+                        "total": obj.properties.get("total_budget"),
+                        "spent": obj.properties.get("spent_budget"),
+                        "remaining": obj.properties.get("remaining_budget"),
+                    }
+                    for obj in result.objects
+                ]
+            )
+        except Exception as e:
+            return jsonify({"error": str(e), "data": []})
+
+    @app.route("/api/trustregion/logs")
+    def trustregion_logs():
+        """Get trust region adjustment history."""
+        try:
+            import weaviate
+
+            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            tr = client.collections.get("TrustRegionLog")
+            result = tr.query.fetch_objects(limit=20)
+            client.close()
+            return jsonify(
+                [
+                    {
+                        "timestamp": obj.properties.get("timestamp"),
+                        "radius_before": obj.properties.get("radius_before"),
+                        "radius_after": obj.properties.get("radius_after"),
+                        "action": obj.properties.get("action"),
+                    }
+                    for obj in result.objects
+                ]
+            )
+        except Exception as e:
+            return jsonify({"error": str(e), "data": []})
+
     return app
 
 
