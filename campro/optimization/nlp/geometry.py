@@ -2,7 +2,12 @@
 
 This module defines the interface and standard implementations for accessing
 precomputed 2D geometry data (volume, area, etc.) as scalar functions of theta.
+
+Note: This module intentionally uses physics/engineering notation (Volume, A_head, etc.)
+instead of snake_case. See NAMING_CONVENTIONS.md for rationale.
 """
+# pylint: disable=invalid-name,missing-function-docstring
+# pyright: reportInvalidName=false
 
 from __future__ import annotations
 
