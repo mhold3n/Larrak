@@ -6,7 +6,7 @@ precomputed 2D geometry data (volume, area, etc.) as scalar functions of theta.
 
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 import casadi as ca
 import numpy as np
@@ -29,24 +29,24 @@ class GeometryInterface(Protocol):
     @property
     def bore(self) -> float:
         """Bore diameter [m] (alias for B)."""
-        ...
+        pass
 
     @property
     def stroke(self) -> float:
         """Stroke length [m] (alias for S)."""
-        ...
+        pass
 
     def Volume(self, theta: ca.SX) -> ca.SX:
         """Cylinder volume [m^3] at angle theta."""
-        ...
+        pass
 
     def dV_dtheta(self, theta: ca.SX) -> ca.SX:
         """Derivative of cylinder volume wrt theta [m^3/rad]."""
-        ...
+        pass
 
     def Area_wall(self, theta: ca.SX) -> ca.SX:
         """Wetted wall area [m^2] at angle theta."""
-        ...
+        pass
 
     def Area_intake(
         self,
@@ -55,7 +55,7 @@ class GeometryInterface(Protocol):
         duration_rad: ca.SX | float | None = None,
     ) -> ca.SX:
         """Effective intake valve area [m^2] at angle theta."""
-        ...
+        pass
 
     def Area_exhaust(
         self,
@@ -64,7 +64,7 @@ class GeometryInterface(Protocol):
         duration_rad: ca.SX | float | None = None,
     ) -> ca.SX:
         """Effective exhaust valve area [m^2] at angle theta."""
-        ...
+        pass
 
 
 class StandardSliderCrankGeometry:
@@ -139,34 +139,17 @@ class StandardSliderCrankGeometry:
         return A_head + A_piston + A_liner
 
     def _valve_area(
-        self, theta: ca.SX, open_rad: float, close_rad: float, max_area: float
+        self, _theta: ca.SX, _open_rad: float, _close_rad: float, _max_area: float
     ) -> ca.SX | ca.MX:
+        """Placeholder valve area calculation (currently returns zero)."""
         # Simple "lift" function: 0 if outside, sine wave inside
-        # Note: Handling periodicity and wrap-around is tricky in pure symbolic without if_else
+        # Note: Handling periodicity and wrap-around is tricky in pure symbolic
         # For Phase 1, we might treat theta as 0..720 or 0..360.
         # Assuming 0..360 for 2-stroke.
 
-        # Center of opening
-        center = (open_rad + close_rad) / 2.0
-        duration = close_rad - open_rad
-
-        # Use a smooth bump function (Gaussian-like or Cosine-squared)
-        # Here using a simple approximation: max_area * exp(-k * (theta - center)^2)
-        # But for strict 0 outside, widely used: max_area * sin(pi * (theta - open) / dur) * (theta > open) * (theta < close)
-        # CasADi if_else is okay for evaluation, but can be bad for derivatives if discontinuous.
-
-        # Using a smooth bump:
-        # phi = (theta - open) / duration  (0 to 1)
-        # area = max_area * sin(pi * phi)^2  (smooth start/end)
-
-        # NOTE: This implementation assumes 2-stroke style port timing symmetric around BDC usually
-        # or just fixed angles.
-        # For simplicity in this placeholder:
-
-        # 2-stroke port assumption: active when piston is near BDC (theta near pi)
-        # For intake (scavenging): near BDC
-        # For exhaust: near BDC but wider
-
+        # TODO: Implement smooth bump function when needed
+        # Could use: max_area * sin(pi * (theta - open) / dur)^2
+        # For now returning zero as placeholder
         return ca.SX(0.0)  # Placeholder for now, typically 2D lookup is better.
 
     def Area_intake(
@@ -226,6 +209,7 @@ class InterpolatedGeometry:
 
         # Create CasADi interpolants
         # 'bspline' gives smooth derivatives
+        # Create volume interpolant (bspline for smooth derivatives)
         self._V_interp = ca.interpolant("V_interp", "bspline", [theta_arr], V_arr)  # type: ignore[attr-defined]
 
         if A_wall_arr is not None:
