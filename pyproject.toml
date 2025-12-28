@@ -117,7 +117,7 @@ ignore = ["E203", "PLR0913", "PLR2004", "E501"]
 # N803: argument name should be lowercase
 # N806: variable in function should be lowercase
 # N815: variable in class scope should not be mixedCase
-"campro/optimization/nlp/geometry.py" = ["N802", "N803", "N806", "N815"]
+"campro/optimization/nlp/geometry.py" = ["N802", "N803", "N806", "N815", "B015"]
 
 [tool.mypy]
 python_version = "3.11"

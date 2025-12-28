@@ -29,24 +29,24 @@ class GeometryInterface(Protocol):
     @property
     def bore(self) -> float:
         """Bore diameter [m] (alias for B)."""
-        pass
+        ...
 
     @property
     def stroke(self) -> float:
         """Stroke length [m] (alias for S)."""
-        pass
+        ...
 
     def Volume(self, theta: ca.SX) -> ca.SX:
         """Cylinder volume [m^3] at angle theta."""
-        pass
+        ...
 
     def dV_dtheta(self, theta: ca.SX) -> ca.SX:
         """Derivative of cylinder volume wrt theta [m^3/rad]."""
-        pass
+        ...
 
     def Area_wall(self, theta: ca.SX) -> ca.SX:
         """Wetted wall area [m^2] at angle theta."""
-        pass
+        ...
 
     def Area_intake(
         self,
@@ -55,7 +55,7 @@ class GeometryInterface(Protocol):
         duration_rad: ca.SX | float | None = None,
     ) -> ca.SX:
         """Effective intake valve area [m^2] at angle theta."""
-        pass
+        ...
 
     def Area_exhaust(
         self,
@@ -64,7 +64,7 @@ class GeometryInterface(Protocol):
         duration_rad: ca.SX | float | None = None,
     ) -> ca.SX:
         """Effective exhaust valve area [m^2] at angle theta."""
-        pass
+        ...
 
 
 class StandardSliderCrankGeometry:
@@ -198,7 +198,7 @@ class InterpolatedGeometry:
     """
 
     def __init__(
-        self, theta_arr: np.ndarray, V_arr: np.ndarray, A_wall_arr: Optional[np.ndarray] = None
+        self, theta_arr: np.ndarray, V_arr: np.ndarray, A_wall_arr: np.ndarray | None = None
     ):
         """
         Initialize with data arrays.
