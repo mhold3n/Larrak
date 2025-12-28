@@ -111,6 +111,14 @@ exclude = [
 select = ["E", "F", "I", "B", "C90", "N", "UP", "PL", "RUF"]
 ignore = ["E203", "PLR0913", "PLR2004", "E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Allow physics/engineering naming conventions in geometry module
+# N802: function name should be lowercase
+# N803: argument name should be lowercase
+# N806: variable in function should be lowercase
+# N815: variable in class scope should not be mixedCase
+"campro/optimization/nlp/geometry.py" = ["N802", "N803", "N806", "N815"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_unused_configs = true
@@ -150,6 +158,13 @@ module = [
   "flask_cors.*",
 ]
 ignore_missing_imports = true
+
+# Allow physics/engineering naming conventions in geometry module
+# (Volume, dV_dtheta, A_head, etc. match standard engineering notation)
+[[tool.mypy.overrides]]
+module = ["campro.optimization.nlp.geometry"]
+# Mypy doesn't enforce naming conventions, but we document the exception here
+# Actual naming enforcement is handled by ruff (see per-file-ignores below)
 
 [tool.pytest.ini_options]
 testpaths = ["scripts/tests"]
