@@ -2,7 +2,7 @@
 
 import os
 
-import weaviate
+import weaviate  # type: ignore[import-not-found]
 
 
 def verify_connection() -> bool:
