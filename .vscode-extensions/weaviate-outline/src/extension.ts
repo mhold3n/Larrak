@@ -128,11 +128,8 @@ class WeaviateOutlineProvider implements vscode.DocumentSymbolProvider {
             });
 
             if (response.status === 404) {
-                // File not indexed, show message and return empty
-                vscode.window.showInformationMessage(
-                    `File not indexed in Weaviate. Re-index with: python truthmaker/ingestion/code_scanner.py`,
-                    { modal: false }
-                );
+                // File not indexed - trigger auto-index
+                await this.triggerReindex(relativePath);
                 return [];
             }
 
@@ -145,11 +142,12 @@ class WeaviateOutlineProvider implements vscode.DocumentSymbolProvider {
             if (axios.isAxiosError(error)) {
                 if (error.code === 'ECONNREFUSED') {
                     vscode.window.showErrorMessage(
-                        `Cannot connect to Weaviate API at ${this.apiUrl}. Start with: python dashboard/api.py --port 5001`,
+                        `Cannot connect to Weaviate API at ${this.apiUrl}. Start services with: ./scripts/start-weaviate-services.sh`,
                         { modal: false }
                     );
                 } else if (error.response?.status === 404) {
-                    // File not indexed
+                    // File not indexed - trigger auto-index
+                    await this.triggerReindex(relativePath);
                     return [];
                 } else {
                     console.error('Weaviate Outline API error:', error.message);
@@ -160,19 +158,84 @@ class WeaviateOutlineProvider implements vscode.DocumentSymbolProvider {
             return undefined;
         }
     }
+
+    async triggerReindex(filePath: string): Promise<void> {
+        try {
+            const response = await axios.post(
+                `${this.apiUrl}/api/outline/reindex`,
+                { file: filePath },
+                { timeout: 30000 } // 30 second timeout for indexing
+            );
+
+            if (response.status === 200) {
+                console.log(`✅ Re-indexed: ${filePath}`);
+                // Refresh outline after a short delay
+                setTimeout(() => {
+                    vscode.commands.executeCommand('vscode.executeDocumentSymbolProvider');
+                }, 500);
+            }
+        } catch (error) {
+            console.error(`Failed to trigger re-index for ${filePath}:`, error);
+        }
+    }
+}
+
+class FileWatcher {
+    private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
+    private provider: WeaviateOutlineProvider;
+
+    constructor(provider: WeaviateOutlineProvider) {
+        this.provider = provider;
+    }
+
+    async onFileSaved(document: vscode.TextDocument): Promise<void> {
+        // Only handle Python files
+        if (document.languageId !== 'python') {
+            return;
+        }
+
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (!workspaceFolder) {
+            return;
+        }
+
+        const relativePath = document.uri.fsPath.substring(workspaceFolder.uri.fsPath.length + 1);
+
+        // Debounce: cancel existing timer if file is saved again quickly
+        const existingTimer = this.debounceTimers.get(relativePath);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+        }
+
+        // Set new timer to trigger re-index after 1 second of no saves
+        const timer = setTimeout(async () => {
+            console.log(`📝 File saved, triggering re-index: ${relativePath}`);
+            await this.provider.triggerReindex(relativePath);
+            this.debounceTimers.delete(relativePath);
+        }, 1000);
+
+        this.debounceTimers.set(relativePath, timer);
+    }
 }
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Weaviate Outline extension is now active');
 
     const provider = new WeaviateOutlineProvider();
+    const fileWatcher = new FileWatcher(provider);
 
-    const disposable = vscode.languages.registerDocumentSymbolProvider(
+    // Register document symbol provider
+    const symbolProvider = vscode.languages.registerDocumentSymbolProvider(
         { language: 'python', scheme: 'file' },
         provider
     );
 
-    context.subscriptions.push(disposable);
+    // Register file save listener
+    const saveListener = vscode.workspace.onDidSaveTextDocument((document) => {
+        fileWatcher.onFileSaved(document);
+    });
+
+    context.subscriptions.push(symbolProvider, saveListener);
 }
 
 export function deactivate() {

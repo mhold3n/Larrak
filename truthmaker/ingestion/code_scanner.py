@@ -348,14 +348,33 @@ def scan_repository(
 
 def main() -> int:
     """Main entry point."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Scan Python code and index symbols into Weaviate")
+    parser.add_argument("--file", type=str, help="Index a single file instead of entire repository")
+    args = parser.parse_args()
+
     repo_path = Path(os.environ.get("REPO_PATH", ".")).resolve()
     repo_name = os.environ.get("REPO_NAME", "Larrak")
     repo_owner = os.environ.get("REPO_OWNER", "mhold3n")
     weaviate_url = os.environ.get("WEAVIATE_URL", "http://localhost:8080")
     weaviate_api_key = os.environ.get("WEAVIATE_API_KEY", "")
 
-    print(f"Scanning repository: {repo_path}")
-    print(f"Repository: {repo_owner}/{repo_name}")
+    # Single file mode
+    if args.file:
+        file_path = Path(args.file).resolve()
+        if not file_path.exists():
+            print(f"Error: File not found: {file_path}")
+            return 1
+
+        if not str(file_path).endswith(".py"):
+            print(f"Error: Only Python files: {file_path}")
+            return 1
+
+        print(f"Indexing single file: {file_path}")
+    else:
+        print(f"Scanning repository: {repo_path}")
+        print(f"Repository: {repo_owner}/{repo_name}")
 
     print(f"Connecting to Weaviate at {weaviate_url}...")
 
@@ -385,11 +404,67 @@ def main() -> int:
         print("Connected to local Weaviate")
 
     try:
-        stats = scan_repository(client, repo_path, repo_name, repo_owner)
-        print(f"\nIndexing complete:")
-        print(f"  Files indexed: {stats['files']}")
-        print(f"  Symbols indexed: {stats['symbols']}")
-        return 0
+        if args.file:
+            # Single-file mode
+            file_path = Path(args.file).resolve()
+            try:
+                relative_path = str(file_path.relative_to(repo_path))
+            except ValueError:
+                print(f"Error: File must be in repository: {file_path}")
+                return 1
+
+            # Get/create repo
+            repo_uuid = get_or_create_repo(client, repo_name, repo_owner)
+
+            # Index single file
+            size_bytes = file_path.stat().st_size
+            file_uuid = upsert_file(client, relative_path, repo_uuid, "python", size_bytes)
+            symbols = extract_symbols_from_file(file_path)
+
+            # Upsert symbols with two-pass for parent refs
+            symbol_uuids = {}
+            for sym in symbols:
+                sym_uuid = upsert_symbol(
+                    client,
+                    sym["name"],
+                    sym["kind"],
+                    relative_path,
+                    sym["line_start"],
+                    sym["line_end"],
+                    sym["signature"],
+                    sym["docstring"],
+                    file_uuid,
+                    decorators=sym.get("decorators"),
+                    is_async=sym.get("is_async", False),
+                    return_type=sym.get("return_type"),
+                    parameters=sym.get("parameters"),
+                )
+                symbol_uuids[sym["name"]] = sym_uuid
+
+            # Second pass: parent references
+            for sym in symbols:
+                if sym.get("parent_name") and sym["parent_name"] in symbol_uuids:
+                    parent_uuid = symbol_uuids[sym["parent_name"]]
+                    child_uuid = symbol_uuids[sym["name"]]
+                    symbols_collection = client.collections.get("CodeSymbol")
+                    try:
+                        symbols_collection.data.reference_add(
+                            from_uuid=child_uuid,
+                            from_property="parent_symbol",
+                            to=parent_uuid,
+                        )
+                    except Exception:
+                        pass
+
+            print(f"✅ Indexed {len(symbols)} symbols from {relative_path}")
+            return 0
+        else:
+            # Full repository scan
+            stats = scan_repository(client, repo_path, repo_name, repo_owner)
+            print(f"\nIndexing complete:")
+            print(f"  Files indexed: {stats['files']}")
+            print(f"  Symbols indexed: {stats['symbols']}")
+            return 0
     except Exception as e:
         print(f"Error: {e}")
         import traceback

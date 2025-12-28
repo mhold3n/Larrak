@@ -374,24 +374,72 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 }
             ), 500
 
-    @app.route("/api/outline/refresh", methods=["POST"])
-    def refresh_outline() -> Response:
+    @app.route("/api/outline/reindex", methods=["POST"])
+    def reindex_file() -> Response:
         """Trigger re-indexing of a specific file."""
+        import os
+        import subprocess
+
         data = request.get_json() or {}
         file_path = data.get("file")
 
         if not file_path:
             return jsonify({"error": "file parameter required"}), 400
 
-        # This would trigger the code scanner for a single file
-        # For now, return a placeholder response
-        return jsonify(
-            {
-                "status": "queued",
-                "file": file_path,
-                "message": "File re-indexing queued. This feature requires the file watcher service to be implemented.",
-            }
-        )
+        # Get absolute path
+        repo_root = Path(PROJECT_ROOT)
+        abs_file_path = repo_root / file_path
+
+        if not abs_file_path.exists():
+            return jsonify({"error": f"File not found: {file_path}"}), 404
+
+        if not str(abs_file_path).endswith(".py"):
+            return jsonify({"error": "Only Python files can be indexed"}), 400
+
+        try:
+            # Run code scanner for single file
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(repo_root)
+            env["WEAVIATE_URL"] = "http://localhost:8080"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(repo_root / "truthmaker" / "ingestion" / "code_scanner.py"),
+                    "--file",
+                    str(abs_file_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=env,
+                cwd=str(repo_root),
+            )
+
+            if result.returncode == 0:
+                return jsonify(
+                    {
+                        "status": "success",
+                        "file": file_path,
+                        "message": "File re-indexed successfully",
+                    }
+                )
+            else:
+                return jsonify(
+                    {
+                        "status": "error",
+                        "file": file_path,
+                        "message": "Re-indexing failed",
+                        "error": result.stderr,
+                    }
+                ), 500
+
+        except subprocess.TimeoutExpired:
+            return jsonify(
+                {"status": "error", "file": file_path, "message": "Re-indexing timed out (>30s)"}
+            ), 500
+        except Exception as e:
+            return jsonify({"status": "error", "file": file_path, "message": str(e)}), 500
 
     # =========================================================================
     # Sequence Execution Endpoint (Live Tracking)
