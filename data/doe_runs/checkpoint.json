@@ -1,0 +1,182 @@
+[
+  {
+    "case_id": 0,
+    "timestamp": "2025-12-25T00:02:12.427512",
+    "params": {
+      "bore_mm": 84.64906393857382,
+      "stroke_mm": 87.56191681607763,
+      "compression_ratio": 13.210807623346035,
+      "rpm": 1590.9583379759747,
+      "load_fraction": 0.2573685534435228
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 491.64643872411204,
+      "p_max": 65.66674407973538,
+      "von_mises_max": 112.86842767217614
+    },
+    "error": null
+  },
+  {
+    "case_id": 1,
+    "timestamp": "2025-12-25T00:02:12.429776",
+    "params": {
+      "bore_mm": 70.70003500633372,
+      "stroke_mm": 90.77380763527403,
+      "compression_ratio": 14.809747388696584,
+      "rpm": 2932.241113140485,
+      "load_fraction": 0.36309120785849935
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 515.6315319172547,
+      "p_max": 68.96214844573517,
+      "von_mises_max": 118.15456039292496
+    },
+    "error": null
+  },
+  {
+    "case_id": 2,
+    "timestamp": "2025-12-25T00:02:12.430225",
+    "params": {
+      "bore_mm": 99.00791788347178,
+      "stroke_mm": 107.56240886152005,
+      "compression_ratio": 15.653835647531677,
+      "rpm": 6922.230593518963,
+      "load_fraction": 0.8430545540586734
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 603.5277613410569,
+      "p_max": 81.9950623852293,
+      "von_mises_max": 142.15272770293367
+    },
+    "error": null
+  },
+  {
+    "case_id": 3,
+    "timestamp": "2025-12-25T00:02:12.430543",
+    "params": {
+      "bore_mm": 81.1391660839168,
+      "stroke_mm": 97.13597591132327,
+      "compression_ratio": 12.39326279317063,
+      "rpm": 5735.325530437207,
+      "load_fraction": 0.7942589337448158
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 586.7791486788536,
+      "p_max": 76.40576615287168,
+      "von_mises_max": 139.7129466872408
+    },
+    "error": null
+  },
+  {
+    "case_id": 4,
+    "timestamp": "2025-12-25T00:02:12.430854",
+    "params": {
+      "bore_mm": 94.84889649545876,
+      "stroke_mm": 105.60418695273543,
+      "compression_ratio": 14.124880060650568,
+      "rpm": 3984.1032198366097,
+      "load_fraction": 0.5651785570050398
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 546.3588878988701,
+      "p_max": 73.30513221757958,
+      "von_mises_max": 128.258927850252
+    },
+    "error": null
+  },
+  {
+    "case_id": 5,
+    "timestamp": "2025-12-25T00:02:12.431134",
+    "params": {
+      "bore_mm": 87.19497406769287,
+      "stroke_mm": 101.86710656156747,
+      "compression_ratio": 14.554302128375182,
+      "rpm": 6323.380121299934,
+      "load_fraction": 0.6082898455807688
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 574.0627857710762,
+      "p_max": 74.75539032367533,
+      "von_mises_max": 130.41449227903843
+    },
+    "error": null
+  },
+  {
+    "case_id": 6,
+    "timestamp": "2025-12-25T00:02:12.431444",
+    "params": {
+      "bore_mm": 88.38201189284518,
+      "stroke_mm": 76.84740665658894,
+      "compression_ratio": 11.115122016296219,
+      "rpm": 4441.92752512175,
+      "load_fraction": 0.5062645499026457
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 545.045730241482,
+      "p_max": 69.37865374115532,
+      "von_mises_max": 125.31322749513228
+    },
+    "error": null
+  },
+  {
+    "case_id": 7,
+    "timestamp": "2025-12-25T00:02:12.431721",
+    "params": {
+      "bore_mm": 91.13751871766698,
+      "stroke_mm": 94.94806653734797,
+      "compression_ratio": 10.57795152826348,
+      "rpm": 2139.9238255570963,
+      "load_fraction": 0.3010515285436828
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 501.5043911099392,
+      "p_max": 65.30751412740784,
+      "von_mises_max": 115.05257642718414
+    },
+    "error": null
+  },
+  {
+    "case_id": 8,
+    "timestamp": "2025-12-25T00:02:12.432094",
+    "params": {
+      "bore_mm": 73.52023803821349,
+      "stroke_mm": 79.28449088217805,
+      "compression_ratio": 12.905292081673437,
+      "rpm": 5090.655503543909,
+      "load_fraction": 0.9258012060391805
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 593.4866756393571,
+      "p_max": 79.91289162250192,
+      "von_mises_max": 146.29006030195902
+    },
+    "error": null
+  },
+  {
+    "case_id": 9,
+    "timestamp": "2025-12-25T00:02:12.432375",
+    "params": {
+      "bore_mm": 76.52953473398401,
+      "stroke_mm": 83.53010800373573,
+      "compression_ratio": 11.617212566291284,
+      "rpm": 2598.74972271814,
+      "load_fraction": 0.7481880944936383
+    },
+    "success": true,
+    "outputs": {
+      "T_crown_max": 550.8063066765452,
+      "p_max": 74.4864335555017,
+      "von_mises_max": 137.4094047246819
+    },
+    "error": null
+  }
+]

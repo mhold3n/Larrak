@@ -223,6 +223,58 @@
             color: #888;
         }
 
+        /* Terminal Window */
+        .terminal-window {
+            margin-top: 15px;
+            background: #0d1117;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.75em;
+            height: 200px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .terminal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.8em;
+            color: #8b949e;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 5px;
+        }
+
+        .terminal-line {
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .log-info {
+            color: #c9d1d9;
+        }
+
+        .log-warning {
+            color: #d29922;
+        }
+
+        /* Github warning yellow */
+        .log-error {
+            color: #f85149;
+        }
+
+        /* Github error red */
+        .log-timestamp {
+            color: #8b949e;
+            margin-right: 8px;
+            user-select: none;
+        }
+
         /* =============================================
            Control Panel Styles
            ============================================= */
@@ -1020,6 +1072,68 @@
                     <strong>Properties:</strong> run_id, solver_type, case_path, compute_time_s, success, result_json
                 </p>
             </div>
+
+            <!-- CEM Adaptive Learning Card - Linked to Step 7: Adapt Rules -->
+            <div class="card full-width">
+                <h2>📈 CEM Adaptive Learning <span class="status-badge status-online">Live</span></h2>
+                <p>CEM constraint limits adapt based on HiFi simulation feedback at <strong>Step 7: Adapt
+                        Rules</strong>.</p>
+
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 15px;">
+                    <!-- Max Crown Temp Rule -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #ab47bc, #8e24aa); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🌡️ MaxCrownTemperatureAdaptive</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Category:</td>
+                                <td>THERMODYNAMIC</td>
+                            </tr>
+                            <tr>
+                                <td>Initial Limit:</td>
+                                <td>573 K (300°C)</td>
+                            </tr>
+                            <tr>
+                                <td>Current Limit:</td>
+                                <td id="crown-temp-limit">Loading...</td>
+                            </tr>
+                            <tr>
+                                <td>Δ Total:</td>
+                                <td id="crown-temp-delta">—</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Max Contact Stress Rule -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #5c6bc0, #3949ab); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">⚙️ MaxContactStressAdaptive</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Category:</td>
+                                <td>MECHANICAL</td>
+                            </tr>
+                            <tr>
+                                <td>Initial Limit:</td>
+                                <td>1500 MPa</td>
+                            </tr>
+                            <tr>
+                                <td>Current Limit:</td>
+                                <td id="contact-stress-limit">Loading...</td>
+                            </tr>
+                            <tr>
+                                <td>Δ Total:</td>
+                                <td id="contact-stress-delta">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                    <strong>Weaviate Collection:</strong> <code>CEMRuleAdaptation</code> |
+                    <strong>Persistence:</strong> <code>cem_state.json</code>
+                </p>
+            </div>
         </div>
     </div>
 
@@ -1384,7 +1498,7 @@
             { id: 'SOL', name: 'Solver Refine', icon: '⚡' },
             { id: 'SEL', name: 'Budget Select', icon: '📊' },
             { id: 'CACHE', name: 'Cache Check', icon: '💾' },
-            { id: '*HIFI', name: 'HiFi Eval', icon: '🔬' },
+            { id: 'HIFI', name: 'HiFi Eval', icon: '🔬' },
             { id: 'PROV', name: 'Provenance Log', icon: '📝' },
         ];
 
@@ -1404,6 +1518,14 @@
                         <span class="time"></span>
                     </div>
                 `).join('')}
+
+                <div class="terminal-window" id="terminal-window">
+                    <div class="terminal-header">
+                        <span>>_ Live Terminal</span>
+                        <span style="font-size: 0.8em; cursor: pointer;" onclick="document.getElementById('terminal-content').innerHTML = ''">Clear</span>
+                    </div>
+                    <div id="terminal-content"></div>
+                </div>
             `;
             document.body.appendChild(sidebar);
         }
@@ -1424,9 +1546,19 @@
             }
         }
 
+        // Map specific modules to sidebar steps
+        const STEP_MAPPING = {
+            'FOAM': 'HIFI',
+            'CCX': 'HIFI',
+            'PORTFLOW': 'HIFI',
+            'COMBUST': 'HIFI',
+            'TRUTH': 'HIFI',
+            // Others map 1:1 (CEM->CEM, SUR->SUR)
+        };
+
         function highlightModule(moduleId, active) {
             // Find Mermaid node and add/remove highlight class
-            const nodes = document.querySelectorAll(`[id*="${moduleId}"]`);
+            const nodes = document.querySelectorAll(`[id *= "${moduleId}"]`);
             nodes.forEach(node => {
                 if (active) {
                     node.style.filter = 'drop-shadow(0 0 10px #4caf50)';
@@ -1436,7 +1568,10 @@
             });
 
             // Update run sidebar
-            const step = document.getElementById(`step-${moduleId}`);
+            // Resolve generic step ID if mapped
+            const stepId = STEP_MAPPING[moduleId] || moduleId;
+            const step = document.getElementById(`step-${stepId}`);
+
             if (step) {
                 if (active) {
                     step.classList.add('active');
@@ -1597,16 +1732,21 @@
             const params = getControlInputs();
             console.log('Starting sequence with params:', params);
 
-            // Send start command via WebSocket
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    command: 'start',
-                    params: params,
-                }));
-                updateRunState(true);
-            } else {
-                alert('Not connected to orchestrator. Start the WebSocket server first:\n\npython -m provenance.ws_server');
-            }
+            // Call API to start sequence (this triggers WebSocket events)
+            fetch('http://localhost:5001/api/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Sequence started:', data);
+                    updateRunState(true);
+                })
+                .catch(err => {
+                    console.error('Failed to start:', err);
+                    alert('Failed to start sequence. Make sure the API server is running:\n\npython dashboard/api.py --port 5001');
+                });
         }
 
         function stopSequence() {
@@ -1614,18 +1754,21 @@
 
             console.log('Stopping sequence...');
 
-            // Send stop command via WebSocket
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    command: 'stop',
-                }));
-            }
+            fetch('http://localhost:5001/api/stop', {
+                method: 'POST'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Sequence stopped:', data);
+                })
+                .catch(err => console.error('Stop error:', err));
 
             updateRunState(false);
             const text = document.getElementById('run-status-text');
             text.textContent = 'Stopped by user';
             document.getElementById('run-status-dot').className = 'status-dot stopped';
         }
+
 
         function resetDashboard() {
             if (isRunning) {
@@ -1665,23 +1808,23 @@
                     const stepEl = document.getElementById(`step-${module}`);
                     if (stepEl && duration_ms) {
                         const timeEl = stepEl.querySelector('.time');
-                        if (timeEl) timeEl.textContent = `${Math.round(duration_ms)}ms`;
+                        if (timeEl) timeEl.textContent = `${Math.round(duration_ms)} ms`;
                     }
                     break;
 
                 case 'tool_call':
-                    console.log(`🔧 Tool: ${module}.${tool}`);
+                    console.log(`🔧 Tool: ${module}.${tool} `);
                     break;
 
                 case 'flow_start':
-                    console.log(`→ Flow: ${module} → ${metadata?.target}`);
+                    console.log(`→ Flow: ${module} → ${metadata?.target} `);
                     break;
 
                 case 'error':
-                    const errNode = document.querySelectorAll(`[id*="${module}"]`);
+                    const errNode = document.querySelectorAll(`[id *= "${module}"]`);
                     errNode.forEach(n => n.style.filter = 'drop-shadow(0 0 10px #f44336)');
                     document.getElementById('run-status-dot').className = 'status-dot stopped';
-                    document.getElementById('run-status-text').textContent = `Error in ${module}`;
+                    document.getElementById('run-status-text').textContent = `Error in ${module} `;
                     break;
 
                 case 'run_start':
@@ -1691,8 +1834,39 @@
                 case 'run_end':
                     updateRunState(false);
                     document.getElementById('run-status-text').textContent = 'Completed successfully';
+                    logToTerminal('Run finished successfully.', 'INFO');
+                    break;
+
+                case 'warning':
+                    logToTerminal(`[${module}] ${metadata.message} `, 'WARNING');
+                    break;
+
+                case 'log':
+                    logToTerminal(`[${module}] ${metadata.message} `, metadata.level || 'INFO');
                     break;
             }
+        }
+
+        function logToTerminal(message, level = 'INFO') {
+            const terminal = document.getElementById('terminal-content');
+            if (!terminal) return;
+
+            const line = document.createElement('div');
+            line.className = 'terminal-line';
+
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const tsSpan = `< span class="log-timestamp" > [${timestamp}]</span > `;
+
+            let levelClass = 'log-info';
+            if (level === 'WARNING') levelClass = 'log-warning';
+            if (level === 'ERROR') levelClass = 'log-error';
+
+            line.innerHTML = `${tsSpan} <span class="${levelClass}">${message}</span>`;
+            terminal.appendChild(line);
+
+            // Auto-scroll to bottom
+            const window = document.getElementById('terminal-window');
+            window.scrollTop = window.scrollHeight;
         }
     </script>
 

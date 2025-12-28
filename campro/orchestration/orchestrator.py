@@ -23,6 +23,14 @@ from campro.orchestration.budget import BudgetManager
 from campro.orchestration.cache import EvaluationCache
 from campro.orchestration.provenance import ProvenanceClient
 from campro.orchestration.trust_region import TrustRegion
+from provenance.execution_events import (
+    EventType,
+    emit_event,
+    module_end,
+    module_start,
+    step_end,
+    step_start,
+)
 
 log = get_logger(__name__)
 
@@ -40,6 +48,12 @@ class CEMInterface(Protocol):
 
     def repair(self, candidate: dict[str, Any]) -> dict[str, Any]:
         """Project candidate back to feasible manifold."""
+        ...
+
+    def adapt_rules(
+        self, truth_data: list[tuple[dict[str, Any], float]], run_id: str | None = None
+    ) -> Any:
+        """Adapt rule parameters based on HiFi simulation results (optional)."""
         ...
 
 
@@ -188,27 +202,40 @@ class Orchestrator:
         log.info("Starting CEM-gated optimization")
         log.info(f"Budget: {self.config.total_sim_budget} sim calls")
 
+        emit_event(
+            EventType.RUN_START,
+            "ORCH",
+            metadata={"run_id": run_id or "unknown", "config": str(self.config)},
+        )
+
         iteration = 0
         no_improvement_count = 0
 
         while not self.budget.exhausted() and iteration < self.config.max_iterations:
             iteration += 1
 
+            step_start(iteration)
+
             # Step 1: CEM generates feasible batch
+            module_start("CEM", step="generate_batch")
             candidates = self.cem.generate_batch(initial_params, n=self.config.batch_size)
+            module_end("CEM", candidates=len(candidates))
 
             if not candidates:
                 log.warning("CEM generated no candidates, stopping")
                 break
 
             # Step 2: Surrogate predicts
+            module_start("SUR", step="predict")
             predictions, uncertainty = self.surrogate.predict(candidates)
             self._n_surrogate_calls += len(candidates)
+            module_end("SUR", predictions=len(predictions))
 
             # Get CEM feasibility scores
             feasibility = np.array([self.cem.check_feasibility(c)[1] for c in candidates])
 
             # Step 3: Solver refines top candidates (trust-bounded)
+            module_start("SOL", step="local_refinement")
             refined_candidates = self._refine_candidates(candidates, predictions, uncertainty)
 
             # Repredict after refinement
@@ -218,8 +245,10 @@ class Orchestrator:
             else:
                 refined_candidates = candidates
                 ref_pred, ref_unc = predictions, uncertainty
+            module_end("SOL", refined=len(refined_candidates))
 
             # Step 4: Budget selects for truth evaluation
+            module_start("SEL", step="pick_for_eval")
             selected_indices = self.budget.select(
                 refined_candidates,
                 ref_pred,
@@ -228,25 +257,33 @@ class Orchestrator:
                 if len(feasibility) >= len(refined_candidates)
                 else None,
             )
+            module_end("SEL", selected=len(selected_indices))
 
             # Step 5: Expensive simulation (sparse)
             truth_data = []
-            for idx in selected_indices:
-                candidate = refined_candidates[idx]
+            if selected_indices:
+                module_start("CCX", step="run_simulation")
+                for idx in selected_indices:
+                    candidate = refined_candidates[idx]
 
-                # Check cache first
-                result, was_cached = self.cache.get_or_compute(
-                    candidate, lambda c: self.simulation.evaluate(c)
-                )
+                    # Check cache first
+                    result, was_cached = self.cache.get_or_compute(
+                        candidate, lambda c: self.simulation.evaluate(c)
+                    )
 
-                truth_data.append((candidate, result))
+                    truth_data.append((candidate, result))
 
-                # Update best
-                if result > self._best_objective:
-                    self._best_objective = result
-                    self._best_candidate = candidate.copy()
-                    no_improvement_count = 0
-                    log.info(f"Iter {iteration}: New best = {result:.6f}")
+                    # Update best
+                    if result > self._best_objective:
+                        self._best_objective = result
+                        self._best_candidate = candidate.copy()
+                        no_improvement_count = 0
+                        log.info(f"Iter {iteration}: New best = {result:.6f}")
+                module_end("CCX", simulations=len(selected_indices))
+            else:
+                # Still need to end the module/step if we skipped it?
+                # Actually if we don't start it we don't end it.
+                pass
 
             # Update trust region based on prediction accuracy
             if truth_data and selected_indices:
@@ -260,8 +297,27 @@ class Orchestrator:
 
             # Step 6: Update surrogate periodically
             if iteration % self.config.retrain_every == 0 and truth_data:
+                module_start("PROV", step="update_surrogate")
                 self.surrogate.update(truth_data)
                 log.debug(f"Surrogate updated with {len(truth_data)} samples")
+                module_end("PROV", updated=True)
+
+            # Step 7: Adapt CEM rules based on HiFi feedback
+            # Step 7: Adapt CEM rules based on HiFi feedback
+            if truth_data and hasattr(self.cem, "adapt_rules"):
+                try:
+                    module_start("PROV", step="adapt_rules")
+                    run_id = getattr(self.provenance, "run_id", None)
+                    # Helper function in CEM will handle None, but explicit cast satisfies linter if run_id is expected str
+                    adaptation_report = self.cem.adapt_rules(
+                        truth_data, run_id=str(run_id) if run_id else None
+                    )
+                    if adaptation_report and getattr(adaptation_report, "any_adapted", False):
+                        log.info(f"CEM adapted {adaptation_report.total_rules_adapted} rules")
+                    module_end("PROV", adapted=True)
+                except Exception as e:
+                    log.debug(f"CEM adapt_rules skipped: {e}")
+                    module_end("PROV", adapted=False, error=str(e))
 
             # Record history
             self._history.append(
@@ -277,6 +333,9 @@ class Orchestrator:
 
             # Check convergence
             no_improvement_count += 1
+
+            step_end(iteration, best_objective=self._best_objective)
+
             if no_improvement_count >= self.config.patience:
                 log.info(f"Converged after {self.config.patience} iterations without improvement")
                 break
@@ -291,8 +350,10 @@ class Orchestrator:
                 log.info(f"Final validation: {validated:.6f}")
 
         # Provenance: End run
+        # Provenance: End run
         self.provenance.end_run(status="COMPLETED" if self._best_candidate else "FAILED")
         self.provenance.close()
+        emit_event(EventType.RUN_END, "ORCH", metadata={"success": True})
 
         return OrchestrationResult(
             best_candidate=self._best_candidate or {},

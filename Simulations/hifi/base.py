@@ -82,6 +82,17 @@ class ExternalSolverAdapter(ABC):
         self.input_data: SimulationInput | None = None
         self.case_dir: Path | None = None
         self.results: dict[str, Any] = {}
+        # Optional CEM client for adaptive learning
+        self._cem_client: Any | None = None
+
+    def set_cem_client(self, cem_client: Any) -> None:
+        """
+        Register CEM client for adaptive learning.
+
+        When set, HiFi results will trigger CEM rule adaptation
+        after each solve, enabling the CEM to learn from ground truth.
+        """
+        self._cem_client = cem_client
 
     def load_input(self, input_data: SimulationInput):
         """Load simulation input bundle."""
@@ -159,14 +170,44 @@ class ExternalSolverAdapter(ABC):
         Run solver and return standardized output.
 
         This is the main entry point matching the BaseSimulation interface.
+        Triggers CEM adaptation if a CEM client is registered.
         """
         success = self.execute()
 
+        run_id = self.input_data.run_id if self.input_data else "unknown"
+
+        # Trigger CEM adaptation from HiFi results
+        if success and self._cem_client is not None:
+            self._trigger_cem_adaptation(run_id)
+
         return SimulationOutput(
-            run_id=self.input_data.run_id if self.input_data else "unknown",
+            run_id=run_id,
             success=success,
             calibration_params=self.results,
         )
+
+    def _trigger_cem_adaptation(self, run_id: str) -> None:
+        """
+        Feed HiFi results back to CEM for adaptive rule learning.
+
+        This is the key integration point that closes the loop between
+        ground truth simulations and CEM constraint limits.
+        """
+        if not hasattr(self._cem_client, "adapt_rules"):
+            return
+
+        # Build truth_data in the format expected by adapt_rules
+        truth_data = [(self.results, 1.0)]  # (candidate_dict, objective)
+
+        try:
+            report = self._cem_client.adapt_rules(truth_data, run_id=run_id)
+            if report and getattr(report, "any_adapted", False):
+                print(
+                    f"[{self.name}] CEM adapted {report.total_rules_adapted} rules from HiFi results"
+                )
+        except Exception as e:
+            # Non-fatal - adaptation is optional
+            print(f"[{self.name}] CEM adaptation skipped: {e}")
 
     def post_process(self) -> dict[str, Any]:
         """Return solver results."""

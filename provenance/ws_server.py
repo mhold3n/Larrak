@@ -13,19 +13,27 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
-import json
 import threading
-from typing import Any
 
 try:
     import websockets
-    from websockets.server import serve
+
+    # Explicitly verify which 'serve' to use or use websockets.serve directly
+    from websockets.server import serve as ws_serve  # type: ignore
 
     WEBSOCKETS_AVAILABLE = True
 except ImportError:
-    WEBSOCKETS_AVAILABLE = False
-    websockets = None  # type: ignore
+    try:
+        # Fallback for older versions or different structure
+        import websockets
+
+        ws_serve = websockets.serve  # type: ignore
+        WEBSOCKETS_AVAILABLE = True
+    except ImportError:
+        WEBSOCKETS_AVAILABLE = False
+        websockets = None  # type: ignore
 
 from campro.logging import get_logger
 from provenance.execution_events import ExecutionEvent, add_listener, get_history
@@ -66,7 +74,7 @@ def broadcast_event(event: ExecutionEvent) -> None:
 
     message = event.to_json()
 
-    async def send_all():
+    async def send_all() -> None:
         disconnected = set()
         for client in _clients.copy():
             try:
@@ -95,28 +103,37 @@ async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:
 
     log.info(f"Starting WebSocket server on ws://{host}:{port}")
 
-    async with serve(handler, host, port):
+    async with ws_serve(handler, host, port):
         await asyncio.Future()  # Run forever
 
 
+_server_thread: threading.Thread | None = None
+
+
 def start_background_server(host: str = "0.0.0.0", port: int = 8765) -> None:
-    """Start server in background thread."""
+    """Start server in background thread (idempotent)."""
     if not WEBSOCKETS_AVAILABLE:
         log.warning("websockets not installed, live dashboard disabled")
         return
 
-    def run():
-        asyncio.run(run_server(host, port))
+    global _server_thread
+    if _server_thread is not None and _server_thread.is_alive():
+        log.info(f"WebSocket server already running on port {port}")
+        return
 
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
+    def run() -> None:
+        try:
+            asyncio.run(run_server(host, port))
+        except Exception as e:
+            log.error(f"WebSocket server thread failed: {e}")
+
+    _server_thread = threading.Thread(target=run, daemon=True)
+    _server_thread.start()
     log.info(f"WebSocket server started in background on port {port}")
 
 
 def main() -> int:
     """CLI entry point."""
-    import argparse
-
     parser = argparse.ArgumentParser(description="Dashboard WebSocket server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
     parser.add_argument("--port", type=int, default=8765, help="Port to listen on")

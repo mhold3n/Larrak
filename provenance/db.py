@@ -168,6 +168,64 @@ class ProvenanceDB:
             )
         return uuid
 
+    def is_connected(self) -> bool:
+        """Check if Weaviate client is connected and ready."""
+        return self._client is not None and self._client.is_ready()
+
+    def insert_cem_adaptation(
+        self,
+        rule_name: str,
+        rule_category: str,
+        limit_before: float,
+        limit_after: float,
+        delta: float,
+        direction: str,
+        trigger_margin: float,
+        n_observations: int,
+        run_id: str | None = None,
+        regime_id: int = 0,
+    ) -> None:
+        """
+        Insert a CEM rule adaptation event into Weaviate.
+
+        Used by CEMStateStore to sync adaptive rule changes for dashboard display.
+        """
+        if not self._client:
+            return
+
+        try:
+            adaptations = self._client.collections.get("CEMRuleAdaptation")
+
+            adaptation_id = (
+                f"cem_adapt_{rule_name}_{datetime.datetime.now(datetime.timezone.utc).isoformat()}"
+            )
+
+            properties = {
+                "adaptation_id": adaptation_id,
+                "rule_name": rule_name,
+                "rule_category": rule_category,
+                "timestamp": datetime.datetime.now(datetime.timezone.utc),
+                "limit_before": limit_before,
+                "limit_after": limit_after,
+                "delta": delta,
+                "direction": direction,
+                "trigger_margin": trigger_margin,
+                "n_observations": n_observations,
+                "regime_id": regime_id,
+            }
+
+            references = {}
+            if run_id:
+                references["run"] = weaviate.util.generate_uuid5(run_id)
+
+            adaptations.data.insert(
+                uuid=weaviate.util.generate_uuid5(adaptation_id),
+                properties=properties,
+                references=references if references else None,
+            )
+        except Exception as e:
+            print(f"Error inserting CEM adaptation: {e}")
+
 
 # Global instance
 db = ProvenanceDB()

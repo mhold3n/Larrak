@@ -464,6 +464,111 @@ class CEMClient:
             mean_centerline=response.mean_centerline_mm,
         )
 
+    # =========================================================================
+    # Adaptive Rule Management
+    # =========================================================================
+
+    def _init_adaptive_rules(self) -> None:
+        """Initialize adaptive rules and state store (lazy)."""
+        if hasattr(self, "_adaptive_rules"):
+            return
+
+        from truthmaker.cem.rules.adaptation import (
+            MaxContactStressAdaptive,
+            MaxCrownTemperatureAdaptive,
+        )
+        from truthmaker.cem.state_store import CEMStateStore
+
+        # Create state store (uses default path)
+        state_path = self.config.get("cem_state_path", "cem_state.json")
+        self._state_store = CEMStateStore(state_path)
+
+        # Initialize adaptive rules with defaults or config overrides
+        self._adaptive_rules = [
+            MaxCrownTemperatureAdaptive(
+                limit_k=self.config.get("max_crown_temp_k", 573.0),
+                learning_rate=self.config.get("adaptation_learning_rate", 0.05),
+                min_observations=self.config.get("adaptation_min_obs", 10),
+            ),
+            MaxContactStressAdaptive(
+                limit_mpa=self.config.get("max_contact_stress_mpa", 1500.0),
+                learning_rate=self.config.get("adaptation_learning_rate", 0.05),
+                min_observations=self.config.get("adaptation_min_obs", 10),
+            ),
+        ]
+
+        # Load persisted state
+        for rule in self._adaptive_rules:
+            state = self._state_store.load_rule_state(rule.name)
+            if state:
+                rule.load_state(state)
+                log.info(f"Loaded adaptive state for {rule.name}: limit={rule.limit:.2f}")
+
+    def adapt_rules(
+        self,
+        truth_data: List[Tuple[Dict[str, Any], float]],
+        run_id: Optional[str] = None,
+    ) -> Any:
+        """
+        Adapt CEM rule parameters based on HiFi simulation results.
+
+        Called by the orchestrator after each batch of expensive simulations.
+        Learns from the margin between predicted and actual constraint values.
+
+        Args:
+            truth_data: List of (candidate_params, hifi_objective) tuples
+            run_id: Optional provenance run ID for tracking
+
+        Returns:
+            AdaptationReport summarizing which rules adapted
+        """
+        from truthmaker.cem.rules.adaptation import AdaptationReport
+
+        self._init_adaptive_rules()
+
+        adapted = []
+
+        for candidate, objective in truth_data:
+            # Each candidate dict may contain HiFi result metrics
+            for rule in self._adaptive_rules:
+                # Get predicted value from candidate (surrogate's prediction)
+                predicted = candidate.get(f"predicted_{rule.name}", objective)
+
+                # Adapt rule based on HiFi result
+                delta = rule.adapt(candidate, predicted)
+
+                if abs(delta) > 1e-6:
+                    adapted.append((rule.name, delta))
+
+                    # Log adaptation to state store (and Weaviate)
+                    self._state_store.log_adaptation(
+                        rule_name=rule.name,
+                        rule_category=rule.category.value,
+                        limit_before=rule.limit - delta,
+                        limit_after=rule.limit,
+                        delta=delta,
+                        direction="tighten" if delta < 0 else "relax",
+                        trigger_margin=float(np.mean(rule._state.margin_history[-10:])),
+                        n_observations=rule._state.n_observations,
+                        run_id=run_id,
+                    )
+
+        # Persist all rule states
+        states = {rule.name: rule.get_state() for rule in self._adaptive_rules}
+        self._state_store.save_all_states(states)
+
+        return AdaptationReport(adapted_rules=adapted, run_id=run_id)
+
+    def get_adaptive_statistics(self) -> Dict[str, Any]:
+        """Get current adaptive rule statistics for dashboard display."""
+        self._init_adaptive_rules()
+        return self._state_store.get_statistics()
+
+    @property
+    def cem_version(self) -> str:
+        """CEM version string for metadata."""
+        return "adaptive-1.0.0" if hasattr(self, "_adaptive_rules") else "mock-0.1.0"
+
 
 def get_cem_client(
     host: str = "localhost", port: int = 50051, mock: bool = True, config: Optional[dict] = None

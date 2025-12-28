@@ -45,6 +45,8 @@ class EventType(Enum):
 
     # Errors
     ERROR = "error"
+    WARNING = "warning"
+    LOG = "log"
 
     # Run lifecycle
     RUN_START = "run_start"
@@ -202,3 +204,15 @@ def step_end(iteration: int, **metadata: Any) -> ExecutionEvent:
 def error(module: str, message: str, **metadata: Any) -> ExecutionEvent:
     """Emit ERROR event."""
     return emit_event(EventType.ERROR, module, metadata={"message": message, **metadata})
+
+
+def warning(module: str, message: str, **metadata: Any) -> ExecutionEvent:
+    """Emit WARNING event."""
+    return emit_event(EventType.WARNING, module, metadata={"message": message, **metadata})
+
+
+def log_message(module: str, message: str, level: str = "INFO", **metadata: Any) -> ExecutionEvent:
+    """Emit generic LOG event."""
+    return emit_event(
+        EventType.LOG, module, metadata={"message": message, "level": level, **metadata}
+    )
