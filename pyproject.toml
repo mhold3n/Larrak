@@ -159,13 +159,6 @@ module = [
 ]
 ignore_missing_imports = true
 
-# Allow physics/engineering naming conventions in geometry module
-# (Volume, dV_dtheta, A_head, etc. match standard engineering notation)
-[[tool.mypy.overrides]]
-module = ["campro.optimization.nlp.geometry"]
-# Mypy doesn't enforce naming conventions, but we document the exception here
-# Actual naming enforcement is handled by ruff (see per-file-ignores below)
-
 [tool.pytest.ini_options]
 testpaths = ["scripts/tests"]
 python_files = ["test_*.py"]
