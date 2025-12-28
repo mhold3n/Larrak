@@ -1,9 +1,12 @@
+"""Test Phase 3 mechanical optimization (geometry and mechanics only)."""
+
 import numpy as np
+import pytest
 
 from campro.optimization.driver import solve_cycle
 
 
-def test_phase3_mechanical_optimization():
+def test_phase3_mechanical_optimization() -> None:
     """
     Test Phase 3 Mechanical Optimization (Geometric/MECH only).
     Verifies that the solver runs without thermodynamics and produces mechanical metrics.
@@ -25,7 +28,7 @@ def test_phase3_mechanical_optimization():
     target_ratio_list = target_ratio.tolist()
 
     # 3. Setup Parameters
-    P = {
+    params = {
         "problem_type": "mechanical",  # Though we detect via load_profile
         "load_profile": load_profile,
         "target_ratio_profile": target_ratio_list,
@@ -42,7 +45,7 @@ def test_phase3_mechanical_optimization():
     }
 
     # 4. Run Solver
-    result = solve_cycle(P)
+    result = solve_cycle(params)
 
     # 5. Verify Results
     # solve_cycle returns a Solution object, not a dict directly
@@ -56,8 +59,6 @@ def test_phase3_mechanical_optimization():
     has_mechanical = "mechanical" in opt_res
 
     if not is_converged and not (is_max_iter and has_mechanical):
-        import pytest
-
         pytest.fail(f"Optimization failed: {opt_res.get('message')}")
 
     # Check Mechanical Outputs
@@ -78,10 +79,10 @@ def test_phase3_mechanical_optimization():
         assert k in mech, f"Key {k} missing from mechanical results"
 
     # Check dimensions
-    assert len(mech["r"]) == P["num"]["K"]
+    assert len(mech["r"]) == params["num"]["K"]
     # psi should be K+1?
     # In driver logic we truncated to K intervals for metrics
-    assert len(mech["psi"]) == P["num"]["K"]
+    assert len(mech["psi"]) == params["num"]["K"]
 
     # Check Physics Feasibility
     # Efficiency should be <= 1.0

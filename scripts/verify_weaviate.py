@@ -1,10 +1,12 @@
-import json
+"""Verify Weaviate connection and collection statistics."""
+
 import os
 
 import weaviate
 
 
-def verify_connection():
+def verify_connection() -> bool:
+    """Connect to Weaviate and verify collections exist with data."""
     url = os.getenv("WEAVIATE_URL", "http://localhost:8080")
     print(f"Connecting to Weaviate at {url}...")
 
@@ -43,7 +45,7 @@ def verify_connection():
 
         client.close()
         return True
-    except Exception as e:
+    except (ConnectionError, TimeoutError, ValueError) as e:
         print(f"Connection failed: {e}")
         return False
 
