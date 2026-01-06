@@ -3,9 +3,13 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
+    user: root  # Start as root so entrypoint can fix permissions
     volumes:
       - ../:/workspace:cached
       - ../logs:/workspace/logs:rw
+      - git-credentials:/home/mambauser/.git-credentials:rw
+      - gh-config:/home/mambauser/.config/gh:rw
+      - ssh-keys:/home/mambauser/.ssh:ro
     command: /bin/sh -c "while sleep 1000; do :; done"
     working_dir: /workspace
     environment:
@@ -48,6 +52,11 @@ services:
       options:
         max-size: "50m"
         max-file: "2"
+
+volumes:
+  git-credentials:
+  gh-config:
+  ssh-keys:
 
 networks:
   larrak-internal:
