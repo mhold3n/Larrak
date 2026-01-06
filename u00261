@@ -1,0 +1,2 @@
+/Users/maxholden/anaconda3/lib/python3.11/site-packages/scipy/optimize/_slsqp_py.py:435: RuntimeWarning: Values in x were outside bounds during a minimize step, clipping to bounds
+  fx = wrapped_fun(x)

@@ -1,0 +1,18 @@
+orchestrator:
+  # Mode: 'production' or 'demo'
+  mode: "demo"
+
+  simulation:
+    # true: Use CalculiX/OpenFOAM (requires installation)
+    # false: Use 0D analytical model (fast, no CPU load)
+    use_full_physics: false
+
+  cem:
+    # true: Use mock CEM client (no validation service needed)
+    # false: Connect to live CEM service
+    use_mock: true
+
+  solver:
+    # 'ipopt': Use full NLP solver (requires IPOPT installed)
+    # 'simple': Use gradient-free local search (robust, no dependencies)
+    type: "simple"

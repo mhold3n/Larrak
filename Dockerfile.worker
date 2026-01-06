@@ -1,0 +1,20 @@
+FROM mambaorg/micromamba:1.5.3
+
+# Use the same base setup as dev container
+USER root
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+USER mambauser
+COPY environment-dev.yml /tmp/environment-dev.yml
+RUN micromamba create -y -f /tmp/environment-dev.yml && \
+    micromamba clean --all --yes
+
+ENV PATH /opt/conda/envs/larrak-dev/bin:$PATH
+
+# Install job queue dependencies
+RUN pip install redis rq flask-socketio
+
+WORKDIR /workspace

@@ -6,6 +6,7 @@ Provides structured loss functions and validation metrics for engineering surrog
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -187,6 +188,11 @@ class CEMTrainer:
         n_batches = 0
 
         for batch in dataloader:
+            # Global Stop Signal Check
+            if os.environ.get("ORCHESTRATOR_STOP_SIGNAL") == "1":
+                print("Training aborted due to stop signal.")
+                break
+
             if len(batch) == 2:
                 x, y = batch
             else:

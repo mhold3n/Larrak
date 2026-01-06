@@ -19,7 +19,6 @@ import numpy as np
 
 from campro.logging import get_logger
 from campro.optimization.core.solution import Solution
-from campro.optimization.driver import solve_cycle
 
 if TYPE_CHECKING:
     pass
@@ -43,6 +42,8 @@ def solve_cycle_robust(params: dict[str, Any]) -> dict[str, Any]:
     params_robust = params.copy()
     params_robust["problem_type"] = "robust"
 
+    from campro.optimization.driver import solve_cycle
+
     return solve_cycle(params_robust)
 
 
@@ -63,6 +64,8 @@ def solve_cycle_with_warm_start(
     # Add warm start information
     params_warm = params.copy()
     params_warm["warm_start"] = {"x0": x0.tolist()}
+
+    from campro.optimization.driver import solve_cycle
 
     return solve_cycle(params_warm)
 
@@ -125,7 +128,7 @@ def solve_cycle_with_fuel_continuation(
 
         # Use previous solution as warm start
         if current_solution is not None and current_solution.success:
-            x_prev = current_solution.meta.get("optimization", {}).get("x_opt")
+            x_prev = current_solution.data.get("x")
             if x_prev is not None:
                 # Convert to list if numpy array
                 x0_list = x_prev.tolist() if isinstance(x_prev, np.ndarray) else x_prev
@@ -190,22 +193,26 @@ def _solve_with_retries(
             params_retry.setdefault("solver", {}).setdefault("ipopt", {})
             params_retry["solver"]["ipopt"]["ipopt.tol"] = tol
             log.info(f"Retry {attempt}/{max_retries} for {step_name} with relaxed tol={tol:.2e}")
+            from campro.optimization.driver import solve_cycle
+
             result = solve_cycle(params_retry)
         else:
+            from campro.optimization.driver import solve_cycle
+
             result = solve_cycle(params)
 
-        if result["success"]:
+        if result.success:
             if attempt > 0:
                 log.info(f"Converged on retry {attempt} with tol={tol:.2e}")
                 # Mark retry in metadata
-                result.setdefault("meta", {}).setdefault("retry", {})["attempt"] = attempt
-                result["meta"]["retry"]["tolerance"] = tol
+                result.meta.setdefault("retry", {})["attempt"] = attempt
+                result.meta["retry"]["tolerance"] = tol
             # Convert to Solution
-            return Solution(meta=result.get("meta", {}), data=result)
+            return result
 
     log.warning(f"All {max_retries + 1} attempts failed for {step_name}")
     # Convert last result to Solution
-    return Solution(meta=result.get("meta", {}), data=result)
+    return result
 
 
 def solve_cycle_with_refinement(
@@ -230,10 +237,14 @@ def solve_cycle_with_refinement(
     params_0d["num"] = params_0d.get("num", {})
     params_0d["num"]["K"] = params_0d["num"].get("K_0d", 10)
 
+    params_0d["num"]["K"] = params_0d["num"].get("K_0d", 10)
+
     log.info("Solving with 0D model...")
+    from campro.optimization.driver import solve_cycle
+
     result_0d = solve_cycle(params_0d)
 
-    if not result_0d["success"]:
+    if not result_0d.success:
         log.warning("0D solve failed, trying 1D directly")
         return solve_cycle(params)
 
@@ -265,21 +276,21 @@ def solve_cycle_with_refinement(
 
     result_1d = solve_cycle(params_1d)
 
-    if result_1d["success"]:
+    if result_1d.success:
         log.info("1D refinement successful")
         return result_1d
     log.warning("1D refinement failed, returning 0D solution")
     return result_0d
 
 
-def _should_refine_error_based(result_0d: dict[str, Any], params: dict[str, Any]) -> bool:
+def _should_refine_error_based(result_0d: Solution, params: dict[str, Any]) -> bool:
     """Determine if refinement is needed based on error estimates."""
     # Check convergence criteria
-    if result_0d.get("kkt_error", float("inf")) > 1e-4:
+    if result_0d.meta.get("optimization", {}).get("kkt_error", float("inf")) > 1e-4:
         return True
 
     # Check objective function value
-    f_opt = result_0d.get("f_opt", float("inf"))
+    f_opt = result_0d.objective_value
     if f_opt > 1e6:  # High objective value might indicate poor solution
         return True
 
@@ -291,7 +302,7 @@ def _should_refine_error_based(result_0d: dict[str, Any], params: dict[str, Any]
     return False
 
 
-def _should_refine_adaptive(result_0d: dict[str, Any], params: dict[str, Any]) -> bool:
+def _should_refine_adaptive(result_0d: Solution, params: dict[str, Any]) -> bool:
     """Determine if refinement is needed based on problem characteristics."""
     # Check problem complexity
     if params.get("complex_geometry", False):
@@ -306,21 +317,21 @@ def _should_refine_adaptive(result_0d: dict[str, Any], params: dict[str, Any]) -
         return True
 
     # Check solution quality
-    if result_0d.get("kkt_error", float("inf")) > 1e-5:
+    if result_0d.meta.get("optimization", {}).get("kkt_error", float("inf")) > 1e-5:
         return True
 
     return False
 
 
 def _create_warm_start_from_0d(
-    result_0d: dict[str, Any],
+    result_0d: Solution,
     params_1d: dict[str, Any],
 ) -> dict[str, Any]:
     """Create warm start for 1D solve from 0D solution."""
-    if not result_0d["success"] or result_0d.get("x_opt") is None:
+    if not result_0d.success:
         return {}
 
-    x_0d = result_0d["x_opt"]
+    x_0d = result_0d.data.get("x")
     if not isinstance(x_0d, (list, np.ndarray)):
         return {}
     # Convert to list[float] for interpolation functions
@@ -343,8 +354,8 @@ def _create_warm_start_from_0d(
 
     return {
         "x0": x_1d,
-        "lambda0": result_0d.get("lambda_opt", []),
-        "mu0": result_0d.get("mu_opt", []),
+        "lambda0": result_0d.data.get("lam_g", []),
+        "mu0": result_0d.data.get("lam_x", []),
     }
 
 
@@ -398,7 +409,7 @@ def solve_cycle_adaptive(
 
     # Start with 0D model
     current_model = "0d"
-    current_result: dict[str, Any] | None = None
+    current_result: Solution | None = None
 
     for refinement in range(max_refinements + 1):
         log.info(f"Refinement {refinement}: Solving with {current_model} model")
@@ -414,14 +425,14 @@ def solve_cycle_adaptive(
             params_current["num"]["K"] = params_current["num"].get("K_1d", 30)
 
         # Use previous result as warm start
-        if current_result is not None and current_result["success"]:
+        if current_result is not None and current_result.success:
             warm_start = _create_warm_start_from_0d(current_result, params_current)
             params_current["warm_start"] = warm_start
 
         # Solve current model
         current_result = solve_cycle(params_current)
 
-        if not current_result["success"]:
+        if not current_result.success:
             log.warning(f"{current_model} solve failed at refinement {refinement}")
             if refinement == 0:
                 return current_result
@@ -442,7 +453,7 @@ def solve_cycle_adaptive(
 
     if current_result is None:
         # Return empty result if no solve was attempted
-        return {"success": False, "message": "No solve attempted"}
+        return Solution(meta={}, data={"success": False, "message": "No solve attempted"})
     return current_result
 
 
@@ -456,6 +467,8 @@ def get_driver_function(driver_type: str = "standard") -> Any:
     Returns:
         Driver function
     """
+    from campro.optimization.driver import solve_cycle
+
     functions = {
         "standard": solve_cycle,
         "robust": solve_cycle_robust,

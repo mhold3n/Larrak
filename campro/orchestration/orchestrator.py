@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -42,7 +43,9 @@ class CEMInterface(Protocol):
         """Generate batch of feasible candidates."""
         ...
 
-    def check_feasibility(self, candidate: dict[str, Any]) -> tuple[bool, float]:
+    def check_feasibility(
+        self, candidate: dict[str, Any], run_id: str | None = None
+    ) -> tuple[bool, float]:
         """Check feasibility and return (is_feasible, score)."""
         ...
 
@@ -212,6 +215,11 @@ class Orchestrator:
         no_improvement_count = 0
 
         while not self.budget.exhausted() and iteration < self.config.max_iterations:
+            # Check for stop signal from dashboard
+            if os.environ.get("ORCHESTRATOR_STOP_SIGNAL") == "1":
+                log.warning("Orchestrator loop aborted due to stop signal")
+                break
+
             iteration += 1
 
             step_start(iteration)
@@ -266,10 +274,12 @@ class Orchestrator:
                 for idx in selected_indices:
                     candidate = refined_candidates[idx]
 
+                    module_start("CACHE", candidate_id=str(candidate.get("id", idx)))
                     # Check cache first
                     result, was_cached = self.cache.get_or_compute(
                         candidate, lambda c: self.simulation.evaluate(c)
                     )
+                    module_end("CACHE", was_cached=was_cached)
 
                     truth_data.append((candidate, result))
 

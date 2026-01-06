@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import grpc
 import numpy as np
@@ -34,6 +34,8 @@ except ImportError as e:
 
     print(f"[ERROR] GRPC Import Failed: {e}", file=sys.stderr)
     GRPC_AVAILABLE = False
+    cem_pb2 = None  # type: ignore[assignment]
+    cem_pb2_grpc = None  # type: ignore[assignment]
 
 log = logging.getLogger(__name__)
 
@@ -145,10 +147,10 @@ class ConstraintViolation:
     code: ViolationCode
     severity: ViolationSeverity
     message: str
-    margin: Optional[float] = None  # Distance to feasibility
+    margin: float | None = None  # Distance to feasibility
     suggested_action: SuggestedActionCode = SuggestedActionCode.NONE
-    affected_variables: Optional[List[str]] = None
-    metrics: Optional[Dict[str, float]] = None
+    affected_variables: list[str] | None = None
+    metrics: dict[str, float] | None = None
 
 
 @dataclass
@@ -156,11 +158,11 @@ class ValidationReport:
     """Aggregated validation result with all violations."""
 
     is_valid: bool
-    violations: List[ConstraintViolation] = field(default_factory=list)
+    violations: list[ConstraintViolation] = field(default_factory=list)
     cem_version: str = "mock-0.1.0"
     config_hash: str = "default"
     regime_id: int = 0  # 0=unknown, 1=idle, 2=cruise, 3=full_load
-    geometry_data: Optional[Dict[str, Any]] = None
+    geometry_data: dict[str, Any] | None = None
 
     @property
     def max_severity(self) -> ViolationSeverity:
@@ -168,7 +170,7 @@ class ValidationReport:
             return ViolationSeverity.INFO
         return max(v.severity for v in self.violations)
 
-    def get_by_code(self, code: ViolationCode) -> List[ConstraintViolation]:
+    def get_by_code(self, code: ViolationCode) -> list[ConstraintViolation]:
         return [v for v in self.violations if v.code == code]
 
     def has_errors(self) -> bool:
@@ -179,9 +181,9 @@ class ValidationReport:
 class OperatingEnvelope:
     """Feasible operating envelope returned by CEM."""
 
-    boost_range: Tuple[float, float]
-    fuel_range: Tuple[float, float]
-    motion_bounds: Tuple[float, float]
+    boost_range: tuple[float, float]
+    fuel_range: tuple[float, float]
+    motion_bounds: tuple[float, float]
     feasible: bool
     config_hash: str
 
@@ -218,17 +220,28 @@ class CEMClient:
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 50051,
+        host: str | None = None,
+        port: int | None = None,
         mock: bool = False,
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ):
-        self.host = host
-        self.port = port
+        # Read from environment if not explicitly provided
+        import os
+
+        cem_service_url = os.getenv("CEM_SERVICE_URL", "localhost:50051")
+        if ":" in cem_service_url:
+            default_host, default_port_str = cem_service_url.rsplit(":", 1)
+            default_port = int(default_port_str)
+        else:
+            default_host = cem_service_url
+            default_port = 50051
+
+        self.host = host or default_host
+        self.port = port or default_port
         self.mock = mock or (not GRPC_AVAILABLE)
         self.config = config or {}
-        self._channel = None
-        self._stub = None
+        self._channel: grpc.Channel | None = None
+        self._stub: Any = None
 
         # Config defaults
         self.max_jerk = self.config.get("max_jerk", 500.0)
@@ -238,15 +251,18 @@ class CEMClient:
         if not self.mock:
             self._connect()
 
-    def _connect(self):
+    def _connect(self) -> None:
         """Establish gRPC connection."""
         try:
             target = f"{self.host}:{self.port}"
             self._channel = grpc.insecure_channel(target)
-            self._stub = cem_pb2_grpc.CEMServiceStub(self._channel)
+            self._stub = cem_pb2_grpc.CEMServiceStub(self._channel)  # type: ignore[union-attr]
             # Simple health check
             try:
-                response = self._stub.HealthCheck(cem_pb2.HealthCheckRequest(), timeout=2.0)
+                response = self._stub.HealthCheck(
+                    cem_pb2.HealthCheckRequest(),  # type: ignore[attr-defined,union-attr]  # pylint: disable=no-member
+                    timeout=2.0,
+                )
                 if not response.healthy:
                     log.warning(f"[CEM] Service reported unhealthy: {response.status}")
             except grpc.RpcError as e:
@@ -266,10 +282,10 @@ class CEMClient:
             log.error(f"[CEM] Connection error: {e}")
             self.mock = True
 
-    def __enter__(self):
+    def __enter__(self) -> CEMClient:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self._channel:
             self._channel.close()
 
@@ -282,6 +298,10 @@ class CEMClient:
 
     def _validate_motion_mock(self, x_profile: np.ndarray, theta: np.ndarray) -> ValidationReport:
         """Mock validation logic."""
+        # Defensive: Generate theta if None (prevents TypeError in np.gradient)
+        if theta is None:
+            theta = np.linspace(0, 2 * np.pi, len(x_profile))
+
         # Simple jerk check
         dx = np.gradient(x_profile, theta)
         ddx = np.gradient(dx, theta)
@@ -311,14 +331,14 @@ class CEMClient:
         """Live gRPC implementation of motion validation."""
         # This method was missing in the broken file but indented wrongly?
         # Re-implementing with geometry config populator.
-        request = cem_pb2.MotionValidationRequest()
+        request = cem_pb2.MotionValidationRequest()  # type: ignore[attr-defined,union-attr]  # pylint: disable=no-member
         request.x_profile_mm.extend(x_profile.tolist())
         request.theta_rad.extend(theta.tolist())
         request.max_jerk = self.max_jerk
         request.max_radius = self.max_radius
 
         # Populate Geometry Config to trigger shape kernel
-        geom_config = cem_pb2.GeometryConfig()
+        geom_config = cem_pb2.GeometryConfig()  # type: ignore[attr-defined,union-attr]  # pylint: disable=no-member
         geom_config.gear_depth_mm = self.config.get("gear_depth_mm", 10.0)
         geom_config.wall_thickness_mm = self.config.get("wall_thickness_mm", 5.0)
         geom_config.voxel_size_mm = self.config.get("voxel_size_mm", 0.5)
@@ -329,7 +349,7 @@ class CEMClient:
 
         # Call service
         try:
-            response = self._stub.ValidateMotion(request)
+            response = self._stub.ValidateMotion(request)  # type: ignore[union-attr]
         except grpc.RpcError as e:
             log.error(f"[CEM] gRPC Call Failed: {e}")
             raise
@@ -402,10 +422,15 @@ class CEMClient:
         self, bore: float, stroke: float, cr: float, rpm: float
     ) -> OperatingEnvelope:
         """Live gRPC implementation of envelope generation."""
-        geometry = cem_pb2.EngineGeometry(bore_m=bore, stroke_m=stroke, compression_ratio=cr)
-        request = cem_pb2.ThermoEnvelopeRequest(geometry=geometry, rpm=rpm)
+        # pylint: disable=no-member
+        geometry = cem_pb2.EngineGeometry(  # type: ignore[attr-defined,union-attr]
+            bore_m=bore, stroke_m=stroke, compression_ratio=cr
+        )
+        request = cem_pb2.ThermoEnvelopeRequest(  # type: ignore[attr-defined,union-attr]
+            geometry=geometry, rpm=rpm
+        )
 
-        response = self._stub.GetThermoEnvelope(request)
+        response = self._stub.GetThermoEnvelope(request)  # type: ignore[union-attr]
 
         return OperatingEnvelope(
             boost_range=(response.boost_min, response.boost_max),
@@ -416,7 +441,7 @@ class CEMClient:
         )
 
     def get_gear_initial_guess(
-        self, x_target: np.ndarray, theta: Optional[np.ndarray] = None
+        self, x_target: np.ndarray, theta: np.ndarray | None = None
     ) -> GearInitialGuess:
         if self.mock:
             return self._get_gear_initial_guess_mock(x_target, theta)
@@ -424,7 +449,7 @@ class CEMClient:
             return self._get_gear_initial_guess_grpc(x_target, theta)
 
     def _get_gear_initial_guess_mock(
-        self, x_target: np.ndarray, theta: Optional[np.ndarray] = None
+        self, x_target: np.ndarray, theta: np.ndarray | None = None
     ) -> GearInitialGuess:
         n = len(x_target)
         if theta is None:
@@ -440,21 +465,21 @@ class CEMClient:
             Rr=np.full(n, c_mean + rp_mean),
             C=np.full(n, c_mean),
             phase_offset=0.0,
-            mean_centerline=x_mean,
+            mean_centerline=float(x_mean),
         )
 
     def _get_gear_initial_guess_grpc(
-        self, x_target: np.ndarray, theta: Optional[np.ndarray] = None
+        self, x_target: np.ndarray, theta: np.ndarray | None = None
     ) -> GearInitialGuess:
         n = len(x_target)
         if theta is None:
             theta = np.linspace(0, 2 * np.pi, n)
 
-        request = cem_pb2.GearInitialGuessRequest()
+        request = cem_pb2.GearInitialGuessRequest()  # type: ignore[attr-defined,union-attr]  # pylint: disable=no-member
         request.x_target_mm.extend(x_target.tolist())
         request.theta_rad.extend(theta.tolist())
 
-        response = self._stub.GetGearInitialGuess(request)
+        response = self._stub.GetGearInitialGuess(request)  # type: ignore[union-attr]
 
         return GearInitialGuess(
             Rp=np.array(list(response.rp)),
@@ -506,8 +531,8 @@ class CEMClient:
 
     def adapt_rules(
         self,
-        truth_data: List[Tuple[Dict[str, Any], float]],
-        run_id: Optional[str] = None,
+        truth_data: list[tuple[dict[str, Any], float]],
+        run_id: str | None = None,
     ) -> Any:
         """
         Adapt CEM rule parameters based on HiFi simulation results.
@@ -559,7 +584,7 @@ class CEMClient:
 
         return AdaptationReport(adapted_rules=adapted, run_id=run_id)
 
-    def get_adaptive_statistics(self) -> Dict[str, Any]:
+    def get_adaptive_statistics(self) -> dict[str, Any]:
         """Get current adaptive rule statistics for dashboard display."""
         self._init_adaptive_rules()
         return self._state_store.get_statistics()
@@ -571,7 +596,10 @@ class CEMClient:
 
 
 def get_cem_client(
-    host: str = "localhost", port: int = 50051, mock: bool = True, config: Optional[dict] = None
+    host: str | None = None,
+    port: int | None = None,
+    mock: bool = True,
+    config: dict | None = None,
 ) -> CEMClient:
     """Factory function for CEM client."""
     return CEMClient(host, port, mock, config)

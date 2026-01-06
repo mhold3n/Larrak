@@ -13,5 +13,7 @@
     }
   },
   "files.trimTrailingWhitespace": true,
-  "cursorpyright.analysis.typeCheckingMode": "basic"
+  "cursorpyright.analysis.typeCheckingMode": "basic",
+  "docker.dockerPath": "/usr/local/bin/docker",
+  "remote.containers.dockerPath": "/usr/local/bin/docker"
 }

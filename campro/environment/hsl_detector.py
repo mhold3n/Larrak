@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from campro.environment.platform_detector import IS_MACOS, IS_WINDOWS
 from campro.logging import get_logger
@@ -99,8 +100,16 @@ def find_coinhsl_directory(project_root: Path | None = None) -> Path | None:
             if "darwin" in name_lower or "apple" in name_lower:
                 platform_matches.append(candidate)
     else:
-        # Linux: accept any CoinHSL directory
-        platform_matches = candidates
+        # Linux: exclude Windows/macOS specific directories
+        for candidate in candidates:
+            name_lower = candidate.name.lower()
+            if (
+                "mingw" not in name_lower
+                and "darwin" not in name_lower
+                and "apple" not in name_lower
+                and "w64" not in name_lower
+            ):
+                platform_matches.append(candidate)
 
     if not platform_matches:
         log.debug(

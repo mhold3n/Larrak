@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Larrak Desktop</title>
+    <style>
+      body {
+        background-color: #1a1b1e;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      .loader {
+        border: 3px solid #333;
+        border-top: 3px solid #3b82f6;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin-right: 15px;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+    <script>
+      // Redirect to the API dashboard
+      window.location.href = "http://localhost:8000";
+    </script>
+  </head>
+  <body>
+    <div class="loader"></div>
+    <p>Connecting to Larrak Dashboard...</p>
+  </body>
+</html>

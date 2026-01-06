@@ -1,0 +1,2327 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Larrak Orchestrator Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="tools.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #c9d1d9;
+            --border-color: #30363d;
+            --accent-color: #58a6ff;
+            --card-bg: #161b22;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 20px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .status-offline {
+            background-color: #da3633;
+            color: white;
+        }
+
+        .status-online {
+            background-color: #238636;
+            color: white;
+        }
+
+        .diagram {
+            background-color: white;
+            /* Mermaid needs light bg usually or extensive config */
+            border-radius: 6px;
+            padding: 10px;
+            overflow-x: auto;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .close-btn {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-btn:hover,
+        .close-btn:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        /* =============================================
+           Live Tracking Styles
+           ============================================= */
+
+        /* Animation keyframes */
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 15px rgba(76, 175, 80, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+
+        @keyframes flow {
+            0% {
+                stroke-dashoffset: 20;
+            }
+
+            100% {
+                stroke-dashoffset: 0;
+            }
+        }
+
+        /* Connection status indicator */
+        .ws-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+            z-index: 200;
+        }
+
+        .ws-connected {
+            background: #238636;
+            color: white;
+        }
+
+        .ws-disconnected {
+            background: #da3633;
+            color: white;
+        }
+
+        /* Run list sidebar */
+        .run-sidebar {
+            position: fixed;
+            right: 20px;
+            top: 80px;
+            width: 220px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            z-index: 50;
+        }
+
+        .run-sidebar h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.95em;
+            color: var(--accent-color);
+        }
+
+        .run-step {
+            padding: 8px 10px;
+            margin: 4px 0;
+            border-radius: 4px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .run-step.active {
+            background: rgba(76, 175, 80, 0.2);
+            border-left: 3px solid #4caf50;
+            animation: pulse 2s infinite;
+        }
+
+        .run-step.complete {
+            opacity: 0.7;
+        }
+
+        .run-step .icon {
+            width: 16px;
+            text-align: center;
+        }
+
+        .run-step .time {
+            margin-left: auto;
+            font-size: 0.75em;
+            color: #888;
+        }
+
+        /* Terminal Window */
+        .terminal-window {
+            margin-top: 15px;
+            background: #0d1117;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 0.75em;
+            height: 200px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .terminal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.8em;
+            color: #8b949e;
+            margin-bottom: 5px;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 5px;
+        }
+
+        .terminal-line {
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .log-info {
+            color: #c9d1d9;
+        }
+
+        .log-warning {
+            color: #d29922;
+        }
+
+        /* Github warning yellow */
+        .log-error {
+            color: #f85149;
+        }
+
+        /* Github error red */
+        .log-timestamp {
+            color: #8b949e;
+            margin-right: 8px;
+            user-select: none;
+        }
+
+        /* =============================================
+           Control Panel Styles
+           ============================================= */
+
+        .control-panel {
+            background: linear-gradient(135deg, #1a2332, #161b22);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .control-panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .input-group {
+            margin-bottom: 12px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.85em;
+            color: #8b949e;
+            margin-bottom: 4px;
+        }
+
+        .input-group input,
+        .input-group select {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-color);
+            font-size: 0.9em;
+        }
+
+        .input-group input:focus,
+        .input-group select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #238636, #2ea043);
+            color: white;
+        }
+
+        .btn-start:hover {
+            background: linear-gradient(135deg, #2ea043, #3fb950);
+        }
+
+        .btn-start:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #da3633, #f85149);
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background: linear-gradient(135deg, #f85149, #ff7b72);
+        }
+
+        .btn-stop:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-reset {
+            background: linear-gradient(135deg, #30363d, #484f58);
+            color: var(--text-color);
+        }
+
+        .btn-reset:hover {
+            background: linear-gradient(135deg, #484f58, #6e7681);
+        }
+
+        .status-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            font-size: 0.85em;
+            color: #8b949e;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #484f58;
+        }
+
+        .status-dot.running {
+            background: #4caf50;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.stopped {
+            background: #da3633;
+        }
+
+        .status-dot.idle {
+            background: #f0ad4e;
+        }
+
+        /* Collapsible sections */
+        details {
+            margin-bottom: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0;
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        details summary {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95em;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 6px;
+            user-select: none;
+        }
+
+        details summary:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        details[open] summary {
+            border-bottom: 1px solid var(--border-color);
+            border-radius: 6px 6px 0 0;
+        }
+
+        details>div,
+        details>.input-group,
+        details>.input-row {
+            padding: 0 15px;
+        }
+
+        details>.input-row:first-of-type,
+        details>.input-group:first-of-type {
+            padding-top: 12px;
+        }
+
+        details>.input-row:last-of-type,
+        details>.input-group:last-of-type {
+            padding-bottom: 12px;
+        }
+
+        /* Select styling */
+        .input-group select {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-color);
+            font-size: 0.9em;
+        }
+
+        .input-group select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Larrak Orchestrator Dashboard</h1>
+
+        <div class="grid">
+            <div class="card control-panel" style="grid-column: 1 / -1;">
+                <h2>🎮 Control Panel</h2>
+
+                <!-- Collapsible Sections -->
+                <details open>
+                    <summary>📊 Optimization</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Max Iterations</label>
+                            <input type="number" id="input-max-iter" value="100" min="1" max="1000">
+                        </div>
+                        <div class="input-group">
+                            <label>Convergence Tolerance</label>
+                            <input type="number" id="input-tolerance" value="1e-6" step="1e-7">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Batch Size</label>
+                            <input type="number" id="input-batch" value="10" min="1" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>CEM Population Size</label>
+                            <input type="number" id="input-cem-pop" value="100" min="10" max="1000">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>🎯 Trust Region</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Initial Radius</label>
+                            <input type="number" id="input-tr-initial" value="0.1" min="0.01" max="1" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label>Min Radius</label>
+                            <input type="number" id="input-tr-min" value="0.01" min="0.001" max="0.1" step="0.001">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Max Radius</label>
+                            <input type="number" id="input-tr-max" value="0.5" min="0.1" max="1" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Expand Factor</label>
+                            <input type="number" id="input-tr-expand" value="1.5" min="1.1" max="3" step="0.1">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Shrink Factor</label>
+                            <input type="number" id="input-tr-shrink" value="0.5" min="0.1" max="0.9" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Uncertainty Weight</label>
+                            <input type="number" id="input-tr-unc-weight" value="1.0" min="0" max="5" step="0.1">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Good Agreement (≤)</label>
+                            <input type="number" id="input-tr-good" value="0.1" min="0.01" max="0.5" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label>Bad Agreement (≥)</label>
+                            <input type="number" id="input-tr-bad" value="0.3" min="0.1" max="1" step="0.05">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>💰 Budget Allocation</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Total Sim Calls</label>
+                            <input type="number" id="input-budget-total" value="50" min="10" max="500">
+                        </div>
+                        <div class="input-group">
+                            <label>Validation Reserve %</label>
+                            <input type="number" id="input-budget-reserve" value="10" min="0" max="50">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Best Predicted %</label>
+                            <input type="number" id="input-alloc-best" value="40" min="0" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>High Uncertainty %</label>
+                            <input type="number" id="input-alloc-uncertain" value="30" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Disagreement %</label>
+                            <input type="number" id="input-alloc-disagree" value="20" min="0" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>Random Explore %</label>
+                            <input type="number" id="input-alloc-random" value="10" min="0" max="100">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>⚙️ Solver (IPOPT)</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Max Iterations</label>
+                            <input type="number" id="input-ipopt-maxiter" value="3000" min="100" max="50000">
+                        </div>
+                        <div class="input-group">
+                            <label>Acceptable Tol</label>
+                            <input type="number" id="input-ipopt-tol" value="1e-4" step="1e-5">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Print Level</label>
+                            <select id="input-ipopt-print">
+                                <option value="0">0 - Quiet</option>
+                                <option value="3">3 - Summary</option>
+                                <option value="5" selected>5 - Normal</option>
+                                <option value="12">12 - Debug</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Linear Solver</label>
+                            <select id="input-ipopt-linear">
+                                <option value="mumps" selected>MUMPS</option>
+                                <option value="ma57">MA57</option>
+                                <option value="ma27">MA27</option>
+                            </select>
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>🔬 HiFi Simulation</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Thermal Solver</label>
+                            <select id="input-hifi-thermal">
+                                <option value="laplacianFoam" selected>laplacianFoam</option>
+                                <option value="chtMultiRegionFoam">chtMultiRegionFoam</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Structural Solver</label>
+                            <select id="input-hifi-struct">
+                                <option value="calculix" selected>CalculiX</option>
+                                <option value="code_aster">Code_Aster</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Mesh Resolution</label>
+                            <select id="input-hifi-mesh">
+                                <option value="coarse">Coarse</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="fine">Fine</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Parallel Workers</label>
+                            <input type="number" id="input-hifi-workers" value="4" min="1" max="32">
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Timeout (s)</label>
+                            <input type="number" id="input-hifi-timeout" value="3600" min="60" max="86400">
+                        </div>
+                        <div class="input-group">
+                            <label>Docker Container</label>
+                            <input type="text" id="input-hifi-docker" placeholder="openfoam:v2312"
+                                value="openfoam:v2312">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>🧠 Surrogate Model</summary>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Model Type</label>
+                            <select id="input-surr-type">
+                                <option value="gated" selected>Gated Ensemble</option>
+                                <option value="gp">Gaussian Process</option>
+                                <option value="nn">Neural Network</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Uncertainty Quantification</label>
+                            <select id="input-surr-uq">
+                                <option value="ensemble" selected>Ensemble Variance</option>
+                                <option value="dropout">MC Dropout</option>
+                                <option value="evidential">Evidential</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Retrain Frequency</label>
+                            <input type="number" id="input-surr-retrain" value="10" min="1" max="100">
+                        </div>
+                        <div class="input-group">
+                            <label>Min Training Data</label>
+                            <input type="number" id="input-surr-mindata" value="20" min="5" max="1000">
+                        </div>
+                    </div>
+                </details>
+
+                <details>
+                    <summary>📁 Paths & I/O</summary>
+                    <div class="input-group">
+                        <label>Config File</label>
+                        <input type="text" id="input-config" placeholder="path/to/config.yaml">
+                    </div>
+                    <div class="input-group">
+                        <label>Output Directory</label>
+                        <input type="text" id="input-output-dir" placeholder="./results" value="./results">
+                    </div>
+                    <div class="input-group">
+                        <label>Checkpoint Directory</label>
+                        <input type="text" id="input-checkpoint" placeholder="./checkpoints" value="./checkpoints">
+                    </div>
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>Random Seed</label>
+                            <input type="number" id="input-seed" value="42" min="0" max="999999">
+                        </div>
+                        <div class="input-group">
+                            <label>Log Level</label>
+                            <select id="input-loglevel">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO" selected>INFO</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                            </select>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="btn-group">
+                    <button class="btn btn-start" id="btn-start" onclick="startSequence()">
+                        ▶️ Start Sequence
+                    </button>
+                    <button class="btn btn-stop" id="btn-stop" onclick="stopSequence()" disabled>
+                        ⏹️ Stop
+                    </button>
+                    <button class="btn btn-reset" id="btn-reset" onclick="resetDashboard()">
+                        🔄 Reset
+                    </button>
+                </div>
+
+                <!-- Additional Workflow Actions -->
+                <div class="btn-group" style="margin-top: 15px; gap: 10px;">
+                    <button class="btn"
+                        style="background: linear-gradient(135deg, #42a5f5, #1976d2); border: none; color: white;"
+                        onclick="trainSurrogates()">
+                        🧠 Train Surrogates
+                    </button>
+                    <button class="btn"
+                        style="background: linear-gradient(135deg, #66bb6a, #388e3c); border: none; color: white;"
+                        onclick="runGearOptimization()">
+                        ⚙️ Run Gear Optimization
+                    </button>
+                    <button class="btn"
+                        style="background: linear-gradient(135deg, #ffa726, #f57c00); border: none; color: white;"
+                        onclick="generateDOE()">
+                        📊 Generate DOE
+                    </button>
+                </div>
+                <!-- DOE Configuration -->
+                <div style="margin: 15px 0; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid #ffa726;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #ffa726;">DOE Parameters</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #ccc;">Sample Count</label>
+                            <input type="number" id="doe-n-samples" value="50" min="10" max="500" 
+                                   style="width: 100%; padding: 6px; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 4px; color: white;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #ccc;">Sampling Method</label>
+                            <select id="doe-method" style="width: 100%; padding: 6px; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 4px; color: white;">
+                                <option value="lhs">Latin Hypercube</option>
+                                <option value="sobol">Sobol Sequence</option>
+                                <option value="random">Random</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress Tracker for Long Tasks -->
+                <!-- Surrogate Training Metrics (initially hidden) -->
+                <div id="training-metrics-card" style="display: none; margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #42a5f5 0%, #1976d2 100%); border-radius: 8px; color: white;">
+                    <h3 style="margin: 0 0 15px 0; font-size: 16px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🧠 Surrogate Training Results</span>
+                        <button onclick="closeMetrics()" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 0 5px;">×</button>
+                    </h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Structural Loss:</td>
+                            <td id="metric-struct-loss" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Thermal Loss:</td>
+                            <td id="metric-thermal-loss" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Structural R²:</td>
+                            <td id="metric-struct-r2" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Thermal R²:</td>
+                            <td id="metric-thermal-r2" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Training Samples:</td>
+                            <td id="metric-n-samples" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; font-weight: bold;">Training Time:</td>
+                            <td id="metric-train-time" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                    </table>
+                </div>
+                <div id="progress-container"
+                    style="display: none; margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                    <h3 id="progress-title" style="margin: 0 0 10px 0; font-size: 16px;">Running Task...</h3>
+                    <progress id="progress-bar" value="0" max="100" style="width: 100%; height: 25px;"></progress>
+                    <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px;">
+                        <span id="progress-text">0%</span>
+                        <span id="progress-eta">Elapsed: 0s</span>
+                    <button id="cancel-task-btn" onclick="cancelCurrentTask()" style="margin-top: 10px; padding: 8px 16px; background: #ef5350; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">⛔ Cancel Task</button>                    </div>
+                </div>
+
+                <div class="status-line">
+                    <span class="status-dot" id="run-status-dot"></span>
+                    <span id="run-status-text">Idle - Ready to start</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Module Connectivity</h2>
+                <p>The Orchestrator gates optimization via three loops:</p>
+                <ul>
+                    <li><strong>Outer Loop:</strong> CEM Feasibility (Geometry validation)</li>
+                    <li><strong>Middle Loop:</strong> Surrogate Prediction (Fast ML filtering)</li>
+                    <li><strong>Inner Loop:</strong> Trust-Region Solver (IPOPT Refinement)</li>
+                </ul>
+            </div>
+
+            <div class="card full-width">
+                <h2>Architecture Diagram</h2>
+                <div class="diagram">
+                    <div class="mermaid">
+                        graph TD
+                        %% Styling
+                        classDef core fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#0d47a1
+                        classDef module fill:#e8f5e9,stroke:#1b5e20,stroke-width:3px,color:#1b5e20
+                        classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:3px,color:#4a148c
+                        classDef hifi fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#e65100
+                        classDef util fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#880e4f
+                        classDef invis fill:none,stroke:none
+
+                        %% Make arrows thicker and easier to see
+                        linkStyle default stroke-width:3px,fill:none,stroke:#666
+
+                        subgraph Orchestrator_Context [Orchestrator Control Layer]
+                        direction TB
+                        ORCH[Orchestrator]
+
+                        subgraph Internals [State Management]
+                        direction LR
+                        BM[Budget Manager]
+                        TR[Trust Region]
+                        CACHE[Eval Cache]
+                        end
+
+                        ORCH -.- BM
+                        ORCH -.- TR
+                        ORCH -.- CACHE
+                        end
+
+                        subgraph Pipeline [Fast Optimization Loop]
+                        direction TB
+                        CEM[1. CEM: Generate & Repair]
+                        SUR[2. Surrogate: Predict + Uncertainty]
+                        SOL[3. Solver: Local Refinement]
+                        SEL[4. Budget Select: Pick for Eval]
+                        end
+
+                        subgraph HiFi [HiFi Solvers - Offline DOE]
+                        direction LR
+                        FOAM[🔥 laplacianFoam]
+                        CCX[⚙️ CalculiX]
+                        PORTFLOW[💨 simpleFoam]
+                        COMBUST[🔶 reactingFoam]
+                        end
+
+                        subgraph Data [Data Layer - Weaviate Tracked]
+                        direction LR
+                        TRUTH[(Truth DB)]
+                        WEAV[(Vector DB)]
+                        PROV[Provenance Client]
+                        end
+
+                        %% Fast Optimization Loop (green - main pipeline)
+                        ORCH ==>|generate_batch| CEM
+                        CEM ==>|candidates| SUR
+                        SUR ==>|predict| SOL
+                        SOL ==>|refine| SEL
+                        SEL ==>|select| ORCH
+
+                        %% Budget gates expensive evals (blue - caching)
+                        SEL -.->|get_or_compute| CACHE
+                        CACHE -.->|cached_result| SEL
+
+                        %% Orchestrator calls HiFi for DOE (orange - HiFi dispatch)
+                        ORCH -.->|thermal_solve| FOAM
+                        ORCH -.->|structural_solve| CCX
+                        ORCH -.->|port_flow_solve| PORTFLOW
+                        ORCH -.->|combustion_solve| COMBUST
+
+                        %% HiFi results go to Truth DB (orange - HiFi store)
+                        FOAM -.->|T_crown_max| TRUTH
+                        CCX -.->|von_mises_max| TRUTH
+                        PORTFLOW -.->|Cd, swirl| TRUTH
+                        COMBUST -.->|Wiebe a,m| TRUTH
+
+                        %% Truth DB feeds Surrogate training (purple - data flow)
+                        TRUTH -.->|update| SUR
+                        TRUTH -.->|embed| WEAV
+
+                        %% Surrogates query Vector DB (purple - data flow)
+                        WEAV -.->|similarity| SUR
+
+                        %% Provenance logging (red - logging)
+                        ORCH -.->|start_run| PROV
+                        PROV -.->|insert| WEAV
+
+                        %% Link Styles by process type
+                        %% 0-4: Optimization loop (green)
+                        linkStyle 0 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 1 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 2 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 3 stroke:#2e7d32,stroke-width:4px
+                        linkStyle 4 stroke:#2e7d32,stroke-width:4px
+                        %% 5-6: Cache check (cyan)
+                        linkStyle 5 stroke:#0097a7,stroke-width:3px
+                        linkStyle 6 stroke:#0097a7,stroke-width:3px
+                        %% 7-10: DOE dispatch (orange)
+                        linkStyle 7 stroke:#e65100,stroke-width:3px
+                        linkStyle 8 stroke:#e65100,stroke-width:3px
+                        linkStyle 9 stroke:#e65100,stroke-width:3px
+                        linkStyle 10 stroke:#e65100,stroke-width:3px
+                        %% 11-14: HiFi store (orange-red)
+                        linkStyle 11 stroke:#d84315,stroke-width:3px
+                        linkStyle 12 stroke:#d84315,stroke-width:3px
+                        linkStyle 13 stroke:#d84315,stroke-width:3px
+                        linkStyle 14 stroke:#d84315,stroke-width:3px
+                        %% 15-16: Training data (purple)
+                        linkStyle 15 stroke:#7b1fa2,stroke-width:3px
+                        linkStyle 16 stroke:#7b1fa2,stroke-width:3px
+                        %% 17: Vector query (purple)
+                        linkStyle 17 stroke:#7b1fa2,stroke-width:3px
+                        %% 18-19: Provenance (red)
+                        linkStyle 18 stroke:#c62828,stroke-width:3px
+                        linkStyle 19 stroke:#c62828,stroke-width:3px
+
+                        %% Classes
+                        class ORCH,BM,TR,CACHE core
+                        class CEM,SUR,SOL,SEL module
+                        class TRUTH,WEAV,PROV db
+                        class FOAM,CCX,PORTFLOW,COMBUST hifi
+                        class Internals invis
+
+                        %% Interaction
+                        click ORCH clickORCH
+                        click CEM clickCEM
+                        click SUR clickSUR
+                        click SOL clickSOL
+                        click BM clickBM
+                        click TR clickTR
+                        click CACHE clickCACHE
+                        click SEL clickSEL
+                        click FOAM clickFOAM
+                        click CCX clickCCX
+                        click PORTFLOW clickPORTFLOW
+                        click COMBUST clickCOMBUST
+                        click TRUTH clickTRUTH
+                        click WEAV clickWEAV
+                        click PROV clickPROV
+                    </div>
+                </div>
+                <p align="center"><em>Click any node to expand internal process</em></p>
+
+                <!-- Legend -->
+                <div style="display: flex; justify-content: center; margin-top: 15px;">
+                    <div
+                        style="background: #f5f5f5; border-radius: 8px; padding: 15px 25px; display: inline-flex; gap: 30px; flex-wrap: wrap;">
+                        <!-- Node Colors -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div
+                                style="width: 16px; height: 16px; background: #e1f5fe; border: 2px solid #01579b; border-radius: 3px;">
+                            </div>
+                            <span style="font-size: 0.85em; color: #333;">Core / State</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div
+                                style="width: 16px; height: 16px; background: #e8f5e9; border: 2px solid #1b5e20; border-radius: 3px;">
+                            </div>
+                            <span style="font-size: 0.85em; color: #333;">Pipeline Module</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div
+                                style="width: 16px; height: 16px; background: #fff3e0; border: 2px solid #e65100; border-radius: 3px;">
+                            </div>
+                            <span style="font-size: 0.85em; color: #333;">HiFi Solver</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div
+                                style="width: 16px; height: 16px; background: #f3e5f5; border: 2px solid #4a148c; border-radius: 3px;">
+                            </div>
+                            <span style="font-size: 0.85em; color: #333;">Data Layer</span>
+                        </div>
+                        <div style="border-left: 2px solid #ccc; height: 24px; margin: 0 10px;"></div>
+                        <!-- Trace Colors -->
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #2e7d32; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Optimization Loop</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #0097a7; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Cache Check</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #e65100; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">HiFi Dispatch</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #d84315; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">HiFi Store</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #7b1fa2; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Data Flow</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 24px; height: 4px; background: #c62828; border-radius: 2px;"></div>
+                            <span style="font-size: 0.85em; color: #333;">Provenance</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- HiFi Simulation Runs Card - Linked to Stage 4: Simulation -->
+            <div class="card full-width">
+                <h2>🖥️ HiFi Simulation Runs <span class="status-badge status-online">Tracked</span></h2>
+                <p>Expensive CFD/FEA simulations at <strong>Stage 4: Ground Truth</strong> that generate training data.
+                </p>
+
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 15px;">
+                    <!-- OpenFOAM -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #ff7043, #ff5722); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🔥 OpenFOAM (Thermal)</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Solver:</td>
+                                <td><code>laplacianFoam</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>T_crown_max (K)</td>
+                            </tr>
+                            <tr>
+                                <td>Docker Image:</td>
+                                <td><code>openfoam11-paraview510</code></td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>simulation</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- CalculiX -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #42a5f5, #1e88e5); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">⚙️ CalculiX (Structural)</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Solver:</td>
+                                <td><code>ccx</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>von_mises_max (MPa)</td>
+                            </tr>
+                            <tr>
+                                <td>Docker Image:</td>
+                                <td><code>calculix/ccx</code></td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>simulation</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Port Flow CFD -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #66bb6a, #43a047); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">💨 Port Flow (Fluid)</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Solver:</td>
+                                <td><code>simpleFoam</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>Cd, swirl/tumble ratio</td>
+                            </tr>
+                            <tr>
+                                <td>Docker Image:</td>
+                                <td><code>openfoam11-paraview510</code></td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>simulation</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Combustion CFD -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #ffb74d, #ff9800); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🔶 Combustion (Prechamber)</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Solver:</td>
+                                <td><code>reactingFoam</code></td>
+                            </tr>
+                            <tr>
+                                <td>Output:</td>
+                                <td>Wiebe params, p_max</td>
+                            </tr>
+                            <tr>
+                                <td>Docker Image:</td>
+                                <td><code>openfoam11-paraview510</code></td>
+                            </tr>
+                            <tr>
+                                <td>Workflow Stage:</td>
+                                <td><strong>simulation</strong></td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                    <strong>Weaviate Collection:</strong> <code>HiFiSimulationRun</code> |
+                    <strong>Properties:</strong> run_id, solver_type, case_path, compute_time_s, success, result_json
+                </p>
+            </div>
+
+            <!-- =============================================
+                 Runtime Statistics (Cache, Budget, Trust Region)
+                 ============================================= -->
+            <div class="card full-width">
+                <h2>📊 Runtime Statistics</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                    <!-- Cache Stats Card -->
+                    <div
+                        style="background: linear-gradient(135deg, #26a69a, #00897b); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">💾 Evaluation Cache</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Total Entries:</td>
+                                <td id="cache-total-entries">—</td>
+                            </tr>
+                            <tr>
+                                <td>Hit Rate:</td>
+                                <td id="cache-hit-rate">—</td>
+                            </tr>
+                            <tr>
+                                <td>Efficiency:</td>
+                                <td id="cache-efficiency">—</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Budget Stats Card -->
+                    <div
+                        style="background: linear-gradient(135deg, #5c6bc0, #3949ab); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">💰 Budget Allocation</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Total Budget:</td>
+                                <td id="budget-total">—</td>
+                            </tr>
+                            <tr>
+                                <td>Spent:</td>
+                                <td id="budget-spent">—</td>
+                            </tr>
+                            <tr>
+                                <td>Remaining:</td>
+                                <td id="budget-remaining">—</td>
+                            </tr>
+                            <tr>
+                                <td>Utilization:</td>
+                                <td id="budget-utilization">—</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Trust Region Stats Card -->
+                    <div
+                        style="background: linear-gradient(135deg, #ef5350, #c62828); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🎯 Trust Region</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Current Radius:</td>
+                                <td id="tr-radius">—</td>
+                            </tr>
+                            <tr>
+                                <td>Status:</td>
+                                <td id="tr-status">—</td>
+                            </tr>
+                            <tr>
+                                <td>Agreement:</td>
+                                <td id="tr-agreement">—</td>
+                            </tr>
+                            <tr>
+                                <td>Total Updates:</td>
+                                <td id="tr-total-updates">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                    <strong>Auto-refresh:</strong> Every 5 seconds |
+                    <strong>Last Updated:</strong> <span id="stats-last-update">Never</span>
+                </p>
+            </div>
+
+            <!-- CEM Adaptive Learning Card - Linked to Step 7: Adapt Rules -->
+            <div class="card full-width">
+                <h2>📈 CEM Adaptive Learning <span class="status-badge status-online">Live</span></h2>
+                <p>CEM constraint limits adapt based on HiFi simulation feedback at <strong>Step 7: Adapt
+                        Rules</strong>.</p>
+
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 15px;">
+                    <!-- Max Crown Temp Rule -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #ab47bc, #8e24aa); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🌡️ MaxCrownTemperatureAdaptive</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Category:</td>
+                                <td>THERMODYNAMIC</td>
+                            </tr>
+                            <tr>
+                                <td>Initial Limit:</td>
+                                <td>573 K (300°C)</td>
+                            </tr>
+                            <tr>
+                                <td>Current Limit:</td>
+                                <td id="crown-temp-limit">Loading...</td>
+                            </tr>
+                            <tr>
+                                <td>Δ Total:</td>
+                                <td id="crown-temp-delta">—</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Max Contact Stress Rule -->
+                    <div
+                        style="flex: 1; min-width: 250px; background: linear-gradient(135deg, #5c6bc0, #3949ab); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">⚙️ MaxContactStressAdaptive</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Category:</td>
+                                <td>MECHANICAL</td>
+                            </tr>
+                            <tr>
+                                <td>Initial Limit:</td>
+                                <td>1500 MPa</td>
+                            </tr>
+                            <tr>
+                                <td>Current Limit:</td>
+                                <td id="contact-stress-limit">Loading...</td>
+                            </tr>
+                            <tr>
+                                <td>Δ Total:</td>
+                                <td id="contact-stress-delta">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                    <strong>Weaviate Collection:</strong> <code>CEMRuleAdaptation</code> |
+                    <strong>Persistence:</strong> <code>cem_state.json</code>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drill-Down Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title">Module Detail</h2>
+            <div id="modal-diagram" class="diagram"></div>
+        </div>
+    </div>
+
+    <script>
+        // Sub-diagram definitions
+        const diagrams = {
+            "CEM": `graph LR
+                classDef step fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Start((Start)) --> Env[Envelope Sampling]
+                Env --> Check{Check Feasibility}
+                Check -- Yes --> Batch[Add to Batch]
+                Check -- No --> Repair[Repair with Constraints]
+                Repair --> Check
+                Batch --> End((Return Batch))
+                subgraph Tools [🔧 Tools]
+                T1[gRPC Server]
+                T2[C++ Core]
+                T3[NumPy]
+                end
+                class Env,Check,Repair,Batch step
+                class T1,T2,T3 tool`,
+
+            "SUR": `graph LR
+                classDef step fill:#e3f2fd,stroke:#0277bd,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input(Batch) --> Feat[Feature Extraction]
+                Feat --> Ensemble[Ensemble Forward Pass]
+                Ensemble --> Mean[Mean Prediction]
+                Ensemble --> Std[Uncertainty Est.]
+                Mean --> Filter[Filter Top K]
+                Std --> End((Return Predictions))
+                Filter --> End
+                subgraph Tools [🔧 Tools]
+                T1[PyTorch]
+                T2[EnsembleSurrogate]
+                T3[NumPy]
+                end
+                class Feat,Ensemble,Mean,Std,Filter step
+                class T1,T2,T3 tool`,
+
+            "SOL": `graph TD
+                classDef step fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input(Candidate) --> Trust[Apply Trust Region]
+                Trust --> NLP[Build NLP Problem]
+                NLP --> IPOPT[Call IPOPT Solver]
+                IPOPT --> Check{Converged?}
+                Check -- Yes --> Opt[Store Local Optima]
+                Check -- No --> Fail[Mark Invalid]
+                Opt --> End((Return Result))
+                Fail --> End
+                subgraph Tools [🔧 Tools]
+                T1[CasADi]
+                T2[IPOPT]
+                T3[MA57 / HSL]
+                T4[collocation_nlp]
+                end
+                class Trust,NLP,IPOPT,Check,Opt,Fail step
+                class T1,T2,T3,T4 tool`,
+
+            "SIM": `graph LR
+                classDef step fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input(Params) --> Setup[Setup Physics Kernel]
+                Setup --> Eval[Execute Simulation]
+                Eval --> Metrics[Calculate Efficiency]
+                Metrics --> Cost[Compute Cost Function]
+                Cost --> End((Return Truth))
+                subgraph Tools [🔧 Tools]
+                T1[HiFiSimulationAdapter]
+                T2[Docker Containers]
+                T3[result_parsers.py]
+                end
+                class Setup,Eval,Metrics,Cost step
+                class T1,T2,T3 tool`,
+
+            "ORCH": `graph TD
+                classDef step fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Start((Start)) --> Init[Initialize Budget]
+                Init --> Loop{Budget > 0?}
+                Loop -- Yes --> Step1[Sample & Predict]
+                Step1 --> Step2[Refine Candidates]
+                Step2 --> Step3[Simulate & Update]
+                Step3 --> Loop
+                Loop -- No --> End((Final Solution))
+                subgraph Tools [🔧 Tools]
+                T1[Orchestrator class]
+                T2[BudgetManager]
+                T3[TrustRegion]
+                T4[ProvenanceClient]
+                end
+                class Init,Loop,Step1,Step2,Step3 step
+                class T1,T2,T3,T4 tool`,
+
+            "BM": `graph TD
+                classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Budget((Total Budget)) --> Split[Allocate: 40% Best / 30% Uncertain / 20% Disagree / 10% Random]
+                Split --> Track[Track Consumption]
+                Track --> Reserve[Reserve 10% for Validation]
+                Reserve --> End((Remaining))
+                Track -.-> W[(Weaviate: Run)]
+                subgraph Tools [🔧 Tools]
+                T1[budget.py]
+                T2[NumPy]
+                end
+                class Split,Track,Reserve step
+                class W db
+                class T1,T2 tool`,
+
+            "TR": `graph TD
+                classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+                Pred((Predicted)) --> Compare{Actual Match?}
+                Act((Actual)) --> Compare
+                Compare -- Yes --> Expand[Expand Radius x1.5]
+                Compare -- No --> Contract[Contract Radius x0.5]
+                Expand --> Bound[Bound Step Size]
+                Contract --> Bound
+                Bound --> End((New Bounds))
+                class Compare,Expand,Contract,Bound step`,
+
+            "CACHE": `graph LR
+                classDef step fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input((Params)) --> Hash[SHA-256 Hash]
+                Hash --> Check{In Cache?}
+                Check -- Hit --> Return[Return Cached Result]
+                Check -- Miss --> Compute[Run HiFi Simulation]
+                Compute --> Store[Store in LRU Cache]
+                Store --> Return
+                Return --> End((Result + was_cached))
+                subgraph Tools [🔧 Tools]
+                T1[cache.py]
+                T2[hashlib]
+                T3[functools.lru_cache]
+                end
+                class Hash,Check,Return,Compute,Store step
+                class T1,T2,T3 tool`,
+
+            "SEL": `graph TD
+                classDef step fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Input((Refined Candidates)) --> Best[Top K by Prediction]
+                Input --> Uncertain[Top K by Uncertainty]
+                Input --> Random[Random Sample]
+                Best --> Merge[Merge & Dedupe]
+                Uncertain --> Merge
+                Random --> Merge
+                Merge --> End((Selected Indices))
+                Merge -.-> W[(Weaviate: Run.selection_log)]
+                class Best,Uncertain,Random,Merge step
+                class W db`,
+
+            "FOAM": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input((Geometry)) --> Mesh[blockMesh / snappyHexMesh]
+                Mesh --> BC[Set Thermal BCs]
+                BC --> Solve[Run laplacianFoam]
+                Solve --> Parse[Extract T_crown_max]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[OpenFOAM 11]
+                T2[Docker]
+                T3[thermal_cfd.py]
+                end
+                class Mesh,BC,Solve,Parse step
+                class W db
+                class T1,T2,T3 tool`,
+
+            "CCX": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input((Geometry + Loads)) --> Mesh[Gmsh .inp Generation]
+                Mesh --> BC[Apply Pressure + Thermal BCs]
+                BC --> Solve[Run CalculiX ccx]
+                Solve --> Parse[Extract von_mises_max]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[CalculiX 2.21]
+                T2[Gmsh]
+                T3[gear_contact.py]
+                end
+                class Mesh,BC,Solve,Parse step
+                class W db
+                class T1,T2,T3 tool`,
+
+            "PORTFLOW": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input((Port Geometry)) --> Mesh[Generate Port Mesh]
+                Mesh --> BC[Set Inlet/Outlet BCs]
+                BC --> Solve[Run simpleFoam]
+                Solve --> Parse[Extract Cd, Swirl, Tumble]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[OpenFOAM 11]
+                T2[Docker]
+                T3[port_flow_cfd.py]
+                end
+                class Mesh,BC,Solve,Parse step
+                class W db
+                class T1,T2,T3 tool`,
+
+            "COMBUST": `graph TD
+                classDef step fill:#fff3e0,stroke:#e65100,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef tool fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+                Input((Chamber + Mixture)) --> Mesh[Generate Combustion Mesh]
+                Mesh --> Chem[Setup Chemistry: PaSR/EDC]
+                Chem --> Solve[Run reactingFoam 5ms]
+                Solve --> Parse[Extract Wiebe a,m + p_max]
+                Parse --> End((Output))
+                Parse -.-> W[(HiFiSimulationRun)]
+                subgraph Tools [🔧 Tools]
+                T1[OpenFOAM 11]
+                T2[reactingFoam]
+                T3[combustion_cfd.py]
+                end
+                class Mesh,Chem,Solve,Parse step
+                class W db
+                class T1,T2,T3 tool`,
+
+            "TRUTH": `graph LR
+                classDef step fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                HiFi((HiFi Results)) --> Store[Store Ground Truth]
+                Store --> Embed[Create Embeddings]
+                Embed --> Train[Feed to Surrogate.update]
+                Store --> W1[(HiFiSimulationRun)]
+                Embed --> W2[(Vector Index)]
+                class Store,Embed,Train step
+                class W1,W2 db`,
+
+            "WEAV": `graph TD
+                classDef coll fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                subgraph Collections [16 Weaviate Collections]
+                Run[Run]
+                Geometry[Geometry]
+                HiFi[HiFiSimulationRun]
+                DOE[DOEPoint]
+                Code[CodeFile]
+                Constraint[ConstraintResult]
+                end
+                Query((Query)) --> Search[Vector + Hybrid Search]
+                Search --> Results((Results))
+                class Run,Geometry,HiFi,DOE,Code,Constraint coll`,
+
+            "PROV": `graph TD
+                classDef step fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                classDef db fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+                Event((Orchestrator Event)) --> Log[ProvenanceClient]
+                Log --> Run[start_run / end_run]
+                Log --> Geom[log_geometry]
+                Log --> Check[log_constraint_check]
+                Run --> W[(Run Collection)]
+                Geom --> W2[(Geometry Collection)]
+                Check --> W3[(ConstraintResult)]
+                class Log,Run,Geom,Check step
+                class W,W2,W3 db`
+        };
+
+        const modal = document.getElementById("modal");
+        const modalTitle = document.getElementById("modal-title");
+        const modalDiagram = document.getElementById("modal-diagram");
+
+        function openModal(nodeId, title) {
+            if (diagrams[nodeId]) {
+                modalTitle.innerText = title;
+
+                // Get tools from tools.js (sourced from Weaviate via module_linker.py)
+                const tools = typeof getModuleTools === 'function' ? getModuleTools(nodeId) : [];
+                let toolsHtml = '';
+                if (tools.length > 0) {
+                    toolsHtml = `
+                        <div style="margin-top: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; border-left: 4px solid #f57f17;">
+                            <h4 style="margin: 0 0 10px 0; color: #f57f17;">🔧 Tools (from Weaviate)</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                ${tools.map(t => `<span style="background: #2d2d2d; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; color: #e0e0e0;">${t.name} <span style="color: #888; font-size: 0.8em;">${t.version}</span></span>`).join('')}
+                            </div>
+                        </div>`;
+                }
+
+                modalDiagram.innerHTML = `<div class="mermaid">${diagrams[nodeId]}</div>${toolsHtml}`;
+                modal.style.display = "flex";
+                mermaid.init(undefined, modalDiagram.querySelector(".mermaid"));
+            }
+        }
+
+        function closeModal() {
+            modal.style.display = "none";
+        }
+
+        // Close on outside click
+        window.onclick = function (event) {
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // Mermaid Click Bindings
+        // Note: Mermaid callbacks look for global functions
+        window.clickCEM = () => openModal("CEM", "CEM: Feasibility Generation");
+        window.clickSUR = () => openModal("SUR", "Surrogate: Inference Model");
+        window.clickSOL = () => openModal("SOL", "Solver: Local Refinement");
+        window.clickSIM = () => openModal("SIM", "Simulation: Ground Truth");
+        window.clickORCH = () => openModal("ORCH", "Orchestrator Logic");
+
+        // State Management
+        window.clickBM = () => openModal("BM", "Budget Manager");
+        window.clickTR = () => openModal("TR", "Trust Region");
+        window.clickCACHE = () => openModal("CACHE", "Evaluation Cache");
+        window.clickSEL = () => openModal("SEL", "Budget Selection");
+
+        // HiFi Solvers
+        window.clickFOAM = () => openModal("FOAM", "OpenFOAM laplacianFoam (Thermal)");
+        window.clickCCX = () => openModal("CCX", "CalculiX FEA (Structural)");
+        window.clickPORTFLOW = () => openModal("PORTFLOW", "OpenFOAM simpleFoam (Flow)");
+        window.clickCOMBUST = () => openModal("COMBUST", "OpenFOAM reactingFoam (Combustion)");
+
+        // Data Layer
+        window.clickTRUTH = () => openModal("TRUTH", "Truth Database");
+        window.clickWEAV = () => openModal("WEAV", "Weaviate Vector DB");
+        window.clickPROV = () => openModal("PROV", "Provenance Client");
+
+        mermaid.initialize({
+            startOnLoad: true,
+            securityLevel: 'loose' // Required for interaction
+        });
+
+        // =============================================
+        // Live Tracking - WebSocket Client
+        // =============================================
+
+        const WS_URL = 'ws://localhost:8765';
+        let ws = null;
+        let reconnectTimer = null;
+
+        // Run list steps (top to bottom execution order)
+        const RUN_STEPS = [
+            { id: 'ORCH', name: 'Orchestrator Init', icon: '🎛️' },
+            { id: 'CEM', name: 'CEM Generate', icon: '🔧' },
+            { id: 'SUR', name: 'Surrogate Predict', icon: '🧠' },
+            { id: 'SOL', name: 'Solver Refine', icon: '⚡' },
+            { id: 'SEL', name: 'Budget Select', icon: '📊' },
+            { id: 'CACHE', name: 'Cache Check', icon: '💾' },
+            { id: 'HIFI', name: 'HiFi Eval', icon: '🔬' },
+            { id: 'PROV', name: 'Provenance Log', icon: '📝' },
+        ];
+
+        // Module state tracking
+        const moduleStates = {};
+
+        function createRunSidebar() {
+            const sidebar = document.createElement('div');
+            sidebar.className = 'run-sidebar';
+            sidebar.id = 'run-sidebar';
+            sidebar.innerHTML = `
+                <h3>📋 Execution Order</h3>
+                ${RUN_STEPS.map(s => `
+                    <div class="run-step" id="step-${s.id}">
+                        <span class="icon">${s.icon}</span>
+                        <span>${s.name}</span>
+                        <span class="time"></span>
+                    </div>
+                `).join('')}
+
+                <div class="terminal-window" id="terminal-window">
+                    <div class="terminal-header">
+                        <span>>_ Live Terminal</span>
+                        <span style="font-size: 0.8em; cursor: pointer;" onclick="document.getElementById('terminal-content').innerHTML = ''">Clear</span>
+                    </div>
+                    <div id="terminal-content"></div>
+                </div>
+            `;
+            document.body.appendChild(sidebar);
+        }
+
+        function createWsStatus() {
+            const status = document.createElement('div');
+            status.id = 'ws-status';
+            status.className = 'ws-status ws-disconnected';
+            status.textContent = '⚫ Disconnected';
+            document.body.appendChild(status);
+        }
+
+        function updateWsStatus(connected) {
+            const el = document.getElementById('ws-status');
+            if (el) {
+                el.className = 'ws-status ' + (connected ? 'ws-connected' : 'ws-disconnected');
+                el.textContent = connected ? '🟢 Live' : '⚫ Disconnected';
+            }
+        }
+
+        // Map specific modules to sidebar steps
+        const STEP_MAPPING = {
+            'FOAM': 'HIFI',
+            'CCX': 'HIFI',
+            'PORTFLOW': 'HIFI',
+            'COMBUST': 'HIFI',
+            'TRUTH': 'HIFI',
+            // Others map 1:1 (CEM->CEM, SUR->SUR)
+        };
+
+        function highlightModule(moduleId, active) {
+            // Find Mermaid node and add/remove highlight class
+            const nodes = document.querySelectorAll(`[id *= "${moduleId}"]`);
+            nodes.forEach(node => {
+                if (active) {
+                    node.style.filter = 'drop-shadow(0 0 10px #4caf50)';
+                } else {
+                    node.style.filter = '';
+                }
+            });
+
+            // Update run sidebar
+            // Resolve generic step ID if mapped
+            const stepId = STEP_MAPPING[moduleId] || moduleId;
+            const step = document.getElementById(`step-${stepId}`);
+
+            if (step) {
+                if (active) {
+                    step.classList.add('active');
+                    step.classList.remove('complete');
+                } else {
+                    step.classList.remove('active');
+                    step.classList.add('complete');
+                }
+            }
+        }
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                updateWsStatus(true);
+                console.log('Dashboard connected to orchestrator');
+            };
+
+            ws.onmessage = (evt) => {
+                try {
+                    const event = JSON.parse(evt.data);
+                    handleEvent(event);
+                } catch (e) {
+                    console.error('Invalid event:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                updateWsStatus(false);
+                // Reconnect after 3 seconds
+                reconnectTimer = setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+                ws.close();
+            };
+        }
+
+        // Initialize live tracking
+        createWsStatus();
+        createRunSidebar();
+        connectWebSocket();
+
+        // =============================================
+        // Control Panel Functions
+        // =============================================
+
+        let isRunning = false;
+
+        function getControlInputs() {
+            const getVal = (id, fallback, parser = parseFloat) => {
+                const el = document.getElementById(id);
+                if (!el) return fallback;
+                const val = parser(el.value);
+                return isNaN(val) ? fallback : val;
+            };
+            const getStr = (id, fallback = '') => {
+                const el = document.getElementById(id);
+                return el ? (el.value || fallback) : fallback;
+            };
+
+            return {
+                // Optimization
+                optimization: {
+                    max_iterations: getVal('input-max-iter', 100, parseInt),
+                    tolerance: getVal('input-tolerance', 1e-6),
+                    batch_size: getVal('input-batch', 10, parseInt),
+                    cem_population: getVal('input-cem-pop', 100, parseInt),
+                },
+
+                // Trust Region
+                trust_region: {
+                    initial_radius: getVal('input-tr-initial', 0.1),
+                    min_radius: getVal('input-tr-min', 0.01),
+                    max_radius: getVal('input-tr-max', 0.5),
+                    expand_factor: getVal('input-tr-expand', 1.5),
+                    shrink_factor: getVal('input-tr-shrink', 0.5),
+                    uncertainty_weight: getVal('input-tr-unc-weight', 1.0),
+                    good_agreement_threshold: getVal('input-tr-good', 0.1),
+                    bad_agreement_threshold: getVal('input-tr-bad', 0.3),
+                },
+
+                // Budget Allocation
+                budget: {
+                    total_sim_calls: getVal('input-budget-total', 50, parseInt),
+                    reserve_for_validation: getVal('input-budget-reserve', 10) / 100,
+                    allocation: {
+                        best_fraction: getVal('input-alloc-best', 40) / 100,
+                        uncertain_fraction: getVal('input-alloc-uncertain', 30) / 100,
+                        disagreement_fraction: getVal('input-alloc-disagree', 20) / 100,
+                        random_fraction: getVal('input-alloc-random', 10) / 100,
+                    },
+                },
+
+                // Solver (IPOPT)
+                solver: {
+                    max_iter: getVal('input-ipopt-maxiter', 3000, parseInt),
+                    acceptable_tol: getVal('input-ipopt-tol', 1e-4),
+                    print_level: getVal('input-ipopt-print', 5, parseInt),
+                    linear_solver: getStr('input-ipopt-linear', 'mumps'),
+                },
+
+                // HiFi Simulation
+                hifi: {
+                    thermal_solver: getStr('input-hifi-thermal', 'laplacianFoam'),
+                    structural_solver: getStr('input-hifi-struct', 'calculix'),
+                    mesh_resolution: getStr('input-hifi-mesh', 'medium'),
+                    workers: getVal('input-hifi-workers', 4, parseInt),
+                    timeout: getVal('input-hifi-timeout', 3600, parseInt),
+                    docker_image: getStr('input-hifi-docker', 'openfoam:v2312'),
+                },
+
+                // Surrogate Model
+                surrogate: {
+                    model_type: getStr('input-surr-type', 'gated'),
+                    uq_method: getStr('input-surr-uq', 'ensemble'),
+                    retrain_frequency: getVal('input-surr-retrain', 10, parseInt),
+                    min_training_data: getVal('input-surr-mindata', 20, parseInt),
+                },
+
+                // Paths & I/O
+                io: {
+                    config_file: getStr('input-config') || null,
+                    output_dir: getStr('input-output-dir', './results'),
+                    checkpoint_dir: getStr('input-checkpoint', './checkpoints'),
+                    seed: getVal('input-seed', 42, parseInt),
+                    log_level: getStr('input-loglevel', 'INFO'),
+                },
+            };
+        }
+
+        function updateRunState(running) {
+            isRunning = running;
+            const btnStart = document.getElementById('btn-start');
+            const btnStop = document.getElementById('btn-stop');
+            const dot = document.getElementById('run-status-dot');
+            const text = document.getElementById('run-status-text');
+
+            btnStart.disabled = running;
+            btnStop.disabled = !running;
+
+            if (running) {
+                dot.className = 'status-dot running';
+                text.textContent = 'Running optimization...';
+            } else {
+                dot.className = 'status-dot idle';
+                text.textContent = 'Idle - Ready to start';
+            }
+        }
+
+        function startSequence() {
+            if (isRunning) return;
+
+            const params = getControlInputs();
+            console.log('Starting sequence with params:', params);
+
+            // Call API to start sequence (this triggers WebSocket events)
+            fetch('http://localhost:5001/api/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(params)
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Sequence started:', data);
+                    updateRunState(true);
+                })
+                .catch(err => {
+                    console.error('Failed to start:', err);
+                    alert('Failed to start sequence. Make sure the API server is running:\n\npython dashboard/api.py --port 5001');
+                });
+        }
+
+        function stopSequence() {
+            if (!isRunning) return;
+
+            console.log('Stopping sequence...');
+
+            fetch('http://localhost:5001/api/stop', {
+                method: 'POST'
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Sequence stopped:', data);
+                })
+                .catch(err => console.error('Stop error:', err));
+
+            updateRunState(false);
+            const text = document.getElementById('run-status-text');
+            text.textContent = 'Stopped by user';
+            document.getElementById('run-status-dot').className = 'status-dot stopped';
+        }
+
+
+        function resetDashboard() {
+            if (isRunning) {
+                if (!confirm('A sequence is running. Stop and reset?')) return;
+                stopSequence();
+            }
+
+            // Clear run step states
+            document.querySelectorAll('.run-step').forEach(el => {
+                el.classList.remove('active', 'complete');
+                const timeEl = el.querySelector('.time');
+                if (timeEl) timeEl.textContent = '';
+            });
+
+            // Clear module highlights
+            document.querySelectorAll('[style*="drop-shadow"]').forEach(el => {
+                el.style.filter = '';
+            });
+
+            // Reset status
+            updateRunState(false);
+            console.log('Dashboard reset');
+        }
+
+        // Handle incoming commands/responses
+        function handleEvent(event) {
+            const { type, module, tool, duration_ms, metadata } = event;
+
+            switch (type) {
+                case 'module_start':
+                    if (["SURROGATE_TRAIN", "GEAR_OPT", "DOE_GEN"].includes(module)) showProgressBar(module);                    highlightModule(module, true);
+                    moduleStates[module] = { startTime: Date.now() };
+                    break;
+
+                case 'module_end':
+                    highlightModule(module, false);
+                    const stepEl = document.getElementById(`step-${module}`);
+                    if (stepEl && duration_ms) {
+                        const timeEl = stepEl.querySelector('.time');
+                        if (timeEl) timeEl.textContent = `${Math.round(duration_ms)} ms`;
+                    }
+                    if (["SURROGATE_TRAIN", "GEAR_OPT", "DOE_GEN"].includes(module)) hideProgressBar(metadata?.success || false);
+                    break;
+
+                case 'tool_call':
+                    console.log(`🔧 Tool: ${module}.${tool} `);
+                    break;
+
+                case 'flow_start':
+                    console.log(`→ Flow: ${module} → ${metadata?.target} `);
+                    break;
+
+                case 'error':
+                    const errNode = document.querySelectorAll(`[id *= "${module}"]`);
+                    errNode.forEach(n => n.style.filter = 'drop-shadow(0 0 10px #f44336)');
+                    document.getElementById('run-status-dot').className = 'status-dot stopped';
+                    document.getElementById('run-status-text').textContent = `Error in ${module} `;
+                    break;
+
+                case 'run_start':
+                    updateRunState(true);
+                    break;
+
+                case 'run_end':
+                    updateRunState(false);
+                    document.getElementById('run-status-text').textContent = 'Completed successfully';
+                    logToTerminal('Run finished successfully.', 'INFO');
+                    break;
+
+                case 'warning':
+                    logToTerminal(`[${module}] ${metadata.message} `, 'WARNING');
+                    break;
+
+                case 'log':
+                case 'log':                    logToTerminal(`[${module}] ${metadata.message}`, metadata.level || 'INFO');                    if (metadata.task_id && metadata.message) updateProgressFromLog(metadata.message);
+                    break;
+            }
+        }
+
+        function logToTerminal(message, level = 'INFO') {
+
+        // =============================================
+        // Progress Bar Management
+        // =============================================
+
+        let progressStartTime = 0;
+
+        function showProgressBar(taskName) {
+            const container = document.getElementById('progress-container');
+            const title = document.getElementById('progress-title');
+            
+            const taskTitles = {
+
+        // Track current task ID for cancellation
+        let currentTaskId = null;
+
+        async function cancelCurrentTask() {
+            if (!currentTaskId) {
+                alert('No task is currently running');
+                return;
+            }
+
+            if (!confirm('Are you sure you want to cancel this task?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/cancel_task/${currentTaskId}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    logToTerminal(`Task ${currentTaskId} cancelled`, 'WARNING');
+                    alert(`Task cancelled: ${data.message}`);
+                    hideProgressBar(false);  // Hide with error styling
+                } else {
+                    logToTerminal(`Failed to cancel: ${data.error}`, 'ERROR');
+                    alert(`Cancellation failed: ${data.error}`);
+                }
+            } catch (err) {
+                console.error('Cancel error:', err);
+                logToTerminal(`Cancel error: ${err.message}`, 'ERROR');
+                alert(`Error: ${err.message}`);
+            } finally {
+                currentTaskId = null;
+                document.getElementById('cancel-task-btn').style.display = 'none';
+            }
+
+        // =============================================
+        // Output Visualization Modal
+        // =============================================
+
+        function openOutputModal(filePath, title = 'Workflow Results') {
+            const modal = document.getElementById('output-modal');
+            const iframe = document.getElementById('output-iframe');
+            const modalTitle = document.getElementById('output-modal-title');
+            
+            modalTitle.textContent = title;
+            iframe.src = filePath;
+            modal.style.display = 'flex';
+        }
+
+        function closeOutputModal() {
+            const modal = document.getElementById('output-modal');
+            const iframe = document.getElementById('output-iframe');
+            
+            modal.style.display = 'none';
+            iframe.src = '';  // Clear iframe
+
+        // =============================================
+        // Workflow Action Functions
+        // =============================================
+
+        async function trainSurrogates() {
+            updateRunState(true);
+            logToTerminal('Starting surrogate training...', 'INFO');
+
+            try {
+                const response = await fetch('/api/train_surrogates', { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    currentTaskId = data.task_id;
+                    showTrainingMetrics(data.output);                    logToTerminal('Surrogate training completed successfully', 'INFO');
+                    alert(`Training complete!\n\nTask ID: ${data.task_id}`);
+                } else {
+                    logToTerminal(`Training failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                    alert(`Training failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('Training error:', err);
+                logToTerminal(`Error: ${err.message}`, 'ERROR');
+                alert(`Error: ${err.message}`);
+            } finally {
+                updateRunState(false);
+            }
+        }
+
+        async function runGearOptimization() {
+            updateRunState(true);
+            logToTerminal('Starting gear profile optimization...', 'INFO');
+
+            try {
+                const response = await fetch('/api/run_gear_optimization', { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    currentTaskId = data.task_id;
+                    showTrainingMetrics(data.output);                    logToTerminal('Gear optimization completed successfully', 'INFO');
+                    
+                    // Show results modal if available
+                    const resultsAvailable = data.results && data.results.length > 0;
+                    const message = resultsAvailable 
+                        ? `Optimization complete!\n\nTask ID: ${data.task_id}\n\nResults:\n${data.results.join('\n')}\n\nClick OK to view results.`
+                        : `Optimization complete!\n\nTask ID: ${data.task_id}`;
+                    
+                    if (confirm(message) && resultsAvailable) {
+                        openOutputModal(data.results[0], 'Gear Optimization Results');
+                    }
+                } else {
+                    logToTerminal(`Optimization failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                    alert(`Optimization failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('Optimization error:', err);
+                logToTerminal(`Error: ${err.message}`, 'ERROR');
+                alert(`Error: ${err.message}`);
+            } finally {
+                updateRunState(false);
+            }
+        }
+
+        async function generateDOE() {
+            // Read configuration from UI
+            const n_samples = parseInt(document.getElementById('doe-n-samples').value) || 50;
+            const method = document.getElementById('doe-method').value || 'lhs';
+
+            updateRunState(true);
+            logToTerminal(`Starting DOE generation (${n_samples} samples, ${method} method)...`, 'INFO');
+
+            try {
+                const response = await fetch('/api/generate_doe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ n_samples, method })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    currentTaskId = data.task_id;
+                    showTrainingMetrics(data.output);                    logToTerminal(`DOE generation completed: ${data.n_samples} samples`, 'INFO');
+                    alert(`DOE generation complete!\n\nTask ID: ${data.task_id}\nSamples: ${data.n_samples}\nMethod: ${method}`);
+                } else {
+                    logToTerminal(`DOE generation failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                    alert(`DOE generation failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('DOE generation error:', err);
+                logToTerminal(`Error: ${err.message}`, 'ERROR');
+                alert(`Error: ${err.message}`);
+            } finally {
+                updateRunState(false);
+            }
+        }
+        }
+        }
+                'SURROGATE_TRAIN': 'Training Surrogates',
+                'GEAR_OPT': 'Optimizing Gear Profiles',
+                'DOE_GEN': 'Generating DOE Samples'
+            };
+            
+            title.textContent = taskTitles[taskName] || 'Running Task';
+            document.getElementById('progress-bar').value = 0;
+            document.getElementById('progress-text').textContent = '0%';
+            container.style.display = 'block';
+            document.getElementById("cancel-task-btn").style.display = "block";            progressStartTime = Date.now();
+            
+            // Start elapsed timer
+            if (window.progressTimer) clearInterval(window.progressTimer);
+            window.progressTimer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - progressStartTime) / 1000);
+                document.getElementById('progress-eta').textContent = `Elapsed: ${elapsed}s`;
+            }, 1000);
+        }
+
+        function hideProgressBar(success) {
+            if (window.progressTimer) {
+                clearInterval(window.progressTimer);
+                window.progressTimer = null;
+            }
+            
+            const container = document.getElementById('progress-container');
+            if (success) {
+                // Flash success
+                container.style.background = 'linear-gradient(135deg, #66bb6a 0%, #388e3c 100%)';
+                setTimeout(() => {
+                    container.style.display = 'none';
+                    document.getElementById("cancel-task-btn").style.display = "none";                    container.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                }, 2000);
+            } else {
+                // Flash error
+                container.style.background = 'linear-gradient(135deg, #ef5350 0%, #c62828 100%)';
+                setTimeout(() => {
+                    container.style.display = 'none';
+                    document.getElementById("cancel-task-btn").style.display = "none";                    container.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                }, 2000);
+            }
+        }
+
+        function updateProgressFromLog(logLine) {
+            // Parse progress patterns like "Epoch 50/200" or "Sample 25/50" or "Member 2/3"
+            const epochMatch = logLine.match(/Epoch\s+(\d+)\/(\d+)/i);
+            const sampleMatch = logLine.match(/Sample\s+(\d+)\/(\d+)/i);
+            const memberMatch = logLine.match(/Member\s+(\d+)\/(\d+)/i);
+            
+            let percent = null;
+            
+            if (epochMatch) {
+                percent = (parseInt(epochMatch[1]) / parseInt(epochMatch[2])) * 100;
+            } else if (sampleMatch) {
+                percent = (parseInt(sampleMatch[1]) / parseInt(sampleMatch[2])) * 100;
+            } else if (memberMatch) {
+                // For ensemble training, weight members less (each member is ~30%)
+                const memberProgress = (parseInt(memberMatch[1]) - 1) / parseInt(memberMatch[2]);
+                percent = memberProgress * 100;
+            }
+            
+            if (percent !== null) {
+                document.getElementById('progress-bar').value = Math.min(percent, 100);
+                document.getElementById('progress-text').textContent = `${Math.round(percent)}%`;
+            }
+        }
+            const terminal = document.getElementById('terminal-content');
+            if (!terminal) return;
+
+            const line = document.createElement('div');
+            line.className = 'terminal-line';
+
+            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const tsSpan = `< span class="log-timestamp" > [${timestamp}]</span > `;
+
+            let levelClass = 'log-info';
+            if (level === 'WARNING') levelClass = 'log-warning';
+            if (level === 'ERROR') levelClass = 'log-error';
+
+            line.innerHTML = `${tsSpan} <span class="${levelClass}">${message}</span>`;
+            terminal.appendChild(line);
+
+            // Auto-scroll to bottom
+            const window = document.getElementById('terminal-window');
+            window.scrollTop = window.scrollHeight;
+        }
+
+        // =============================================
+        // Stats Fetching (Cache, Budget, Trust Region)
+        // =============================================
+
+        async function fetchRuntimeStats() {
+            try {
+                const cacheRes = await fetch(u0027 / api / cache / statsu0027);
+                if (cacheRes.ok) {
+                    const cacheData = await cacheRes.json();
+                    document.getElementById(u0027cache - total - entriesu0027).textContent = cacheData.total_entries || 0;
+                    const hitRate = ((cacheData.hit_rate || 0) * 100).toFixed(1);
+                    document.getElementById(u0027cache - hit - rateu0027).textContent = `${hitRate}%`;
+                    document.getElementById(u0027cache - efficiencyu0027).textContent = hitRate >= 40 ? u0027🟢 Goodu0027: (hitRate >= 20 ? u0027🟡 Fairu0027: u0027🔴 Lowu0027);
+                }
+                const budgetRes = await fetch(u0027 / api / budget / snapshotsu0027);
+                if (budgetRes.ok) {
+                    const budgetData = await budgetRes.json();
+                    if (budgetData.length > 0) {
+                        const latest = budgetData[budgetData.length - 1];
+                        document.getElementById(u0027budget - totalu0027).textContent = latest.total || 0;
+                        document.getElementById(u0027budget - spentu0027).textContent = latest.spent || 0;
+                        document.getElementById(u0027budget - remainingu0027).textContent = latest.remaining || 0;
+                        const utilization = latest.total > 0 ? ((latest.spent / latest.total) * 100).toFixed(1) : u00270.0u0027;
+                        document.getElementById(u0027budget - utilizationu0027).textContent = `${utilization}%`;
+                    }
+                }
+                const trRes = await fetch(u0027 / api / trustregion / logsu0027);
+                if (trRes.ok) {
+                    const trData = await trRes.json();
+                    if (trData.length > 0) {
+                        const latest = trData[trData.length - 1];
+                        document.getElementById(u0027tr - radiusu0027).textContent = (latest.radius || 0).toFixed(4);
+                        const status = latest.action === u0027expandu0027 ? u0027🟢 Expandingu0027: (latest.action === u0027shrinku0027 ? u0027🔴 Shrinkingu0027: u0027⚪ Stableu0027);
+                        document.getElementById(u0027tr - statusu0027).textContent = status;
+                        const agreement = (latest.agreement_ratio || 0).toFixed(3);
+                        document.getElementById(u0027tr - agreementu0027).textContent = agreement;
+                        document.getElementById(u0027tr - total - updatesu0027).textContent = trData.length;
+                    }
+                }
+                const now = new Date().toLocaleTimeString();
+                document.getElementById(u0027stats - last - updateu0027).textContent = now;
+            } catch (err) {
+                console.error(u0027Error fetching runtime stats: u0027, err);
+            }
+        }
+
+        window.addEventListener(u0027loadu0027, () => { fetchRuntimeStats(); setInterval(fetchRuntimeStats, 5000); });
+    </script>
+
+</body>
+                <!-- Output Visualization Modal -->
+                <div id="output-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+                    <div style="width: 90%; height: 90%; background: white; border-radius: 8px; display: flex; flex-direction: column;">
+                        <div style="padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="margin: 0;" id="output-modal-title">Workflow Results</h3>
+                            <button onclick="closeOutputModal()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0 10px;">×</button>
+                        </div>
+                        <iframe id="output-iframe" style="flex: 1; width: 100%; border: none;"></iframe>
+                    </div>
+                </div>
+
+</html>

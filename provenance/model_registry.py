@@ -38,8 +38,24 @@ def get_weaviate_client():
         else:
             return weaviate.connect_to_weaviate_cloud(cluster_url=cluster_url)
     else:
-        # Local connection
-        return weaviate.connect_to_local(port=8080, grpc_port=50052)
+        # Local or custom connection - parse the URL
+        # Extract host and port from weaviate_url (e.g., "http://weaviate:8080")
+        url_without_protocol = weaviate_url.replace("http://", "").replace("https://", "")
+        if ":" in url_without_protocol:
+            host = url_without_protocol.split(":")[0]
+            port = int(url_without_protocol.split(":")[1].split("/")[0])
+        else:
+            host = url_without_protocol.split("/")[0]
+            port = 8080
+
+        return weaviate.connect_to_custom(
+            http_host=host,
+            http_port=port,
+            http_secure=False,
+            grpc_host=host,
+            grpc_port=50051,
+            grpc_secure=False,
+        )
 
 
 def register_model(

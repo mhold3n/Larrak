@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "last_modified": "2026-01-01T01:25:55.133861",
+  "rules": {
+    "max_crown_temperature_adaptive": {
+      "limit": 573.0,
+      "initial_limit": 573.0,
+      "n_observations": 1,
+      "margin_history": [
+        -10.387360108162845
+      ],
+      "last_adapted": null,
+      "total_delta": 0.0,
+      "regime_states": {}
+    },
+    "max_contact_stress_adaptive": {
+      "limit": 1500.0,
+      "initial_limit": 1500.0,
+      "n_observations": 1,
+      "margin_history": [
+        -3.349971561318207
+      ],
+      "last_adapted": null,
+      "total_delta": 0.0,
+      "regime_states": {}
+    }
+  },
+  "adaptation_history": []
+}

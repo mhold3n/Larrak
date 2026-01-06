@@ -65,6 +65,18 @@ class PhysicsSimulationAdapter:
 
         try:
             if self.use_full_physics:
+                # Validation: Ensure physics binaries exist
+                import shutil
+
+                if not shutil.which("ccx") and not shutil.which("openfoam"):
+                    # We check for one or the other depending on solver, but generally at least one must exist
+                    # For now, just warn if neither, or distinct logic.
+                    # Assuming 'ccx' is main one for now based on context.
+                    if not shutil.which("ccx"):
+                        raise RuntimeError(
+                            "CalculiX binary ('ccx') not found in PATH. Cannot run full physics."
+                        )
+
                 result = self._run_full_simulation(candidate)
             else:
                 result = self._run_0d_simulation(candidate)
@@ -76,6 +88,9 @@ class PhysicsSimulationAdapter:
             return result
 
         except Exception as e:
+            # Re-raise configuration errors, swallow only runtime physics failures
+            if "not found" in str(e):
+                raise e
             log.warning(f"Simulation failed: {e}")
             return float("-inf")  # Failed simulations are worst
 

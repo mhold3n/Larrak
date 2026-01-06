@@ -17,7 +17,6 @@ from typing import Any
 import numpy as np
 
 from campro.constants import (
-    CASADI_PHYSICS_EPSILON,
     DEFAULT_BURN_COEF_C,
     DEFAULT_TURBULENCE_FACTOR_K,
     DEFAULT_WIEBE_M,
@@ -26,6 +25,7 @@ from campro.constants import (
 )
 from campro.logging import get_logger
 from campro.materials.fuels import get_stoich_afr
+from campro.physics.combustion.symbolic import symbolic_heat_release as sym_hr
 
 from .base import BasePhysicsModel, PhysicsResult
 from .chem import CombustionParameters, create_combustion_parameters, laminar_flame_speed
@@ -245,92 +245,32 @@ class CombustionModel(BasePhysicsModel):
     ) -> dict[str, Any]:
         """
         Build CasADi expressions for the heat-release model.
-
-        Parameters
-        ----------
-        ca : module
-            CasADi module (typically `casadi` imported as `ca`).
-        time_s : MX/SX
-            Symbolic time at which to evaluate the burn state [s].
-        piston_speed_m_per_s : MX/SX
-            Symbolic piston speed used for turbulence correlation [m/s].
-        ignition_time_s : MX/SX
-            Symbolic ignition timing [s].
-        omega_deg_per_s : MX/SX, optional
-            Symbolic angular speed used for dQ/dθ conversion [deg/s].
-
-        Returns
-        -------
-        Dict[str, Any]
-            Keys: `mfb`, `burn_time`, `heat_release_rate`, `heat_release_per_deg`,
-            `burn_duration_deg`.
+        Delegates to `campro.physics.combustion.symbolic.symbolic_heat_release`.
         """
         if not self._is_configured or self.config is None or self.params is None:
             raise RuntimeError("CombustionModel must be configured before use")
 
+        # Unpack configuration
         cfg = self.config
         params = self.params
-        ca_fmax = ca.fmax
 
-        s_l_val = float(max(self._laminar_speed_m_per_s or 1e-3, 1e-3))
-        clearance_h = float(self._clearance_height_m or 1e-6)
-        min_speed = float(cfg.min_flame_speed)
-        alpha = float(params.alpha_turbulence)
-        k_turb = float(cfg.k_turb)
-        exponent = float(cfg.turbulence_exponent)
-        a_wiebe = float(self._a_wiebe or 5.0)
-        m_wiebe = float(cfg.m_wiebe)
-        q_total = float(cfg.fuel_mass_kg * (self._lhv or params.lower_heating_value_fuel))
-
-        u_turb = k_turb * ca.fabs(piston_speed_m_per_s)
-        v_ratio = u_turb / ca_fmax(s_l_val, CASADI_PHYSICS_EPSILON.value)
-        s_t_val = s_l_val * (1.0 + alpha * ca.power(v_ratio, exponent))
-        s_t_val = ca_fmax(s_t_val, min_speed)
-        burn_time = cfg.c_burn * clearance_h / ca_fmax(s_t_val, CASADI_PHYSICS_EPSILON.value)
-
-        # Note: injector_delay handling in symbolic interface requires passing
-        # effective_ignition_time_s = ignition_time_s - injector_delay_s
-        # This is handled at the caller level; here we use ignition_time_s directly
-        tau_raw = (time_s - ignition_time_s) / ca_fmax(burn_time, CASADI_PHYSICS_EPSILON.value)
-        tau = ca.if_else(
-            tau_raw < 0.0,
-            0.0,
-            ca.if_else(tau_raw > 1.0, 1.0, tau_raw),
+        return sym_hr(
+            time_s=time_s,
+            piston_speed_m_per_s=piston_speed_m_per_s,
+            ignition_time_s=ignition_time_s,
+            laminar_speed_m_per_s=float(max(self._laminar_speed_m_per_s or 1e-3, 1e-3)),
+            clearance_height_m=float(self._clearance_height_m or 1e-6),
+            fuel_mass_kg=cfg.fuel_mass_kg,
+            lower_heating_value=float(self._lhv or params.lower_heating_value_fuel),
+            k_turb=float(cfg.k_turb),
+            turbulence_exponent=float(cfg.turbulence_exponent),
+            min_flame_speed=float(cfg.min_flame_speed),
+            alpha_turbulence=float(params.alpha_turbulence),
+            c_burn=float(cfg.c_burn),
+            m_wiebe=float(cfg.m_wiebe),
+            a_wiebe=float(self._a_wiebe or 5.0),
+            omega_deg_per_s=omega_deg_per_s,
         )
-        exp_term = ca.exp(-a_wiebe * ca.power(tau, m_wiebe + 1.0))
-        mfb = 1.0 - exp_term
-
-        base = (
-            a_wiebe
-            * (m_wiebe + 1.0)
-            / ca_fmax(burn_time, CASADI_PHYSICS_EPSILON.value)
-            * ca.power(ca.fmax(tau, CASADI_PHYSICS_EPSILON.value), m_wiebe)
-            * exp_term
-        )
-        dxb_dt = ca.if_else(
-            tau_raw < 0.0,
-            0.0,
-            ca.if_else(tau_raw > 1.0, 0.0, base),
-        )
-        heat_release_rate = dxb_dt * q_total
-
-        if omega_deg_per_s is not None:
-            heat_release_per_deg = heat_release_rate / ca_fmax(
-                omega_deg_per_s,
-                CASADI_PHYSICS_EPSILON.value,
-            )
-            burn_duration_deg = burn_time * omega_deg_per_s
-        else:
-            heat_release_per_deg = None
-            burn_duration_deg = None
-
-        return {
-            "mfb": mfb,
-            "burn_time": burn_time,
-            "heat_release_rate": heat_release_rate,
-            "heat_release_per_deg": heat_release_per_deg,
-            "burn_duration_deg": burn_duration_deg,
-        }
 
     # ------------------------------------------------------------------ #
     # Internal numeric helpers

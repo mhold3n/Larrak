@@ -189,6 +189,8 @@ class IPOPTIterationCallback(ca.Callback):
         self._prev_x: np.ndarray | None = None
         self._iteration = 0
         self._reported_failure = False
+        self._last_plateau_warning_time = 0.0
+        self._plateau_warning_count = 0
         self._names = NLPSOL_OUTPUT_NAMES
         sparsity_lookup = {
             "x": ca.Sparsity.dense(self._n_vars, 1),
@@ -281,6 +283,15 @@ class IPOPTIterationCallback(ca.Callback):
                 if stop_optimization:
                     return [1]
 
+            # Global Stop Signal Check
+            # Check environment variable set by dashboard "Stop" button
+            # This allows killing the solver even if it's stuck in a loop or ignoring specific criteria
+            if os.environ.get("ORCHESTRATOR_STOP_SIGNAL") == "1":
+                self._reporter.warning(
+                    f"STOP SIGNAL DETECTED at iter {self._iteration}. Aborting optimization immediately."
+                )
+                return [1]
+
         except Exception as exc:  # pragma: no cover - defensive logging
             if not self._reported_failure:
                 self._reporter.debug(f"Iteration diagnostics unavailable: {exc}")
@@ -339,26 +350,26 @@ class IPOPTIterationCallback(ca.Callback):
         Q_k = max(constr_viol, dual_inf, compl_inf)
         """
         # Compute current quality metric Q_k
-        Q_k = max(constr_viol, dual_inf, compl_inf)
+        q_metric = max(constr_viol, dual_inf, compl_inf)
 
         # Handle infinite Q_k
-        if not np.isfinite(Q_k):
+        if not np.isfinite(q_metric):
             return False
 
         if self._last_Q is not None:
             # Compute relative change
             denom = max(1.0, abs(self._last_Q))
-            delta_Q = abs(Q_k - self._last_Q) / denom
+            delta_q = abs(q_metric - self._last_Q) / denom
 
             # Update buffer
-            self._plateau_buffer.append(delta_Q)
+            self._plateau_buffer.append(delta_q)
             if len(self._plateau_buffer) > self._plateau_window_size:
                 self._plateau_buffer.pop(0)
 
             # Debug logging for verification
             if self._plateau_enabled:
                 self._reporter.debug(
-                    f"Plateau check: iter={iteration}, Q={Q_k:.2e}, delta_Q={delta_Q:.2e}, "
+                    f"Plateau check: iter={iteration}, Q={q_metric:.2e}, delta_Q={delta_q:.2e}, "
                     f"buffer_len={len(self._plateau_buffer)}, start_iter={self._plateau_start_iter}"
                 )
 
@@ -378,17 +389,31 @@ class IPOPTIterationCallback(ca.Callback):
                     # Find key with max value
                     dominant_metric = max(metrics, key=lambda k: metrics[k])
 
-                    self._reporter.warning(
-                        f"PLATEAU DETECTED at iter {iteration}: "
-                        f"Dominant metric: {dominant_metric} ({metrics[dominant_metric]:.2e}). "
-                        f"max(delta_Q) over last {self._plateau_window_size} iters = {max_delta:.2e} "
-                        f"< eps ({self._plateau_eps:.2e}). "
-                        f"Continuing optimization (warning only)."
-                    )
+                    # Limit warning frequency to prevent log flooding
+                    # User request: ensure message is not duplicated frequently (1.0s interval)
+                    # Also cap total warnings to 15 to prevent infinite scrolling
+                    current_time = time.time()
+                    if (
+                        current_time - self._last_plateau_warning_time >= 1.0
+                        and self._plateau_warning_count < 15
+                    ):
+                        self._last_plateau_warning_time = current_time
+                        self._plateau_warning_count += 1
+
+                        warning_suffix = ""
+                        if self._plateau_warning_count >= 15:
+                            warning_suffix = " (Suppressing further plateau warnings)"
+
+                        self._reporter.warning(
+                            f"PLATEAU DETECTED at iter {iteration}: "
+                            f"Dominant: {dominant_metric} ({metrics[dominant_metric]:.2e}). "
+                            f"max(delta_Q)={max_delta:.2e} < eps. "
+                            f"Warning only.{warning_suffix}"
+                        )
                     # Return False to continue optimization (warning only, not a hard stop)
                     return False
 
-        self._last_Q = Q_k
+        self._last_Q = q_metric
         return False
 
 
@@ -420,10 +445,11 @@ class IPOPTSolver:
                 from campro.optimization.solvers.ipopt_factory import create_ipopt_solver
 
                 nlp = {"x": ca.SX.sym("x"), "f": 0, "g": ca.SX([])}
-                _ = create_ipopt_solver("probe", nlp, linear_solver="ma27")
+                _ = create_ipopt_solver("probe", nlp, linear_solver="mumps")
                 self.ipopt_available = True
                 return
-            except Exception:
+            except Exception as e:
+                log.warning(f"IPOPT probe failed: {e}")
                 # Fallback to plugin list if available
                 if hasattr(ca, "nlpsol_plugins"):
                     try:

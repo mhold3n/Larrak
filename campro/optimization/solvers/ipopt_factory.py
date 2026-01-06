@@ -30,14 +30,14 @@ _HSLLIB_LOCKED_EXTERNALLY: bool | None = None
 def _get_default_linear_solver() -> str:
     """Get default linear solver, detecting available solvers if needed."""
     global _DEFAULT_LINEAR_SOLVER
-    
+
     if _DEFAULT_LINEAR_SOLVER is not None:
         return _DEFAULT_LINEAR_SOLVER
-    
+
     # Detect available solvers and prefer MA57 over MA27 when available
     try:
         from campro.environment.hsl_detector import detect_available_solvers
-        
+
         available = detect_available_solvers(test_runtime=False)
         if available:
             # Prefer MA57 for better performance, fall back to MA27, then first available
@@ -46,7 +46,9 @@ def _get_default_linear_solver() -> str:
                 log.info(f"Default linear solver set to MA57 (available: {', '.join(available)})")
             elif "ma27" in available:
                 _DEFAULT_LINEAR_SOLVER = "ma27"
-                log.info(f"Default linear solver set to MA27 (MA57 not available, found: {', '.join(available)})")
+                log.info(
+                    f"Default linear solver set to MA27 (MA57 not available, found: {', '.join(available)})"
+                )
             else:
                 _DEFAULT_LINEAR_SOLVER = available[0]
                 log.info(
@@ -62,7 +64,7 @@ def _get_default_linear_solver() -> str:
     except Exception as e:
         _DEFAULT_LINEAR_SOLVER = "ma27"  # Fallback
         log.warning(f"Error detecting available solvers ({e}); defaulting to MA27 (fallback)")
-    
+
     return _DEFAULT_LINEAR_SOLVER
 
 
@@ -155,20 +157,21 @@ def build_ipopt_solver_options(
     # Always set linear_solver programmatically for consistent behavior
     # The option file no longer contains linear_solver to avoid conflicts
     opts = options.copy() if options else {}
-    
+
     # Remove any existing linear_solver from opts to ensure we set it consistently
     opts.pop("ipopt.linear_solver", None)
-    
+
     # Determine which solver to use
     requested = linear_solver or opts.get("ipopt.linear_solver")
     default_solver = _get_default_linear_solver()
-    
+
     # Use requested solver if provided, otherwise use default
     solver_to_use = (requested or default_solver).lower()
-    
+
     # Validate solver is available (best effort)
     try:
         from campro.environment.hsl_detector import detect_available_solvers
+
         available = detect_available_solvers(test_runtime=False)
         if available and solver_to_use not in available:
             log.warning(
@@ -178,9 +181,9 @@ def build_ipopt_solver_options(
     except Exception:
         # If detection fails, proceed with requested/default solver
         pass
-    
+
     opts["ipopt.linear_solver"] = solver_to_use
-    
+
     if requested and requested.lower() != default_solver:
         log.debug(
             f"Using requested linear solver '{solver_to_use}' (default would be '{default_solver}')"
@@ -194,26 +197,28 @@ def build_ipopt_solver_options(
             # Verbose diagnostics only when explicitly requested (for troubleshooting)
             import sys
 
-            show_verbose_diagnostics = os.getenv("CAMPRO_DEBUG_HSL", "").lower() in ("1", "true", "yes")
+            show_verbose_diagnostics = os.getenv("CAMPRO_DEBUG_HSL", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            )
 
             if show_verbose_diagnostics:
                 print(
                     f"[DEBUG ipopt_factory] Setting ipopt.hsllib programmatically: {hsl_path}",
                     file=sys.stderr,
-                    flush=True
+                    flush=True,
                 )
                 log.debug(f"Setting ipopt.hsllib programmatically: {hsl_path}")
         else:
-            log.warning(
-                "HSL library path not configured; IPOPT will rely on builtin defaults."
-            )
+            log.warning("HSL library path not configured; IPOPT will rely on builtin defaults.")
     else:
         log.debug("ipopt.hsllib already configured upstream; leaving existing value in place")
 
     if enable_log_sink:
         try:
-            ensure_runs_dir("runs")
-            opts.setdefault("ipopt.output_file", f"runs/{RUN_ID}-ipopt.log")
+            ensure_runs_dir("/tmp/runs")
+            opts.setdefault("ipopt.output_file", f"/tmp/runs/{RUN_ID}-ipopt.log")
             opts.setdefault("ipopt.print_level", 5)
             opts.setdefault("ipopt.file_print_level", 5)
         except Exception:  # pragma: no cover - logging only
@@ -222,6 +227,7 @@ def build_ipopt_solver_options(
     # Do not use option file - all configuration is programmatic
 
     return opts
+
 
 def create_ipopt_solver(
     name: str,
@@ -259,12 +265,13 @@ def get_default_linear_solver() -> str:
 def set_default_linear_solver(solver: str) -> None:
     """Set the default linear solver for this machine."""
     global _DEFAULT_LINEAR_SOLVER
-    
+
     solver_lower = solver.lower()
-    
+
     # Validate solver is available
     try:
         from campro.environment.hsl_detector import detect_available_solvers
+
         available = detect_available_solvers(test_runtime=False)
         if available and solver_lower not in available:
             log.warning(
@@ -275,6 +282,6 @@ def set_default_linear_solver(solver: str) -> None:
     except Exception:
         # If detection fails, proceed anyway
         pass
-    
+
     _DEFAULT_LINEAR_SOLVER = solver_lower
     log.info(f"Default linear solver set to: {solver_lower}")

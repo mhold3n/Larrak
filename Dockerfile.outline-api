@@ -1,11 +1,19 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
 # Install system dependencies
+# calculix-ccx is available in Debian bookworm repos
 RUN apt-get update && apt-get install -y \
     curl \
+    calculix-ccx \
     && rm -rf /var/lib/apt/lists/*
+
+# Install official Docker CLI (static binary)
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-26.1.4.tgz -o docker.tgz \
+    && tar xzvf docker.tgz \
+    && mv docker/docker /usr/local/bin/ \
+    && rm -rf docker.tgz docker/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir \
@@ -13,7 +21,16 @@ RUN pip install --no-cache-dir \
     flask-cors \
     weaviate-client \
     numpy \
-    websockets
+    websockets \
+    pandas \
+    scipy \
+    casadi \
+    joblib \
+    matplotlib \
+    scikit-learn
+
+# Install PyTorch (CPU version) separately to speed up build
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 EXPOSE 5001
 

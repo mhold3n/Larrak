@@ -280,6 +280,14 @@ def create_ipopt_options(ipopt_opts_dict: dict[str, Any], params: dict[str, Any]
     # Use the configured linear solver (user selection or default, e.g. "ma86")
     solver_choice = options.linear_solver
 
+    # Fallback to MUMPS if no HSL solvers are available
+    if not available_solvers and solver_choice in {"ma27", "ma57", "ma77", "ma86", "ma97"}:
+        log.warning(
+            f"Requested HSL solver '{solver_choice}' but no HSL library detected. Falling back to 'mumps'."
+        )
+        solver_choice = "mumps"
+        options.linear_solver = "mumps"
+
     # Fallback only if requested solver is definitely missing and we have a known alternative
     if (
         solver_choice == "ma57"

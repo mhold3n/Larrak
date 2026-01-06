@@ -48,6 +48,7 @@ class EnsembleSurrogateAdapter:
         self,
         surrogate: Any = None,
         feature_keys: list[str] | None = None,
+        mock: bool = False,
     ):
         """
         Initialize adapter.
@@ -55,8 +56,9 @@ class EnsembleSurrogateAdapter:
         Args:
             surrogate: Pre-loaded EnsembleSurrogate (optional)
             feature_keys: Keys to extract from candidate dict for features
+            mock: If True, allow falling back to mock predictions. If False, enforce real model.
         """
-        self.surrogate = surrogate
+        self.mock = mock
         self.feature_keys = feature_keys or [
             "rpm",
             "p_intake_bar",
@@ -67,32 +69,84 @@ class EnsembleSurrogateAdapter:
         ]
         self._training_data: list[tuple[dict[str, Any], float]] = []
 
+        # Auto-load default if needed
+        if surrogate is None and not self.mock:
+            if not SURROGATE_AVAILABLE:
+                raise RuntimeError(
+                    "Surrogate dependencies (torch/truthmaker) not installed. Cannot run real surrogate."
+                )
+
+            # Attempt to load default model
+            default_name = "surrogate_model"
+            try:
+                # We reuse the logic from load() but need the instance
+                model_path_pt = self.MODELS_DIR / f"{default_name}.pt"
+                model_path_pth = self.MODELS_DIR / f"{default_name}.pth"
+
+                path_to_load = None
+                if model_path_pt.exists():
+                    path_to_load = model_path_pt
+                elif model_path_pth.exists():
+                    path_to_load = model_path_pth
+
+                if path_to_load:
+                    log.info(f"Loading default surrogate: {path_to_load.name}")
+                    surrogate = EnsembleSurrogate.load(str(path_to_load))
+                else:
+                    log.warning(
+                        f"Default surrogate '{default_name}' not found in {self.MODELS_DIR}"
+                    )
+                    # If strictly not mocking, we should probably fail, but maybe we let predict() fail?
+                    # The plan says "ONLY fall back to mock if explicitly requested".
+                    # So we should probably fail here or in predict.
+                    pass
+            except Exception as e:
+                log.error(f"Failed to auto-load default surrogate: {e}")
+                # We will raise error in predict if surrogate is still None
+
+        self.surrogate = surrogate
+
     @classmethod
-    def load(cls, model_name: str) -> "EnsembleSurrogateAdapter":
+    def load(cls, model_name: str, mock: bool = False) -> "EnsembleSurrogateAdapter":
         """
         Load adapter with pretrained surrogate.
 
         Args:
             model_name: Name of pretrained model
+            mock: Allow mock fallback
 
         Returns:
             Configured adapter
         """
         if not SURROGATE_AVAILABLE:
-            log.warning("Surrogate not available, using mock predictions")
-            return cls(surrogate=None)
+            if mock:
+                log.warning("Surrogate not available, using mock predictions")
+                return cls(surrogate=None, mock=True)
+            raise RuntimeError("Surrogate dependencies missing")
 
-        model_path = cls.MODELS_DIR / f"{model_name}.pt"
-        if not model_path.exists():
-            log.warning(f"Model not found: {model_path}")
-            return cls(surrogate=None)
+        model_path_pt = cls.MODELS_DIR / f"{model_name}.pt"
+        model_path_pth = cls.MODELS_DIR / f"{model_name}.pth"
+
+        path_to_load = None
+        if model_path_pt.exists():
+            path_to_load = model_path_pt
+        elif model_path_pth.exists():
+            path_to_load = model_path_pth
+
+        if not path_to_load:
+            if mock:
+                log.warning(f"Model not found: {model_name}, using mock")
+                return cls(surrogate=None, mock=True)
+            raise FileNotFoundError(f"Surrogate model not found: {model_name}")
 
         try:
-            surrogate = EnsembleSurrogate.load(str(model_path))
-            return cls(surrogate=surrogate)
+            surrogate = EnsembleSurrogate.load(str(path_to_load))
+            return cls(surrogate=surrogate, mock=False)
         except Exception as e:
-            log.error(f"Failed to load surrogate: {e}")
-            return cls(surrogate=None)
+            if mock:
+                log.error(f"Failed to load surrogate: {e}, using mock")
+                return cls(surrogate=None, mock=True)
+            raise e
 
     def predict(
         self,

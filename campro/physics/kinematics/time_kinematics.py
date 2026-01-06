@@ -4,7 +4,6 @@ Time kinematics component.
 This module provides a modular component for time-based kinematic analysis.
 """
 
-
 import numpy as np
 
 from campro.logging import get_logger
@@ -40,13 +39,32 @@ class TimeKinematicsComponent(BaseComponent):
             Result containing time kinematics
         """
         try:
-            # Placeholder implementation
-            log.info("Time kinematics component - placeholder implementation")
+            # Extract inputs
+            theta = inputs.get("theta")
+            if theta is None:
+                raise ValueError("Input 'theta' is required")
+
+            rpm = inputs.get("rpm", 1000.0)
+            if isinstance(rpm, np.ndarray):
+                rpm = float(rpm.item()) if rpm.size == 1 else np.mean(rpm)
+
+            # Compute angular velocity (rad/s)
+            omega = rpm * 2 * np.pi / 60.0
+
+            # Compute time (s)
+            # t = theta / omega
+            time_array = theta / omega
+
+            outputs = {
+                "time": time_array,
+                "angular_velocity": np.full_like(theta, omega),
+                "cycle_period": np.array([2 * np.pi / omega]),
+            }
 
             return ComponentResult(
                 status=ComponentStatus.COMPLETED,
-                outputs={},
-                metadata={"note": "placeholder implementation"},
+                outputs=outputs,
+                metadata={"rpm": rpm, "omega": omega, "implementation": "constant_velocity"},
             )
 
         except Exception as e:

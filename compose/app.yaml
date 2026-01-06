@@ -1,0 +1,51 @@
+services:
+  larrak-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    container_name: larrak-api
+    ports:
+      - "8000:8000"
+    networks:
+      - larrak-internal
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WEAVIATE_URL=http://weaviate:8080
+      - CEM_SERVICE_URL=http://cem-service:50051
+      - FLASK_ENV=development
+    restart: unless-stopped
+    volumes:
+      - ../:/app:cached
+      - ../logs:/app/logs:rw
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+  larrak-worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    container_name: larrak-worker
+    command: python worker/run_worker.py
+    working_dir: /workspace
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WEAVIATE_URL=http://weaviate:8080
+      - CEM_SERVICE_URL=http://cem-service:50051
+    networks:
+      - larrak-internal
+    volumes:
+      - ../:/workspace:cached
+      - ../logs:/workspace/logs:rw
+    restart: unless-stopped
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+networks:
+  larrak-internal:
+    driver: bridge

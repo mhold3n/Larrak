@@ -1,0 +1,54 @@
+services:
+  larrak-dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ../:/workspace:cached
+      - ../logs:/workspace/logs:rw
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    working_dir: /workspace
+    environment:
+      - WEAVIATE_URL=http://weaviate:8080
+      - CEM_SERVICE_URL=http://cem-service:50051
+      - OPENFOAM_HOST=openfoam
+    networks:
+      - larrak-internal
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+  outline-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.outline-api
+    container_name: larrak-outline-api
+    restart: unless-stopped
+    # ports:
+    #   - "5005:5001"
+    #   - "8766:8765"  # WebSocket port for telemetry trace
+    environment:
+      PYTHONPATH: /app
+      PYTHONUNBUFFERED: "1"
+      WEAVIATE_URL: http://weaviate:8080
+      CEM_SERVICE_URL: cem-service:50051
+    volumes:
+      - ../:/app:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: python dashboard/api.py --port 5001 --host 0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/modules"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+networks:
+  larrak-internal:
+    driver: bridge

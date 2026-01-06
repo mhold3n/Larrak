@@ -1,0 +1,37 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    flask \
+    flask-cors \
+    flask-socketio \
+    redis \
+    rq \
+    eventlet \
+    numpy \
+    pandas \
+    scipy \
+    weaviate-client
+
+# Copy dashboard code
+COPY dashboard/ ./dashboard/
+COPY campro/ ./campro/
+COPY truthmaker/ ./truthmaker/
+COPY provenance/ ./provenance/
+
+# Expose API port
+EXPOSE 8000
+
+# Run Flask API
+# Run Flask API with SocketIO support
+CMD ["python", "dashboard/run_server.py"]

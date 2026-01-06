@@ -8,6 +8,53 @@ import weaviate
 log = logging.getLogger(__name__)
 
 
+def _get_weaviate_client_from_url(weaviate_url: str):
+    """Get Weaviate client from URL, handling Docker service names.
+
+    Args:
+        weaviate_url: URL like http://weaviate:8080 or http://localhost:8080
+
+    Returns:
+        WeaviateClient instance
+    """
+    # Parse URL
+    if "://" in weaviate_url:
+        url_clean = weaviate_url.replace("http://", "").replace("https://", "")
+        url_parts = url_clean.split(":")
+        host = url_parts[0] if url_parts else "localhost"
+        port = int(url_parts[1]) if len(url_parts) > 1 else 8080
+    else:
+        host = "localhost"
+        port = 8080
+
+    grpc_port = 50051  # Internal Docker port (50052 is only for host access)
+
+    # Check if connecting to a Docker service name (not localhost and no dots)
+    is_service_name = host != "localhost" and "." not in host and not host.startswith("127.")
+
+    if is_service_name:
+        # For Docker service names, try connect_to_custom
+        try:
+            import weaviate.classes.init as wvi
+
+            # Use connect_to_custom for service names
+            return weaviate.connect_to_custom(
+                http_host=host,
+                http_port=port,
+                http_secure=False,
+                grpc_host=host,
+                grpc_port=grpc_port,
+                grpc_secure=False,
+            )
+        except (AttributeError, ImportError, TypeError) as e:
+            log.debug(f"connect_to_custom not available, trying local: {e}")
+            # Fallback to local (may not work for service names)
+            return weaviate.connect_to_local(port=port, grpc_port=grpc_port)
+    else:
+        # Standard localhost connection
+        return weaviate.connect_to_local(port=port, grpc_port=grpc_port)
+
+
 class ProvenanceClient:
     """Handles logging of orchestration runs to Weaviate."""
 
@@ -21,12 +68,15 @@ class ProvenanceClient:
 
     def _connect(self):
         try:
-            # Match docker-compose mapping: 8080 http, 50052 grpc
-            # Default to reasonable fallbacks
-            self.client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            # Use WEAVIATE_URL environment variable if available, otherwise default to localhost
+            weaviate_url = os.environ.get("WEAVIATE_URL", "http://localhost:8080")
+
+            # Use helper function to get client (handles Docker service names)
+            self.client = _get_weaviate_client_from_url(weaviate_url)
+
             # Verify connection
             self.client.get_meta()
-            log.info("Connected to Weaviate for provenance tracking.")
+            log.info(f"Connected to Weaviate for provenance tracking at {weaviate_url}")
         except Exception as e:
             log.warning(f"Failed to connect to Weaviate. Provenance disabled. Error: {e}")
             self.client = None

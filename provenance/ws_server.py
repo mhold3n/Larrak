@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import threading
+import traceback
 
 try:
     import websockets
@@ -95,8 +96,14 @@ async def run_server(host: str = "0.0.0.0", port: int = 8765) -> None:
         log.error("websockets not installed. Run: pip install websockets")
         return
 
+    # Loop is now set by start_background_server if running in thread
+    # If running standalone, we capture it here as fallback
     global _loop
-    _loop = asyncio.get_event_loop()
+    if _loop is None:
+        try:
+            _loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _loop = asyncio.get_event_loop()
 
     # Register as event listener
     add_listener(broadcast_event)
@@ -123,9 +130,19 @@ def start_background_server(host: str = "0.0.0.0", port: int = 8765) -> None:
 
     def run() -> None:
         try:
-            asyncio.run(run_server(host, port))
+            # Create a new loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            # Export loop for thread-safe broadcasting
+            global _loop
+            _loop = loop
+
+            # Run server
+            loop.run_until_complete(run_server(host, port))
         except Exception as e:
             log.error(f"WebSocket server thread failed: {e}")
+            traceback.print_exc()
 
     _server_thread = threading.Thread(target=run, daemon=True)
     _server_thread.start()

@@ -265,8 +265,10 @@ def _detect_hsl_path() -> str:
     if last_error:
         error_msg += f"\nLast error: {last_error}"
 
-    log.error(error_msg)
-    raise RuntimeError(error_msg)
+    log.warning(
+        f"HSL library not found. Falling back to default linear solver (MUMPS). Details:\n{error_msg}"
+    )
+    return ""
 
 
 HSLLIB_PATH: str = _detect_hsl_path()

@@ -1,0 +1,71 @@
+services:
+  cem-service:
+    build:
+      context: ..
+      dockerfile: ./Larrak.CEM/Dockerfile
+    # ports:
+    #   - "50051:50051"
+    environment:
+      - ASPNETCORE_URLS=http://+:50051
+    networks:
+      - larrak-internal
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+  openfoam:
+    container_name: larrak-openfoam
+    image: openfoam/openfoam11-paraview510
+    platform: linux/amd64
+    volumes:
+      - ../hifi_cases:/cases:rw
+      - openfoam_scratch:/scratch
+    working_dir: /cases
+    entrypoint: /bin/sh -c "tail -f /dev/null"
+    environment:
+      - WM_PROJECT_DIR=/opt/openfoam11
+    restart: unless-stopped
+    networks:
+      - larrak-internal
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "source /opt/openfoam11/etc/bashrc && simpleFoam -help 2>&1 | grep -q Usage",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+  calculix:
+    container_name: larrak-calculix
+    image: calculix/ccx:latest
+    platform: linux/amd64
+    volumes:
+      - ../hifi_cases:/cases:rw
+    working_dir: /cases
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    restart: unless-stopped
+    networks:
+      - larrak-internal
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "2"
+
+volumes:
+  openfoam_scratch:
+
+networks:
+  larrak-internal:
+    driver: bridge

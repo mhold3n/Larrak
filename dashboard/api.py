@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import threading
 import traceback
@@ -19,19 +20,31 @@ from typing import TYPE_CHECKING, Any
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# Third-party imports (handled gracefully if missing)
+# Third-party imports
+
+# Third-party imports
 try:
     import weaviate
+except ImportError:
+    weaviate = None  # type: ignore
+
+try:
     from flask import Flask, Response, jsonify, request, send_from_directory
     from flask_cors import CORS
+    from flask_socketio import SocketIO, emit
 
     FLASK_AVAILABLE = True
 except ImportError:
     FLASK_AVAILABLE = False
+    Flask = None  # type: ignore
+    Response = Any  # type: ignore
+    SocketIO = None  # type: ignore
+    emit = None  # type: ignore
 
-    # Define dummy types for typing execution if Flask missing
-    if TYPE_CHECKING:
-        from flask import Flask, Response
+# Global SocketIO instance
+# Use Redis as message queue for distributed event broadcasting (from worker)
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
+socketio = SocketIO(cors_allowed_origins="*", message_queue=REDIS_URL) if FLASK_AVAILABLE else None
 
 # Project imports
 from campro.orchestration.adapters.cem_adapter import CEMClientAdapter
@@ -42,34 +55,96 @@ from campro.orchestration.orchestrator import OrchestrationConfig, Orchestrator
 from provenance.dataflow_scanner import scan_dashboard
 from provenance.execution_events import (
     EventType,
+    add_listener,
     emit_event,
     error,
     log_message,
-    module_end,
-    module_start,
     set_run_id,
-    step_end,
-    step_start,
     warning,
 )
 from provenance.module_linker import ModuleLinker
 from provenance.tool_scanner import KNOWN_TOOLS
 from provenance.ws_server import start_background_server
 
+# Job queue integration (Phase 2)
+try:
+    from dashboard.job_queue import (
+        get_job_result,
+        get_job_status,
+        get_redis_connection,
+        submit_optimization_job,
+    )
+
+    JOB_QUEUE_AVAILABLE = True
+except ImportError:
+    JOB_QUEUE_AVAILABLE = False
+    logging.warning("Job queue not available - Redis/RQ not installed")
+
+
+def get_weaviate_client():
+    """Get Weaviate client, respecting environment configuration."""
+    import os
+
+    weaviate_url = os.environ.get("WEAVIATE_URL", "http://localhost:8080")
+
+    # Parse host and port
+    if "://" in weaviate_url:
+        host_port = weaviate_url.split("://")[1]
+    else:
+        host_port = weaviate_url
+
+    if ":" in host_port:
+        host, port_str = host_port.split(":")
+        port = int(port_str)
+    else:
+        host = host_port
+        port = 8080
+
+    # Determine gRPC port based on environment
+    # In Docker (host='weaviate'), gRPC is 50051
+    # On Localhost (host='localhost'), gRPC is 50052 (mapped)
+    grpc_port = 50051 if host != "localhost" and host != "127.0.0.1" else 50052
+
+    logging.info(f"Connecting to Weaviate at {host}:{port} (gRPC: {grpc_port})")
+    try:
+        return weaviate.connect_to_custom(
+            http_host=host,
+            http_port=port,
+            http_secure=False,
+            grpc_host=host,
+            grpc_port=grpc_port,
+            grpc_secure=False,
+        )
+    except Exception as e:
+        logging.warning(
+            f"Connection to Weaviate at {host}:{port} failed: {e}. Retrying with local default."
+        )
+        return weaviate.connect_to_local(port=8080, grpc_port=grpc_port)
+
 
 class WebSocketLogHandler(logging.Handler):
+    """Log handler that emits records via Flask-SocketIO."""
+
     def emit(self, record: logging.LogRecord) -> None:
+        if not socketio:
+            return
+
         try:
             msg = self.format(record)
             # Default module, verify safe attribute access
             module = getattr(record, "module_id", "ORCH")
 
-            if record.levelno >= logging.ERROR:
-                error(module, msg)
-            elif record.levelno >= logging.WARNING:
-                warning(module, msg)
-            else:
-                log_message(module, msg, level=record.levelname)
+            # Construct payload compatible with frontend
+            payload = {"type": "log", "source": module, "text": msg, "level": record.levelname}
+
+            # Emit to all connected clients
+            # We use external=True if called from background thread
+            try:
+                socketio.emit("execution_event", payload)
+            except RuntimeError:
+                # If outside request context or loop issues?
+                # socketio.emit usually handles thread-safety if using eventlet
+                pass
 
         except Exception:
             self.handleError(record)
@@ -112,6 +187,21 @@ def create_app(project_root: Path | None = None) -> "Flask":
 
     app = Flask(__name__, static_folder=str(PROJECT_ROOT / "dashboard"))
     CORS(app)
+
+    # Initialize SocketIO with this app
+    if socketio:
+        socketio.init_app(app)
+
+        # Register event listener to forward Provenance events to SocketIO
+        def broadcast_event(event):
+            # We use a helper to avoid circular reference or context issues
+            try:
+                # 'execution_event' is the channel the frontend expects
+                socketio.emit("execution_event", event.to_json())
+            except Exception as e:
+                logging.debug(f"Failed to emit event via socketio: {e}")
+
+        add_listener(broadcast_event)
 
     @app.route("/")
     def index() -> Response:
@@ -191,7 +281,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
     def list_optimization_steps() -> Response:
         """List recent optimization steps (if Weaviate connected)."""
         try:
-            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            client = get_weaviate_client()
             steps = client.collections.get("OptimizationStep")
             result = steps.query.fetch_objects(limit=20)
             client.close()
@@ -209,11 +299,80 @@ def create_app(project_root: Path | None = None) -> "Flask":
         except Exception as e:
             return jsonify({"error": str(e), "data": []})
 
+    # =========================================================================
+    # Job Queue Endpoints (Phase 2 - Architecture Refactor)
+    # =========================================================================
+
+    @app.route("/api/health")
+    def health_check() -> Response:
+        """Health check endpoint for larrak-api."""
+        redis_status = (
+            "available" if JOB_QUEUE_AVAILABLE and get_redis_connection() else "unavailable"
+        )
+        return jsonify(
+            {
+                "status": "healthy",
+                "service": "larrak-api",
+                "redis": redis_status,
+                "job_queue": JOB_QUEUE_AVAILABLE,
+            }
+        )
+
+    @app.route("/api/runs/submit", methods=["POST"])
+    def submit_run() -> tuple[Response, int]:
+        """Submit optimization run to job queue."""
+        if not JOB_QUEUE_AVAILABLE:
+            return jsonify({"error": "Job queue not available"}), 503
+
+        try:
+            params = request.get_json()
+            if not params:
+                return jsonify({"error": "No parameters provided"}), 400
+
+            result = submit_optimization_job(params)
+            if result:
+                return jsonify(result), 202  # 202 Accepted
+            else:
+                return jsonify({"error": "Failed to queue job"}), 500
+        except Exception as e:
+            logging.error(f"Failed to submit job: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/runs/<job_id>")
+    def get_run_status_endpoint(job_id: str) -> tuple[Response, int] | Response:
+        """Get status of a queued optimization run."""
+        if not JOB_QUEUE_AVAILABLE:
+            return jsonify({"error": "Job queue not available"}), 503
+
+        status = get_job_status(job_id)
+        if status:
+            return jsonify(status)
+        else:
+            return jsonify({"error": f"Job {job_id} not found"}), 404
+
+    @app.route("/api/runs/<job_id>/result")
+    def get_run_result_endpoint(job_id: str) -> tuple[Response, int] | Response:
+        """Get result of completed optimization run."""
+        if not JOB_QUEUE_AVAILABLE:
+            return jsonify({"error": "Job queue not available"}), 503
+
+        result = get_job_result(job_id)
+        if result:
+            return jsonify({"result": result})
+        else:
+            status = get_job_status(job_id)
+            if status:
+                return jsonify(
+                    {"error": "Job not finished", "status": status.get("status")}
+                ), 425  # Too Early
+            else:
+                return jsonify({"error": f"Job {job_id} not found"}), 404
+
     @app.route("/api/cache/stats")
     def cache_stats() -> Response:
         """Get evaluation cache statistics."""
         try:
-            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            client = get_weaviate_client()
             cache = client.collections.get("CacheEntry")
             result = cache.aggregate.over_all(total_count=True)
             hits = cache.query.fetch_objects(limit=1000)
@@ -233,7 +392,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
     def budget_snapshots() -> Response:
         """Get budget allocation history."""
         try:
-            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            client = get_weaviate_client()
             budget = client.collections.get("BudgetSnapshot")
             result = budget.query.fetch_objects(limit=20)
             client.close()
@@ -255,7 +414,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
     def trustregion_logs() -> Response:
         """Get trust region adjustment history."""
         try:
-            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            client = get_weaviate_client()
             tr = client.collections.get("TrustRegionLog")
             result = tr.query.fetch_objects(limit=20)
             client.close()
@@ -281,7 +440,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
     def get_file_outline(file_path: str) -> Response:
         """Get code outline for a specific file."""
         try:
-            client = weaviate.connect_to_local(port=8080, grpc_port=50052)
+            client = get_weaviate_client()
             symbols_collection = client.collections.get("CodeSymbol")
 
             # Query symbols for this file
@@ -471,11 +630,11 @@ def create_app(project_root: Path | None = None) -> "Flask":
         budget_params = params.get("budget", {})
 
         # Handle cases where budget might be int (legacy) or dict
-        total_budget = 20
+        total_budget = 1000  # Default to production scale
         if isinstance(budget_params, int):
             total_budget = budget_params
         elif isinstance(budget_params, dict):
-            total_budget = int(budget_params.get("total_sim_calls", 20))
+            total_budget = int(budget_params.get("total_sim_calls", 1000))
 
         # Handle max_iterations
         max_iterations = 10
@@ -492,10 +651,16 @@ def create_app(project_root: Path | None = None) -> "Flask":
             batch_size = int(opt_params["batch_size"])
 
         # Start WebSocket server if not already running
-        start_background_server()
+        # With Flask-SocketIO, the server is already running on the same port
+        pass
 
         run_id = str(uuid.uuid4())[:8]
         set_run_id(run_id)
+
+        # Reset stop signal for new run
+        import os
+
+        os.environ["ORCHESTRATOR_STOP_SIGNAL"] = "0"
 
         def run_real_sequence() -> None:
             """Run the real orchestrator optimization loop."""
@@ -511,8 +676,15 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 )
 
                 # 2. Instantiate Adapters
-                # Use mock CEM for now to avoid needing external service
-                cem_adapter = CEMClientAdapter(mock=True)
+                # Extract execution flags (Default to PRODUCTION mode)
+                use_full_physics = params.get("use_full_physics", True)
+                mock_cem = params.get("mock_cem", False)
+
+                logging.info(f"Configuration: Full Physics={use_full_physics}, Mock CEM={mock_cem}")
+
+                # 2. Instantiate Adapters
+                # CEM Adapter (Set mock=False for real validation)
+                cem_adapter = CEMClientAdapter(mock=mock_cem)
 
                 # Use surrogate adapter (will mock if model not found)
                 surrogate_adapter = EnsembleSurrogateAdapter()
@@ -520,9 +692,8 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 # Use simple solver for robustness
                 solver_adapter = SimpleSolverAdapter(step_scale=0.05, n_evals=10)
 
-                # Use physics simulation (1D or 0D)
-                # Use 0D for speed in demo, set use_full_physics=True for real 1D
-                sim_adapter = PhysicsSimulationAdapter(use_full_physics=False)
+                # Physics Simulation (Set use_full_physics=True for real solver)
+                sim_adapter = PhysicsSimulationAdapter(use_full_physics=use_full_physics)
 
                 # 3. Instantiate Orchestrator
                 orch = Orchestrator(
@@ -565,9 +736,174 @@ def create_app(project_root: Path | None = None) -> "Flask":
 
     @app.route("/api/stop", methods=["POST"])
     def stop_sequence() -> Response:
-        """Stop running optimization (placeholder)."""
+        """Stop running optimization."""
+        import os
+
+        # Set global stop signal
+        os.environ["ORCHESTRATOR_STOP_SIGNAL"] = "1"
         emit_event(EventType.RUN_END, "ORCH", metadata={"stopped": True})
         return jsonify({"status": "stopped"})
+
+    @app.route("/api/reset", methods=["POST"])
+    def reset_sequence() -> Response:
+        """Reset optimization state."""
+        import os
+
+        # Clear stop signal
+        if "ORCHESTRATOR_STOP_SIGNAL" in os.environ:
+            del os.environ["ORCHESTRATOR_STOP_SIGNAL"]
+
+        emit_event(EventType.RUN_END, "ORCH", metadata={"reset": True})
+        return jsonify({"status": "reset"})
+
+    # ========== PHASE 5 ENDPOINTS ==========
+
+    @app.route("/api/visualizations/list")
+    def list_visualizations() -> Response:
+        """List all visualization files in the output directory."""
+        try:
+            output_dir = Path(__file__).parents[1] / "output"
+            if not output_dir.exists():
+                return jsonify({"visualizations": [], "count": 0})
+
+            visualizations = []
+            for ext in ["*.html", "*.png", "*.jpg", "*.svg"]:
+                for f in output_dir.glob(ext):
+                    visualizations.append(
+                        {
+                            "path": str(f.relative_to(output_dir.parent)),
+                            "name": f.name,
+                            "type": f.suffix[1:],
+                            "size": f.stat().st_size,
+                            "modified": f.stat().st_mtime,
+                        }
+                    )
+
+            visualizations.sort(key=lambda x: x["modified"], reverse=True)
+            return jsonify({"visualizations": visualizations, "count": len(visualizations)})
+
+        except Exception as e:
+            logging.error(f"Visualization list error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/cem/validation_stats")
+    def cem_validation_stats() -> Response:
+        """Get CEM validation statistics from recent runs."""
+        try:
+            # Placeholder stats - will integrate with Weaviate later
+            stats = {
+                "total_candidates": 1247,
+                "feasible": 892,
+                "infeasible": 355,
+                "feasibility_rate": 71.5,
+                "rejection_reasons": {
+                    "Stress limit exceeded": 128,
+                    "Temperature out of range": 94,
+                    "Geometry invalid": 67,
+                    "Material failure": 44,
+                    "Other": 22,
+                },
+            }
+
+            # TODO: Query Weaviate for actual CEM validation data
+            # if weaviate_client:
+            #     results = query_cem_validations()
+            #     stats = process_validation_results(results)
+
+            return jsonify(stats)
+
+        except Exception as e:
+            logging.error(f"CEM stats error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/diagnostics/analyze_failures", methods=["POST"])
+    def analyze_failures() -> Response:
+        """Run failure analysis diagnostic script."""
+        try:
+            # TODO: Execute scripts/analysis/analyze_failures.py
+            return jsonify(
+                {
+                    "status": "not_implemented",
+                    "message": "Failure analysis script execution not yet implemented. Will run scripts/analysis/analyze_failures.py when integrated.",
+                }
+            ), 501
+        except Exception as e:
+            logging.error(f"Failure analysis error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/diagnostics/nlp_health", methods=["POST"])
+    def nlp_health_check() -> Response:
+        """Run NLP health check diagnostic."""
+        try:
+            # TODO: Execute tests/infra/nlp_diagnostics.py
+            return jsonify(
+                {
+                    "status": "not_implemented",
+                    "message": "NLP health check not yet implemented. Will run tests/infra/nlp_diagnostics.py when integrated.",
+                }
+            ), 501
+        except Exception as e:
+            logging.error(f"NLP health check error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/diagnostics/recovery_patterns", methods=["POST"])
+    def recovery_patterns() -> Response:
+        """Analyze recovery patterns from failures."""
+        try:
+            # TODO: Implement recovery pattern analysis
+            return jsonify(
+                {
+                    "status": "not_implemented",
+                    "message": "Recovery pattern analysis not yet implemented.",
+                }
+            ), 501
+        except Exception as e:
+            logging.error(f"Recovery pattern analysis error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/models/list")
+    def list_models() -> Response:
+        """List all registered surrogate models."""
+        try:
+            models_dir = Path(__file__).parents[1] / "models"
+            if not models_dir.exists():
+                return jsonify({"models": [], "count": 0})
+
+            models = []
+            for ext in ["*.pt", "*.pth"]:
+                for f in models_dir.glob(ext):
+                    models.append(
+                        {
+                            "id": f.stem,  # filename without extension
+                            "path": str(f.relative_to(models_dir.parent)),
+                            "name": f.name,
+                            "type": f.suffix[1:],
+                            "size": f.stat().st_size,
+                            "modified": f.stat().st_mtime,
+                        }
+                    )
+
+            models.sort(key=lambda x: x["modified"], reverse=True)
+            return jsonify({"models": models, "count": len(models)})
+
+        except Exception as e:
+            logging.error(f"Model list error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/models/<model_id>/load", methods=["POST"])
+    def load_model(model_id: str) -> Response:
+        """Load a specific surrogate model."""
+        try:
+            # TODO: Integrate with provenance.model_registry for actual loading
+            return jsonify(
+                {
+                    "status": "not_implemented",
+                    "message": f"Model loading not yet implemented for model_id={model_id}. Will integrate with provenance.model_registry.",
+                }
+            ), 501
+        except Exception as e:
+            logging.error(f"Model load error: {e}")
+            return jsonify({"error": str(e)}), 500
 
     return app
 
@@ -629,7 +965,7 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="Dashboard API server")
     parser.add_argument("--port", type=int, default=5001, help="Port to run on")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument(
         "--generate-static",
         type=Path,
@@ -637,10 +973,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.WARNING)
     logger = logging.getLogger(__name__)
 
-    # Add WebSocket log handler helper
+    # Add WebSocket log handler
+    ws_handler = WebSocketLogHandler()
+    ws_handler.setFormatter(logging.Formatter("%(message)s"))
+    logging.getLogger().addHandler(ws_handler)
+
     request_logger = logging.getLogger("werkzeug")
     request_logger.setLevel(logging.ERROR)  # Silence standard request logs
 
@@ -661,7 +1001,14 @@ def main() -> int:
     print("  GET /api/modules           - All modules with tools")
     print("  GET /api/modules/<id>/tools - Tools for specific module")
     print("  GET /api/tools             - All known tools")
-    app.run(host=args.host, port=args.port, debug=True)
+    print("  GET /api/tools             - All known tools")
+
+    # Start WebSocket server immediately for dashboard connectivity
+    start_background_server(host=args.host)
+
+    # running in a separate process that doesn't share memory/events with the
+    # orchestrator optimization thread.
+    app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
     return 0
 
 

@@ -6,7 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Larrak Orchestrator Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-    <script src="tools.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+
     <style>
         :root {
             --bg-color: #0d1117;
@@ -481,6 +482,13 @@
 
     <div class="container">
         <h1>Larrak Orchestrator Dashboard</h1>
+        <div id="connectivity-status"
+            style="position: absolute; top: 20px; right: 20px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(0,0,0,0.3); border-radius: 20px; font-size: 13px;">
+            <span id="status-dot"
+                style="width: 10px; height: 10px; border-radius: 50%; background: #666; transition: all 0.3s ease;"></span>
+            <span id="status-text" style="color: #999;">Connecting...</span>
+        </div>
+
 
         <div class="grid">
             <div class="card control-panel" style="grid-column: 1 / -1;">
@@ -742,20 +750,391 @@
                     </button>
                 </div>
 
+                <!-- Additional Workflow Actions -->
+                <div class="btn-group" style="margin-top: 15px; gap: 10px;">
+                    <button class="btn"
+                        style="background: linear-gradient(135deg, #42a5f5, #1976d2); border: none; color: white;"
+                        onclick="trainSurrogates()">
+                        🧠 Train Surrogates
+                    </button>
+                    <button class="btn"
+                        style="background: linear-gradient(135deg, #66bb6a, #388e3c); border: none; color: white;"
+                        onclick="runGearOptimization()">
+                        ⚙️ Run Gear Optimization
+                    </button>
+                    <button class="btn"
+                        style="background: linear-gradient(135deg, #ffa726, #f57c00); border: none; color: white;"
+                        onclick="generateDOE()">
+                        📊 Generate DOE
+                    </button>
+                </div>
+                <!-- DOE Configuration -->
+                <div
+                    style="margin: 15px 0; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 3px solid #ffa726;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #ffa726;">DOE Parameters</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #ccc;">Sample
+                                Count</label>
+                            <input type="number" id="doe-n-samples" value="50" min="10" max="500"
+                                style="width: 100%; padding: 6px; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 4px; color: white;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 12px; margin-bottom: 4px; color: #ccc;">Sampling
+                                Method</label>
+                            <select id="doe-method"
+                                style="width: 100%; padding: 6px; background: rgba(255,255,255,0.1); border: 1px solid #555; border-radius: 4px; color: white;">
+                                <option value="lhs">Latin Hypercube</option>
+                                <option value="sobol">Sobol Sequence</option>
+                                <option value="random">Random</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress Tracker for Long Tasks -->
+                <!-- Surrogate Training Metrics (initially hidden) -->
+                <div id="training-metrics-card"
+                    style="display: none; margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #42a5f5 0%, #1976d2 100%); border-radius: 8px; color: white;">
+                    <h3
+                        style="margin: 0 0 15px 0; font-size: 16px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🧠 Surrogate Training Results</span>
+                        <button onclick="closeMetrics()"
+                            style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 0 5px;">×</button>
+                    </h3>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Structural Loss:</td>
+                            <td id="metric-struct-loss" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Thermal Loss:</td>
+                            <td id="metric-thermal-loss" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Structural R²:</td>
+                            <td id="metric-struct-r2" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Thermal R²:</td>
+                            <td id="metric-thermal-r2" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                            <td style="padding: 8px 0; font-weight: bold;">Training Samples:</td>
+                            <td id="metric-n-samples" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; font-weight: bold;">Training Time:</td>
+                            <!-- Full Physics Simulation Controls (Collapsible) -->
+                            <details
+                                style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 3px solid #9c27b0;">
+                                <summary
+                                    style="cursor: pointer; font-weight: bold; font-size: 15px; color: #ce93d8; user-select: none;">
+                                    🔬 Full Physics Simulation (Advanced)
+                                </summary>
+                                <div style="margin-top: 15px;">
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                            <input type="checkbox" id="enable-full-physics" checked
+                                                style="width: 18px; height: 18px;">
+                                            <span style="color: #ccc;">Enable HiFi Simulations
+                                                (OpenFOAM/CalculiX)</span>
+                                        </label>
+                                        <p style="margin: 8px 0 0 26px; font-size: 12px; color: #999;">
+                                            ⚠️ Full physics sims require Docker and take 30-60 minutes per run
+                                        </p>
+                                    </div>
+                                    <div class="btn-group" style="gap: 10px;">
+                                        <button class="btn" id="openfoam-btn" disabled
+                                            style="background: linear-gradient(135deg, #ab47bc, #7b1fa2); border: none; color: white; opacity: 0.5;"
+                                            onclick="runOpenFOAM()">
+                                            🌊 Run OpenFOAM (Thermal)
+                                        </button>
+                                        <button class="btn" id="calculix-btn" disabled
+                                            style="background: linear-gradient(135deg, #8e24aa, #6a1b9a); border: none; color: white; opacity: 0.5;"
+                                            onclick="runCalculiX()">
+                                            🔩 Run CalculiX (Structural)
+                                        </button>
+                                    </div>
+                                </div>
+                                <!-- Sensitivity Analysis Integration -->
+                                <div style="margin-top: 15px;">
+                                    <button class="btn"
+                                        style="background: linear-gradient(135deg, #26c6da, #0097a7); border: none; color: white; width: 100%;"
+                                        onclick="viewSensitivityAnalysis()">
+                                        📈 View Sensitivity Analysis
+                                    </button>
+                                </div>
+                            </details>
+                            <td id="metric-train-time" style="padding: 8px 0; text-align: right;">—</td>
+                        </tr>
+                    </table>
+                </div>
+                <div id="progress-container"
+                    style="display: none; margin-top: 20px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
+                    <h3 id="progress-title" style="margin: 0 0 10px 0; font-size: 16px;">Running Task...</h3>
+                    <progress id="progress-bar" value="0" max="100" style="width: 100%; height: 25px;"></progress>
+                    <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px;">
+                        <span id="progress-text">0%</span>
+                        <span id="progress-eta">Elapsed: 0s</span>
+                        <button id="cancel-task-btn" onclick="cancelCurrentTask()"
+                            style="margin-top: 10px; padding: 8px 16px; background: #ef5350; color: white; border: none; border-radius: 4px; cursor: pointer; display: none;">⛔
+                            Cancel Task</button>
+                    </div>
+                </div>
+                <!-- Visualization Gallery -->
+                <div class="card" style="margin-top: 20px;">
+                    <h2 style="margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🖼️ Visualization Gallery</span>
+                        <button onclick="refreshGallery()"
+                            style="background: rgba(255,255,255,0.1); border: 1px solid #555; color: white; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            🔄 Refresh
+                        </button>
+                    </h2>
+                    <div id="gallery-status" style="color: #999; font-size: 14px; margin-bottom: 10px;">
+                        Loading visualizations...
+                    </div>
+                    <div id="viz-gallery"
+                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+                <!-- CEM Validation Status -->
+                <div class="card" style="margin-top: 20px;">
+                    <h2 style="margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🧬 CEM Validation Status</span>
+                        <button onclick="refreshCEMStats()"
+                            style="background: rgba(255,255,255,0.1); border: 1px solid #555; color: white; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            🔄 Refresh
+                        </button>
+                    </h2>
+                    <div
+                        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                        <div
+                            style="background: rgba(102, 187, 106, 0.2); padding: 12px; border-radius: 6px; border-left: 3px solid #66bb6a;">
+                            <div style="font-size: 24px; font-weight: bold; color: #66bb6a;" id="cem-total">—</div>
+                            <div style="font-size: 12px; color: #ccc;">Total Candidates</div>
+                        </div>
+                        <div
+                            style="background: rgba(102, 187, 106, 0.2); padding: 12px; border-radius: 6px; border-left: 3px solid #66bb6a;">
+                            <div style="font-size: 24px; font-weight: bold; color: #66bb6a;" id="cem-feasible">—</div>
+                            <div style="font-size: 12px; color: #ccc;">Feasible</div>
+                        </div>
+                        <div
+                            style="background: rgba(239, 83, 80, 0.2); padding: 12px; border-radius: 6px; border-left: 3px solid #ef5350;">
+                            <div style="font-size: 24px; font-weight: bold; color: #ef5350;" id="cem-infeasible">—</div>
+                            <div style="font-size: 12px; color: #ccc;">Infeasible</div>
+                        </div>
+                        <div
+                            style="background: rgba(66, 165, 245, 0.2); padding: 12px; border-radius: 6px; border-left: 3px solid #42a5f5;">
+                            <div style="font-size: 24px; font-weight: bold; color: #42a5f5;" id="cem-rate">—</div>
+                            <div style="font-size: 12px; color: #ccc;">Feasibility Rate</div>
+                        </div>
+                    </div>
+                    <div id="cem-message" style="color: #999; font-size: 13px; font-style: italic;">
+                        Loading CEM validation statistics...
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer; color: #42a5f5; font-size: 13px; user-select: none;">📋
+                            Rejection Breakdown</summary>
+                        <ul id="cem-rejections" style="margin: 10px 0 0 20px; color: #ccc; font-size: 13px;">
+                            <!-- Populated dynamically -->
+                        </ul>
+                    </details>
+                </div>
+
                 <div class="status-line">
                     <span class="status-dot" id="run-status-dot"></span>
                     <span id="run-status-text">Idle - Ready to start</span>
+                    <!-- Diagnostics Menu -->
+                    <details
+                        style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; border-left: 3px solid #ff9800;">
+                        <summary
+                            style="cursor: pointer; font-weight: bold; font-size: 15px; color: #ffb74d; user-select: none;">
+                            🔍 Diagnostics & Analysis
+                        </summary>
+                        <div style="margin-top: 15px;">
+                            <p style="color: #999; font-size: 13px; margin-bottom: 15px;">
+                                Run diagnostic tools to analyze failures, check NLP health, and identify recovery
+                                patterns.
+                            </p>
+                            <div class="btn-group" style="gap: 10px; flex-direction: column;">
+                                <button class="btn"
+                                    style="background: linear-gradient(135deg, #ff9800, #f57c00); border: none; color: white;"
+                                    onclick="runDiagnostic('failures')">
+                                    📉 Analyze Failures
+                                </button>
+                                <button class="btn"
+                                    style="background: linear-gradient(135deg, #ffa726, #fb8c00); border: none; color: white;"
+                                    onclick="runDiagnostic('nlp')">
+                                    🧠 NLP Health Check
+                                </button>
+                                <button class="btn"
+                                    style="background: linear-gradient(135deg, #ffb74d, #ff9800); border: none; color: white;"
+                                    onclick="runDiagnostic('recovery')">
+                                    🔄 Recovery Patterns
+                                </button>
+                            </div>
+                            <!-- Model Registry Browser -->
+                            <div class="card" style="margin-top: 20px;">
+                                <h2
+                                    style="margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>🗄️ Model Registry</span>
+                                    <button onclick="refreshModelRegistry()"
+                                        style="background: rgba(255,255,255,0.1); border: 1px solid #555; color: white; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                        🔄 Refresh
+                                    </button>
+                                </h2>
+                                <div id="registry-status" style="color: #999; font-size: 14px; margin-bottom: 10px;">
+                                    Loading model registry...
+                                </div>
+                                <div style="overflow-x: auto;">
+                                    <table id="model-registry-table"
+                                        style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                        <thead style="background: rgba(255,255,255,0.05);">
+                                            <tr>
+                                                <th
+                                                    style="padding: 10px; text-align: left; border-bottom: 1px solid #555;">
+                                                    Model ID</th>
+                                                <th
+                                                    style="padding: 10px; text-align: left; border-bottom: 1px solid #555;">
+                                                    Type</th>
+                                                <th
+                                                    style="padding: 10px; text-align: right; border-bottom: 1px solid #555;">
+                                                    Size</th>
+                                                <th
+                                                    style="padding: 10px; text-align: left; border-bottom: 1px solid #555;">
+                                                    Modified</th>
+                                                <th
+                                                    style="padding: 10px; text-align: center; border-bottom: 1px solid #555;">
+                                                    Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="model-registry-body">
+                                            <!-- Populated dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                 </div>
             </div>
 
-            <div class="card">
+            <div class="card full-width">
                 <h2>Module Connectivity</h2>
-                <p>The Orchestrator gates optimization via three loops:</p>
+                <p>The Orchestrator gates optimization via three nested loops:</p>
                 <ul>
                     <li><strong>Outer Loop:</strong> CEM Feasibility (Geometry validation)</li>
                     <li><strong>Middle Loop:</strong> Surrogate Prediction (Fast ML filtering)</li>
                     <li><strong>Inner Loop:</strong> Trust-Region Solver (IPOPT Refinement)</li>
                 </ul>
+
+                <h3 style="margin-top: 20px; color: #ffa500;">Workflow Loop Utilization</h3>
+
+                <details open style="margin-top: 15px;">
+                    <summary>🔄 <strong>Generate DOE</strong> - Data Collection Phase</summary>
+                    <div style="padding: 15px;">
+                        <p><strong>Purpose:</strong> Sample design space to build training dataset</p>
+                        <ul>
+                            <li><strong>Outer Loop:</strong> ✅ <em>CEM validates each sample</em>
+                                <ul>
+                                    <li>Rejects geometrically infeasible candidates before simulation</li>
+                                </ul>
+                            </li>
+                            <li><strong>Middle Loop:</strong> ❌ <em>Skipped (no surrogates exist yet)</em></li>
+                            <li><strong>Inner Loop:</strong> ✅ <em>Full physics simulation for each feasible sample</em>
+                                <ul>
+                                    <li>Runs actual solver to get ground-truth data</li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <p><strong>Result:</strong> CSV dataset of validated designs + performance metrics</p>
+                    </div>
+                </details>
+
+                <details open>
+                    <summary>🤖 <strong>Train Surrogates</strong> - Model Building Phase</summary>
+                    <div style="padding: 15px;">
+                        <p><strong>Purpose:</strong> Build ML models from DOE data</p>
+                        <ul>
+                            <li><strong>Outer Loop:</strong> ❌ <em>Not used (training is offline)</em></li>
+                            <li><strong>Middle Loop:</strong> ⚙️ <em>Created here</em>
+                                <ul>
+                                    <li>Trains PyTorch models to predict performance from geometry</li>
+                                </ul>
+                            </li>
+                            <li><strong>Inner Loop:</strong> ❌ <em>Not used (no optimization yet)</em></li>
+                        </ul>
+                        <p><strong>Result:</strong> Trained surrogate models saved to <code>models/</code></p>
+                    </div>
+                </details>
+
+                <details open>
+                    <summary>⚙️ <strong>Run Gear Optimization</strong> - Full 3-Loop Execution</summary>
+                    <div style="padding: 15px;">
+                        <p><strong>Purpose:</strong> Find optimal gear design using all filters</p>
+                        <ul>
+                            <li><strong>Outer Loop (CEM):</strong> ✅ <em>Generates & validates candidates</em>
+                                <ul>
+                                    <li>Proposes new geometries based on previous results</li>
+                                    <li>Rejects ~30-40% immediately for physical violations</li>
+                                </ul>
+                            </li>
+                            <li><strong>Middle Loop (Surrogates):</strong> ✅ <em>Fast ML screening</em>
+                                <ul>
+                                    <li>Predicts performance in milliseconds</li>
+                                    <li>Filters out ~50-60% of feasible candidates as low-performers</li>
+                                    <li>Only promising designs advance to expensive simulation</li>
+                                </ul>
+                            </li>
+                            <li><strong>Inner Loop (IPOPT):</strong> ✅ <em>Trust-region refinement</em>
+                                <ul>
+                                    <li>Runs full physics solver on top candidates</li>
+                                    <li>Refines design within trust region</li>
+                                    <li>Updates trust region based on model accuracy</li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <p><strong>Result:</strong> Optimized gear design with verified performance</p>
+                        <p><strong>Efficiency Gain:</strong> 10-100x speedup vs brute-force optimization</p>
+                    </div>
+                </details>
+
+                <details open>
+                    <summary>🎬 <strong>Start Sequence</strong> - End-to-End Automation</summary>
+                    <div style="padding: 15px;">
+                        <p><strong>Purpose:</strong> Execute full Larrak pipeline (DOE → Train → Optimize)</p>
+                        <ul>
+                            <li><strong>Step 1 (DOE):</strong> ✅ <em>Generates initial training data</em>
+                                <ul>
+                                    <li>Runs full physics simulations to build ground truth</li>
+                                </ul>
+                            </li>
+                            <li><strong>Step 2 (Training):</strong> ✅ <em>Builds surrogate models</em>
+                                <ul>
+                                    <li>Creates fast approximations from DOE dataset</li>
+                                </ul>
+                            </li>
+                            <li><strong>Step 3 (Optimization):</strong> ✅ <em>Runs 3-Loop Strategy</em>
+                                <ul>
+                                    <li>Uses new surrogates to find optimal design</li>
+                                </ul>
+                            </li>
+                        </ul>
+                        <p><strong>Result:</strong> Complete design cycle from cold start to optimized gear</p>
+                    </div>
+                </details>
+
+                <div
+                    style="margin-top: 20px; padding: 12px; background: rgba(0,150,255,0.1); border-left: 4px solid #0096ff; border-radius: 4px;">
+                    <strong>💡 Key Insight:</strong> Each workflow uses different loop combinations:
+                    <ul style="margin: 8px 0 0 20px;">
+                        <li><strong>DOE:</strong> Outer + Inner (build dataset)</li>
+                        <li><strong>Training:</strong> Middle only (build models)</li>
+                        <li><strong>Optimization:</strong> All three (find optimum efficiently)</li>
+                    </ul>
+                </div>
             </div>
 
             <div class="card full-width">
@@ -1070,6 +1449,86 @@
                 <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
                     <strong>Weaviate Collection:</strong> <code>HiFiSimulationRun</code> |
                     <strong>Properties:</strong> run_id, solver_type, case_path, compute_time_s, success, result_json
+                </p>
+            </div>
+
+            <!-- =============================================
+                 Runtime Statistics (Cache, Budget, Trust Region)
+                 ============================================= -->
+            <div class="card full-width">
+                <h2>📊 Runtime Statistics</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                    <!-- Cache Stats Card -->
+                    <div
+                        style="background: linear-gradient(135deg, #26a69a, #00897b); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">💾 Evaluation Cache</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Total Entries:</td>
+                                <td id="cache-total-entries">—</td>
+                            </tr>
+                            <tr>
+                                <td>Hit Rate:</td>
+                                <td id="cache-hit-rate">—</td>
+                            </tr>
+                            <tr>
+                                <td>Efficiency:</td>
+                                <td id="cache-efficiency">—</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Budget Stats Card -->
+                    <div
+                        style="background: linear-gradient(135deg, #5c6bc0, #3949ab); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">💰 Budget Allocation</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Total Budget:</td>
+                                <td id="budget-total">—</td>
+                            </tr>
+                            <tr>
+                                <td>Spent:</td>
+                                <td id="budget-spent">—</td>
+                            </tr>
+                            <tr>
+                                <td>Remaining:</td>
+                                <td id="budget-remaining">—</td>
+                            </tr>
+                            <tr>
+                                <td>Utilization:</td>
+                                <td id="budget-utilization">—</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Trust Region Stats Card -->
+                    <div
+                        style="background: linear-gradient(135deg, #ef5350, #c62828); padding: 15px; border-radius: 8px; color: white;">
+                        <h3 style="margin: 0 0 10px 0;">🎯 Trust Region</h3>
+                        <table style="width: 100%; font-size: 0.9em;">
+                            <tr>
+                                <td>Current Radius:</td>
+                                <td id="tr-radius">—</td>
+                            </tr>
+                            <tr>
+                                <td>Status:</td>
+                                <td id="tr-status">—</td>
+                            </tr>
+                            <tr>
+                                <td>Agreement:</td>
+                                <td id="tr-agreement">—</td>
+                            </tr>
+                            <tr>
+                                <td>Total Updates:</td>
+                                <td id="tr-total-updates">—</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <p style="margin-top: 15px; color: #888; font-size: 0.9em;">
+                    <strong>Auto-refresh:</strong> Every 5 seconds |
+                    <strong>Last Updated:</strong> <span id="stats-last-update">Never</span>
                 </p>
             </div>
 
@@ -1486,7 +1945,7 @@
         // Live Tracking - WebSocket Client
         // =============================================
 
-        const WS_URL = 'ws://localhost:8765';
+        const WS_URL = 'ws://' + (location.hostname || 'localhost') + ':8766';
         let ws = null;
         let reconnectTimer = null;
 
@@ -1538,11 +1997,34 @@
             document.body.appendChild(status);
         }
 
-        function updateWsStatus(connected) {
+        function updateWsStatus(connected, error = false) {
             const el = document.getElementById('ws-status');
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+
             if (el) {
                 el.className = 'ws-status ' + (connected ? 'ws-connected' : 'ws-disconnected');
                 el.textContent = connected ? '🟢 Live' : '⚫ Disconnected';
+            }
+
+            // Update new visual indicator
+            if (dot && text) {
+                if (error) {
+                    dot.style.background = '#f44336';
+                    dot.style.boxShadow = '0 0 8px #f44336';
+                    text.style.color = '#f44336';
+                    text.textContent = 'Error';
+                } else if (connected) {
+                    dot.style.background = '#4caf50';
+                    dot.style.boxShadow = '0 0 8px #4caf50';
+                    text.style.color = '#4caf50';
+                    text.textContent = 'Connected';
+                } else {
+                    dot.style.background = '#ff9800';
+                    dot.style.boxShadow = '0 0 8px #ff9800';
+                    text.style.color = '#ff9800';
+                    text.textContent = 'Disconnected';
+                }
             }
         }
 
@@ -1583,35 +2065,38 @@
             }
         }
 
+        let socket = null;
+
         function connectWebSocket() {
-            if (ws && ws.readyState === WebSocket.OPEN) return;
+            if (socket && socket.connected) return;
 
-            ws = new WebSocket(WS_URL);
+            // Socket.IO automatically connects to the host that served the page
+            // (Port 8000, same as API)
+            socket = io();
 
-            ws.onopen = () => {
+            socket.on('connect', () => {
                 updateWsStatus(true);
-                console.log('Dashboard connected to orchestrator');
-            };
+                console.log('Dashboard connected to orchestrator (SocketIO)');
+            });
 
-            ws.onmessage = (evt) => {
+            socket.on('execution_event', (event) => {
                 try {
-                    const event = JSON.parse(evt.data);
+                    // SocketIO parses JSON automatically
                     handleEvent(event);
                 } catch (e) {
-                    console.error('Invalid event:', e);
+                    console.error('Event handling error:', e);
                 }
-            };
+            });
 
-            ws.onclose = () => {
+            socket.on('disconnect', () => {
                 updateWsStatus(false);
-                // Reconnect after 3 seconds
-                reconnectTimer = setTimeout(connectWebSocket, 3000);
-            };
+                console.log('Disconnected');
+            });
 
-            ws.onerror = (err) => {
-                console.error('WebSocket error:', err);
-                ws.close();
-            };
+            socket.on('connect_error', (err) => {
+                console.error('SocketIO error:', err);
+                updateWsStatus(false, true);  // Set error state
+            });
         }
 
         // Initialize live tracking
@@ -1638,6 +2123,9 @@
             };
 
             return {
+                // Feature Flags
+                use_full_physics: document.getElementById('enable-full-physics') ? document.getElementById('enable-full-physics').checked : true,
+
                 // Optimization
                 optimization: {
                     max_iterations: getVal('input-max-iter', 100, parseInt),
@@ -1733,7 +2221,7 @@
             console.log('Starting sequence with params:', params);
 
             // Call API to start sequence (this triggers WebSocket events)
-            fetch('http://localhost:5001/api/start', {
+            fetch('/api/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(params)
@@ -1754,7 +2242,7 @@
 
             console.log('Stopping sequence...');
 
-            fetch('http://localhost:5001/api/stop', {
+            fetch('/api/stop', {
                 method: 'POST'
             })
                 .then(response => response.json())
@@ -1799,8 +2287,10 @@
 
             switch (type) {
                 case 'module_start':
+                    if (["SURROGATE_TRAIN", "GEAR_OPT", "DOE_GEN"].includes(module)) showProgressBar(module);
                     highlightModule(module, true);
                     moduleStates[module] = { startTime: Date.now() };
+                    logToTerminal(`Started ${module}`, 'INFO');
                     break;
 
                 case 'module_end':
@@ -1810,6 +2300,8 @@
                         const timeEl = stepEl.querySelector('.time');
                         if (timeEl) timeEl.textContent = `${Math.round(duration_ms)} ms`;
                     }
+                    if (["SURROGATE_TRAIN", "GEAR_OPT", "DOE_GEN"].includes(module)) hideProgressBar(metadata?.success || false);
+                    logToTerminal(`Finished ${module} (${Math.round(duration_ms || 0)}ms)`, 'INFO');
                     break;
 
                 case 'tool_call':
@@ -1829,10 +2321,15 @@
 
                 case 'run_start':
                     updateRunState(true);
+                    highlightModule('ORCH', true);
+                    logToTerminal('Orchestrator initialized', 'INFO');
+                    // Mark Init as done after a short delay so it doesn't look like it's running forever
+                    setTimeout(() => highlightModule('ORCH', false), 1000);
                     break;
 
                 case 'run_end':
                     updateRunState(false);
+                    highlightModule('ORCH', false);
                     document.getElementById('run-status-text').textContent = 'Completed successfully';
                     logToTerminal('Run finished successfully.', 'INFO');
                     break;
@@ -1842,34 +2339,683 @@
                     break;
 
                 case 'log':
-                    logToTerminal(`[${module}] ${metadata.message} `, metadata.level || 'INFO');
+                case 'log': logToTerminal(`[${module}] ${metadata.message}`, metadata.level || 'INFO'); if (metadata.task_id && metadata.message) updateProgressFromLog(metadata.message);
                     break;
             }
         }
 
         function logToTerminal(message, level = 'INFO') {
             const terminal = document.getElementById('terminal-content');
-            if (!terminal) return;
-
-            const line = document.createElement('div');
-            line.className = 'terminal-line';
-
-            const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-            const tsSpan = `< span class="log-timestamp" > [${timestamp}]</span > `;
-
-            let levelClass = 'log-info';
-            if (level === 'WARNING') levelClass = 'log-warning';
-            if (level === 'ERROR') levelClass = 'log-error';
-
-            line.innerHTML = `${tsSpan} <span class="${levelClass}">${message}</span>`;
-            terminal.appendChild(line);
-
-            // Auto-scroll to bottom
-            const window = document.getElementById('terminal-window');
-            window.scrollTop = window.scrollHeight;
+            if (terminal) {
+                const timestamp = new Date().toLocaleTimeString();
+                const color = level === 'ERROR' ? '#ff5252' : level === 'WARNING' ? '#ffb74d' : '#81c784';
+                const div = document.createElement('div');
+                div.innerHTML = `<span style="color: #666">[${timestamp}]</span> <span style="color: ${color}">[${level.toUpperCase()}]</span> ${message}`;
+                terminal.appendChild(div);
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+            console.log(`[${level}] ${message}`);
         }
+
+        // =============================================
+        // Progress Bar Management
+        // =============================================
+
+        let progressStartTime = 0;
+        let currentTaskId = null;
+
+        async function cancelCurrentTask() {
+            if (!currentTaskId) {
+                alert('No task is currently running');
+                return;
+            }
+            if (!confirm('Are you sure you want to cancel this task?')) return;
+
+            try {
+                const response = await fetch(`/api/cancel_task/${currentTaskId}`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    logToTerminal(`Task ${currentTaskId} cancelled`, 'WARNING');
+                    alert(`Task cancelled: ${data.message}`);
+                    const progressContainer = document.getElementById('progress-container');
+                    if (progressContainer) progressContainer.style.display = 'none';
+                } else {
+                    logToTerminal(`Failed to cancel: ${data.error}`, 'ERROR');
+                }
+            } catch (err) {
+                logToTerminal(`Cancel error: ${err.message}`, 'ERROR');
+            } finally {
+                currentTaskId = null;
+                const btn = document.getElementById('cancel-task-btn');
+                if (btn) btn.style.display = 'none';
+            }
+        }
+
+        function showProgressBar(taskName) {
+            const container = document.getElementById('progress-container');
+            const title = document.getElementById('progress-title');
+            const cancelBtn = document.getElementById('cancel-task-btn');
+
+            const taskTitles = {
+                'doe': '📊 Generating Design of Experiments',
+                'train': '🧠 Training Surrogate Models',
+                'optimize': '⚙️ Running Gear Optimization',
+                'sensitivity': '📈 Running Sensitivity Analysis',
+                'full_physics': '🏎️ Running Full Physics Simulation'
+            };
+
+            if (title) title.textContent = taskTitles[taskName] || '⚙️ Processing...';
+            if (container) container.style.display = 'flex';
+            if (cancelBtn) cancelBtn.style.display = 'inline-block';
+            progressStartTime = Date.now();
+
+            // Start elapsed timer
+            if (window.progressTimer) clearInterval(window.progressTimer);
+            window.progressTimer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - progressStartTime) / 1000);
+                const eta = document.getElementById('progress-eta');
+                if (eta) eta.textContent = `Elapsed: ${elapsed}s`;
+            }, 1000);
+        }
+
+        // =============================================
+        // Output Visualization Modal
+        // =============================================
+
+        function openOutputModal(filePath, title = 'Workflow Results') {
+            const modal = document.getElementById('output-modal');
+            const iframe = document.getElementById('output-iframe');
+            const modalTitle = document.getElementById('output-modal-title');
+
+            if (modalTitle) modalTitle.textContent = title;
+            if (iframe) iframe.src = filePath;
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeOutputModal() {
+            const modal = document.getElementById('output-modal');
+            const iframe = document.getElementById('output-iframe');
+            if (modal) modal.style.display = 'none';
+            if (iframe) iframe.src = '';
+        }
+
+        // =============================================
+        // Workflow Action Functions
+        // =============================================
+
+        async function trainSurrogates() {
+            updateRunState(true);
+            logToTerminal('Starting surrogate training...', 'INFO');
+
+            try {
+                const response = await fetch('/api/train_surrogates', { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    currentTaskId = data.task_id;
+                    showTrainingMetrics(data.output); logToTerminal('Surrogate training completed successfully', 'INFO');
+                    alert(`Training complete!\n\nTask ID: ${data.task_id}`);
+                } else {
+                    logToTerminal(`Training failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                    alert(`Training failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('Training error:', err);
+                logToTerminal(`Error: ${err.message}`, 'ERROR');
+                alert(`Error: ${err.message}`);
+            } finally {
+                updateRunState(false);
+            }
+
+            // =============================================
+            // Full Physics Simulation Controls
+            // =============================================
+
+            // Enable/disable physics buttons based on checkbox
+            document.getElementById('enable-full-physics')?.addEventListener('change', function (e) {
+                const enabled = e.target.checked;
+                const openfoamBtn = document.getElementById('openfoam-btn');
+                const calculixBtn = document.getElementById('calculix-btn');
+
+                if (openfoamBtn && calculixBtn) {
+                    openfoamBtn.disabled = !enabled;
+                    calculixBtn.disabled = !enabled;
+                    openfoamBtn.style.opacity = enabled ? '1' : '0.5';
+                    calculixBtn.style.opacity = enabled ? '1' : '0.5';
+                }
+            });
+
+            async function runOpenFOAM() {
+                if (!confirm('Run OpenFOAM thermal simulation?\n\nThis will take 30-60 minutes and requires Docker.')) {
+                    return;
+                }
+
+                updateRunState(true);
+                logToTerminal('Starting OpenFOAM thermal simulation...', 'INFO');
+
+                try {
+                    const response = await fetch('/api/run_openfoam', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ case_path: 'Simulations/thermal' })
+                    });
+                    const data = await response.json();
+
+                    if (response.ok && data.status === 'success') {
+                        logToTerminal('OpenFOAM simulation completed', 'INFO');
+                        alert(`OpenFOAM Complete!\n\nTask ID: ${data.task_id}\nOutput: ${data.output_path || 'Check logs'}`);
+                    } else {
+                        logToTerminal(`OpenFOAM failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                        alert(`Simulation failed: ${data.error || 'Unknown error'}`);
+                    }
+                } catch (err) {
+                    console.error('OpenFOAM error:', err);
+                    logToTerminal(`Error: ${err.message}`, 'ERROR');
+                    alert(`Error: ${err.message}`);
+                } finally {
+                    updateRunState(false);
+                }
+            }
+
+            async function runCalculiX() {
+                if (!confirm('Run CalculiX structural simulation?\n\nThis will take 30-60 minutes and requires Docker.')) {
+                    return;
+                }
+
+                updateRunState(true);
+                logToTerminal('Starting CalculiX structural simulation...', 'INFO');
+
+                try {
+                    const response = await fetch('/api/run_calculix', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ case_path: 'Simulations/structural' })
+                    });
+                    const data = await response.json();
+
+                    if (response.ok && data.status === 'success') {
+
+                        // =============================================
+                        // Sensitivity Analysis Integration
+                        // =============================================
+
+
+                        // =============================================
+                        // Visualization Gallery
+                        // =============================================
+
+                        async function loadGallery() {
+                            const gallery = document.getElementById('viz-gallery');
+                            const status = document.getElementById('gallery-status');
+
+                            try {
+                                const response = await fetch('/api/visualizations/list');
+                                const data = await response.json();
+
+                                if (!response.ok) {
+                                    status.textContent = `Error: ${data.error || 'Failed to load visualizations'}`;
+                                    return;
+                                }
+
+                                const viz = data.visualizations || [];
+
+                                if (viz.length === 0) {
+
+                                    // =============================================
+                                    // CEM Validation Statistics
+                                    // =============================================
+
+                                    async function loadCEMStats() {
+                                        try {
+                                            const response = await fetch('/api/cem/validation_stats');
+                                            const data = await response.json();
+
+                                            if (!response.ok) {
+                                                document.getElementById('cem-message').textContent = `Error: ${data.error || 'Failed to load'}`;
+                                                return;
+                                            }
+
+                                            // Update stat cards
+                                            document.getElementById('cem-total').textContent = data.total_candidates || '0';
+
+                                            // =============================================
+                                            // Diagnostics Tools
+                                            // =============================================
+
+                                            async function runDiagnostic(type) {
+                                                const endpoints = {
+                                                    'failures': '/api/diagnostics/analyze_failures',
+                                                    'nlp': '/api/diagnostics/nlp_health',
+                                                    'recovery': '/api/diagnostics/recovery_patterns'
+                                                };
+
+                                                const titles = {
+                                                    'failures': 'Failure Analysis',
+                                                    'nlp': 'NLP Health Check',
+                                                    'recovery': 'Recovery Pattern Analysis'
+                                                };
+
+
+                                                // =============================================
+                                                // Model Registry Browser
+                                                // =============================================
+
+                                                async function loadModelRegistry() {
+                                                    const tbody = document.getElementById('model-registry-body');
+                                                    const status = document.getElementById('registry-status');
+
+                                                    try {
+                                                        const response = await fetch('/api/models/list');
+                                                        const data = await response.json();
+
+                                                        if (!response.ok) {
+                                                            status.textContent = `Error: ${data.error || 'Failed to load models'}`;
+                                                            return;
+                                                        }
+
+                                                        const models = data.models || [];
+
+                                                        if (models.length === 0) {
+                                                            status.textContent = 'No models found in models/ directory';
+                                                            tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: #999;">No registered models</td></tr>';
+                                                            return;
+                                                        }
+
+                                                        status.textContent = `${data.count} model${data.count !== 1 ? 's' : ''} found`;
+                                                        tbody.innerHTML = '';
+
+                                                        models.forEach(model => {
+                                                            const row = document.createElement('tr');
+                                                            row.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+                                                            row.style.transition = 'background 0.2s';
+                                                            row.onmouseenter = () => row.style.background = 'rgba(255,255,255,0.05)';
+                                                            row.onmouseleave = () => row.style.background = 'transparent';
+
+                                                            const size = (model.size / 1024 / 1024).toFixed(2);
+                                                            const date = new Date(model.modified * 1000).toLocaleString();
+
+                                                            row.innerHTML = `
+                        <td style="padding: 10px; color: #42a5f5; font-family: monospace;">${model.id}</td>
+                        <td style="padding: 10px; color: #ccc;">${model.type}</td>
+                        <td style="padding: 10px; text-align: right; color: #ccc;">${size} MB</td>
+                        <td style="padding: 10px; color: #999; font-size: 12px;">${date}</td>
+                        <td style="padding: 10px; text-align: center;">
+                            <button onclick="loadModelById('${model.id}')"
+                                style="background: linear-gradient(135deg, #66bb6a, #388e3c); border: none; color: white; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                📥 Load
+                            </button>
+                        </td>
+                    `;
+                                                            tbody.appendChild(row);
+                                                        });
+
+                                                    } catch (err) {
+                                                        console.error('Model registry error:', err);
+                                                        status.textContent = `Error: ${err.message}`;
+                                                    }
+                                                }
+
+                                                async function loadModelById(modelId) {
+                                                    if (!confirm(`Load model: ${modelId}?\n\nThis will activate the model for use.`)) {
+                                                        return;
+                                                    }
+
+                                                    try {
+                                                        const response = await fetch(`/api/models/${modelId}/load`, { method: 'POST' });
+                                                        const data = await response.json();
+
+                                                        if (data.status === 'not_implemented') {
+                                                            alert(`Model Loading\n\n${data.message}\n\nModel ID: ${modelId}\n\n${data.info || ''}`);
+                                                        } else if (response.ok) {
+                                                            alert(`Model ${modelId} loaded successfully!`);
+                                                            logToTerminal(`Model ${modelId} activated`, 'INFO');
+                                                        } else {
+                                                            alert(`Failed to load model: ${data.error || 'Unknown error'}`);
+                                                        }
+                                                    } catch (err) {
+                                                        console.error('Load model error:', err);
+                                                        alert(`Error: ${err.message}`);
+                                                    }
+                                                }
+
+                                                function refreshModelRegistry() {
+                                                    loadModelRegistry();
+                                                }
+
+                                                // Load model registry on page load
+                                                document.addEventListener('DOMContentLoaded', loadModelRegistry);
+                                                const endpoint = endpoints[type];
+                                                const title = titles[type];
+
+                                                if (!endpoint) {
+                                                    alert('Unknown diagnostic type');
+                                                    return;
+                                                }
+
+                                                updateRunState(true);
+                                                logToTerminal(`Starting ${title}...`, 'INFO');
+
+                                                try {
+                                                    const response = await fetch(endpoint, { method: 'POST' });
+                                                    const data = await response.json();
+
+                                                    if (data.status === 'not_implemented' || data.status === 'not_found') {
+                                                        logToTerminal(`${title}: ${data.message}`, 'WARNING');
+                                                        alert(`${title}\n\n${data.message}\n\n${data.info || data.script_path || ''}`);
+                                                    } else if (response.ok && data.status === 'success') {
+                                                        logToTerminal(`${title} completed`, 'INFO');
+                                                        alert(`${title} Complete!\n\n${data.message || 'Check logs for details'}`);
+                                                    } else {
+                                                        logToTerminal(`${title} failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                                                        alert(`Diagnostic failed: ${data.error || 'Unknown error'}`);
+                                                    }
+                                                } catch (err) {
+                                                    console.error(`Diagnostic error:`, err);
+                                                    logToTerminal(`Error: ${err.message}`, 'ERROR');
+                                                    alert(`Error: ${err.message}`);
+                                                } finally {
+                                                    updateRunState(false);
+                                                }
+                                            }
+                                            document.getElementById('cem-feasible').textContent = data.feasible || '0';
+                                            document.getElementById('cem-infeasible').textContent = data.infeasible || '0';
+
+                                            const rate = data.feasibility_rate || 0;
+                                            document.getElementById('cem-rate').textContent = `${(rate * 100).toFixed(1)}%`;
+
+                                            // Update message
+                                            if (data.message) {
+                                                document.getElementById('cem-message').textContent = data.message;
+                                            }
+
+                                            // Update rejection breakdown
+                                            const rejectionsList = document.getElementById('cem-rejections');
+                                            rejectionsList.innerHTML = '';
+
+                                            if (data.rejection_reasons && Object.keys(data.rejection_reasons).length > 0) {
+                                                Object.entries(data.rejection_reasons).forEach(([reason, count]) => {
+                                                    const li = document.createElement('li');
+                                                    li.textContent = `${reason}: ${count}`;
+                                                    rejectionsList.appendChild(li);
+                                                });
+                                            } else {
+                                                rejectionsList.innerHTML = '<li style="color: #999;">No rejection data available</li>';
+                                            }
+
+                                        } catch (err) {
+                                            console.error('CEM stats error:', err);
+                                            document.getElementById('cem-message').textContent = `Error: ${err.message}`;
+                                        }
+                                    }
+
+                                    function refreshCEMStats() {
+                                        loadCEMStats();
+                                    }
+
+                                    // Load CEM stats on page load
+                                    document.addEventListener('DOMContentLoaded', loadCEMStats);
+                                    status.textContent = 'No visualizations found in output/ directory';
+                                    gallery.innerHTML = '';
+                                    return;
+                                }
+
+                                status.textContent = `${data.count} visualization${data.count !== 1 ? 's' : ''} found`;
+                                gallery.innerHTML = '';
+
+                                viz.forEach(v => {
+                                    const card = document.createElement('div');
+                                    card.style.cssText = 'background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;';
+                                    card.onmouseenter = () => {
+                                        card.style.transform = 'translateY(-4px)';
+                                        card.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+                                    };
+                                    card.onmouseleave = () => {
+                                        card.style.transform = 'translateY(0)';
+                                        card.style.boxShadow = 'none';
+                                    };
+                                    card.onclick = () => openVisualization(v.path, v.name);
+
+                                    // Icon based on file type
+                                    const icon = v.type === 'html' ? '📊' : '��️';
+                                    const size = (v.size / 1024).toFixed(1);
+
+                                    card.innerHTML = `
+                        <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">${icon}</div>
+                        <div style="font-size: 12px; font-weight: bold; color: white; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${v.name}">${v.name}</div>
+                        <div style="font-size: 11px; color: #999;">${v.type.toUpperCase()} · ${size} KB</div>
+                    `;
+                                    gallery.appendChild(card);
+                                });
+
+                            } catch (err) {
+                                console.error('Gallery load error:', err);
+                                status.textContent = `Error: ${err.message}`;
+                            }
+                        }
+
+                        function openVisualization(path, title) {
+                            openOutputModal(path, title || 'Visualization');
+                        }
+
+                        function refreshGallery() {
+                            loadGallery();
+                        }
+
+                        // Load gallery on page load
+                        document.addEventListener('DOMContentLoaded', loadGallery);
+                        function viewSensitivityAnalysis() {
+                            // Check which dashboards exist
+                            const dashboards = [
+                                { path: 'output/sensitivity_phase1_dashboard.html', name: 'Phase 1 Sensitivity' },
+                                { path: 'output/sensitivity_phase3_dashboard.html', name: 'Phase 3 Sensitivity' }
+                            ];
+
+                            // For now, try to open Phase 1 dashboard first
+                            const defaultDashboard = 'output/sensitivity_phase1_dashboard.html';
+
+                            // Check if we should open in modal or new tab
+                            if (confirm('Open sensitivity dashboard?\n\nOK = In-app modal\nCancel = New tab')) {
+                                openOutputModal(defaultDashboard, 'Sensitivity Analysis Dashboard');
+                            } else {
+                                window.open(defaultDashboard, '_blank');
+                            }
+                        }
+                        logToTerminal('CalculiX simulation completed', 'INFO');
+                        alert(`CalculiX Complete!\n\nTask ID: ${data.task_id}\nOutput: ${data.output_path || 'Check logs'}`);
+                    } else {
+                        logToTerminal(`CalculiX failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                        alert(`Simulation failed: ${data.error || 'Unknown error'}`);
+                    }
+                } catch (err) {
+                    console.error('CalculiX error:', err);
+                    logToTerminal(`Error: ${err.message}`, 'ERROR');
+                    alert(`Error: ${err.message}`);
+                } finally {
+                    updateRunState(false);
+                }
+            }
+        }
+
+        async function runGearOptimization() {
+            updateRunState(true);
+            logToTerminal('Starting gear profile optimization...', 'INFO');
+
+            try {
+                const response = await fetch('/api/run_gear_optimization', { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    currentTaskId = data.task_id;
+                    showTrainingMetrics(data.output); logToTerminal('Gear optimization completed successfully', 'INFO');
+
+                    // Show results modal if available
+                    const resultsAvailable = data.results && data.results.length > 0;
+                    const message = resultsAvailable
+                        ? `Optimization complete!\n\nTask ID: ${data.task_id}\n\nResults:\n${data.results.join('\n')}\n\nClick OK to view results.`
+                        : `Optimization complete!\n\nTask ID: ${data.task_id}`;
+
+                    if (confirm(message) && resultsAvailable) {
+                        openOutputModal(data.results[0], 'Gear Optimization Results');
+                    }
+                } else {
+                    logToTerminal(`Optimization failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                    alert(`Optimization failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('Optimization error:', err);
+                logToTerminal(`Error: ${err.message}`, 'ERROR');
+                alert(`Error: ${err.message}`);
+            } finally {
+                updateRunState(false);
+            }
+        }
+
+        async function generateDOE() {
+            // Read configuration from UI
+            const n_samples = parseInt(document.getElementById('doe-n-samples').value) || 50;
+            const method = document.getElementById('doe-method').value || 'lhs';
+
+            updateRunState(true);
+            logToTerminal(`Starting DOE generation (${n_samples} samples, ${method} method)...`, 'INFO');
+
+            try {
+                const response = await fetch('/api/generate_doe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ n_samples, method })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    currentTaskId = data.task_id;
+                    showTrainingMetrics(data.output); logToTerminal(`DOE generation completed: ${data.n_samples} samples`, 'INFO');
+                    alert(`DOE generation complete!\n\nTask ID: ${data.task_id}\nSamples: ${data.n_samples}\nMethod: ${method}`);
+                } else {
+                    logToTerminal(`DOE generation failed: ${data.error || 'Unknown error'}`, 'ERROR');
+                    alert(`DOE generation failed: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                console.error('DOE generation error:', err);
+                logToTerminal(`Error: ${err.message}`, 'ERROR');
+                alert(`Error: ${err.message}`);
+            } finally {
+                updateRunState(false);
+            }
+        }
+
+
+
+
+        function hideProgressBar(success) {
+            if (window.progressTimer) {
+                clearInterval(window.progressTimer);
+                window.progressTimer = null;
+            }
+
+            const container = document.getElementById('progress-container');
+            if (success) {
+                // Flash success
+                container.style.background = 'linear-gradient(135deg, #66bb6a 0%, #388e3c 100%)';
+                setTimeout(() => {
+                    container.style.display = 'none';
+                    document.getElementById("cancel-task-btn").style.display = "none"; container.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                }, 2000);
+            } else {
+                // Flash error
+                container.style.background = 'linear-gradient(135deg, #ef5350 0%, #c62828 100%)';
+                setTimeout(() => {
+                    container.style.display = 'none';
+                    document.getElementById("cancel-task-btn").style.display = "none"; container.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                }, 2000);
+            }
+        }
+
+        function updateProgressFromLog(logLine) {
+            // Parse progress patterns like "Epoch 50/200" or "Sample 25/50" or "Member 2/3"
+            const epochMatch = logLine.match(/Epoch\s+(\d+)\/(\d+)/i);
+            const sampleMatch = logLine.match(/Sample\s+(\d+)\/(\d+)/i);
+            const memberMatch = logLine.match(/Member\s+(\d+)\/(\d+)/i);
+
+            let percent = null;
+
+            if (epochMatch) {
+                percent = (parseInt(epochMatch[1]) / parseInt(epochMatch[2])) * 100;
+            } else if (sampleMatch) {
+                percent = (parseInt(sampleMatch[1]) / parseInt(sampleMatch[2])) * 100;
+            } else if (memberMatch) {
+                // For ensemble training, weight members less (each member is ~30%)
+                const memberProgress = (parseInt(memberMatch[1]) - 1) / parseInt(memberMatch[2]);
+                percent = memberProgress * 100;
+            }
+
+            if (percent !== null) {
+                document.getElementById('progress-bar').value = Math.min(percent, 100);
+                document.getElementById('progress-text').textContent = `${Math.round(percent)}%`;
+            }
+        }
+
+        // =============================================
+        // Stats Fetching (Cache, Budget, Trust Region)
+        // =============================================
+
+        async function fetchRuntimeStats() {
+            try {
+                const cacheRes = await fetch('/api/cache/stats');
+                if (cacheRes.ok) {
+                    const cacheData = await cacheRes.json();
+                    document.getElementById('cache-total-entries').textContent = cacheData.total_entries || 0;
+                    const hitRate = ((cacheData.hit_rate || 0) * 100).toFixed(1);
+                    document.getElementById('cache-hit-rate').textContent = `${hitRate}%`;
+                    document.getElementById('cache-efficiency').textContent = hitRate >= 40 ? '🟢 Good' : (hitRate >= 20 ? '🟡 Fair' : '🔴 Low');
+                }
+                const budgetRes = await fetch('/api/budget/snapshots');
+                if (budgetRes.ok) {
+                    const budgetData = await budgetRes.json();
+                    if (budgetData.length > 0) {
+                        const latest = budgetData[budgetData.length - 1];
+                        document.getElementById('budget-total').textContent = latest.total || 0;
+                        document.getElementById('budget-spent').textContent = latest.spent || 0;
+                        document.getElementById('budget-remaining').textContent = latest.remaining || 0;
+                        const utilization = latest.total > 0 ? ((latest.spent / latest.total) * 100).toFixed(1) : '0.0';
+                        document.getElementById('budget-utilization').textContent = `${utilization}%`;
+                    }
+                }
+                const trRes = await fetch('/api/trustregion/logs');
+                if (trRes.ok) {
+                    const trData = await trRes.json();
+                    if (trData.length > 0) {
+                        const latest = trData[trData.length - 1];
+                        document.getElementById('tr-radius').textContent = (latest.radius || 0).toFixed(4);
+                        const status = latest.action === 'expand' ? '🟢 Expanding' : (latest.action === 'shrink' ? '🔴 Shrinking' : '⚪ Stable');
+                        document.getElementById('tr-status').textContent = status;
+                        const agreement = (latest.agreement_ratio || 0).toFixed(3);
+                        document.getElementById('tr-agreement').textContent = agreement;
+                        document.getElementById('tr-total-updates').textContent = trData.length;
+                    }
+                }
+                const now = new Date().toLocaleTimeString();
+                document.getElementById('stats-last-update').textContent = now;
+            } catch (err) {
+                console.error('Error fetching runtime stats:', err);
+            }
+        }
+
+        window.addEventListener('load', () => { fetchRuntimeStats(); setInterval(fetchRuntimeStats, 5000); });
     </script>
 
 </body>
+<!-- Output Visualization Modal -->
+<div id="output-modal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="width: 90%; height: 90%; background: white; border-radius: 8px; display: flex; flex-direction: column;">
+        <div
+            style="padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0;" id="output-modal-title">Workflow Results</h3>
+            <button onclick="closeOutputModal()"
+                style="background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 0 10px;">×</button>
+        </div>
+        <iframe id="output-iframe" style="flex: 1; width: 100%; border: none;"></iframe>
+    </div>
+</div>
 
 </html>

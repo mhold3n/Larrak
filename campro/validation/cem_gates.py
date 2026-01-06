@@ -40,7 +40,7 @@ except ImportError:
 def check_motion_feasibility(
     x_profile: np.ndarray,
     theta: np.ndarray | None = None,
-    mock: bool = True,
+    mock: bool = False,
 ) -> "ValidationReport":
     """
     Validate a target motion profile against CEM constraints.
@@ -57,17 +57,20 @@ def check_motion_feasibility(
         ValidationReport with is_valid flag and any violations
     """
     if not CEM_AVAILABLE:
-        # Return a mock valid report
-        from dataclasses import dataclass, field
+        if mock:
+            # Return a mock valid report
+            from dataclasses import dataclass, field
 
-        @dataclass
-        class MockReport:
-            is_valid: bool = True
-            violations: list = field(default_factory=list)
-            cem_version: str = "mock-fallback"
+            @dataclass
+            class MockReport:
+                is_valid: bool = True
+                violations: list = field(default_factory=list)
+                cem_version: str = "mock-fallback"
 
-        log.debug("CEM unavailable, returning mock-valid report")
-        return MockReport()  # type: ignore
+            log.debug("CEM unavailable, returning mock-valid report")
+            return MockReport()  # type: ignore
+        else:
+            raise ImportError("CEM library (truthmaker) not available. Cannot run validation.")
 
     if theta is None:
         theta = np.linspace(0, 2 * np.pi, len(x_profile))
@@ -90,7 +93,7 @@ def check_thermo_feasibility(
     bore: float = 0.1,
     stroke: float = 0.1,
     cr: float = 15.0,
-    mock: bool = True,
+    mock: bool = False,
 ) -> "ValidationReport":
     """
     Validate thermodynamic operating point against CEM limits.
@@ -111,14 +114,17 @@ def check_thermo_feasibility(
         ValidationReport with is_valid flag
     """
     if not CEM_AVAILABLE:
-        from dataclasses import dataclass, field
+        if mock:
+            from dataclasses import dataclass, field
 
-        @dataclass
-        class MockReport:
-            is_valid: bool = True
-            violations: list = field(default_factory=list)
+            @dataclass
+            class MockReport:
+                is_valid: bool = True
+                violations: list = field(default_factory=list)
 
-        return MockReport()  # type: ignore
+            return MockReport()  # type: ignore
+        else:
+            raise ImportError("CEM library not available")
 
     with CEMClient(mock=mock) as cem:
         envelope = cem.get_thermo_envelope(bore, stroke, cr, rpm)
@@ -177,7 +183,7 @@ def check_thermo_feasibility(
 
 def check_gear_feasibility(
     config: dict,
-    mock: bool = True,
+    mock: bool = False,
 ) -> "ValidationReport":
     """
     Validate gear configuration against manufacturability constraints.
@@ -196,14 +202,17 @@ def check_gear_feasibility(
         ValidationReport with is_valid flag
     """
     if not CEM_AVAILABLE:
-        from dataclasses import dataclass, field
+        if mock:
+            from dataclasses import dataclass, field
 
-        @dataclass
-        class MockReport:
-            is_valid: bool = True
-            violations: list = field(default_factory=list)
+            @dataclass
+            class MockReport:
+                is_valid: bool = True
+                violations: list = field(default_factory=list)
 
-        return MockReport()  # type: ignore
+            return MockReport()  # type: ignore
+        else:
+            raise ImportError("CEM library not available")
 
     # For now, return a valid report - gear validation will be
     # implemented when Phase 3 gear synthesis is active
@@ -218,7 +227,7 @@ def get_operating_envelope(
     stroke: float,
     cr: float,
     rpm: float,
-    mock: bool = True,
+    mock: bool = False,
 ) -> "OperatingEnvelope":
     """
     Get the feasible operating envelope from CEM.
@@ -234,17 +243,20 @@ def get_operating_envelope(
         OperatingEnvelope with boost_range, fuel_range, motion_bounds
     """
     if not CEM_AVAILABLE:
-        from dataclasses import dataclass
+        if mock:
+            from dataclasses import dataclass
 
-        @dataclass
-        class MockEnvelope:
-            boost_range: tuple[float, float] = (1.0, 3.0)
-            fuel_range: tuple[float, float] = (1e-5, 1e-3)
-            motion_bounds: tuple[float, float] = (0.0, 0.2)
-            feasible: bool = True
-            config_hash: str = "mock"
+            @dataclass
+            class MockEnvelope:
+                boost_range: tuple[float, float] = (1.0, 3.0)
+                fuel_range: tuple[float, float] = (1e-5, 1e-3)
+                motion_bounds: tuple[float, float] = (0.0, 0.2)
+                feasible: bool = True
+                config_hash: str = "mock"
 
-        return MockEnvelope()  # type: ignore
+            return MockEnvelope()  # type: ignore
+        else:
+            raise ImportError("CEM library not available")
 
     with CEMClient(mock=mock) as cem:
         return cem.get_thermo_envelope(bore, stroke, cr, rpm)

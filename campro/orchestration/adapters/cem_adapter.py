@@ -7,6 +7,9 @@ providing feasibility generation and checking.
 
 from __future__ import annotations
 
+import os
+import sys
+import traceback
 from typing import Any
 
 import numpy as np
@@ -62,10 +65,6 @@ class CEMClientAdapter:
         print(
             f"DEBUG: CEMClientAdapter initialized. CEM_AVAILABLE={CEM_AVAILABLE}, Mock={self.mock}"
         )
-
-    def set_provenance(self, provenance_client):
-        """Inject provenance client for logging."""
-        self.provenance = provenance_client
 
     def generate_batch(
         self,
@@ -130,12 +129,25 @@ class CEMClientAdapter:
         if not CEM_AVAILABLE:
             return True, 1.0  # Assume feasible without CEM
 
+        # Global Stop Signal Check
+        if os.environ.get("ORCHESTRATOR_STOP_SIGNAL") == "1":
+            log.warning("CEM check aborted due to stop signal.")
+            return False, 0.0
+
         try:
             with CEMClient(mock=self.mock) as cem:
+                # Extract or generate motion profile data
+                x_profile = candidate.get("x_profile", np.zeros(100))
+                theta = candidate.get("theta")
+
+                # Generate default theta if not provided
+                if theta is None:
+                    theta = np.linspace(0, 2 * np.pi, len(x_profile))
+
                 # Check thermo feasibility
                 report = cem.validate_motion(
-                    x_profile=candidate.get("x_profile", np.zeros(100)),
-                    theta=candidate.get("theta"),
+                    x_profile=x_profile,
+                    theta=theta,
                 )
 
                 # Log Geometry (Provenance)
@@ -255,6 +267,34 @@ class CEMClientAdapter:
             candidates.append(candidate)
 
         return candidates
+
+    def adapt_rules(
+        self,
+        truth_data: list[tuple[dict[str, Any], float]],
+        run_id: str | None = None,
+    ) -> Any:
+        """
+        Adapt rule parameters based on HiFi simulation results.
+
+        Args:
+            truth_data: List of (candidate, result) tuples
+            run_id: Optional run ID
+
+        Returns:
+            Adaptation report or None
+        """
+        if not CEM_AVAILABLE or self.mock:
+            return None
+
+        try:
+            with CEMClient(mock=self.mock) as cem:
+                # Assuming CEM client has this method, otherwise we skip
+                if hasattr(cem, "adapt_rules"):
+                    return cem.adapt_rules(truth_data)
+        except Exception as e:
+            log.warning(f"Failed to adapt rules: {e}")
+
+        return None
 
 
 __all__ = [
