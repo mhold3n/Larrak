@@ -252,6 +252,11 @@ investigation_output*.txt
 runs/
 
 
+# External Libraries (Submodules/Nested Repos)
+LEAP71_ShapeKernel/
+PicoGK/
+libraries/
+
 # C# / .NET
 obj/
 bin/
