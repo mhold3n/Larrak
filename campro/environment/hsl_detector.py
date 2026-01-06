@@ -112,6 +112,28 @@ def find_coinhsl_directory(project_root: Path | None = None) -> Path | None:
                 platform_matches.append(candidate)
 
     if not platform_matches:
+        # For Linux, also check if there's a source build directory with a built library
+        if not IS_WINDOWS and not IS_MACOS:
+            # Check for coinhsl-* source directories that might have a Linux build
+            source_dirs = list(libraries_dir.glob("coinhsl-*"))
+            for source_dir in source_dirs:
+                if source_dir.is_dir():
+                    # Check if there's a builddir with a Linux .so file
+                    builddir = source_dir / "builddir"
+                    if builddir.exists():
+                        lib_so = builddir / "libcoinhsl.so"
+                        if lib_so.exists():
+                            log.info(f"Found HSL library in source build directory: {builddir}")
+                            _COINHSL_DIRECTORY_CACHE = builddir
+                            return builddir
+            # If we get here, no Linux build was found
+            log.warning(
+                "No Linux CoinHSL library found. Official CoinHSL binaries are only available for "
+                "Windows and macOS. Linux binaries are not provided by HSL. "
+                "To use HSL on Linux, you must build from source. "
+                "See libraries/coinhsl-2024.05.15/README for build instructions. "
+                "Alternatively, IPOPT will use the built-in MUMPS solver (slower but functional)."
+            )
         log.debug(
             f"No CoinHSL directories found matching platform (Windows={IS_WINDOWS}, macOS={IS_MACOS})"
         )
@@ -157,7 +179,13 @@ def get_hsl_library_path(coinhsl_dir: Path | None = None) -> Path | None:
             # Fallback to bin directory
             lib_path = coinhsl_dir / "bin" / "libcoinhsl.dylib"
     else:  # Linux
-        lib_path = coinhsl_dir / "lib" / "libcoinhsl.so"
+        # For Linux, check if coinhsl_dir is a builddir (from source build)
+        if coinhsl_dir.name == "builddir":
+            # Source build directory - library is directly in builddir
+            lib_path = coinhsl_dir / "libcoinhsl.so"
+        else:
+            # Standard CoinHSL.v* directory - library is in lib/
+            lib_path = coinhsl_dir / "lib" / "libcoinhsl.so"
 
     if lib_path.exists():
         log.debug(f"Found HSL library at: {lib_path}")

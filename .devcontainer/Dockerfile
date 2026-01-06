@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     less \
     vim \
     procps \
+    build-essential \
+    gfortran \
+    ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 USER mambauser
@@ -19,6 +22,9 @@ COPY environment-dev.yml /tmp/environment-dev.yml
 # Install Conda environment
 RUN micromamba create -y -f /tmp/environment-dev.yml && \
     micromamba clean --all --yes
+
+# Install meson for HSL build (one-time build tool)
+RUN /opt/conda/envs/larrak-dev/bin/pip install meson
 
 # Add environment to path
 ENV PATH /opt/conda/envs/larrak-dev/bin:$PATH

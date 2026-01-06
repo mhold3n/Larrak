@@ -478,6 +478,8 @@ The framework supports multiple HSL solvers that are automatically detected and 
 
 ### Installation with HSL
 
+#### Windows and macOS
+
 After obtaining the HSL license and package:
 
 ```bash
@@ -486,6 +488,7 @@ After obtaining the HSL license and package:
 # Examples:
 #   - CoinHSL.v2024.5.15.x86_64-w64-mingw32-libgfortran5 (Windows)
 #   - CoinHSL.v2024.5.15.x86_64-apple-darwin-libgfortran5 (macOS)
+#   - CoinHSL.v2024.5.15.aarch64-apple-darwin-libgfortran5 (macOS ARM)
 
 # The framework will automatically detect the correct directory for your platform
 # No manual configuration needed!
@@ -500,6 +503,53 @@ print(f'CoinHSL directory: {find_coinhsl_directory()}')
 print(f'Available solvers: {detect_available_solvers()}')
 "
 ```
+
+#### Linux (Build from Source)
+
+**Note**: Official CoinHSL binaries are not available for Linux. The Linux binaries must be built from source as a one-time operation. Once built and committed to the repository, they are available to all users.
+
+**Prerequisites:**
+- Build tools: `build-essential`, `gfortran`, `ninja-build`
+- Build system: `meson` (installed via pip)
+- BLAS/LAPACK: OpenBLAS (available via conda environment)
+- METIS: Optional but recommended (available via conda-forge)
+
+**Build Process:**
+
+1. Ensure build dependencies are installed (already included in devcontainer):
+   ```bash
+   # In devcontainer, these are already installed
+   # For manual setup:
+   sudo apt-get install build-essential gfortran ninja-build
+   pip install meson
+   ```
+
+2. Run the one-time build script:
+   ```bash
+   ./scripts/setup/build_hsl_linux_binary.sh
+   ```
+
+3. The script will:
+   - Build CoinHSL from source in `libraries/coinhsl-2024.05.15/`
+   - Package it into `libraries/CoinHSL.v2024.5.15.x86_64-linux-gnu-libgfortran5/`
+   - Match the directory structure of Windows/macOS binaries
+
+4. Verify the build:
+   ```bash
+   # Check that the directory was created
+   ls -la libraries/CoinHSL.v2024.5.15.x86_64-linux-gnu-libgfortran5/
+
+   # Verify HSL detection
+   python -c "from campro.environment.hsl_detector import find_coinhsl_directory; print(find_coinhsl_directory())"
+   ```
+
+5. Commit the new directory to the repository:
+   ```bash
+   git add libraries/CoinHSL.v2024.5.15.x86_64-linux-gnu-libgfortran5/
+   git commit -m "Add Linux CoinHSL binaries"
+   ```
+
+**Note**: This is a one-time build. Once the Linux binaries are committed to the repository, all users will have access to them without needing to rebuild.
 
 ### GitHub Clones and HSL
 
