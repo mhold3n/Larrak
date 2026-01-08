@@ -6,15 +6,17 @@ Can also run standalone for development/testing.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
+import subprocess
 import sys
 import threading
 import traceback
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any, cast
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -31,37 +33,91 @@ except ImportError:
 try:
     from flask import Flask, Response, jsonify, request, send_from_directory
     from flask_cors import CORS
-    from flask_socketio import SocketIO, emit
+    from flask_socketio import SocketIO, emit  # type: ignore
 
     FLASK_AVAILABLE = True
 except ImportError:
     FLASK_AVAILABLE = False
-    Flask = None  # type: ignore
-    Response = Any  # type: ignore
-    SocketIO = None  # type: ignore
-    emit = None  # type: ignore
+
+    class Mock:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def __call__(self, *args: Any, **kwargs: Any) -> Any:
+            return Mock()
+
+        def __getattr__(self, name: str) -> Any:
+            return Mock()
+
+        def __getitem__(self, key: str) -> Any:
+            return Mock()
+
+    # Define dummy classes for type annotations
+    class Flask(Mock):
+        pass
+
+    class Response(Mock):
+        pass
+
+    class CORS(Mock):
+        pass
+
+    class SocketIO(Mock):
+        pass
+
+    # Define instances for runtime
+    jsonify = Mock()
+    request = Mock()
+    send_from_directory = Mock()
+    emit = Mock()
 
 # Global SocketIO instance
 # Use Redis as message queue for distributed event broadcasting (from worker)
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
-socketio = SocketIO(cors_allowed_origins="*", message_queue=REDIS_URL) if FLASK_AVAILABLE else None
+# Make Redis optional - if not available, SocketIO will work without it (single server mode)
+REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379")
+redis_available = False
+try:
+    # Try to connect to Redis, but don't fail if it's not available
+    import redis  # type: ignore
+
+    r = redis.from_url(REDIS_URL, socket_connect_timeout=1)
+    r.ping()
+    REDIS_AVAILABLE = True
+except Exception:
+    REDIS_AVAILABLE = False
+    REDIS_URL = ""  # type: ignore
+
+# Initialize SocketIO - don't use message_queue if Redis isn't available
+# This allows SocketIO to work in single-server mode
+socketio = (
+    SocketIO(
+        cors_allowed_origins="*",
+        message_queue=REDIS_URL if REDIS_AVAILABLE else None,
+        async_mode="threading",
+        logger=False,
+        engineio_logger=False,
+    )
+    if FLASK_AVAILABLE
+    else None
+)
 
 # Project imports
-from campro.orchestration.adapters.cem_adapter import CEMClientAdapter
-from campro.orchestration.adapters.simulation_adapter import PhysicsSimulationAdapter
-from campro.orchestration.adapters.solver_adapter import SimpleSolverAdapter
-from campro.orchestration.adapters.surrogate_adapter import EnsembleSurrogateAdapter
-from campro.orchestration.orchestrator import OrchestrationConfig, Orchestrator
-from provenance.dataflow_scanner import scan_dashboard
-from provenance.execution_events import (
-    EventType,
-    add_listener,
-    emit_event,
-    error,
-    log_message,
-    set_run_id,
-    warning,
+from campro.orchestration.adapters.cem_adapter import CEMClientAdapter  # noqa: E402
+from campro.orchestration.adapters.simulation_adapter import PhysicsSimulationAdapter  # noqa: E402
+from campro.orchestration.adapters.solver_adapter import SimpleSolverAdapter  # noqa: E402
+from campro.orchestration.adapters.surrogate_adapter import EnsembleSurrogateAdapter  # noqa: E402
+from campro.orchestration.orchestrator import OrchestrationConfig, Orchestrator  # noqa: E402
+from campro.validation.verification_assertions import (
+    VerificationSuite,
+    assert_dimensional_consistency,
+    assert_efficiency_bounds,
+    assert_energy_conservation,
+    assert_geometry_validity,
+    assert_losses_bounded,
+    assert_losses_nonnegative,
 )
+from provenance.dataflow_scanner import scan_dashboard
+from provenance.execution_events import EventType, add_listener, emit_event, set_run_id
 from provenance.module_linker import ModuleLinker
 from provenance.tool_scanner import KNOWN_TOOLS
 from provenance.ws_server import start_background_server
@@ -83,7 +139,6 @@ except ImportError:
 
 def get_weaviate_client():
     """Get Weaviate client, respecting environment configuration."""
-    import os
 
     weaviate_url = os.environ.get("WEAVIATE_URL", "http://localhost:8080")
 
@@ -105,7 +160,11 @@ def get_weaviate_client():
     # On Localhost (host='localhost'), gRPC is 50052 (mapped)
     grpc_port = 50051 if host != "localhost" and host != "127.0.0.1" else 50052
 
-    logging.info(f"Connecting to Weaviate at {host}:{port} (gRPC: {grpc_port})")
+    logging.info("Connecting to Weaviate at %s:%s (gRPC: %s)", host, port, grpc_port)
+
+    if weaviate is None:
+        return None
+
     try:
         return weaviate.connect_to_custom(
             http_host=host,
@@ -119,7 +178,10 @@ def get_weaviate_client():
         logging.warning(
             f"Connection to Weaviate at {host}:{port} failed: {e}. Retrying with local default."
         )
-        return weaviate.connect_to_local(port=8080, grpc_port=grpc_port)
+        try:
+            return weaviate.connect_to_local(port=8080, grpc_port=grpc_port)
+        except Exception:
+            return None
 
 
 class WebSocketLogHandler(logging.Handler):
@@ -131,19 +193,26 @@ class WebSocketLogHandler(logging.Handler):
 
         try:
             msg = self.format(record)
+            # Skip empty messages
+            if not msg or not msg.strip():
+                return
+
             # Default module, verify safe attribute access
             module = getattr(record, "module_id", "ORCH")
 
-            # Construct payload compatible with frontend
-            payload = {"type": "log", "source": module, "text": msg, "level": record.levelname}
+            # Construct payload compatible with frontend handleEvent
+            # Frontend expects: { type, module, metadata: { message, level } }
+            payload = {
+                "type": "log",
+                "module": module,
+                "metadata": {"message": msg, "level": record.levelname},
+            }
 
             # Emit to all connected clients
-            # We use external=True if called from background thread
             try:
                 socketio.emit("execution_event", payload)
             except RuntimeError:
-                # If outside request context or loop issues?
-                # socketio.emit usually handles thread-safety if using eventlet
+                # If outside request context or loop issues
                 pass
 
         except Exception:
@@ -152,6 +221,52 @@ class WebSocketLogHandler(logging.Handler):
 
 # Pre-computed module tools (fallback if no live scan)
 _cached_tools: dict[str, list[dict]] | None = None
+
+# Process registry for task cancellation
+active_processes: dict[str, Any] = {}
+
+
+def stream_subprocess_output(
+    proc: subprocess.Popen, task_id: str, task_name: str
+) -> tuple[str, int]:
+    """Stream subprocess output line-by-line via WebSocket.
+
+    Args:
+        proc: Running subprocess with stdout=PIPE
+        task_id: Unique task identifier
+        task_name: Human-readable task name
+
+    Returns:
+        Tuple of (full_output, return_code)
+    """
+    output_lines = []
+
+    emit_event(EventType.MODULE_START, task_name, metadata={"task_id": task_id})
+
+    # Stream stdout line by line
+    assert proc.stdout is not None
+    for line in iter(proc.stdout.readline, ""):
+        if not line:
+            break
+        output_lines.append(line)
+        # Broadcast to dashboard via WebSocket
+        emit_event(
+            EventType.LOG,
+            task_name,
+            metadata={"task_id": task_id, "line": line.strip(), "message": line.strip()},
+        )
+
+    proc.wait()
+    full_output = "".join(output_lines)
+
+    if proc.returncode == 0:
+        emit_event(EventType.MODULE_END, task_name, metadata={"task_id": task_id, "success": True})
+    else:
+        emit_event(
+            EventType.ERROR, task_name, metadata={"task_id": task_id, "error": "Process failed"}
+        )
+
+    return full_output, proc.returncode
 
 
 def get_module_tools(project_root: Path | None = None) -> dict[str, list[dict]]:
@@ -173,8 +288,8 @@ def get_module_tools(project_root: Path | None = None) -> dict[str, list[dict]]:
     return _cached_tools
 
 
-def create_app(project_root: Path | None = None) -> "Flask":
-    """Create Flask application.
+def create_app(project_root: Path | None = None) -> Flask | Mock:
+    """Create Flask application factory.
 
     Args:
         project_root: Root directory for scanning
@@ -186,7 +301,8 @@ def create_app(project_root: Path | None = None) -> "Flask":
         raise ImportError("Flask not available. Install with: pip install flask flask-cors")
 
     app = Flask(__name__, static_folder=str(PROJECT_ROOT / "dashboard"))
-    CORS(app)
+    # Suppress type error for CORS if it's a Mock or optional
+    CORS(app)  # type: ignore
 
     # Initialize SocketIO with this app
     if socketio:
@@ -199,14 +315,167 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 # 'execution_event' is the channel the frontend expects
                 socketio.emit("execution_event", event.to_json())
             except Exception as e:
-                logging.debug(f"Failed to emit event via socketio: {e}")
+                # Use lazy formatting
+                logging.debug("Failed to emit event via socketio: %s", e)
 
         add_listener(broadcast_event)
+
+    register_routes(app, project_root)
+
+    return app
+
+
+def _setup_websocket_logging(solver_print_level: int = 5) -> None:
+    """
+    Configure WebSocket logging handler.
+
+    Args:
+        solver_print_level: IPOPT print level (0-12). Higher levels enable more verbose output.
+    """
+    root_logger = logging.getLogger()
+    # Remove existing WS handlers to prevent duplicates
+    for h in root_logger.handlers[:]:
+        if isinstance(h, WebSocketLogHandler):
+            root_logger.removeHandler(h)
+
+    # Filter to suppress noisy third-party DEBUG logs
+    class ThirdPartyDebugFilter(logging.Filter):
+        """Suppress DEBUG logs from verbose third-party libraries."""
+
+        SUPPRESSED_LOGGERS = {"httpcore", "httpx", "weaviate", "urllib3", "requests"}
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            # Allow all non-DEBUG messages through
+            if record.levelno > logging.DEBUG:
+                return True
+            # Suppress DEBUG from noisy third-party libraries
+            logger_name = record.name.split(".")[0]
+            return logger_name not in self.SUPPRESSED_LOGGERS
+
+    ws_handler = WebSocketLogHandler()
+    # Set handler level based on IPOPT verbosity:
+    # print_level >= 8: Show DEBUG (iteration details)
+    # print_level >= 5: Show INFO
+    # print_level < 5:  Show WARNING
+    if solver_print_level >= 8:
+        handler_level = logging.DEBUG
+        ws_handler.setLevel(handler_level)
+        ws_handler.addFilter(ThirdPartyDebugFilter())
+        # CRITICAL: Set root logger to DEBUG so module loggers can propagate DEBUG messages
+        root_logger.setLevel(logging.DEBUG)
+    elif solver_print_level >= 5:
+        handler_level = logging.INFO
+        ws_handler.setLevel(handler_level)
+        root_logger.setLevel(logging.INFO)
+    else:
+        handler_level = logging.WARNING
+        ws_handler.setLevel(handler_level)
+        root_logger.setLevel(logging.WARNING)
+
+    root_logger.addHandler(ws_handler)
+
+
+def _parse_budget_params(params: dict[str, Any]) -> int:
+    """Parse budget parameters."""
+    budget_params = params.get("budget", {})
+    if isinstance(budget_params, int):
+        return budget_params
+    if isinstance(budget_params, dict):
+        return int(budget_params.get("total_sim_calls", 1000))
+    return 1000
+
+
+def _parse_opt_params(params: dict[str, Any]) -> tuple[int, int]:
+    """Parse optimization parameters."""
+    opt_params = params.get("optimization", {})
+
+    max_iterations = 10
+    if "maxIterations" in params:
+        max_iterations = int(params["maxIterations"])
+    elif "max_iterations" in opt_params:
+        max_iterations = int(opt_params["max_iterations"])
+
+    batch_size = 5
+    if "batchSize" in params:
+        batch_size = int(params["batchSize"])
+    elif "batch_size" in opt_params:
+        batch_size = int(opt_params["batch_size"])
+
+    return max_iterations, batch_size
+
+
+def _run_orchestration(
+    run_id: str, total_budget: int, batch_size: int, max_iterations: int, params: dict[str, Any]
+) -> None:
+    """Run the orchestration loop in a background thread."""
+    try:
+        logging.info("Starting real orchestration (Run ID: %s)", run_id)
+
+        # 1. Configure
+        config = OrchestrationConfig(
+            total_sim_budget=total_budget,
+            batch_size=batch_size,
+            max_iterations=max_iterations,
+            use_provenance=True,
+        )
+
+        # 2. Instantiate Adapters
+        use_full_physics = params.get("use_full_physics", True)
+        mock_cem = params.get("mock_cem", False)
+
+        logging.info("Configuration: Full Physics=%s, Mock CEM=%s", use_full_physics, mock_cem)
+
+        cem_adapter = CEMClientAdapter()
+        surrogate_adapter = EnsembleSurrogateAdapter()
+        solver_adapter = SimpleSolverAdapter(step_scale=0.05, n_evals=10)
+        sim_adapter = PhysicsSimulationAdapter(use_full_physics=use_full_physics)
+
+        # 3. Instantiate Orchestrator
+        orch = Orchestrator(
+            cem=cem_adapter,
+            surrogate=surrogate_adapter,
+            solver=solver_adapter,
+            simulation=sim_adapter,
+            config=config,
+        )
+
+        # 4. Run Optimization
+        initial_params = {
+            "bore": 0.1,
+            "stroke": 0.15,
+            "cr": 15.0,
+            "rpm": 3000.0,
+            "p_intake_bar": 1.5,
+            "fuel_mass_kg": 5e-5,
+        }
+
+        result = orch.optimize(initial_params)
+        logging.info("Orchestration finished. Best: %.4f", result.best_objective)
+
+    except Exception as e:
+        logging.error("Orchestration failed: %s", e)
+        logging.error(traceback.format_exc())
+        emit_event(EventType.ERROR, "ORCH", metadata={"message": str(e)})
+        emit_event(EventType.RUN_END, "ORCH", metadata={"success": False, "error": str(e)})
+
+
+def register_routes(app: Flask | Mock, project_root: Path | None = None) -> None:  # noqa: C901, PLR0915, PLR0911
+    """Register all routes to the Flask app.
+
+    Args:
+        app: Flask application instance
+        project_root: Root directory for scanning
+    """
 
     @app.route("/")
     def index() -> Response:
         """Serve dashboard HTML."""
         return send_from_directory(app.static_folder, "orchestrator_dashboard.html")  # type: ignore
+
+    @app.route("/style.css")
+    def style() -> Response:
+        """Serve dashboard CSS."""
+        return send_from_directory(app.static_folder, "style.css")  # type: ignore
 
     @app.route("/api/modules")
     def list_modules() -> Response:
@@ -215,7 +484,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
         return jsonify(tools)
 
     @app.route("/api/modules/<module_id>/tools")
-    def get_tools(module_id: str) -> tuple[Response, int] | Response:
+    def get_tools(module_id: str) -> Response | tuple[Response, int]:
         """Get tools for a specific module."""
         tools = get_module_tools(project_root)
         if module_id.upper() not in tools:
@@ -238,7 +507,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
         )
 
     @app.route("/api/tools/<tool_id>")
-    def get_tool(tool_id: str) -> tuple[Response, int] | Response:
+    def get_tool(tool_id: str) -> Response | tuple[Response, int]:
         """Get info for a specific tool."""
         if tool_id not in KNOWN_TOOLS:
             return jsonify({"error": f"Tool {tool_id} not found"}), 404
@@ -319,7 +588,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
         )
 
     @app.route("/api/runs/submit", methods=["POST"])
-    def submit_run() -> tuple[Response, int]:
+    def submit_run() -> Response | tuple[Response, int]:
         """Submit optimization run to job queue."""
         if not JOB_QUEUE_AVAILABLE:
             return jsonify({"error": "Job queue not available"}), 503
@@ -335,11 +604,11 @@ def create_app(project_root: Path | None = None) -> "Flask":
             else:
                 return jsonify({"error": "Failed to queue job"}), 500
         except Exception as e:
-            logging.error(f"Failed to submit job: {e}")
+            logging.error("Failed to submit job: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/runs/<job_id>")
-    def get_run_status_endpoint(job_id: str) -> tuple[Response, int] | Response:
+    def get_run_status_endpoint(job_id: str) -> Response | tuple[Response, int]:
         """Get status of a queued optimization run."""
         if not JOB_QUEUE_AVAILABLE:
             return jsonify({"error": "Job queue not available"}), 503
@@ -351,7 +620,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
             return jsonify({"error": f"Job {job_id} not found"}), 404
 
     @app.route("/api/runs/<job_id>/result")
-    def get_run_result_endpoint(job_id: str) -> tuple[Response, int] | Response:
+    def get_run_result_endpoint(job_id: str) -> Response | tuple[Response, int]:
         """Get result of completed optimization run."""
         if not JOB_QUEUE_AVAILABLE:
             return jsonify({"error": "Job queue not available"}), 503
@@ -367,6 +636,138 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 ), 425  # Too Early
             else:
                 return jsonify({"error": f"Job {job_id} not found"}), 404
+
+    @app.route("/api/docker/start", methods=["POST"])
+    def start_docker_containers() -> Response | tuple[Response, int]:
+        """Start all Docker containers using docker compose."""
+
+        try:
+            # Find project root (where docker-compose.yml is located)
+            compose_file = PROJECT_ROOT / "docker-compose.yml"
+            if not compose_file.exists():
+                return jsonify({"error": "docker-compose.yml not found"}), 404
+
+            # Check if Docker is running
+            check_result = subprocess.run(
+                ["docker", "info"],
+                capture_output=True,
+                timeout=5,
+                check=False,
+            )
+            if check_result.returncode != 0:
+                return jsonify(
+                    {"error": "Docker is not running. Please start Docker Desktop."}
+                ), 503
+
+            # Start all containers
+            result = subprocess.run(
+                ["docker", "compose", "-f", str(compose_file), "up", "-d"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+
+            if result.returncode == 0:
+                # Get list of running services
+                ps_result = subprocess.run(
+                    [
+                        "docker",
+                        "compose",
+                        "-f",
+                        str(compose_file),
+                        "ps",
+                        "--format",
+                        "{{.Service}}",
+                    ],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                services = (
+                    [s.strip() for s in ps_result.stdout.splitlines() if s.strip()]
+                    if ps_result.returncode == 0
+                    else []
+                )
+
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": "All Docker containers started successfully",
+                        "services": services,
+                    }
+                )
+            else:
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                return jsonify({"error": f"Failed to start containers: {error_msg}"}), 500
+
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Docker command timed out"}), 504
+        except FileNotFoundError:
+            return jsonify({"error": "Docker command not found. Please install Docker."}), 503
+        except Exception as e:
+            logging.error("Error starting Docker containers: %s", e)
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/docker/status")
+    def docker_status() -> Response:
+        """Check Docker container status."""
+
+        try:
+            compose_file = PROJECT_ROOT / "docker-compose.yml"
+            if not compose_file.exists():
+                return jsonify({"error": "docker-compose.yml not found"}), 404
+
+            # Get container status in JSON format
+            result = subprocess.run(
+                ["docker", "compose", "-f", str(compose_file), "ps", "--format", "json"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+
+            if result.returncode == 0:
+                services = []
+                for line in result.stdout.strip().splitlines():
+                    if line.strip():
+                        try:
+                            service_data = json.loads(line)
+                            services.append(
+                                {
+                                    "service": service_data.get("Service", ""),
+                                    "status": service_data.get("State", ""),
+                                    "health": service_data.get("Health", ""),
+                                }
+                            )
+                        except json.JSONDecodeError:
+                            continue
+
+                return jsonify(
+                    {
+                        "success": True,
+                        "services": services,
+                    }
+                )
+            else:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": result.stderr or "Failed to get container status",
+                        "services": [],
+                    }
+                )
+
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Docker command timed out", "services": []}), 504
+        except FileNotFoundError:
+            return jsonify({"error": "Docker command not found", "services": []}), 503
+        except Exception as e:
+            logging.error("Error checking Docker status: %s", e)
+            return jsonify({"error": str(e), "services": []}), 500
 
     @app.route("/api/cache/stats")
     def cache_stats() -> Response:
@@ -488,7 +889,9 @@ def create_app(project_root: Path | None = None) -> "Flask":
 
                 # Check if this symbol has a parent
                 refs = obj.references
-                has_parent = refs and hasattr(refs, "parent_symbol") and refs.parent_symbol
+                has_parent = (
+                    refs and hasattr(refs, "parent_symbol") and cast(Any, refs).parent_symbol
+                )
 
                 if not has_parent:
                     root_symbols.append(symbol)
@@ -496,8 +899,8 @@ def create_app(project_root: Path | None = None) -> "Flask":
             # Build parent-child relationships
             for obj in result.objects:
                 refs = obj.references
-                if refs and hasattr(refs, "parent_symbol") and refs.parent_symbol:
-                    parent_objs = refs.parent_symbol.objects
+                if refs and hasattr(refs, "parent_symbol") and cast(Any, refs).parent_symbol:
+                    parent_objs = cast(Any, refs).parent_symbol.objects
                     if parent_objs:
                         parent_uuid = str(parent_objs[0].uuid)
                         if parent_uuid in symbols_by_uuid:
@@ -536,8 +939,6 @@ def create_app(project_root: Path | None = None) -> "Flask":
     @app.route("/api/outline/reindex", methods=["POST"])
     def reindex_file() -> Response:
         """Trigger re-indexing of a specific file."""
-        import os
-        import subprocess
 
         data = request.get_json() or {}
         file_path = data.get("file")
@@ -573,6 +974,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 timeout=30,
                 env=env,
                 cwd=str(repo_root),
+                check=False,
             )
 
             if result.returncode == 0:
@@ -611,19 +1013,15 @@ def create_app(project_root: Path | None = None) -> "Flask":
         This triggers the actual optimization loop and emits events
         that get broadcast via WebSocket to connected dashboards.
         """
-        # Attach to root logger or specific loggers
-        root_logger = logging.getLogger()
-        # Remove existing WS handlers to prevent duplicates
-        for h in root_logger.handlers[:]:
-            if isinstance(h, WebSocketLogHandler):
-                root_logger.removeHandler(h)
-
-        ws_handler = WebSocketLogHandler()
-        ws_handler.setLevel(logging.INFO)
-        root_logger.addHandler(ws_handler)
-
         # Parse params from request
         params = request.get_json() or {}
+
+        # Extract solver print level for WebSocket logging configuration
+        solver_params = params.get("solver", {})
+        solver_print_level = int(solver_params.get("print_level", 5))
+
+        # Configure WebSocket logging based on solver verbosity
+        _setup_websocket_logging(solver_print_level)
 
         # Extract optimization params
         opt_params = params.get("optimization", {})
@@ -658,14 +1056,13 @@ def create_app(project_root: Path | None = None) -> "Flask":
         set_run_id(run_id)
 
         # Reset stop signal for new run
-        import os
 
         os.environ["ORCHESTRATOR_STOP_SIGNAL"] = "0"
 
         def run_real_sequence() -> None:
             """Run the real orchestrator optimization loop."""
             try:
-                logging.info(f"Starting real orchestration (Run ID: {run_id})")
+                logging.info("Starting real orchestration (Run ID: %s)", run_id)
 
                 # 1. Configure
                 config = OrchestrationConfig(
@@ -680,20 +1077,45 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 use_full_physics = params.get("use_full_physics", True)
                 mock_cem = params.get("mock_cem", False)
 
-                logging.info(f"Configuration: Full Physics={use_full_physics}, Mock CEM={mock_cem}")
+                logging.info(
+                    "Configuration: Full Physics=%s, Mock CEM=%s", use_full_physics, mock_cem
+                )
 
                 # 2. Instantiate Adapters
                 # CEM Adapter (Set mock=False for real validation)
-                cem_adapter = CEMClientAdapter(mock=mock_cem)
+                cem_adapter = CEMClientAdapter()
 
                 # Use surrogate adapter (will mock if model not found)
                 surrogate_adapter = EnsembleSurrogateAdapter()
 
+                # Extract solver config from params for physics simulation
+                solver_params = params.get("solver", {})
+                solver_config = None
+                if solver_params:
+                    ipopt_opts = {}
+                    if "print_level" in solver_params:
+                        ipopt_opts["print_level"] = int(solver_params["print_level"])
+                    if "linear_solver" in solver_params:
+                        ipopt_opts["linear_solver"] = str(solver_params["linear_solver"])
+                    if "max_iter" in solver_params:
+                        ipopt_opts["max_iter"] = int(solver_params["max_iter"])
+                    if "acceptable_tol" in solver_params:
+                        ipopt_opts["acceptable_tol"] = float(solver_params["acceptable_tol"])
+
+                    if ipopt_opts:
+                        solver_config = {"ipopt": ipopt_opts}
+                        logging.info(
+                            f"Solver config: print_level={ipopt_opts.get('print_level', 'default')}, "
+                            f"linear_solver={ipopt_opts.get('linear_solver', 'default')}"
+                        )
+
                 # Use simple solver for robustness
                 solver_adapter = SimpleSolverAdapter(step_scale=0.05, n_evals=10)
 
-                # Physics Simulation (Set use_full_physics=True for real solver)
-                sim_adapter = PhysicsSimulationAdapter(use_full_physics=use_full_physics)
+                # Physics Simulation with solver config
+                sim_adapter = PhysicsSimulationAdapter(
+                    use_full_physics=use_full_physics, solver_config=solver_config
+                )
 
                 # 3. Instantiate Orchestrator
                 orch = Orchestrator(
@@ -707,8 +1129,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 # Inject run_id into provenance if possible, or it will generate its own
                 # The orchestrator generates its own run_id in optimize()
 
-                # 4. Run Optimization
-                # Define initial params
+                # Define initial params (engine design parameters for CEM seeding)
                 initial_params = {
                     "bore": 0.1,
                     "stroke": 0.15,
@@ -723,7 +1144,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 logging.info(f"Orchestration finished. Best: {result.best_objective:.4f}")
 
             except Exception as e:
-                logging.error(f"Orchestration failed: {e}")
+                logging.error("Orchestration failed: %s", e)
                 logging.error(traceback.format_exc())
                 emit_event(EventType.ERROR, "ORCH", metadata={"message": str(e)})
                 emit_event(EventType.RUN_END, "ORCH", metadata={"success": False, "error": str(e)})
@@ -737,7 +1158,6 @@ def create_app(project_root: Path | None = None) -> "Flask":
     @app.route("/api/stop", methods=["POST"])
     def stop_sequence() -> Response:
         """Stop running optimization."""
-        import os
 
         # Set global stop signal
         os.environ["ORCHESTRATOR_STOP_SIGNAL"] = "1"
@@ -747,7 +1167,6 @@ def create_app(project_root: Path | None = None) -> "Flask":
     @app.route("/api/reset", methods=["POST"])
     def reset_sequence() -> Response:
         """Reset optimization state."""
-        import os
 
         # Clear stop signal
         if "ORCHESTRATOR_STOP_SIGNAL" in os.environ:
@@ -755,6 +1174,225 @@ def create_app(project_root: Path | None = None) -> "Flask":
 
         emit_event(EventType.RUN_END, "ORCH", metadata={"reset": True})
         return jsonify({"status": "reset"})
+
+    # =========================================================================
+    # Workflow Action Endpoints
+    # =========================================================================
+
+    @app.route("/api/train_surrogates", methods=["POST"])
+    def train_surrogates() -> Response:
+        """Train structural and thermal surrogates from pilot DOE data."""
+        try:
+            project_root = Path(__file__).parents[1]
+            script_path = project_root / "scripts" / "train_surrogates.py"
+
+            if not script_path.exists():
+                return jsonify({"error": f"Script not found: {script_path}"}), 404
+
+            # Generate task ID for tracking
+            task_id = str(uuid.uuid4())[:8]
+
+            # Run in subprocess with streaming
+            proc = subprocess.Popen(
+                [sys.executable, str(script_path)],
+                cwd=str(project_root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+            # Register for cancellation
+            active_processes[task_id] = proc
+
+            try:
+                # Stream output via WebSocket
+                output, returncode = stream_subprocess_output(proc, task_id, "SURROGATE_TRAIN")
+
+                if returncode == 0:
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "task_id": task_id,
+                            "message": "Surrogates trained successfully",
+                            "output": output,
+                            "models": [
+                                "models/hifi/structural_surrogate.pt",
+                                "models/hifi/thermal_surrogate.pt",
+                            ],
+                        }
+                    )
+                else:
+                    return jsonify(
+                        {
+                            "status": "failed",
+                            "task_id": task_id,
+                            "error": "Training failed",
+                            "output": output,
+                        }
+                    ), 500
+            finally:
+                # Clean up registry
+                active_processes.pop(task_id, None)
+
+        except Exception as e:
+            logging.error("Surrogate training error: %s", e)
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/run_gear_optimization", methods=["POST"])
+    def run_gear_optimization() -> Response:
+        """Run Phase 3 conjugate gear profile optimization."""
+        try:
+            project_root = Path(__file__).parents[1]
+            script_path = project_root / "scripts" / "phase3" / "run_conjugate_optimization.py"
+
+            if not script_path.exists():
+                return jsonify({"error": f"Script not found: {script_path}"}), 404
+
+            # Generate task ID
+            task_id = str(uuid.uuid4())[:8]
+
+            # Run in subprocess with streaming
+            proc = subprocess.Popen(
+                [sys.executable, str(script_path)],
+                cwd=str(project_root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+            # Register for cancellation
+            active_processes[task_id] = proc
+
+            try:
+                # Stream output via WebSocket (this takes 5-10 minutes!)
+                output, returncode = stream_subprocess_output(proc, task_id, "GEAR_OPT")
+
+                if returncode == 0:
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "task_id": task_id,
+                            "message": "Gear optimization complete",
+                            "output": output,
+                            "results": [
+                                "output/conjugate_shapes.html",
+                                "output/conjugate_radii.html",
+                            ],
+                        }
+                    )
+                else:
+                    return jsonify(
+                        {
+                            "status": "failed",
+                            "task_id": task_id,
+                            "error": "Optimization failed",
+                            "output": output,
+                        }
+                    ), 500
+            finally:
+                active_processes.pop(task_id, None)
+
+        except Exception as e:
+            logging.error("Gear optimization error: %s", e)
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/generate_doe", methods=["POST"])
+    def generate_doe() -> Response:
+        """Generate Design of Experiments (DOE) samples for pilot study."""
+        try:
+            project_root = Path(__file__).parents[1]
+            script_path = project_root / "scripts" / "run_pilot_doe.py"
+
+            if not script_path.exists():
+                return jsonify({"error": f"Script not found: {script_path}"}), 404
+
+            # Get optional parameters from request
+            data = request.get_json() or {}
+            n_samples = data.get("n_samples", 50)
+
+            # Generate task ID
+            task_id = str(uuid.uuid4())[:8]
+
+            # Run in subprocess with streaming
+            proc = subprocess.Popen(
+                [sys.executable, str(script_path), str(n_samples)],
+                cwd=str(project_root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+
+            # Register for cancellation
+            active_processes[task_id] = proc
+
+            try:
+                # Stream output via WebSocket
+                output, returncode = stream_subprocess_output(proc, task_id, "DOE_GEN")
+
+                if returncode == 0:
+                    return jsonify(
+                        {
+                            "status": "success",
+                            "task_id": task_id,
+                            "message": "DOE generation complete",
+                            "output": output,
+                            "n_samples": n_samples,
+                        }
+                    )
+                else:
+                    return jsonify(
+                        {
+                            "status": "failed",
+                            "task_id": task_id,
+                            "error": "DOE generation failed",
+                            "output": output,
+                        }
+                    ), 500
+            finally:
+                active_processes.pop(task_id, None)
+
+        except Exception as e:
+            logging.error("DOE generation error: %s", e)
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/cancel_task/<task_id>", methods=["POST"])
+    def cancel_task(task_id: str) -> Response:
+        """Cancel a running workflow task by task ID."""
+        try:
+            proc = active_processes.get(task_id)
+            if not proc:
+                return jsonify({"error": f"Task {task_id} not found or already completed"}), 404
+
+            # Terminate the process
+            proc.terminate()  # Send SIGTERM
+            try:
+                proc.wait(timeout=5)  # Wait up to 5 seconds
+            except subprocess.TimeoutExpired:
+                # Force kill if it doesn't terminate gracefully
+                proc.kill()
+                proc.wait()
+
+            # Clean up
+            active_processes.pop(task_id, None)
+
+            # Emit cancellation event
+            emit_event(
+                EventType.WARNING,
+                "TASK_CANCEL",
+                metadata={"task_id": task_id, "message": "Task cancelled by user"},
+            )
+
+            return jsonify(
+                {
+                    "status": "cancelled",
+                    "task_id": task_id,
+                    "message": "Task terminated successfully",
+                }
+            )
+
+        except Exception as e:
+            logging.error("Task cancellation error: %s", e)
+            return jsonify({"error": str(e)}), 500
 
     # ========== PHASE 5 ENDPOINTS ==========
 
@@ -783,7 +1421,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
             return jsonify({"visualizations": visualizations, "count": len(visualizations)})
 
         except Exception as e:
-            logging.error(f"Visualization list error: {e}")
+            logging.error("Visualization list error: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/cem/validation_stats")
@@ -813,7 +1451,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
             return jsonify(stats)
 
         except Exception as e:
-            logging.error(f"CEM stats error: {e}")
+            logging.error("CEM stats error: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/diagnostics/analyze_failures", methods=["POST"])
@@ -828,7 +1466,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 }
             ), 501
         except Exception as e:
-            logging.error(f"Failure analysis error: {e}")
+            logging.error("Failure analysis error: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/diagnostics/nlp_health", methods=["POST"])
@@ -843,7 +1481,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 }
             ), 501
         except Exception as e:
-            logging.error(f"NLP health check error: {e}")
+            logging.error("NLP health check error: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/diagnostics/recovery_patterns", methods=["POST"])
@@ -858,7 +1496,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 }
             ), 501
         except Exception as e:
-            logging.error(f"Recovery pattern analysis error: {e}")
+            logging.error("Recovery pattern analysis error: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/models/list")
@@ -887,7 +1525,7 @@ def create_app(project_root: Path | None = None) -> "Flask":
             return jsonify({"models": models, "count": len(models)})
 
         except Exception as e:
-            logging.error(f"Model list error: {e}")
+            logging.error("Model list error: %s", e)
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/models/<model_id>/load", methods=["POST"])
@@ -902,10 +1540,65 @@ def create_app(project_root: Path | None = None) -> "Flask":
                 }
             ), 501
         except Exception as e:
-            logging.error(f"Model load error: {e}")
+            logging.error("Model load error: %s", e)
             return jsonify({"error": str(e)}), 500
 
-    return app
+    # =========================================================================
+    # Verification Endpoints (Phase 3)
+    # =========================================================================
+
+    @app.route("/api/test/verify/input", methods=["POST"])
+    def verify_input_params() -> tuple[Response, int] | Response:
+        """Verify input parameters."""
+        try:
+            data = request.get_json() or {}
+            params = data.get("params", {})
+
+            if not params:
+                return jsonify({"error": "No parameters provided"}), 400
+
+            suite = VerificationSuite(strict=False)
+            suite.add_assertion(assert_dimensional_consistency(params, {}))
+            suite.add_assertion(assert_geometry_validity(params))
+
+            report = suite.report()
+            return jsonify(report)
+
+        except Exception as e:
+            logging.error("Input verification error: %s", e)
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/test/verify/result", methods=["POST"])
+    def verify_result() -> tuple[Response, int] | Response:
+        """Verify optimization results."""
+        try:
+            data = request.get_json() or {}
+            result = data.get("result", {})
+
+            if not result:
+                return jsonify({"error": "No result provided"}), 400
+
+            suite = VerificationSuite(strict=False)
+
+            # Use metrics directly if provided
+            metrics = result.get("metrics", {})
+            if metrics:
+                suite.add_assertion(assert_efficiency_bounds(metrics))
+                suite.add_assertion(assert_energy_conservation(metrics))
+                suite.add_assertion(assert_losses_nonnegative(metrics))
+                suite.add_assertion(assert_losses_bounded(metrics))
+            else:
+                # If full result object/dict passed, try to extract validity
+                # For now, minimal check on structure
+                if "best_objective" in result:
+                    pass  # Valid structure check could go here
+
+            report = suite.report()
+            return jsonify(report)
+
+        except Exception as e:
+            logging.error("Result verification error: %s", e)
+            return jsonify({"error": str(e)}), 500
 
 
 def generate_static_tools_js(output_path: Path | None = None) -> str:
@@ -961,7 +1654,7 @@ function getToolsSubgraph(moduleId) {{
 
 def main() -> int:
     """CLI entry point."""
-    import argparse
+    # No local import needed
 
     parser = argparse.ArgumentParser(description="Dashboard API server")
     parser.add_argument("--port", type=int, default=5001, help="Port to run on")
@@ -974,7 +1667,7 @@ def main() -> int:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING)
-    logger = logging.getLogger(__name__)
+    # logger = logging.getLogger(__name__)  # Unused
 
     # Add WebSocket log handler
     ws_handler = WebSocketLogHandler()
@@ -1006,9 +1699,11 @@ def main() -> int:
     # Start WebSocket server immediately for dashboard connectivity
     start_background_server(host=args.host)
 
-    # running in a separate process that doesn't share memory/events with the
-    # orchestrator optimization thread.
-    app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
+    # Use socketio.run() instead of app.run() to properly initialize SocketIO
+    if socketio:
+        socketio.run(app, host=args.host, port=args.port, debug=False, allow_unsafe_werkzeug=True)
+    else:
+        app.run(host=args.host, port=args.port, debug=False, use_reloader=False)
     return 0
 
 
